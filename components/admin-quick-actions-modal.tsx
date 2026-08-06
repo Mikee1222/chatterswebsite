@@ -18,6 +18,7 @@ import {
   Package,
   Plus,
   Settings,
+  Trophy,
   UserPlus,
   Users,
   X,
@@ -34,6 +35,7 @@ import {
   FineBonusQuickActionSheetRow,
 } from "@/components/admin-fine-bonus-modal";
 import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
+import { WinnerSourcingSubmitModal } from "@/components/winner-sourcing-submit-modal";
 import type { SocialAccount } from "@/services/marketing";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
@@ -157,6 +159,10 @@ function canReportShadowban(userPermissions: Permission[]): boolean {
   );
 }
 
+function canSubmitWinnerSourcing(userPermissions: Permission[]): boolean {
+  return userPermissions.includes(PERMISSIONS.WINNER_SOURCING_SUBMIT);
+}
+
 const FAB_BTN_CLASS = cn(
   "flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg transition-transform",
   "bg-gradient-to-br from-pink-500 via-pink-500 to-fuchsia-600",
@@ -173,12 +179,21 @@ export type AdminQuickActionsModalProps = {
   onOpenFineBonus?: () => void;
   /** Opens the shadowban report flow (only when the user holds a marketing permission). */
   onReportShadowban?: () => void;
+  /** Opens Winner/Super Winner submit modal (winner_sourcing:submit). */
+  onAddWinner?: () => void;
 };
 
 /**
  * Admin / manager quick actions — same bottom sheet behavior as chatter `QuickActionsModal`.
  */
-export function AdminQuickActionsModal({ open, onClose, actions, onOpenFineBonus, onReportShadowban }: AdminQuickActionsModalProps) {
+export function AdminQuickActionsModal({
+  open,
+  onClose,
+  actions,
+  onOpenFineBonus,
+  onReportShadowban,
+  onAddWinner,
+}: AdminQuickActionsModalProps) {
   const dragControls = useDragControls();
 
   React.useEffect(() => {
@@ -301,6 +316,23 @@ export function AdminQuickActionsModal({ open, onClose, actions, onOpenFineBonus
                     </button>
                   </li>
                 ) : null}
+                {onAddWinner ? (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={onAddWinner}
+                      className="flex w-full min-h-[52px] items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors active:bg-white/10"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pink-500/20">
+                        <Trophy className="h-4 w-4 text-pink-400" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white">Add a Winner / Super Winner</p>
+                        <p className="text-xs text-white/40">Log a high-view video for recreation</p>
+                      </div>
+                    </button>
+                  </li>
+                ) : null}
                 <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
@@ -328,6 +360,7 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
   const { open, setOpen, requestClose, toggleOpen, showFabChrome } = useQuickActionsFabOpen();
   const [fineBonusOpen, setFineBonusOpen] = React.useState(false);
   const [shadowbanOpen, setShadowbanOpen] = React.useState(false);
+  const [winnerSubmitOpen, setWinnerSubmitOpen] = React.useState(false);
   const [shadowbanAccounts, setShadowbanAccounts] = React.useState<SocialAccount[]>([]);
 
   const actions = React.useMemo(
@@ -335,11 +368,17 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
     [user.role, userPermissions]
   );
   const showShadowban = React.useMemo(() => canReportShadowban(userPermissions), [userPermissions]);
+  const showWinnerSubmit = React.useMemo(() => canSubmitWinnerSourcing(userPermissions), [userPermissions]);
   const canManageFines = userPermissions.includes(PERMISSIONS.FINES_MANAGE);
 
   const openShadowbanReport = React.useCallback(() => {
     setOpen(false);
     setShadowbanOpen(true);
+  }, [setOpen]);
+
+  const openWinnerSubmit = React.useCallback(() => {
+    setOpen(false);
+    setWinnerSubmitOpen(true);
   }, [setOpen]);
 
   React.useEffect(() => {
@@ -380,6 +419,9 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
           vaAccounts={shadowbanAccounts}
         />
       ) : null}
+      {showWinnerSubmit ? (
+        <WinnerSourcingSubmitModal open={winnerSubmitOpen} onClose={() => setWinnerSubmitOpen(false)} />
+      ) : null}
       <div className="md:hidden">
         <AdminQuickActionsModal
           open={open}
@@ -387,6 +429,7 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
           actions={actions}
           onOpenFineBonus={canManageFines ? () => setFineBonusOpen(true) : undefined}
           onReportShadowban={showShadowban ? openShadowbanReport : undefined}
+          onAddWinner={showWinnerSubmit ? openWinnerSubmit : undefined}
         />
 
         {showFabChrome ? (
@@ -459,6 +502,23 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
                       <div>
                         <p className="text-sm font-medium text-white">Report shadowban</p>
                         <p className="text-xs text-white/40">Report an account issue</p>
+                      </div>
+                    </button>
+                  </li>
+                ) : null}
+                {showWinnerSubmit ? (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={openWinnerSubmit}
+                      className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pink-500/20">
+                        <Trophy className="h-4 w-4 text-pink-400" aria-hidden />
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-white">Add a Winner / Super Winner</p>
+                        <p className="text-xs text-white/40">Log a high-view video for recreation</p>
                       </div>
                     </button>
                   </li>
