@@ -685,3 +685,20 @@ export async function syncSlotScriptStatus(slotId: string): Promise<RecreateVide
   if (error) throw new Error(error.message);
   return mapSlot(updated as Record<string, unknown>);
 }
+
+/**
+ * When a Creative Scripts work item (winner_videos row) changes script_status,
+ * mirror it onto any linked recreate_video_slots. No-op if none linked.
+ */
+export async function syncSlotsForWinnerVideoId(
+  winnerVideoId: string,
+  scriptStatus: ScriptStatus,
+): Promise<void> {
+  const id = winnerVideoId.trim();
+  if (!id) return;
+  const sb = getSupabaseServiceClient();
+  await sb
+    .from("recreate_video_slots")
+    .update({ status: scriptStatus, updated_at: new Date().toISOString() })
+    .eq("winner_video_id", id);
+}

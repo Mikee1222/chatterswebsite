@@ -29,6 +29,20 @@ import type { NotificationEventType, NotificationPriority } from "@/types";
 
 const TABLE = "winner_videos";
 
+/** Mirror Creative Scripts status onto linked Winner sourcing recreate slots (no-op if none). */
+async function syncSourcingSlotStatus(
+  winnerVideoId: string,
+  scriptStatus: ScriptStatus,
+): Promise<void> {
+  if (!isSupabaseBackend()) return;
+  try {
+    const { syncSlotsForWinnerVideoId } = await import("./winner-sourcing");
+    await syncSlotsForWinnerVideoId(winnerVideoId, scriptStatus);
+  } catch (err) {
+    console.error("[winner-sourcing] slot status sync failed", err);
+  }
+}
+
 async function persistWinnerVideoFields(id: string, fields: Record<string, unknown>): Promise<void> {
   if (isSupabaseBackend()) {
     await (await import("./winner-videos-supabase")).updateWinnerVideoFields(id, fields);
@@ -608,6 +622,7 @@ export async function submitCreativeScript(
     throw new Error("This video is not available for script submission");
   }
   const updated = await writeCreativeScriptSubmission(id, data);
+  await syncSourcingSlotStatus(id, "Pending Review");
 
   await notifyPermissionHolders({
     permission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
@@ -637,6 +652,7 @@ export async function resubmitCreativeScript(
     throw new Error("Only rejected scripts can be resubmitted");
   }
   const updated = await writeCreativeScriptSubmission(id, data);
+  await syncSourcingSlotStatus(id, "Pending Review");
 
   await notifyPermissionHolders({
     permission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
@@ -684,6 +700,7 @@ export async function approveCreativeScript(
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after script approval");
+  await syncSourcingSlotStatus(id, "Approved");
 
   if (existing.script_submitted_by_id) {
     await notify({
@@ -728,6 +745,7 @@ export async function rejectCreativeScript(
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after script rejection");
+  await syncSourcingSlotStatus(id, "Rejected");
 
   if (existing.script_submitted_by_id) {
     await notify({
