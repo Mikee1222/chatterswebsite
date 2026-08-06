@@ -2,15 +2,22 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
+import { useReducedMotion } from "framer-motion";
+import { Heart, Sparkles } from "lucide-react";
 import {
   CountUp,
   DatePresetBar,
-  money,
+  LuxuryStatCard,
+  PeriodBadge,
+  SectionLabel,
   StatInfoTooltip,
+  money,
+  pct,
 } from "@/components/infloww-performance-ui";
+import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
+import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import type { InflowwStatsPreset } from "@/services/infloww-performance";
 
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
@@ -27,6 +34,7 @@ const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false 
 type Payload = {
   range: { startYmd: string; endYmd: string; preset: InflowwStatsPreset };
   modelName?: string;
+  linked?: boolean;
   daily: Array<{
     date: string;
     performance_rank: number | null;
@@ -35,6 +43,7 @@ type Payload = {
     expired_fans: number;
     new_subscribers: number;
     renewals: number;
+    fans_with_renew_on?: number;
   }>;
   marketingLinks: Array<{
     id: string;
@@ -45,60 +54,94 @@ type Payload = {
     earnings_gross: number;
     earnings_net: number;
   }>;
-  totals: {
-    gross: number;
-    net: number;
-    new_subscribers: number;
-    renewals: number;
-    profile_visitors: number;
+  analytics: {
+    profit: { gross: number; fees: number; refunds: number; net_profit: number };
+    refund_rate: { rate: number | null };
+    churn: {
+      active_fans: number;
+      fans_with_renew_on: number;
+      renew_on_share: number | null;
+      label: string;
+    };
+    arpu: number | null;
+    growth: {
+      new_subscribers: number;
+      renewals: number;
+      profile_visitors: number;
+      latest_rank: number | null;
+    };
+    revenue_change: {
+      current: number;
+      previous: number;
+      pct_change: number | null;
+      direction: "up" | "down" | "flat" | "na";
+    } | null;
   };
+  acquisition: Array<{
+    link_id: string;
+    link_type: string;
+    message: string | null;
+    sub_count: number;
+    earnings_gross: number;
+    revenue_per_sub: number | null;
+  }>;
   latest: {
     active_fans: number;
     expired_fans: number;
     performance_rank: number | null;
+    fans_with_renew_on?: number;
     date: string;
   } | null;
   error?: string;
 };
+
+function tip(key: keyof typeof CREATOR_EARNINGS_STAT_INFO) {
+  return CREATOR_EARNINGS_STAT_INFO[key];
+}
 
 export function ModelEarningsClient({ modelName }: { modelName: string }) {
   const [preset, setPreset] = React.useState<InflowwStatsPreset>("this_month");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<Payload | null>(null);
+  const reduce = useReducedMotion();
 
-  const load = React.useCallback(async (nextPreset?: InflowwStatsPreset) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const p = nextPreset ?? preset;
-      const res = await fetch(`/api/model/earnings?preset=${p}`, { cache: "no-store" });
-      const json = (await res.json()) as Payload;
-      if (!res.ok) throw new Error(json.error ?? "Failed to load");
-      setData(json);
-      setPreset(json.range.preset);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
-  }, [preset]);
+  const load = React.useCallback(
+    async (nextPreset?: InflowwStatsPreset) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const p = nextPreset ?? preset;
+        const res = await fetch(`/api/model/earnings?preset=${p}`, { cache: "no-store" });
+        const json = (await res.json()) as Payload;
+        if (!res.ok) throw new Error(json.error ?? "Failed to load");
+        setData(json);
+        setPreset(json.range.preset);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [preset]
+  );
 
   React.useEffect(() => {
     void load("this_month");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const subTrend = React.useMemo(
-    () =>
-      (data?.daily ?? []).map((d) => ({
-        date: d.date,
-        newSubs: d.new_subscribers,
-        renewals: d.renewals,
-        visitors: d.profile_visitors,
-      })),
-    [data?.daily]
-  );
+  const a = data?.analytics;
+  const revenueTrend = React.useMemo(() => {
+    // Approximate daily revenue trend from daily new activity isn't available;
+    // use visitor/sub series for growth feel + rank for platform standing.
+    return (data?.daily ?? []).map((d) => ({
+      date: d.date,
+      visitors: d.profile_visitors,
+      newSubs: d.new_subscribers,
+      renewals: d.renewals,
+    }));
+  }, [data?.daily]);
 
   const rankTrend = React.useMemo(
     () =>
@@ -109,14 +152,14 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-3xl space-y-5 px-1 pb-8">
       <div className={cn(VA_CARD, VA_CARD_GLOW, "p-5")}>
         <p className="text-xs font-medium uppercase tracking-wider text-[#D4AF8C]/80">
           {modelName}
         </p>
         <h1 className="mt-1 text-2xl font-semibold text-white">My earnings</h1>
         <p className="mt-1 text-sm text-white/50">
-          Your creator account health — revenue, fans, visitors, and marketing links.
+          A warm look at your account health — revenue after fees & refunds, fans, and what’s working.
         </p>
         <div className="mt-4">
           <DatePresetBar
@@ -142,54 +185,106 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
         </p>
       ) : null}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          {
-            label: "Gross",
-            value: data?.totals.gross ?? 0,
-            fmt: (n: number) => money(n, 2),
-            tip: "Gross transaction revenue in this period.",
-          },
-          {
-            label: "Net",
-            value: data?.totals.net ?? 0,
-            fmt: (n: number) => money(n, 2),
-            tip: "Net after OnlyFans fees.",
-          },
-          {
-            label: "New subscribers",
-            value: data?.totals.new_subscribers ?? 0,
-            fmt: (n: number) => String(Math.round(n)),
-            tip: "New subscribers across days in this range.",
-          },
-          {
-            label: "Active fans",
-            value: data?.latest?.active_fans ?? 0,
-            fmt: (n: number) => String(Math.round(n)),
-            tip: "Latest active fan count from Infloww.",
-          },
-        ].map((c) => (
-          <div key={c.label} className={cn(VA_CARD, "p-5")}>
-            <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-white/45">
-              {c.label}
-              <StatInfoTooltip text={c.tip} />
-            </div>
-            <p className="mt-3 text-2xl font-semibold text-white">
-              <CountUp value={c.value} format={c.fmt} />
-            </p>
-          </div>
-        ))}
+      {data && data.linked === false && !loading ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+          Earnings aren’t linked to Infloww yet. Ask an admin to set your Infloww creator ID — until
+          then this page stays empty.
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <LuxuryStatCard
+          label="Gross revenue"
+          value={
+            <CountUp
+              value={a?.profit.gross ?? 0}
+              format={(n) => money(n, 0)}
+              duration={reduce ? 0 : 900}
+            />
+          }
+          badge={
+            a?.revenue_change ? (
+              <PeriodBadge change={a.revenue_change} />
+            ) : undefined
+          }
+          tooltip={tip("gross")}
+          accent="champagne"
+          glow
+        />
+        <LuxuryStatCard
+          label="Net after fees & refunds"
+          value={<CountUp value={a?.profit.net_profit ?? 0} format={(n) => money(n, 0)} />}
+          hint={
+            a
+              ? `Fees ${money(a.profit.fees, 0)} · Refunds ${money(a.profit.refunds, 0)}`
+              : undefined
+          }
+          tooltip={tip("net_profit")}
+          accent="emerald"
+          glow
+        />
+        <LuxuryStatCard
+          label="Auto-renew fans"
+          value={
+            a?.churn.renew_on_share == null ? "—" : pct(a.churn.renew_on_share)
+          }
+          hint={a?.churn.label}
+          tooltip={tip("churn_risk")}
+          accent="pink"
+        />
+        <LuxuryStatCard
+          label="Platform rank"
+          value={
+            a?.growth.latest_rank == null ? "—" : `${a.growth.latest_rank.toFixed(1)}%`
+          }
+          hint="Lower % is closer to the top"
+          tooltip={tip("rank")}
+        />
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <div className={cn(VA_CARD, "p-5")}>
-          <h2 className="mb-3 text-sm font-semibold text-white/90">Growth</h2>
-          <div className="h-56">
+      <div className={cn(VA_CARD, "p-4")}>
+        <div className="mb-2 flex items-center gap-2">
+          <Heart className="h-4 w-4 text-[#FF1493]" />
+          <SectionLabel>Fan growth</SectionLabel>
+          <StatInfoTooltip text="Visitors → new subscribers → active fans → renewals in this period." />
+        </div>
+        <p className="text-sm leading-relaxed text-white/75">
+          {(a?.growth.profile_visitors ?? 0).toLocaleString()} profile visits brought{" "}
+          <span className="text-[#D4AF8C]">
+            {(a?.growth.new_subscribers ?? 0).toLocaleString()} new fans
+          </span>
+          . You have{" "}
+          <span className="text-white">{(a?.churn.active_fans ?? 0).toLocaleString()} active</span>
+          {a?.churn.fans_with_renew_on != null ? (
+            <>
+              {" "}
+              — and{" "}
+              <span className="text-emerald-300">
+                {a.churn.fans_with_renew_on.toLocaleString()} with auto-renew on
+              </span>
+            </>
+          ) : null}
+          . Renewals this period: {(a?.growth.renewals ?? 0).toLocaleString()}.
+        </p>
+      </div>
+
+      <div className={cn(VA_CARD, "p-4")}>
+        <div className="mb-3 flex items-center gap-2">
+          <SectionLabel>Growth trend</SectionLabel>
+        </div>
+        {revenueTrend.length ? (
+          <div className="h-48 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={subTrend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} />
-                <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} />
+              <AreaChart data={revenueTrend}>
+                <defs>
+                  <linearGradient id="modelSubs" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#FF1493" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#FF1493" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
                 <Tooltip
                   contentStyle={{
                     background: "#141214",
@@ -202,79 +297,100 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
                   dataKey="newSubs"
                   name="New subs"
                   stroke="#FF1493"
-                  fill="rgba(255,20,147,0.2)"
+                  fill="url(#modelSubs)"
+                  strokeWidth={2}
+                  isAnimationActive={!reduce}
                 />
                 <Area
                   type="monotone"
-                  dataKey="visitors"
-                  name="Visitors"
+                  dataKey="renewals"
+                  name="Renewals"
                   stroke="#D4AF8C"
-                  fill="rgba(212,175,140,0.12)"
+                  fill="transparent"
+                  strokeWidth={2}
+                  isAnimationActive={!reduce}
                 />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
-        <div className={cn(VA_CARD, "p-5")}>
-          <div className="mb-3 flex items-center gap-1.5">
-            <h2 className="text-sm font-semibold text-white/90">Platform rank</h2>
-            <StatInfoTooltip text="Lower % is better (e.g. 3 ≈ top 3%)." />
+        ) : (
+          <div className="flex flex-col items-center py-10 text-center">
+            <Sparkles className="mb-2 h-5 w-5 text-[#D4AF8C]/70" />
+            <p className="text-sm text-white/70">No growth data in this window yet</p>
+            <p className="mt-1 text-xs text-white/40">Check back after the daily sync.</p>
           </div>
-          <div className="h-56">
-            {rankTrend.length === 0 ? (
-              <p className="py-12 text-center text-sm text-white/40">No rank data yet.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={rankTrend}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                  <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} />
-                  <YAxis reversed tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{
-                      background: "#141214",
-                      border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: 12,
-                    }}
-                  />
-                  <Line type="monotone" dataKey="rank" stroke="#a78bfa" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
+        )}
       </div>
 
+      {rankTrend.length ? (
+        <div className={cn(VA_CARD, "p-4")}>
+          <div className="mb-3 flex items-center gap-2">
+            <SectionLabel>Ranking trend</SectionLabel>
+            <StatInfoTooltip text={tip("rank")} />
+          </div>
+          <div className="h-40">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={rankTrend}>
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                <YAxis
+                  reversed
+                  tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
+                  domain={["auto", "auto"]}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "#141214",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 12,
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="rank"
+                  stroke="#D4AF8C"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={!reduce}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      ) : null}
+
       <div className={cn(VA_CARD, "overflow-hidden")}>
-        <div className="border-b border-white/8 px-5 py-3 text-sm font-semibold text-white/90">
-          Your marketing links
+        <div className="border-b border-white/8 px-4 py-3">
+          <SectionLabel>Best marketing links</SectionLabel>
+          <p className="mt-1 text-xs text-white/40">
+            Ranked by earnings.{" "}
+            <StatInfoTooltip text={tip("marketing")} />
+          </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="text-left text-[11px] uppercase tracking-wider text-white/40">
-              <tr>
-                <th className="px-5 py-3">Type</th>
-                <th className="px-3 py-3">Message</th>
-                <th className="px-3 py-3">Paying</th>
-                <th className="px-5 py-3">Net</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data?.marketingLinks ?? []).map((l) => (
-                <tr key={l.id} className="border-t border-white/6 text-white/80">
-                  <td className="px-5 py-3 text-[10px] font-semibold uppercase text-[#D4AF8C]">
-                    {l.link_type}
-                  </td>
-                  <td className="max-w-xs truncate px-3 py-3 text-white/60">{l.message ?? "—"}</td>
-                  <td className="px-3 py-3 tabular-nums">{l.paying_fans_count}</td>
-                  <td className="px-5 py-3 tabular-nums">{money(l.earnings_net, 2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!loading && !(data?.marketingLinks?.length) ? (
-            <p className="px-5 py-8 text-sm text-white/45">No marketing links synced yet.</p>
-          ) : null}
-        </div>
+        {(data?.acquisition ?? []).length ? (
+          <ul className="divide-y divide-white/6">
+            {(data?.acquisition ?? []).slice(0, 8).map((l) => (
+              <li key={l.link_id} className="flex items-center justify-between gap-3 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-white/85">{l.message || "Untitled link"}</p>
+                  <p className="text-xs text-white/40">
+                    {l.link_type} · {l.sub_count} subs
+                    {l.revenue_per_sub != null
+                      ? ` · ${money(l.revenue_per_sub, 2)}/sub`
+                      : ""}
+                  </p>
+                </div>
+                <p className="shrink-0 text-sm font-semibold tabular-nums text-[#D4AF8C]">
+                  {money(l.earnings_gross, 0)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="px-4 py-10 text-center text-sm text-white/45">
+            No marketing links synced yet — that’s okay, they’ll show up after the next sync.
+          </div>
+        )}
       </div>
     </div>
   );
