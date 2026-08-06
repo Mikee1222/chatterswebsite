@@ -50,7 +50,6 @@ async function main() {
   const { expandTasksForAthensYmd, getVaTasksViewTodayYmd } = await import("../lib/va-task-date-filter");
   const notifications = await import("../services/notifications");
   const winnerVideos = await import("../services/winner-videos");
-  const researchBunches = await import("../services/research-bunches");
   const modelss = await import("../services/modelss");
   const { getSupabaseServiceClient } = await import("../lib/supabase-server");
 
@@ -356,36 +355,6 @@ async function main() {
       reviewed_by_name: admin.full_name || admin.email,
     });
     return `wv=${video.id} status=${approved.status} script=${scriptApproved.script_status ?? scripted.script_status}`;
-  });
-
-  await run("10b_research_bunch_submit_approve", async () => {
-    if (!admin) throw new Error("No admin");
-    const models = await modelss.listAllModelss();
-    const model = models[0];
-    if (!model) throw new Error("No model");
-    const { bunch } = await researchBunches.createManagerBunch({
-      creator_model_id: model.id,
-      creator_name: model.model_name || "Smoke",
-      target_research: 1,
-      target_winner: 1,
-      created_by_name: admin.full_name || admin.email,
-    });
-    const idea = await researchBunches.addIdea({
-      bunch_id: bunch.id,
-      platform: "TT",
-      idea_text: "smoke idea",
-      reference_link: "https://example.com/smoke",
-    });
-    await researchBunches.setIdeaChecked(idea.id, true);
-    await researchBunches.submitBunch(bunch.id);
-    const fresh = await researchBunches.getBunchById(bunch.id);
-    if (!fresh) throw new Error("bunch missing after submit");
-    const { spawned } = await researchBunches.approveBunch(fresh, {
-      user_id: admin.id,
-      name: admin.full_name || admin.email,
-    });
-    const after = await researchBunches.getBunchById(bunch.id);
-    return `bunch=${bunch.id} status=${after?.status} spawned=${spawned}`;
   });
 
   printSummary();

@@ -636,11 +636,6 @@ export const MIGRATION_ORDER: string[] = [
   "winner_videos",
   "video_transcripts",
   "pdf_documents",
-  "creator_assignments",
-  "research_bunches",
-  "research_ideas",
-  "content_items",
-  "content_item_events",
   // legacy
   // intentionally excluded (gone from Airtable): chatter_complaints
   "chatter_performance",

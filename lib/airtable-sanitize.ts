@@ -191,28 +191,6 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
 
 /** Table-specific overrides for select fields (when a field name is used with different options per table). */
 const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> = {
-  // Content pipeline tables — must override global `status`/`platform` allowlists.
-  content_items: {
-    status: new Set(["in_progress", "awaiting_qa", "rejected", "blocked_unassigned", "done"]),
-    stage: new Set(["creative", "filming", "icloud_raw", "editing", "icloud_edited", "post", "analytics", "done"]),
-    source: new Set(["research", "winner_recreate"]),
-    film_type: new Set(["self_record", "filmer"]),
-    priority: new Set(["low", "normal", "high", "urgent"]),
-  },
-  content_item_events: {
-    stage: new Set(["creative", "filming", "icloud_raw", "editing", "icloud_edited", "post", "analytics", "done"]),
-    action: new Set(["spawned", "entered", "completed", "qa_approved", "qa_rejected", "reassigned", "blocked"]),
-  },
-  research_bunches: {
-    status: new Set(["draft", "collecting", "awaiting_qa", "changes_requested", "approved"]),
-    film_type: new Set(["self_record", "filmer"]),
-  },
-  research_ideas: {
-    platform: new Set(["IG", "TT", "both"]),
-  },
-  creator_assignments: {
-    role: new Set(["researcher", "creative", "filmer", "editor", "icloud-manager", "marketing-executive", "head-of-marketing", "supervisor"]),
-  },
   model_live_streams: {
     platform: new Set(MODEL_LIVE_STREAM_PLATFORM_OPTIONS),
     status: new Set([...MODEL_LIVE_STREAM_STATUS_OPTIONS]),
@@ -554,9 +532,6 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
 
 /** Tables where a normally global-stripped field is a normal writable column. */
 const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
-  /** Pipeline: created_at feeds the "time to approval" KPI; these columns are real editable dateTimes. */
-  research_bunches: new Set(["created_at"]),
-  content_items: new Set(["created_at", "updated_at"]),
   challenges: new Set(["created_by"]),
   points_transactions: new Set(["created_at"]),
   spin_wheel_spins: new Set(["created_at"]),

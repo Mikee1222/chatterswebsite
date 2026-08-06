@@ -136,16 +136,6 @@ export const ROUTES = {
     notificationDiagnostic: "/admin/notification-diagnostic",
     roles: "/admin/roles",
     linkPages: "/admin/link-pages",
-    /** Content pipeline: assign creators to people per role (content_pipeline:manage). */
-    pipelineAssignments: "/admin/pipeline-assignments",
-    /** Content pipeline KPIs / analytics (content_pipeline:manage). */
-    pipelineAnalytics: "/admin/pipeline-analytics",
-    /** Content pipeline admin hub — tabbed: KPIs · QA · Assignments · Winners (content_pipeline:qa). */
-    pipeline: "/admin/pipeline",
-    /** Content pipeline QA cockpit — everything waiting for QA + progress (content_pipeline:qa). */
-    pipelineQa: "/admin/pipeline-qa",
-    /** Winner library — Manos tags/annotates winners + pulls N recreates into bunches. */
-    winnerLibrary: "/admin/winner-library",
   },
 
   /** Public link-in-bio pages */
@@ -202,8 +192,6 @@ export const ROUTES = {
   creativeScripts: "/creative-scripts",
   /** Submitter view of own creative scripts. */
   myScripts: "/my-scripts",
-  /** Content pipeline board (permission-gated: content_pipeline:view). Each role sees its own stage queue. */
-  pipeline: "/pipeline",
   /** Standalone video transcription tool (permission-gated). */
   transcriptVideos: "/transcript-videos",
   /** VA assigned models, social accounts, and phones. */

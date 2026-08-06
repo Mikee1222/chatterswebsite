@@ -793,22 +793,6 @@ const sharedPermissionNavItems: NavItem[] = [
 
   // ── CONTENT ──
   {
-    href: ROUTES.pipeline,
-    label: "Content Pipeline",
-    iconKey: "ListTodo",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.CONTENT_PIPELINE_VIEW,
-    excludeFromMobileMainTabs: true,
-  },
-  {
-    href: ROUTES.admin.pipeline,
-    label: "Content Pipeline Admin",
-    iconKey: "LineChart",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.CONTENT_PIPELINE_QA,
-    excludeFromMobileMainTabs: true,
-  },
-  {
     href: ROUTES.winners,
     label: "Research",
     iconKey: "Trophy",

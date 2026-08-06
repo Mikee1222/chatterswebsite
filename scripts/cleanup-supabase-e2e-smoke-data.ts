@@ -65,24 +65,6 @@ async function main() {
     return n;
   }
 
-  const { data: smokeIdeas } = await sb
-    .from("research_ideas")
-    .select("id, bunch_id")
-    .ilike("idea_text", "smoke idea");
-  const bunchIds = [...new Set((smokeIdeas ?? []).map((r) => String(r.bunch_id)).filter(Boolean))];
-
-  const { data: smokeContent } = await sb
-    .from("content_items")
-    .select("id, item_id")
-    .ilike("title", "smoke idea");
-  const contentItemIds = [
-    ...new Set(
-      (smokeContent ?? [])
-        .flatMap((r) => [String(r.item_id || ""), String(r.id)])
-        .filter(Boolean)
-    ),
-  ];
-
   const { data: recentShifts } = await sb
     .from("shifts")
     .select("id, notes, chatter_name")
@@ -97,27 +79,6 @@ async function main() {
     .map((s) => String(s.id));
 
   let grand = 0;
-
-  if (contentItemIds.length) {
-    grand += await run("content_item_events", "events for smoke idea content", (q) =>
-      q.in("item_id", contentItemIds)
-    );
-  } else {
-    console.log(`${EXECUTE ? "deleted" : "would_delete"}    0  content_item_events — (none)`);
-  }
-
-  grand += await run("content_items", "title ILIKE smoke idea", (q) => q.ilike("title", "smoke idea"));
-  grand += await run("research_ideas", "idea_text ILIKE smoke idea", (q) =>
-    q.ilike("idea_text", "smoke idea")
-  );
-
-  if (bunchIds.length) {
-    grand += await run("research_bunches", "bunches that spawned smoke ideas", (q) =>
-      q.in("id", bunchIds)
-    );
-  } else {
-    console.log(`${EXECUTE ? "deleted" : "would_delete"}    0  research_bunches — (none)`);
-  }
 
   // Sequential notification deletes (OR across filters)
   grand += await run("notifications", "body smoke-supabase", (q) =>

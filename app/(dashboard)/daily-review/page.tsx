@@ -16,9 +16,7 @@ import {
 } from "@/services/marketing-reviews";
 import { getRoles } from "@/services/roles";
 import { listActiveUsers } from "@/services/users";
-import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { SupervisorDailyReviewClient } from "@/components/supervisor-daily-review-client";
-import { DailyWinnerSubmitClient } from "@/components/daily-winner-submit-client";
 
 export default async function DailyReviewSubmitPage() {
   const user = await getSessionFromCookies();
@@ -29,14 +27,12 @@ export default async function DailyReviewSubmitPage() {
 
   const managerName = spotCheckManagerName(user);
   const today = todayReviewIso();
-  const [allReviews, todayRow, activeUsers, roles, creatorRecords] = await Promise.all([
+  const [allReviews, todayRow, activeUsers, roles] = await Promise.all([
     getDailyReviews().catch(() => []),
     getDailyReviewByDate(today, managerName).catch(() => null),
     listActiveUsers().catch(() => []),
     getRoles().catch(() => []),
-    listActiveGunzoTeamModelss().catch(() => []),
   ]);
-  const creators = creatorRecords.filter((c) => c.model_id && c.model_name).map((c) => ({ model_id: c.model_id, model_name: c.model_name }));
 
   const mySubmissions = filterDailyReviewsByManager(allReviews, managerName);
   const todayReview = todayRow ? await getDailyReviewDetail(todayRow.id).catch(() => null) : null;
@@ -49,7 +45,6 @@ export default async function DailyReviewSubmitPage() {
         staffUsers={toStaffUserOptions(activeUsers)}
         roleLabels={buildRoleLabels(roles)}
       />
-      {creators.length > 0 && <DailyWinnerSubmitClient creators={creators} />}
     </div>
   );
 }
