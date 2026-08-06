@@ -274,7 +274,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               isVirtual
                 ? "Projected day — checklist unlocks when this day’s real task exists"
                 : !onShift
-                  ? "Start your shift to complete items"
+                  ? "Start or resume your shift to complete items"
                   : undefined
             }
             onClick={() => {
@@ -438,7 +438,11 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                 type="button"
                 onClick={(e) => void onMarkComplete(task, e)}
                 disabled={!onShift || isCompleting}
-                title={!onShift ? "Start your shift to mark tasks done" : undefined}
+                title={
+                  !onShift
+                    ? "Start or resume your shift to mark tasks done"
+                    : undefined
+                }
                 className={cn(VA_BTN_SECONDARY, "shrink-0 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40")}
               >
                 {isCompleting ? "Saving…" : "Mark done"}

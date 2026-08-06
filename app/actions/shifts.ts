@@ -255,12 +255,27 @@ export async function startVaTaskShiftAction() {
   }
 
   const vaId = user.airtableUserId ?? user.id;
-  const chatterRecordId = await resolveShiftChatterRecordId(vaId);
-  const existing = await getActiveVaTaskShift(vaId);
-  if (existing) return { error: "You already have an active VA tasks shift" };
+  const [chatterRecordId, existing] = await Promise.all([
+    resolveShiftChatterRecordId(vaId),
+    getActiveVaTaskShift(vaId),
+  ]);
+  if (existing) {
+    return {
+      error: "You already have an active VA tasks shift",
+      shift: {
+        id: existing.id,
+        start_time: existing.start_time ?? "",
+        status: existing.status,
+        break_started_at: existing.break_started_at,
+        paused_seconds: existing.paused_seconds ?? 0,
+        break_minutes: existing.break_minutes ?? 0,
+      },
+    };
+  }
 
   const now = new Date();
-  const date = now.toISOString().split("T")[0];
+  const startIso = now.toISOString();
+  const date = startIso.split("T")[0]!;
   const weekStart = getWeekStart(now);
   const shift = await createShift({
     chatter: chatterRecordId ? [chatterRecordId] : [],
@@ -268,40 +283,153 @@ export async function startVaTaskShiftAction() {
     week_start: weekStart,
     date,
     scheduled_shift: "",
-    start_time: now.toISOString(),
+    start_time: startIso,
     status: "active",
     staff_role: "virtual_assistant",
     shift_type: "task",
     task_label: "",
     models_count: 0,
+    break_minutes: 0,
+    paused_seconds: 0,
   });
 
-  await createActivityLog({
+  // Non-blocking side effects — return ON SHIFT to the client immediately.
+  void createActivityLog({
     actor_user_id: user.id,
     actor_name: user.fullName ?? user.email,
     action_type: "task_shift_started",
     entity_type: "shift",
     entity_id: shift.id,
     summary: `${user.fullName ?? user.email} started a VA tasks shift`,
-  });
+  }).catch((err) => console.error("[task-shift/start] activity log failed", err));
 
-  try {
-    const { spawnTodayRecurringOccurrencesForVa } = await import("@/services/va-task-recurring-spawn");
-    const spawnResult = await spawnTodayRecurringOccurrencesForVa(vaId);
-    if (spawnResult.spawned > 0) {
-      console.log(
-        `[task-shift/start] spawned ${spawnResult.spawned} today's recurring occurrence(s) for ${vaId}`,
-      );
-      revalidatePath(ROUTES.va.tasks);
-      revalidatePath(ROUTES.va.home);
-      revalidatePath(ROUTES.va.schedule);
-      revalidatePath(ROUTES.admin.vaTasks);
+  void (async () => {
+    try {
+      const { spawnTodayRecurringOccurrencesForVa } = await import("@/services/va-task-recurring-spawn");
+      const spawnResult = await spawnTodayRecurringOccurrencesForVa(vaId);
+      if (spawnResult.spawned > 0) {
+        console.log(
+          `[task-shift/start] spawned ${spawnResult.spawned} today's recurring occurrence(s) for ${vaId}`,
+        );
+        revalidatePath(ROUTES.va.tasks);
+        revalidatePath(ROUTES.va.home);
+        revalidatePath(ROUTES.va.schedule);
+        revalidatePath(ROUTES.admin.vaTasks);
+      }
+    } catch (spawnErr) {
+      console.error("[task-shift/start] spawn today recurring failed", spawnErr);
     }
-  } catch (spawnErr) {
-    console.error("[task-shift/start] spawn today recurring failed", spawnErr);
+  })();
+
+  return {
+    success: true,
+    shiftId: shift.id,
+    shift: {
+      id: shift.id,
+      start_time: shift.start_time ?? startIso,
+      status: shift.status,
+      break_started_at: shift.break_started_at,
+      paused_seconds: shift.paused_seconds ?? 0,
+      break_minutes: shift.break_minutes ?? 0,
+    },
+  };
+}
+
+function serializeVaTaskShift(shift: {
+  id: string;
+  start_time: string | null;
+  status: string;
+  break_started_at: string | null;
+  paused_seconds?: number;
+  break_minutes?: number;
+}) {
+  return {
+    id: shift.id,
+    start_time: shift.start_time ?? "",
+    status: shift.status,
+    break_started_at: shift.break_started_at,
+    paused_seconds: shift.paused_seconds ?? 0,
+    break_minutes: shift.break_minutes ?? 0,
+  };
+}
+
+/** Pause VA task shift — maps to on_break; duration counter freezes (active segments only). */
+export async function pauseVaTaskShiftAction() {
+  const user = await getSessionFromCookies();
+  if (!user) return { error: "Not authenticated" };
+  if (!(await canManagePersonalVaTaskShift(user))) {
+    return { error: "You do not have permission to pause VA task shifts" };
   }
 
-  return { success: true, shiftId: shift.id };
+  const vaId = user.airtableUserId ?? user.id;
+  const myActive = await getActiveVaTaskShift(vaId);
+  if (!myActive) return { error: "No active VA tasks shift found" };
+  if (myActive.status === "on_break" || myActive.break_started_at) {
+    return { success: true, shift: serializeVaTaskShift(myActive) };
+  }
+  if (myActive.status !== "active") {
+    return { error: "You can only pause an active task shift." };
+  }
+
+  const pauseIso = new Date().toISOString();
+  await updateShift(myActive.id, {
+    status: "on_break",
+    break_started_at: pauseIso,
+  });
+
+  return {
+    success: true,
+    shift: serializeVaTaskShift({
+      ...myActive,
+      status: "on_break",
+      break_started_at: pauseIso,
+    }),
+  };
+}
+
+/** Resume VA task shift — closes open pause into paused_seconds. */
+export async function resumeVaTaskShiftAction() {
+  const user = await getSessionFromCookies();
+  if (!user) return { error: "Not authenticated" };
+  if (!(await canManagePersonalVaTaskShift(user))) {
+    return { error: "You do not have permission to resume VA task shifts" };
+  }
+
+  const vaId = user.airtableUserId ?? user.id;
+  const myActive = await getActiveVaTaskShift(vaId);
+  if (!myActive) return { error: "No active VA tasks shift found" };
+  if (myActive.status !== "on_break" && !myActive.break_started_at) {
+    return { success: true, shift: serializeVaTaskShift({ ...myActive, status: "active", break_started_at: null }) };
+  }
+
+  const now = Date.now();
+  let pausedSeconds = Math.max(0, Math.floor(Number(myActive.paused_seconds ?? 0)));
+  if (myActive.break_started_at) {
+    const startMs = new Date(myActive.break_started_at).getTime();
+    if (Number.isFinite(startMs)) {
+      pausedSeconds += Math.max(0, Math.floor((now - startMs) / 1000));
+    }
+  }
+  const breakMinutes = Math.ceil(pausedSeconds / 60);
+
+  await updateShift(myActive.id, {
+    status: "active",
+    break_started_at: "",
+    break_reminder_at: "",
+    paused_seconds: pausedSeconds,
+    break_minutes: breakMinutes,
+  });
+
+  return {
+    success: true,
+    shift: serializeVaTaskShift({
+      ...myActive,
+      status: "active",
+      break_started_at: null,
+      paused_seconds: pausedSeconds,
+      break_minutes: breakMinutes,
+    }),
+  };
 }
 
 /** End the current VA tasks shift (virtual assistant). */
@@ -316,21 +444,47 @@ export async function endVaTaskShiftAction() {
   const myActive = await getActiveVaTaskShift(vaId);
   if (!myActive) return { error: "No active VA tasks shift found" };
 
-  const endTime = new Date().toISOString();
+  const endTime = new Date();
+  const endIso = endTime.toISOString();
+
+  // Finalize any open pause into paused_seconds before completing.
+  let pausedSeconds = Math.max(0, Math.floor(Number(myActive.paused_seconds ?? 0)));
+  if (myActive.status === "on_break" || myActive.break_started_at) {
+    if (myActive.break_started_at) {
+      const startMs = new Date(myActive.break_started_at).getTime();
+      if (Number.isFinite(startMs)) {
+        pausedSeconds += Math.max(0, Math.floor((endTime.getTime() - startMs) / 1000));
+      }
+    }
+  }
+
+  const startMs = myActive.start_time ? new Date(myActive.start_time).getTime() : NaN;
+  const wallSeconds = Number.isFinite(startMs)
+    ? Math.max(0, Math.floor((endTime.getTime() - startMs) / 1000))
+    : 0;
+  const activeSeconds = Math.max(0, wallSeconds - pausedSeconds);
+  const totalMinutes = Math.max(0, Math.floor(activeSeconds / 60));
+  const breakMinutes = Math.ceil(pausedSeconds / 60);
 
   await updateShift(myActive.id, {
-    end_time: endTime,
+    end_time: endIso,
     status: "completed",
+    break_started_at: "",
+    break_reminder_at: "",
+    paused_seconds: pausedSeconds,
+    break_minutes: breakMinutes,
+    total_minutes: totalMinutes,
+    total_hours_decimal: Math.round((activeSeconds / 3600) * 100) / 100,
   });
 
-  await createActivityLog({
+  void createActivityLog({
     actor_user_id: user.id,
     actor_name: user.fullName ?? user.email,
     action_type: "task_shift_ended",
     entity_type: "shift",
     entity_id: myActive.id,
     summary: `${user.fullName ?? user.email} ended a VA tasks shift`,
-  });
+  }).catch((err) => console.error("[task-shift/end] activity log failed", err));
 
   return { success: true };
 }

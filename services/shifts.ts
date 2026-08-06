@@ -79,6 +79,7 @@ type ShiftFields = {
   break_started_at?: string;
   break_reminder_at?: string;
   break_minutes?: number;
+  paused_seconds?: number;
   worked_minutes?: number;
   status?: string;
   models_count?: number;
@@ -188,6 +189,15 @@ function mapShift(rec: AirtableRecord<ShiftFields>): Shift {
     break_started_at,
     break_reminder_at,
     break_minutes: getBreakMinutes(f),
+    paused_seconds: ((): number => {
+      const v = f.paused_seconds ?? f["Paused seconds"] ?? f["paused_seconds"];
+      if (typeof v === "number" && !Number.isNaN(v)) return Math.max(0, Math.floor(v));
+      if (typeof v === "string") {
+        const n = parseInt(v, 10);
+        if (!Number.isNaN(n)) return Math.max(0, n);
+      }
+      return 0;
+    })(),
     /** Base may omit worked_minutes; derive from total_minutes when absent. */
     worked_minutes: ((): number | null => {
       const w = f.worked_minutes;
@@ -436,6 +446,7 @@ export type ShiftWriteFields = Partial<{
   break_started_at: string;
   break_reminder_at: string;
   break_minutes: number;
+  paused_seconds: number;
   staff_role: string;
   shift_type: string;
   task_label: string;

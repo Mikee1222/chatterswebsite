@@ -522,6 +522,11 @@ export interface Shift {
   /** When set, cron sends a push after this ISO time (then clears the field). */
   break_reminder_at: string | null;
   break_minutes: number;
+  /**
+   * Accumulated pause/break seconds (closed segments only).
+   * While on_break, add (now − break_started_at) for live active duration.
+   */
+  paused_seconds: number;
   worked_minutes: number | null;
   status: ShiftStatus;
   models_count: number;

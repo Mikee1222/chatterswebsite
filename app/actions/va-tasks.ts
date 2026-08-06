@@ -174,11 +174,14 @@ export async function updateVaTaskStatusAction(input: {
   const visible = task.assigned_to_ids.length === 0 || task.assigned_to_ids.includes(vaId);
   if (!visible) return { success: false, error: "This task is not assigned to you." };
 
-  // A8: gate completion behind an active task shift (same rule as the My-tasks UI).
+  // A8: gate completion behind an active (non-paused) task shift.
   if (input.status === "done") {
     const activeShift = await getActiveVaTaskShift(user.airtableUserId ?? user.id);
     if (!activeShift) {
       return { success: false, error: "Start your task shift before marking tasks done." };
+    }
+    if (activeShift.status === "on_break" || activeShift.break_started_at) {
+      return { success: false, error: "Resume your task shift before marking tasks done." };
     }
   }
 

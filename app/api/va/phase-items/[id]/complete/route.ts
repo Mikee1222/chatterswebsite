@@ -59,6 +59,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       { status: 403 },
     );
   }
+  if (activeShift.status === "on_break" || activeShift.break_started_at) {
+    return NextResponse.json(
+      { error: "Resume your task shift before completing checklist items." },
+      { status: 403 },
+    );
+  }
 
   const { id: paramId } = await ctx.params;
   const itemRowId = await resolvePhaseItemRowId(paramId);

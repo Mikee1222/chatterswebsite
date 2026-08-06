@@ -96,10 +96,12 @@ export function shiftWorkedMinutes(shift: Pick<
   | "start_time"
   | "end_time"
   | "break_minutes"
+  | "paused_seconds"
   | "worked_minutes"
   | "total_minutes"
   | "total_hours_decimal"
   | "status"
+  | "break_started_at"
 >): number {
   if (typeof shift.worked_minutes === "number" && shift.worked_minutes > 0) {
     return shift.worked_minutes;
@@ -113,7 +115,11 @@ export function shiftWorkedMinutes(shift: Pick<
   const start = shift.start_time ? new Date(shift.start_time).getTime() : 0;
   const end = shift.end_time ? new Date(shift.end_time).getTime() : 0;
   if (!start || !end || end <= start) return 0;
-  return Math.max(0, Math.floor((end - start) / 60_000) - (shift.break_minutes ?? 0));
+  let pausedSec = Math.max(0, Math.floor(Number(shift.paused_seconds ?? 0)));
+  if (pausedSec === 0 && (shift.break_minutes ?? 0) > 0) {
+    pausedSec = Math.max(0, Math.floor(Number(shift.break_minutes) * 60));
+  }
+  return Math.max(0, Math.floor((end - start) / 60_000) - Math.ceil(pausedSec / 60));
 }
 
 /**

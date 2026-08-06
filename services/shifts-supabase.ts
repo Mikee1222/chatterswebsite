@@ -36,6 +36,7 @@ type ShiftRow = SbRow & {
   break_started_at?: string | null;
   break_reminder_at?: string | null;
   break_minutes?: number | null;
+  paused_seconds?: number | null;
   worked_minutes?: number | null;
   status?: string | null;
   models_count?: number | null;
@@ -126,6 +127,10 @@ function mapShiftSync(row: ShiftRow, userAtByUuid: Map<string, string>): Shift {
     break_minutes:
       typeof row.break_minutes === "number" && !Number.isNaN(Number(row.break_minutes))
         ? Math.max(0, Number(row.break_minutes))
+        : 0,
+    paused_seconds:
+      typeof row.paused_seconds === "number" && !Number.isNaN(Number(row.paused_seconds))
+        ? Math.max(0, Math.floor(Number(row.paused_seconds)))
         : 0,
     worked_minutes: worked,
     status,
@@ -409,6 +414,7 @@ export type ShiftWriteFields = Partial<{
   break_started_at: string;
   break_reminder_at: string;
   break_minutes: number;
+  paused_seconds: number;
   staff_role: string;
   shift_type: string;
   task_label: string;

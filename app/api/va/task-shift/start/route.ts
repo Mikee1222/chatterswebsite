@@ -18,9 +18,17 @@ export async function POST() {
   try {
     const result = await startVaTaskShiftAction();
     if ("error" in result && result.error) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+      const status = result.error.toLowerCase().includes("already have an active") ? 409 : 400;
+      return NextResponse.json(
+        { error: result.error, shift: "shift" in result ? result.shift : undefined },
+        { status },
+      );
     }
-    return NextResponse.json({ success: true, shiftId: result.shiftId });
+    return NextResponse.json({
+      success: true,
+      shiftId: "shiftId" in result ? result.shiftId : undefined,
+      shift: "shift" in result ? result.shift : undefined,
+    });
   } catch (error) {
     console.error("[task-shift/start]", error);
     return NextResponse.json({ error: "Could not start shift" }, { status: 500 });

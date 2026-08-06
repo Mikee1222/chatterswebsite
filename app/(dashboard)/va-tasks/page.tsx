@@ -40,7 +40,14 @@ export default async function VaTasksPage() {
   const userName = (user.fullName || user.email || "").trim();
 
   const initialActiveShift = activeShift
-    ? { id: activeShift.id, start_time: activeShift.start_time ?? "", status: activeShift.status }
+    ? {
+        id: activeShift.id,
+        start_time: activeShift.start_time ?? "",
+        status: activeShift.status,
+        break_started_at: activeShift.break_started_at,
+        paused_seconds: activeShift.paused_seconds ?? 0,
+        break_minutes: activeShift.break_minutes ?? 0,
+      }
     : null;
 
   return (

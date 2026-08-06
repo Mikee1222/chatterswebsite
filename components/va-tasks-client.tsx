@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils";
 import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
 import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
+import { formatActiveDuration, shiftActiveSeconds } from "@/lib/shift-active-duration";
 import { VA_CARD, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
@@ -57,24 +58,29 @@ function isPastDue(isoLike: string | null | undefined): boolean {
   return t < Date.now();
 }
 
-function formatShiftElapsed(startTime: string): string {
-  const ms = Math.max(0, Date.now() - new Date(startTime).getTime());
-  const totalSeconds = Math.floor(ms / 1000);
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  const s = totalSeconds % 60;
-  if (h > 0) return `${h}h ${m}m ${s}s`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
 const fieldMotion = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
   transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
 } as const;
 
-type ActiveShift = { id: string; start_time: string; status: string };
+type ActiveShift = {
+  id: string;
+  start_time: string;
+  status: string;
+  break_started_at?: string | null;
+  paused_seconds?: number;
+  break_minutes?: number;
+};
+
+function isOptimisticShiftId(id: string): boolean {
+  return id.startsWith("optimistic-");
+}
+
+function isShiftPaused(shift: ActiveShift | null | undefined): boolean {
+  if (!shift) return false;
+  return shift.status === "on_break" || Boolean(shift.break_started_at?.trim());
+}
 
 /** Isolated shift UI + 1s timer so the task list does not re-render every second. */
 function VaShiftBar({
@@ -83,20 +89,22 @@ function VaShiftBar({
   initialActiveShift = null,
 }: {
   isViewingToday: boolean;
-  onShiftChange: (onShift: boolean) => void;
+  /** True only when actively on shift (not paused) — gates checklist completion. */
+  onShiftChange: (onShiftActive: boolean) => void;
   initialActiveShift?: ActiveShift | null;
 }) {
   const [activeShift, setActiveShift] = React.useState<ActiveShift | null>(initialActiveShift);
-  const [shiftLoading, setShiftLoading] = React.useState(true);
+  const [shiftLoading, setShiftLoading] = React.useState(!initialActiveShift);
   const [shiftBusy, setShiftBusy] = React.useState(false);
   const [shiftErr, setShiftErr] = React.useState<string | null>(null);
   const [shiftDuration, setShiftDuration] = React.useState("0s");
   const fetchSeqRef = React.useRef(0);
+  const pendingStartIdRef = React.useRef<string | null>(null);
 
   const setShiftState = React.useCallback(
     (shift: ActiveShift | null) => {
       setActiveShift(shift);
-      onShiftChange(!!shift);
+      onShiftChange(!!shift && !isShiftPaused(shift));
     },
     [onShiftChange],
   );
@@ -107,6 +115,8 @@ function VaShiftBar({
       const res = await fetch("/api/va/task-shift/active", { credentials: "include" });
       const data = (await res.json().catch(() => ({}))) as { shift?: ActiveShift | null };
       if (seq !== fetchSeqRef.current) return;
+      // Don't clobber optimistic start with a stale null while start is in flight.
+      if (pendingStartIdRef.current && !data.shift) return;
       if (res.ok) setShiftState(data.shift ?? null);
     } finally {
       if (seq === fetchSeqRef.current) setShiftLoading(false);
@@ -114,56 +124,193 @@ function VaShiftBar({
   }, [setShiftState]);
 
   React.useEffect(() => {
+    if (initialActiveShift) {
+      setShiftLoading(false);
+      onShiftChange(!isShiftPaused(initialActiveShift));
+    }
     void fetchActiveShift();
-  }, [fetchActiveShift]);
+  }, [fetchActiveShift, initialActiveShift, onShiftChange]);
 
   React.useEffect(() => {
     if (!activeShift?.start_time) {
       setShiftDuration("0s");
       return;
     }
-    const tick = () => setShiftDuration(formatShiftElapsed(activeShift.start_time));
+    const tick = () => {
+      setShiftDuration(
+        formatActiveDuration(
+          shiftActiveSeconds({
+            start_time: activeShift.start_time,
+            break_started_at: activeShift.break_started_at,
+            paused_seconds: activeShift.paused_seconds,
+            break_minutes: activeShift.break_minutes,
+            status: activeShift.status,
+          }),
+        ),
+      );
+    };
     tick();
+    // Freeze the display tick while paused (still recompute once on pause transition).
+    if (isShiftPaused(activeShift)) return;
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [activeShift?.start_time]);
+  }, [
+    activeShift?.start_time,
+    activeShift?.status,
+    activeShift?.break_started_at,
+    activeShift?.paused_seconds,
+    activeShift?.break_minutes,
+  ]);
 
   async function handleStartShift() {
-    setShiftBusy(true);
+    if (shiftBusy) return;
     setShiftErr(null);
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticStartedAt = new Date().toISOString();
+    pendingStartIdRef.current = optimisticId;
+    // Instant ON SHIFT — don't wait for the network.
+    setShiftState({
+      id: optimisticId,
+      start_time: optimisticStartedAt,
+      status: "active",
+      break_started_at: null,
+      paused_seconds: 0,
+      break_minutes: 0,
+    });
+    setShiftBusy(true);
     try {
       const res = await fetch("/api/va/task-shift/start", { method: "POST", credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        shift?: ActiveShift;
+        shiftId?: string;
+      };
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (res.status === 409 && data.shift) {
+          pendingStartIdRef.current = data.shift.id;
+          setShiftState(data.shift);
+          setShiftErr(null);
+          return;
+        }
         const msg = data.error?.trim() || "Could not start shift";
         if (msg.toLowerCase().includes("already have an active")) {
+          pendingStartIdRef.current = null;
           await fetchActiveShift();
           return;
         }
+        pendingStartIdRef.current = null;
+        setShiftState(null);
         setShiftErr(msg);
         return;
       }
-      await res.json().catch(() => ({}));
+      if (data.shift) {
+        pendingStartIdRef.current = data.shift.id;
+        setShiftState(data.shift);
+      } else if (data.shiftId) {
+        pendingStartIdRef.current = data.shiftId;
+        setShiftState({
+          id: data.shiftId,
+          start_time: optimisticStartedAt,
+          status: "active",
+          break_started_at: null,
+          paused_seconds: 0,
+          break_minutes: 0,
+        });
+      }
       setShiftErr(null);
-      await fetchActiveShift();
+      // Background reconcile — don't block ON SHIFT UI.
+      void fetchActiveShift();
+    } catch {
+      pendingStartIdRef.current = null;
+      setShiftState(null);
+      setShiftErr("Could not start shift");
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  async function handlePauseShift() {
+    if (shiftBusy || !activeShift || isOptimisticShiftId(activeShift.id)) return;
+    setShiftBusy(true);
+    setShiftErr(null);
+    const prev = activeShift;
+    const pauseIso = new Date().toISOString();
+    setShiftState({ ...activeShift, status: "on_break", break_started_at: pauseIso });
+    try {
+      const res = await fetch("/api/va/task-shift/pause", { method: "POST", credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; shift?: ActiveShift };
+      if (!res.ok) {
+        setShiftState(prev);
+        setShiftErr(data.error?.trim() || "Could not pause shift");
+        return;
+      }
+      if (data.shift) setShiftState(data.shift);
+      setShiftErr(null);
+    } catch {
+      setShiftState(prev);
+      setShiftErr("Could not pause shift");
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  async function handleResumeShift() {
+    if (shiftBusy || !activeShift || isOptimisticShiftId(activeShift.id)) return;
+    setShiftBusy(true);
+    setShiftErr(null);
+    const prev = activeShift;
+    // Optimistically close the open pause into paused_seconds.
+    let paused = Math.max(0, Math.floor(Number(activeShift.paused_seconds ?? 0)));
+    if (activeShift.break_started_at) {
+      const startMs = new Date(activeShift.break_started_at).getTime();
+      if (Number.isFinite(startMs)) {
+        paused += Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+      }
+    }
+    setShiftState({
+      ...activeShift,
+      status: "active",
+      break_started_at: null,
+      paused_seconds: paused,
+      break_minutes: Math.ceil(paused / 60),
+    });
+    try {
+      const res = await fetch("/api/va/task-shift/resume", { method: "POST", credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; shift?: ActiveShift };
+      if (!res.ok) {
+        setShiftState(prev);
+        setShiftErr(data.error?.trim() || "Could not resume shift");
+        return;
+      }
+      if (data.shift) setShiftState(data.shift);
+      setShiftErr(null);
+    } catch {
+      setShiftState(prev);
+      setShiftErr("Could not resume shift");
     } finally {
       setShiftBusy(false);
     }
   }
 
   async function handleEndShift() {
+    if (shiftBusy) return;
     setShiftBusy(true);
     setShiftErr(null);
+    const prev = activeShift;
+    pendingStartIdRef.current = null;
+    setShiftState(null);
     try {
       const res = await fetch("/api/va/task-shift/end", { method: "POST", credentials: "include" });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setShiftState(prev);
         setShiftErr(data.error?.trim() || "Could not end shift");
         return;
       }
-      await res.json().catch(() => ({}));
       setShiftErr(null);
-      setShiftState(null);
+    } catch {
+      setShiftState(prev);
+      setShiftErr("Could not end shift");
     } finally {
       setShiftBusy(false);
     }
@@ -172,6 +319,34 @@ function VaShiftBar({
   if (!isViewingToday) return null;
 
   const onShift = !!activeShift;
+  const paused = isShiftPaused(activeShift);
+
+  if (onShift && paused) {
+    return (
+      <div className="border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#12100E] via-[#1A1612] to-[#0A0A0A]">
+        <div className="mx-auto max-w-5xl space-y-3 px-4 py-3.5 md:px-6">
+          {shiftErr ? (
+            <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
+              {shiftErr}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-l-2 border-amber-500/70 pl-4">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400/90" />
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300/90">Paused</span>
+              <span className="text-base tabular-nums tracking-tight text-white/55">{shiftDuration}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ShiftButton variant="resume" loading={shiftBusy} onClick={() => void handleResumeShift()} />
+              <ShiftButton variant="end" loading={shiftBusy} onClick={() => void handleEndShift()} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (onShift) {
     return (
@@ -182,16 +357,24 @@ function VaShiftBar({
               {shiftErr}
             </div>
           ) : null}
-          <div className="flex flex-wrap items-center justify-between gap-4 border-l-2 border-[#D4AF8C] pl-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-l-2 border-emerald-500/70 pl-4">
             <div className="flex items-center gap-3">
               <span className="relative flex h-2.5 w-2.5">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#D4AF8C] opacity-50 motion-reduce:animate-none" />
-                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#D4AF8C]" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/60 opacity-50 motion-reduce:animate-none" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
               </span>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]">On shift</span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-300/90">On shift</span>
               <span className="text-base tabular-nums tracking-tight text-white/90">{shiftDuration}</span>
             </div>
-            <ShiftButton variant="end" loading={shiftBusy} onClick={() => void handleEndShift()} />
+            <div className="flex flex-wrap items-center gap-2">
+              <ShiftButton
+                variant="pause"
+                loading={shiftBusy}
+                disabled={isOptimisticShiftId(activeShift.id)}
+                onClick={() => void handlePauseShift()}
+              />
+              <ShiftButton variant="end" loading={shiftBusy} onClick={() => void handleEndShift()} />
+            </div>
           </div>
         </div>
       </div>
