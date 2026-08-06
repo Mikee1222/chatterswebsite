@@ -15,6 +15,11 @@ export type LiveShiftWithModels = Shift & { modelNames: string[] };
 
 const MAX_BREAK_MINUTES = 45;
 
+/** VA task-shift pause (reuses on_break) — not a chatter break with a 45-min policy. */
+function isVaTaskShift(shift: Pick<Shift, "shift_type">): boolean {
+  return shift.shift_type === "task" || shift.shift_type === "va_tasks";
+}
+
 /** Minutes elapsed since break_started_at (live tick for badge). */
 function useBreakSessionMinutesSoFar(breakStartedAt: string | null, isOnBreak: boolean): number {
   const [mins, setMins] = React.useState(0);
@@ -35,7 +40,7 @@ function useBreakSessionMinutesSoFar(breakStartedAt: string | null, isOnBreak: b
   return mins;
 }
 
-/** Live-updating break used display (X / 45 min used) when on break. */
+/** Live-updating break used display (X / 45 min used) when on break — chatter only. */
 function BreakUsedLive({
   breakMinutes,
   breakStartedAt,
@@ -68,13 +73,31 @@ function BreakUsedLive({
   );
 }
 
-/** Pill from shift.break_minutes + live on-break session (no backend changes). */
-function BreakSummaryBadge({ shift, isOnBreak }: { shift: LiveShiftWithModels; isOnBreak: boolean }) {
+/** Pill from shift.break_minutes + live on-break/pause session (no backend changes). */
+function BreakSummaryBadge({
+  shift,
+  isOnBreak,
+  isPaused,
+}: {
+  shift: LiveShiftWithModels;
+  isOnBreak: boolean;
+  isPaused: boolean;
+}) {
   const breakStartedAt = shift.break_started_at;
   const completedMins = shift.break_minutes ?? 0;
   const sessionMins = useBreakSessionMinutesSoFar(breakStartedAt, isOnBreak && Boolean(breakStartedAt));
 
   if (isOnBreak && breakStartedAt) {
+    if (isPaused) {
+      return (
+        <span
+          className="inline-flex shrink-0 items-center rounded-full border border-slate-400/30 bg-slate-500/15 px-2 py-0.5 text-xs font-medium text-slate-300"
+          title="VA task shift paused"
+        >
+          ⏸ Paused · {sessionMins} min so far
+        </span>
+      );
+    }
     return (
       <span
         className="inline-flex shrink-0 items-center rounded-full border border-red-500/25 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400"
@@ -84,7 +107,7 @@ function BreakSummaryBadge({ shift, isOnBreak }: { shift: LiveShiftWithModels; i
       </span>
     );
   }
-  if (completedMins > 0) {
+  if (completedMins > 0 && !isPaused) {
     return (
       <span
         className="inline-flex shrink-0 items-center rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400"
@@ -111,25 +134,40 @@ function ShiftCard({
   telegramByUserId: Record<string, string>;
 }) {
   const isOnBreak = shift.status === "on_break" || Boolean(shift.break_started_at);
+  const isPaused = isOnBreak && isVaTaskShift(shift);
   const hasBreakStart = Boolean(shift.break_started_at);
   const running = !isOnBreak;
   const chatterName = shift.chatter_name || "—";
   const telegramUsername = shift.chatter_id ? telegramByUserId[shift.chatter_id] : undefined;
+
+  const statusPillClass = running
+    ? "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
+    : isPaused
+      ? "border-slate-400/40 bg-slate-500/20 text-slate-200"
+      : "border-amber-500/50 bg-amber-500/25 text-amber-200";
+  const statusDotClass = running
+    ? "animate-pulse bg-emerald-400"
+    : isPaused
+      ? "animate-pulse bg-slate-300"
+      : "animate-pulse bg-amber-400";
+  const cardRingClass = isPaused
+    ? "ring-1 ring-slate-400/20"
+    : isOnBreak
+      ? "ring-1 ring-amber-500/15"
+      : "";
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
-      className={`mb-3 rounded-2xl border border-white/10 bg-white/[0.08] p-5 transition-all last:mb-0 hover:bg-white/10 ${
-        isOnBreak ? "ring-1 ring-amber-500/15" : ""
-      }`}
+      className={`mb-3 rounded-2xl border border-white/10 bg-white/[0.08] p-5 transition-all last:mb-0 hover:bg-white/10 ${cardRingClass}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2 gap-y-1.5">
             <span className="text-lg font-bold tracking-tight text-white">{chatterName}</span>
-            <BreakSummaryBadge shift={shift} isOnBreak={isOnBreak} />
+            <BreakSummaryBadge shift={shift} isOnBreak={isOnBreak} isPaused={isPaused} />
             {telegramUsername && (
               <a
                 href={`tg://resolve?domain=${telegramUsername}`}
@@ -148,17 +186,10 @@ function ShiftCard({
           </p>
         </div>
         <span
-          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ${
-            isOnBreak
-              ? "border-amber-500/50 bg-amber-500/25 text-amber-200"
-              : "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
-          }`}
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ${statusPillClass}`}
         >
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "animate-pulse bg-emerald-400" : "animate-pulse bg-amber-400"}`}
-            aria-hidden
-          />
-          {isOnBreak ? "ON BREAK" : "ACTIVE"}
+          <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass}`} aria-hidden />
+          {running ? "ACTIVE" : isPaused ? "PAUSED" : "ON BREAK"}
         </span>
       </div>
 
@@ -171,15 +202,26 @@ function ShiftCard({
 
       {isOnBreak && hasBreakStart && (
         <>
-          <p className="mt-4 font-mono text-xl tabular-nums text-amber-300">
-            <LiveTimer startTime={shift.break_started_at} mode="break" />
-          </p>
-          <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-amber-400/80">Break</p>
-          <BreakUsedLive
-            breakMinutes={shift.break_minutes ?? 0}
-            breakStartedAt={shift.break_started_at}
-            isOnBreak={isOnBreak}
-          />
+          {isPaused ? (
+            <>
+              <p className="mt-4 font-mono text-xl tabular-nums text-white/70">
+                <LiveTimer startTime={shift.break_started_at} className="tabular-nums text-white/70" />
+              </p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-white/40">Paused</p>
+            </>
+          ) : (
+            <>
+              <p className="mt-4 font-mono text-xl tabular-nums text-amber-300">
+                <LiveTimer startTime={shift.break_started_at} mode="break" />
+              </p>
+              <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-amber-400/80">Break</p>
+              <BreakUsedLive
+                breakMinutes={shift.break_minutes ?? 0}
+                breakStartedAt={shift.break_started_at}
+                isOnBreak={isOnBreak}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -386,7 +428,7 @@ export function AdminLiveShiftsClient({
                 <ShiftCard
                   key={s.id}
                   shift={s}
-                  subtitle="Mistake check"
+                  subtitle={isVaTaskShift(s) ? "VA tasks" : "Mistake check"}
                   index={i}
                   telegramByUserId={telegramByUserId}
                   adminForceEnd={{

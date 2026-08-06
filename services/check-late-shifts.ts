@@ -122,7 +122,8 @@ export type CheckLateShiftsResult = {
 };
 
 /**
- * Late/no-show checks, ~30 min shift heads-up, 10+ min late (chatter + admin), break >45m → admin.
+ * Late/no-show checks, ~30 min shift heads-up, 10+ min late (chatter + admin),
+ * chatter break >45m → admin (VA task-shift pauses excluded — no break time policy).
  * Used by /api/cron/check-late-shifts and workers/cron-late-shifts.
  */
 export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
@@ -429,7 +430,9 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
       }
     }
 
+    // 45-min break policy is chatter-only. VA task-shift pauses reuse on_break — never flag them.
     if (shift.staff_role !== "chatter") continue;
+    if (shift.shift_type === "task" || shift.shift_type === "va_tasks") continue;
     if (shift.status !== "on_break" || !shift.break_started_at) continue;
     const breakStartMs = new Date(shift.break_started_at).getTime();
     if (Number.isNaN(breakStartMs)) continue;
