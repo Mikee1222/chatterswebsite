@@ -31,7 +31,7 @@ export default async function DailyReviewSubmitPage() {
   const today = todayReviewIso();
   const [allReviews, todayRow, activeUsers, roles, creatorRecords] = await Promise.all([
     getDailyReviews().catch(() => []),
-    getDailyReviewByDate(today).catch(() => null),
+    getDailyReviewByDate(today, managerName).catch(() => null),
     listActiveUsers().catch(() => []),
     getRoles().catch(() => []),
     listActiveGunzoTeamModelss().catch(() => []),

@@ -2,12 +2,10 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { toReviewDateKey } from "@/lib/marketing-reviews-helpers";
+import { spotCheckManagerName, toReviewDateKey } from "@/lib/marketing-reviews-helpers";
 import {
   createDailyReview,
-  deleteDailyReview,
   getDailyReviewByDate,
-  getDailyReviewDetail,
   getDailyReviews,
 } from "@/services/marketing-reviews";
 
@@ -38,7 +36,9 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const date = url.searchParams.get("date");
   if (date) {
-    const review = await getDailyReviewByDate(date);
+    const managerParam = url.searchParams.get("manager_name")?.trim();
+    const managerName = managerParam || spotCheckManagerName(session);
+    const review = await getDailyReviewByDate(date, managerName);
     return NextResponse.json({ review });
   }
 
@@ -69,12 +69,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "review_date is required" }, { status: 400 });
   }
 
-  const existing = await getDailyReviewByDate(reviewDate);
+  const managerName = spotCheckManagerName(session);
+  const existing = await getDailyReviewByDate(reviewDate, managerName);
   if (existing) {
     return NextResponse.json({ error: "A review already exists for this date", review: existing }, { status: 409 });
   }
 
-  const managerName = session.fullName?.trim() || session.email?.trim() || "Manager";
   const review = await createDailyReview({
     manager_name: managerName,
     review_date: reviewDate,

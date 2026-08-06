@@ -30,7 +30,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { ROUTES } from "@/lib/routes";
-import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
+import { formatReviewDate, isoDateDaysAgo, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
 import type {
   MarketingDailyReview,
@@ -41,12 +41,6 @@ import { staffDisplayName, type StaffUserOption } from "@/components/staff-assig
 const API_BASE = "/api/admin/marketing-reviews/daily-reviews";
 
 type DateRange = "all" | "7d" | "30d" | "custom";
-
-function isoDateDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
   return {

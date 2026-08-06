@@ -48,6 +48,7 @@ import { ROUTES } from "@/lib/routes";
 import {
   SPOT_CHECK_STATUSES,
   SPOT_CHECK_TYPES,
+  isoDateDaysAgo,
   type SpotCheckStatus,
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
@@ -57,12 +58,6 @@ import type { ModelRecord, UserRecord } from "@/types";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type DateRange = "all" | "7d" | "30d" | "custom";
-
-function isoDateDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
   return {

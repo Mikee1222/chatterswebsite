@@ -147,7 +147,7 @@ async function main() {
       issues_found: "smoke-supabase-local",
       actions_assigned: "none",
     });
-    const byDate = await marketingReviews.getDailyReviewByDate(today);
+    const byDate = await marketingReviews.getDailyReviewByDate(today, admin.full_name || admin.email);
     if (!found) throw new Error("Spot check not in list after create");
     if (!byDate) throw new Error("Daily review not readable by date");
     return `spot=${spot.id} daily=${daily.id} byDate=${byDate.id}`;

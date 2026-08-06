@@ -2,7 +2,15 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { updateExecAudit } from "@/services/marketing-reviews";
+import {
+  filterDailyReviewsByManager,
+  spotCheckManagerName,
+} from "@/lib/marketing-reviews-helpers";
+import {
+  getDailyReviewDetail,
+  getExecAuditById,
+  updateExecAudit,
+} from "@/services/marketing-reviews";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -11,6 +19,23 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
+  const audit = await getExecAuditById(id);
+  if (!audit) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  if (audit.daily_review_id) {
+    const parent = await getDailyReviewDetail(audit.daily_review_id);
+    if (!parent) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const canManage = await hasPermission(session, PERMISSIONS.DAILY_REVIEW_MANAGE);
+    if (!canManage) {
+      const owned = filterDailyReviewsByManager([parent], spotCheckManagerName(session));
+      if (owned.length === 0) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    }
+  } else if (!(await hasPermission(session, PERMISSIONS.DAILY_REVIEW_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const body = (await req.json()) as Record<string, unknown>;
   await updateExecAudit(id, {
     exec_va_id: body.exec_va_id != null ? String(body.exec_va_id) : undefined,

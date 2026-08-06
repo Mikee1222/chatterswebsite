@@ -2,7 +2,23 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import {
+  filterDailyReviewsByManager,
+  spotCheckManagerName,
+} from "@/lib/marketing-reviews-helpers";
 import { getDailyReviewDetail, updateDailyReview } from "@/services/marketing-reviews";
+
+async function assertDailyReviewAccess(
+  session: NonNullable<Awaited<ReturnType<typeof getSessionFromCookies>>>,
+  review: { manager_name: string },
+): Promise<NextResponse | null> {
+  if (await hasPermission(session, PERMISSIONS.DAILY_REVIEW_MANAGE)) return null;
+  const owned = filterDailyReviewsByManager([review], spotCheckManagerName(session));
+  if (owned.length === 0) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -13,6 +29,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const review = await getDailyReviewDetail(id);
   if (!review) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const denied = await assertDailyReviewAccess(session, review);
+  if (denied) return denied;
   return NextResponse.json({ review });
 }
 
@@ -25,6 +43,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const { id } = await ctx.params;
   const existing = await getDailyReviewDetail(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const denied = await assertDailyReviewAccess(session, existing);
+  if (denied) return denied;
 
   const body = (await req.json()) as Record<string, unknown>;
   await updateDailyReview(id, {

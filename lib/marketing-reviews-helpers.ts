@@ -1,3 +1,5 @@
+import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
+
 export const SPOT_CHECK_TYPES = [
   "Account audit",
   "Exec QA",
@@ -68,8 +70,14 @@ export function filterDailyReviewsByManager<T extends { manager_name: string }>(
   return reviews.filter((r) => r.manager_name.trim().toLowerCase() === target);
 }
 
+/** Today's calendar date YYYY-MM-DD in Europe/Athens (business timezone). */
 export function todayReviewIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayYmdAthens();
+}
+
+/** Calendar date N days before today (Athens), as YYYY-MM-DD. */
+export function isoDateDaysAgo(days: number): string {
+  return addDaysAthensYmd(getTodayYmdAthens(), -days);
 }
 
 export function formatReviewDate(iso: string): string {

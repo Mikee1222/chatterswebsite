@@ -1,3 +1,4 @@
+import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import type { WinnerVideoStatus, WinnerVideoContentType } from "@/lib/winner-videos-helpers";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { CustomSelectOption } from "@/components/manager-review-ui";
@@ -8,9 +9,7 @@ export type WinnerVideoDateRange = "all" | "7d" | "30d" | "custom";
 export type WinnerVideoViewMode = "list" | "board";
 
 export function isoDateDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
+  return addDaysAthensYmd(getTodayYmdAthens(), -days);
 }
 
 export const WINNER_VIDEO_CONTENT_TYPE_FILTER_OPTIONS: CustomSelectOption[] = [

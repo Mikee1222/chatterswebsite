@@ -19,13 +19,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  const managerName = spotCheckManagerName(session);
   const date = new URL(req.url).searchParams.get("date");
   if (date) {
-    const review = await getDailyReviewByDate(date);
+    const review = await getDailyReviewByDate(date, managerName);
     return NextResponse.json({ review });
   }
 
-  const managerName = spotCheckManagerName(session);
   const all = await getDailyReviews();
   const reviews = filterDailyReviewsByManager(all, managerName);
   return NextResponse.json({ reviews });
@@ -44,12 +44,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "review_date is required" }, { status: 400 });
   }
 
-  const existing = await getDailyReviewByDate(reviewDate);
+  const managerName = spotCheckManagerName(session);
+  const existing = await getDailyReviewByDate(reviewDate, managerName);
   if (existing) {
     return NextResponse.json({ error: "A review already exists for this date", review: existing }, { status: 409 });
   }
 
-  const managerName = spotCheckManagerName(session);
   const review = await createDailyReview({
     manager_name: managerName,
     review_date: reviewDate,

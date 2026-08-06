@@ -11,6 +11,7 @@ import {
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { isSupabaseBackend } from "@/lib/data-backend";
+import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import {
   SPOT_CHECK_STATUSES,
   SPOT_CHECK_TYPES,
@@ -253,8 +254,10 @@ function buildSpotCheckFilter(filters: SpotCheckFilters): string | undefined {
   if (filters.date_from?.trim()) {
     parts.push(`IS_AFTER({timestamp}, "${escapeFormulaString(filters.date_from.trim())}")`);
   }
+  // Inclusive end day: exclusive upper bound is start of the next calendar day.
   if (filters.date_to?.trim()) {
-    parts.push(`IS_BEFORE({timestamp}, "${escapeFormulaString(filters.date_to.trim())}")`);
+    const exclusiveEnd = addDaysAthensYmd(filters.date_to.trim(), 1);
+    parts.push(`IS_BEFORE({timestamp}, "${escapeFormulaString(exclusiveEnd)}")`);
   }
   if (parts.length === 0) return undefined;
   if (parts.length === 1) return parts[0];
@@ -427,17 +430,28 @@ export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
   return records.map(mapDailyReview);
 }
 
-export async function getDailyReviewByDate(date: string): Promise<MarketingDailyReview | null> {
-  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getDailyReviewByDate(date);
+export async function getDailyReviewByDate(
+  date: string,
+  managerName: string,
+): Promise<MarketingDailyReview | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./marketing-reviews-supabase")).getDailyReviewByDate(date, managerName);
+  }
   const targetKey = toReviewDateKey(date);
   if (!targetKey) return null;
+  const managerTarget = managerName.trim().toLowerCase();
+  if (!managerTarget) return null;
   // Airtable filterByFormula string equality on date fields is unreliable (date⇄text
   // coercion against the base's European D/M/YYYY display format), so fetch all reviews
   // and match on a normalized YYYY-MM-DD key in JS instead. Volume is small.
   const records = await listAllRecords<DailyReviewFields>(TABLE_DAILY_REVIEWS, {
     sort: [{ field: "review_date", direction: "desc" }],
   });
-  const match = records.find((rec) => toReviewDateKey(rec.fields?.review_date) === targetKey);
+  const match = records.find(
+    (rec) =>
+      toReviewDateKey(rec.fields?.review_date) === targetKey &&
+      String(rec.fields?.manager_name ?? "").trim().toLowerCase() === managerTarget,
+  );
   return match ? mapDailyReview(match) : null;
 }
 
@@ -463,10 +477,10 @@ export async function createDailyReview(
   data: Partial<MarketingDailyReview> & { manager_name: string; review_date: string },
 ): Promise<MarketingDailyReview> {
   if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).createDailyReview(data);
-  // Guard against duplicate reviews for the same calendar day (defense-in-depth in case
-  // the API-layer check is bypassed or a concurrent request slips through). Returns the
-  // existing review instead of creating a second one.
-  const existing = await getDailyReviewByDate(data.review_date);
+  // Guard against duplicate reviews for the same (date, manager) pair (defense-in-depth
+  // in case the API-layer check is bypassed or a concurrent request slips through).
+  // Returns the existing review instead of creating a second one.
+  const existing = await getDailyReviewByDate(data.review_date, data.manager_name);
   if (existing) return existing;
 
   const label =
@@ -566,6 +580,12 @@ export async function createExecAudit(
     actions_taken: data.actions_taken ?? "",
   });
   return mapExecAudit(rec);
+}
+
+export async function getExecAuditById(id: string): Promise<MarketingExecAudit | null> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getExecAuditById(id);
+  const rec = await getRecord<ExecAuditFields>(TABLE_EXEC_AUDITS, id);
+  return rec ? mapExecAudit(rec) : null;
 }
 
 export async function updateExecAudit(id: string, data: Partial<MarketingExecAudit>): Promise<void> {

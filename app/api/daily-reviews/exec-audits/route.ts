@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { createExecAudit } from "@/services/marketing-reviews";
+import {
+  filterDailyReviewsByManager,
+  spotCheckManagerName,
+} from "@/lib/marketing-reviews-helpers";
+import { createExecAudit, getDailyReviewDetail } from "@/services/marketing-reviews";
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
@@ -15,6 +19,17 @@ export async function POST(req: Request) {
   const dailyReviewId = String(body.daily_review_id ?? "").trim();
   if (!dailyReviewId) {
     return NextResponse.json({ error: "daily_review_id is required" }, { status: 400 });
+  }
+
+  const parent = await getDailyReviewDetail(dailyReviewId);
+  if (!parent) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const canManage = await hasPermission(session, PERMISSIONS.DAILY_REVIEW_MANAGE);
+  if (!canManage) {
+    const owned = filterDailyReviewsByManager([parent], spotCheckManagerName(session));
+    if (owned.length === 0) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const execAudit = await createExecAudit({

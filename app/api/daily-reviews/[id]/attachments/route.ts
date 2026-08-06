@@ -4,6 +4,10 @@ import { isAllowedDirectUploadToken } from "@/lib/direct-storage-upload";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
+  filterDailyReviewsByManager,
+  spotCheckManagerName,
+} from "@/lib/marketing-reviews-helpers";
+import {
   appendDailyReviewAttachmentUrls,
   getDailyReviewDetail,
   uploadDailyReviewAttachments,
@@ -20,6 +24,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   const existing = await getDailyReviewDetail(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const canManage = await hasPermission(session, PERMISSIONS.DAILY_REVIEW_MANAGE);
+  if (!canManage) {
+    const owned = filterDailyReviewsByManager([existing], spotCheckManagerName(session));
+    if (owned.length === 0) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+  }
 
   const fd = await req.formData();
   const attachmentUrls = fd

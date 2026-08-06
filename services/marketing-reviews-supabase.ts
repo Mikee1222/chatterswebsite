@@ -21,6 +21,7 @@ import {
   type SpotCheckStatus,
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
+import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { uploadToPrivateStorage, urlsToAttachments } from "@/lib/supabase-signed-url";
 import type {
   MarketingSpotCheck,
@@ -176,7 +177,8 @@ export async function getSpotChecks(filters: SpotCheckFilters = {}): Promise<Mar
   if (filters.type) q = q.eq("type", filters.type);
   if (filters.status) q = q.eq("status", filters.status);
   if (filters.date_from?.trim()) q = q.gt("timestamp", filters.date_from.trim());
-  if (filters.date_to?.trim()) q = q.lt("timestamp", filters.date_to.trim());
+  // Inclusive end day: exclusive upper bound is start of the next calendar day.
+  if (filters.date_to?.trim()) q = q.lt("timestamp", addDaysAthensYmd(filters.date_to.trim(), 1));
   const { data, error } = await q;
   if (error) throw new Error(`marketing_spot_checks: ${error.message}`);
   return Promise.all(((data ?? []) as unknown as SpotCheckRow[]).map(mapSpotCheck));
@@ -324,11 +326,20 @@ export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
   return Promise.all(((data ?? []) as unknown as DailyReviewRow[]).map(mapDailyReview));
 }
 
-export async function getDailyReviewByDate(date: string): Promise<MarketingDailyReview | null> {
+export async function getDailyReviewByDate(
+  date: string,
+  managerName: string,
+): Promise<MarketingDailyReview | null> {
   const targetKey = toReviewDateKey(date);
   if (!targetKey) return null;
+  const managerTarget = managerName.trim().toLowerCase();
+  if (!managerTarget) return null;
   const rows = await sbSelectAll<DailyReviewRow>(TABLE_DAILY_REVIEWS);
-  const match = rows.find((row) => toReviewDateKey(row.review_date) === targetKey);
+  const match = rows.find(
+    (row) =>
+      toReviewDateKey(row.review_date) === targetKey &&
+      String(row.manager_name ?? "").trim().toLowerCase() === managerTarget,
+  );
   return match ? mapDailyReview(match) : null;
 }
 
@@ -353,7 +364,7 @@ async function getExecAuditsForDailyReview(dailyReviewId: string): Promise<Marke
 export async function createDailyReview(
   data: Partial<MarketingDailyReview> & { manager_name: string; review_date: string }
 ): Promise<MarketingDailyReview> {
-  const existing = await getDailyReviewByDate(data.review_date);
+  const existing = await getDailyReviewByDate(data.review_date, data.manager_name);
   if (existing) return existing;
   const label = data.review_label?.trim() || `Daily review — ${data.review_date}`;
   const row = await sbInsert<DailyReviewRow>(TABLE_DAILY_REVIEWS, {
@@ -427,6 +438,11 @@ export async function deleteDailyReview(id: string): Promise<void> {
 
 export async function deleteExecAudit(id: string): Promise<void> {
   await sbDeleteByPublicId(TABLE_EXEC_AUDITS, id);
+}
+
+export async function getExecAuditById(id: string): Promise<MarketingExecAudit | null> {
+  const row = await sbSelectByPublicId<ExecAuditRow>(TABLE_EXEC_AUDITS, id);
+  return row ? mapExecAudit(row) : null;
 }
 
 export async function createExecAudit(
