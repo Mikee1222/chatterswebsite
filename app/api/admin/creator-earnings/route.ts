@@ -2,15 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { previousPeriodRange } from "@/services/infloww-analytics";
+import { buildAgencyCreatorAnalytics } from "@/services/infloww-creator-analytics";
 import { resolveInflowwStatsRange } from "@/services/infloww-performance";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import {
   compareTransactionPerfVsEmployeeSales,
   listCreatorDailyStats,
+  listCreatorRefunds,
   listCreatorTransactions,
   listLinkedCreatorModels,
   listMarketingLinks,
+  listPriorityMassMessages,
 } from "@/services/infloww-creator-earnings";
+import { listAllModelss } from "@/services/modelss";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,31 +41,83 @@ export async function GET(req: NextRequest) {
   const txSearch = sp.get("txSearch")?.trim() || undefined;
 
   const range = resolveInflowwStatsRange(preset, customStart, customEnd);
+  const prev = previousPeriodRange(range.startYmd, range.endYmd);
 
   try {
-    const [{ linked }, daily, transactions, marketingLinks, discrepancies] = await Promise.all([
-      listLinkedCreatorModels(),
-      listCreatorDailyStats({
-        startYmd: range.startYmd,
-        endYmd: range.endYmd,
-        modelRecordId,
-      }),
-      listCreatorTransactions({
-        startYmd: range.startYmd,
-        endYmd: range.endYmd,
-        modelRecordId,
-        type: txType,
-        status: txStatus,
-        search: txSearch,
-        limit: 400,
-      }),
-      listMarketingLinks({ modelRecordId }),
-      compareTransactionPerfVsEmployeeSales({
-        startYmd: range.startYmd,
-        endYmd: range.endYmd,
-        modelRecordId,
-      }),
-    ]);
+    const [{ linked }, modelsAll, daily, transactions, refunds, marketingLinks, pmm, discrepancies, prevTxs] =
+      await Promise.all([
+        listLinkedCreatorModels(),
+        listAllModelss(),
+        listCreatorDailyStats({
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          modelRecordId,
+        }),
+        listCreatorTransactions({
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          modelRecordId,
+          type: txType,
+          status: txStatus,
+          search: txSearch,
+          limit: 800,
+        }),
+        listCreatorRefunds({
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          modelRecordId,
+          limit: 500,
+        }),
+        listMarketingLinks({ modelRecordId }),
+        listPriorityMassMessages({
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          modelRecordId,
+          limit: 500,
+        }),
+        compareTransactionPerfVsEmployeeSales({
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          modelRecordId,
+        }),
+        listCreatorTransactions({
+          startYmd: prev.startYmd,
+          endYmd: prev.endYmd,
+          modelRecordId,
+          limit: 800,
+        }),
+      ]);
+
+    const createdAtByRecord = new Map(
+      modelsAll.map((m) => [m.id, m.created_at || null] as const)
+    );
+
+    const filteredLinked = modelRecordId
+      ? linked.filter((l) => l.modelRecordId === modelRecordId)
+      : linked;
+
+    const previousGrossByCreator = new Map<string, number>();
+    for (const t of prevTxs) {
+      previousGrossByCreator.set(
+        t.creator_infloww_id,
+        (previousGrossByCreator.get(t.creator_infloww_id) ?? 0) + t.amount
+      );
+    }
+
+    const analytics = buildAgencyCreatorAnalytics({
+      linked: filteredLinked.map((l) => ({
+        creatorInflowwId: l.creatorInflowwId,
+        modelRecordId: l.modelRecordId,
+        modelName: l.modelName,
+        createdAt: createdAtByRecord.get(l.modelRecordId) ?? null,
+      })),
+      daily,
+      transactions,
+      refunds,
+      marketingLinks,
+      priorityMassMessages: pmm,
+      previousGrossByCreator,
+    });
 
     const models = linked.map((l) => ({
       id: l.modelRecordId,
@@ -75,21 +132,11 @@ export async function GET(req: NextRequest) {
       model_name: t.model_record_id ? nameByRecord.get(t.model_record_id) ?? null : null,
     }));
 
-    const totals = {
-      gross: txs.reduce((s, t) => s + t.amount, 0),
-      net: txs.reduce((s, t) => s + t.net, 0),
-      fee: txs.reduce((s, t) => s + t.fee, 0),
-      new_subscribers: daily.reduce((s, d) => s + d.new_subscribers, 0),
-      renewals: daily.reduce((s, d) => s + d.renewals, 0),
-      profile_visitors: daily.reduce((s, d) => s + d.profile_visitors, 0),
-      messages_sent: daily.reduce((s, d) => s + d.messages_sent, 0),
-    };
-
     const latestByModel = new Map<string, (typeof daily)[number]>();
     for (const row of daily) {
       const key = row.model_record_id ?? row.creator_infloww_id;
-      const prev = latestByModel.get(key);
-      if (!prev || row.date >= prev.date) latestByModel.set(key, row);
+      const prevRow = latestByModel.get(key);
+      if (!prevRow || row.date >= prevRow.date) latestByModel.set(key, row);
     }
 
     return NextResponse.json({
@@ -97,10 +144,14 @@ export async function GET(req: NextRequest) {
       models,
       daily,
       transactions: txs,
+      refunds,
       marketingLinks,
+      priorityMassMessages: pmm,
       discrepancies,
-      totals,
+      analytics,
       latestFanSnapshot: [...latestByModel.values()],
+      unmatchedModels: linked.length ? undefined : undefined,
+      linkedCount: linked.length,
     });
   } catch (err) {
     console.error("[admin/creator-earnings]", err);
