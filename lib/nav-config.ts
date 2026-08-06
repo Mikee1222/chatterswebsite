@@ -502,6 +502,13 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
   },
   {
+    href: ROUTES.admin.winnerVideosHub,
+    label: "Winner Videos",
+    iconKey: "Trophy",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
+  },
+  {
     href: ROUTES.admin.sopLibrary,
     label: "SOP Library",
     iconKey: "BookOpen",
@@ -799,6 +806,15 @@ const sharedPermissionNavItems: NavItem[] = [
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.WINNER_VIDEOS_SUBMIT,
     hiddenIfPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.winnerRecreates,
+    label: "Fill Bunches",
+    iconKey: "Trophy",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.WINNER_SOURCING_SUBMIT,
+    hiddenIfPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
     excludeFromMobileMainTabs: true,
   },
   {

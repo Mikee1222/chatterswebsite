@@ -123,6 +123,8 @@ export const ROUTES = {
     taskTemplates: "/admin/task-templates",
     vaStatistics: "/admin/va-statistics",
     winnerVideos: "/admin/winner-videos",
+    /** Winner/Super Winner sourcing hub (distinct from Research `/admin/winner-videos`). */
+    winnerVideosHub: "/admin/winner-videos-hub",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
     challenges: "/admin/challenges",
@@ -188,6 +190,8 @@ export const ROUTES = {
   dailyReview: "/daily-review",
   /** VA winner video submissions (permission-gated). */
   winners: "/winners",
+  /** Researcher: submit recreate videos into open bunches (Winner sourcing). */
+  winnerRecreates: "/winner-recreates",
   /** Creative script queue — write scripts for approved winner videos. */
   creativeScripts: "/creative-scripts",
   /** Submitter view of own creative scripts. */

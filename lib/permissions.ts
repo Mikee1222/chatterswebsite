@@ -73,6 +73,10 @@ export const PERMISSIONS = {
   WINNER_VIDEOS_SUBMIT: "winner_videos:submit",
   WINNER_VIDEOS_MANAGE: "winner_videos:manage",
 
+  /** Marketing Exec winner/superwinner sourcing + researcher bunch fill (distinct from Research). */
+  WINNER_SOURCING_SUBMIT: "winner_sourcing:submit",
+  WINNER_SOURCING_MANAGE: "winner_sourcing:manage",
+
   CREATIVE_SCRIPTS_SUBMIT: "creative_scripts:submit",
   CREATIVE_SCRIPTS_MANAGE: "creative_scripts:manage",
 
@@ -191,6 +195,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   pdf_maker: "PDF Maker",
   spotcheck: "Spot checks",
   winner_videos: "Winner videos",
+  winner_sourcing: "Winner sourcing",
   creative_scripts: "Creative scripts",
   daily_review: "Daily review",
   content: "Content",
@@ -304,6 +309,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "winner_videos:submit": "Υποβολή winner video tracking submissions",
   "winner_videos:manage": "Διαχείριση και έγκριση winner video submissions",
+
+  "winner_sourcing:submit": "Υποβολή Winner/Super Winner και συμπλήρωση recreate slots σε bunches",
+  "winner_sourcing:manage": "Διαχείριση Winner sourcing hub, queue και video bunches",
 
   "creative_scripts:submit": "Συγγραφή scripts για approved winner videos",
   "creative_scripts:manage": "Έλεγχος, επεξεργασία και έγκριση creative scripts",
@@ -444,12 +452,13 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SETTINGS_VIEW,
   // Baseline for VA weekly program admin view (/admin/weekly-program-va) — all VAs need schedule visibility.
   PERMISSIONS.VA_PROGRAM_VIEW,
-  // NOTE: blur_tool:access, my_profiles:view, winner_videos:submit, video_transcribe:access,
-  // and similar opt-in tool permissions
+  // NOTE: blur_tool:access, my_profiles:view, winner_videos:submit, winner_sourcing:submit,
+  // video_transcribe:access, and similar opt-in tool permissions
   // are intentionally NOT VA defaults. Because resolveRolePermissions() unions code defaults
   // into stored perms (defaults act as a mandatory floor), any permission listed here can
   // NEVER be toggled off in the UI. Keep opt-in permissions out of VA/chatter defaults; for
   // manager, add them to MANAGER_EXCLUDED so the Airtable toggle stays authoritative.
+  // winner_sourcing:* is granted to marketing-executive / researcher via Roles UI (custom roles).
 ];
 
 const MODEL_PERMISSIONS: Permission[] = [
