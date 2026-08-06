@@ -59,7 +59,7 @@ type Payload = {
     refund_rate: { rate: number | null };
     churn: {
       active_fans: number;
-      fans_with_renew_on: number;
+      fans_with_renew_on: number | null;
       renew_on_share: number | null;
       label: string;
     };

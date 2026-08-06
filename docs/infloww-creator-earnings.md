@@ -115,7 +115,17 @@ Loading transactions: rows with `status=loading` are re-fetched when
 
 `POST /api/admin/creator-earnings/sync` — requires `earnings:view`.
 
-Body: `{ startYmd?, endYmd?, skipMarketing?, skipTransactions?, skipDailyStats? }`.
+Body: `{ startYmd?, endYmd?, lookbackDays?, skipMarketing?, skipTransactions?, skipDailyStats? }`.
+
+- `endYmd` is always capped to Infloww-safe today.
+- `lookbackDays` (1–366) sets start relative to that fixed end (same as Chatter Performance sync).
+- Admin UI: **Sync now** / **Sync Last 3 Months** / **Sync Last Year**.
+
+`fans_with_renew_on` is nullable: Infloww sometimes omits creators from
+`/creator-report/fans/renew-on` (notably some high-volume accounts). Missing
+rows stay `NULL` (UI shows —) rather than a false 0.0%. The fetch always queries
+the full agency creator set then filters — single-creator requests often return
+an empty list from Infloww.
 
 ## UI
 
