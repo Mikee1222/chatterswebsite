@@ -25,6 +25,21 @@ import {
   toLocalYmd,
 } from "@/components/infloww-performance-ui";
 import { AdminInflowwCreatorsLookup } from "@/components/admin-infloww-creators-lookup";
+import {
+  CollapsibleGroupHeader,
+  FinishedFlagBadge,
+  ListPagination,
+  TypeBadge,
+  TypeFilterChips,
+  TxStatusBadge,
+  countByType,
+  formatLinkTypeLabel,
+  formatTxTypeLabel,
+  groupItemsByKey,
+  matchesTypeFilter,
+  useClientPagination,
+  type TypeCount,
+} from "@/components/earnings-filter-list";
 import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
@@ -54,7 +69,7 @@ type ModelAnalytics = {
   refund_rate: { rate: number | null; flagged: string };
   churn: {
     active_fans: number;
-    fans_with_renew_on: number;
+    fans_with_renew_on: number | null;
     renew_on_share: number | null;
     at_risk: boolean;
     label: string;
@@ -106,6 +121,7 @@ type DashboardPayload = {
     attribute_employee_id: string | null;
     sales_amount: number | null;
   }>;
+  txTypeCounts?: TypeCount[];
   refunds: Array<{
     refund_id: string;
     payment_amount: number;
@@ -116,12 +132,15 @@ type DashboardPayload = {
   marketingLinks: Array<{
     id: string;
     model_id: string;
+    model_name?: string | null;
     link_type: string;
     message: string | null;
     sub_count: number;
     paying_fans_count: number;
     earnings_gross: number;
     earnings_net: number;
+    finished_flag?: boolean;
+    link_created_time?: string | null;
   }>;
   priorityMassMessages: Array<{
     priority_mass_message_id: string;
@@ -181,6 +200,382 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
       <Sparkles className="mb-3 h-6 w-6 text-[#D4AF8C]/70" />
       <p className="text-sm font-medium text-white/80">{title}</p>
       <p className="mt-1 max-w-md text-xs text-white/45">{detail}</p>
+    </div>
+  );
+}
+
+const TX_PAGE_SIZE = 40;
+const MK_PAGE_SIZE = 30;
+
+type TxRow = DashboardPayload["transactions"][number];
+type MkRow = DashboardPayload["marketingLinks"][number];
+
+function TransactionsPanel({
+  transactions,
+  txTypeCounts,
+  models,
+  globalModelId,
+  refunds,
+}: {
+  transactions: TxRow[];
+  txTypeCounts?: TypeCount[];
+  models: DashboardPayload["models"];
+  globalModelId: string;
+  refunds: DashboardPayload["refunds"];
+}) {
+  const [selectedTypes, setSelectedTypes] = React.useState<Set<string>>(() => new Set());
+  const [localModelId, setLocalModelId] = React.useState(globalModelId);
+  const [txSearchLocal, setTxSearchLocal] = React.useState("");
+  const [openGroups, setOpenGroups] = React.useState<Set<string>>(() => new Set());
+
+  React.useEffect(() => {
+    setLocalModelId(globalModelId);
+  }, [globalModelId]);
+
+  const typeCounts = React.useMemo(() => {
+    if (txTypeCounts?.length) return txTypeCounts;
+    return countByType(transactions, (t) => t.type);
+  }, [txTypeCounts, transactions]);
+
+  const filtered = React.useMemo(() => {
+    const q = txSearchLocal.trim().toLowerCase();
+    return transactions.filter((t) => {
+      if (!matchesTypeFilter(t.type, selectedTypes)) return false;
+      if (localModelId && t.model_record_id !== localModelId) return false;
+      if (!q) return true;
+      return (
+        (t.fan_name ?? "").toLowerCase().includes(q) ||
+        t.transaction_id.toLowerCase().includes(q) ||
+        (t.model_name ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [transactions, selectedTypes, localModelId, txSearchLocal]);
+
+  const pagination = useClientPagination(filtered, TX_PAGE_SIZE);
+  React.useEffect(() => {
+    pagination.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTypes, localModelId, txSearchLocal, transactions]);
+
+  const groupAll = !localModelId;
+  const groups = React.useMemo(() => {
+    if (!groupAll) return null;
+    const grouped = groupItemsByKey(
+      filtered,
+      (t) => t.model_name?.trim() || t.model_record_id || "Unlinked"
+    );
+    return grouped
+      .map((g) => ({
+        ...g,
+        gross: g.items.reduce((s, t) => s + t.amount, 0),
+        net: g.items.reduce((s, t) => s + t.net, 0),
+      }))
+      .sort((a, b) => b.gross - a.gross);
+  }, [filtered, groupAll]);
+
+  function renderTxRow(t: TxRow) {
+    return (
+      <div
+        key={t.transaction_id}
+        className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 border-b border-white/[0.05] px-4 py-3 last:border-0 sm:grid-cols-[minmax(0,1.4fr)_auto_auto_auto_auto] sm:items-center"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-white">{t.fan_name || "Unknown fan"}</p>
+          <p className="mt-0.5 text-[11px] text-white/35">
+            {t.created_time?.slice(0, 16)?.replace("T", " ") ?? "—"}
+            {!groupAll && t.model_name ? ` · ${t.model_name}` : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 justify-self-end sm:justify-self-auto">
+          <TypeBadge label={formatTxTypeLabel(t.type ?? "unknown")} />
+          <TxStatusBadge status={t.status} />
+        </div>
+        <p className="text-right text-sm tabular-nums text-white/70 sm:min-w-[4.5rem]">
+          {money(t.amount, 2)}
+        </p>
+        <p className="text-right text-sm font-semibold tabular-nums text-[#D4AF8C] sm:min-w-[4.5rem]">
+          {money(t.net, 2)}
+        </p>
+        <p className="col-span-2 hidden text-right text-[11px] text-white/35 sm:col-span-1 sm:block sm:min-w-[7rem]">
+          {t.created_time?.slice(0, 16)?.replace("T", " ") ?? "—"}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3">
+        <TypeFilterChips
+          types={typeCounts}
+          selected={selectedTypes}
+          onChange={setSelectedTypes}
+          totalCount={typeCounts.reduce((s, t) => s + t.count, 0) || transactions.length}
+          labelFn={formatTxTypeLabel}
+        />
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={localModelId}
+            onChange={(e) => setLocalModelId(e.target.value)}
+            className={cn(VA_FILTER_INPUT, "min-w-[160px]")}
+          >
+            <option value="">All models</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <input
+            value={txSearchLocal}
+            onChange={(e) => setTxSearchLocal(e.target.value)}
+            placeholder="Search fan / tx id"
+            className={cn(VA_FILTER_INPUT, "min-w-[200px]")}
+          />
+        </div>
+      </div>
+
+      <div className={cn(VA_CARD, "overflow-hidden")}>
+        {groupAll && groups ? (
+          groups.length ? (
+            <div>
+              {groups.map((g, idx) => {
+                const isOpen = openGroups.has(g.key) || (openGroups.size === 0 && idx === 0);
+                return (
+                  <div key={g.key}>
+                    <CollapsibleGroupHeader
+                      open={isOpen}
+                      onToggle={() => {
+                        setOpenGroups((prev) => {
+                          // Seed from default (first open) on first toggle.
+                          const seeded =
+                            prev.size === 0 && groups[0] ? new Set([groups[0].key]) : new Set(prev);
+                          if (seeded.has(g.key)) seeded.delete(g.key);
+                          else seeded.add(g.key);
+                          return seeded;
+                        });
+                      }}
+                      title={g.key}
+                      meta={`${g.items.length} txs · Gross ${money(g.gross, 0)} · Net ${money(g.net, 0)}`}
+                    />
+                    {isOpen
+                      ? g.items.slice(0, TX_PAGE_SIZE).map((t) => renderTxRow(t))
+                      : null}
+                    {isOpen && g.items.length > TX_PAGE_SIZE ? (
+                      <p className="border-b border-white/5 px-4 py-2 text-xs text-white/35">
+                        Showing first {TX_PAGE_SIZE} of {g.items.length} — narrow with type/search
+                        filters for more precision.
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState title="No transactions" detail="Widen the range or run a sync." />
+          )
+        ) : filtered.length ? (
+          <>
+            <div className="hidden border-b border-white/8 px-4 py-2 text-[10px] uppercase tracking-wider text-white/35 sm:grid sm:grid-cols-[minmax(0,1.4fr)_auto_auto_auto_auto] sm:gap-4">
+              <span>Fan</span>
+              <span>Type / status</span>
+              <span className="text-right">Gross</span>
+              <span className="text-right">Net</span>
+              <span className="text-right">When</span>
+            </div>
+            {pagination.pageItems.map((t) => renderTxRow(t))}
+            <ListPagination
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              total={pagination.total}
+              pageSize={TX_PAGE_SIZE}
+              onPageChange={pagination.setPage}
+            />
+          </>
+        ) : (
+          <EmptyState title="No transactions" detail="Widen the range, clear filters, or sync." />
+        )}
+      </div>
+
+      {refunds.length ? (
+        <div className={cn(VA_CARD, "p-4")}>
+          <div className="mb-2 flex items-center gap-2">
+            <SectionLabel>Refunds in range</SectionLabel>
+            <StatInfoTooltip text={tip("refunds")} />
+          </div>
+          <p className="text-sm text-white/70">
+            {refunds.length} refunds ·{" "}
+            {money(
+              refunds.reduce((s, r) => s + r.payment_amount, 0),
+              2
+            )}
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function MarketingPanel({
+  links,
+  models,
+  globalModelId,
+}: {
+  links: MkRow[];
+  models: DashboardPayload["models"];
+  globalModelId: string;
+}) {
+  const [selectedTypes, setSelectedTypes] = React.useState<Set<string>>(() => new Set());
+  const [localModelId, setLocalModelId] = React.useState(globalModelId);
+  const [openGroups, setOpenGroups] = React.useState<Set<string>>(() => new Set());
+
+  React.useEffect(() => {
+    setLocalModelId(globalModelId);
+  }, [globalModelId]);
+
+  const typeCounts = React.useMemo(() => countByType(links, (l) => l.link_type), [links]);
+
+  const filtered = React.useMemo(() => {
+    return links.filter((l) => {
+      if (!matchesTypeFilter(l.link_type, selectedTypes)) return false;
+      if (localModelId && l.model_id !== localModelId) return false;
+      return true;
+    });
+  }, [links, selectedTypes, localModelId]);
+
+  const pagination = useClientPagination(filtered, MK_PAGE_SIZE);
+  React.useEffect(() => {
+    pagination.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTypes, localModelId, links]);
+
+  const groupAll = !localModelId;
+  const groups = React.useMemo(() => {
+    if (!groupAll) return null;
+    const grouped = groupItemsByKey(
+      filtered,
+      (l) => l.model_name?.trim() || l.model_id || "Unlinked"
+    );
+    return grouped
+      .map((g) => ({
+        ...g,
+        gross: g.items.reduce((s, l) => s + l.earnings_gross, 0),
+        net: g.items.reduce((s, l) => s + l.earnings_net, 0),
+        subs: g.items.reduce((s, l) => s + l.sub_count, 0),
+      }))
+      .sort((a, b) => b.gross - a.gross);
+  }, [filtered, groupAll]);
+
+  function renderLinkRow(l: MkRow) {
+    return (
+      <div
+        key={l.id}
+        className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 border-b border-white/[0.05] px-4 py-3 last:border-0 sm:grid-cols-[minmax(0,1.6fr)_auto_auto_auto_auto] sm:items-center"
+      >
+        <div className="min-w-0">
+          <p className="truncate text-sm font-medium text-white">{l.message || "Untitled link"}</p>
+          <p className="mt-0.5 text-[11px] text-white/35">
+            {l.sub_count} subs · {l.paying_fans_count} paying
+            {!groupAll && l.model_name ? ` · ${l.model_name}` : ""}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 justify-self-end sm:justify-self-auto">
+          <TypeBadge label={formatLinkTypeLabel(l.link_type)} />
+          <FinishedFlagBadge finished={l.finished_flag === true} />
+        </div>
+        <p className="text-right text-sm tabular-nums text-white/70 sm:min-w-[4.5rem]">
+          {money(l.earnings_gross, 0)}
+        </p>
+        <p className="text-right text-sm font-semibold tabular-nums text-[#D4AF8C] sm:min-w-[4.5rem]">
+          {money(l.earnings_net, 0)}
+        </p>
+        <p className="col-span-2 text-right text-[11px] text-white/35 sm:col-span-1 sm:min-w-[4rem]">
+          {l.sub_count} subs
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-white/45">
+        True CPA isn’t available — Infloww links have no cost field. Showing earnings and
+        subscribers. <StatInfoTooltip text={tip("rev_per_sub")} />
+      </p>
+      <div className="flex flex-col gap-3">
+        <TypeFilterChips
+          types={typeCounts}
+          selected={selectedTypes}
+          onChange={setSelectedTypes}
+          totalCount={links.length}
+          labelFn={formatLinkTypeLabel}
+        />
+        <select
+          value={localModelId}
+          onChange={(e) => setLocalModelId(e.target.value)}
+          className={cn(VA_FILTER_INPUT, "min-w-[160px] self-start")}
+        >
+          <option value="">All models</option>
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className={cn(VA_CARD, "overflow-hidden")}>
+        {groupAll && groups ? (
+          groups.length ? (
+            <div>
+              {groups.map((g, idx) => {
+                const isOpen = openGroups.has(g.key) || (openGroups.size === 0 && idx === 0);
+                return (
+                  <div key={g.key}>
+                    <CollapsibleGroupHeader
+                      open={isOpen}
+                      onToggle={() => {
+                        setOpenGroups((prev) => {
+                          const seeded =
+                            prev.size === 0 && groups[0] ? new Set([groups[0].key]) : new Set(prev);
+                          if (seeded.has(g.key)) seeded.delete(g.key);
+                          else seeded.add(g.key);
+                          return seeded;
+                        });
+                      }}
+                      title={g.key}
+                      meta={`${g.items.length} links · ${g.subs} subs · Gross ${money(g.gross, 0)} · Net ${money(g.net, 0)}`}
+                    />
+                    {isOpen ? g.items.map((l) => renderLinkRow(l)) : null}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <EmptyState title="No marketing links" detail="Sync marketing links for linked creators." />
+          )
+        ) : filtered.length ? (
+          <>
+            <div className="hidden border-b border-white/8 px-4 py-2 text-[10px] uppercase tracking-wider text-white/35 sm:grid sm:grid-cols-[minmax(0,1.6fr)_auto_auto_auto_auto] sm:gap-4">
+              <span>Link</span>
+              <span>Type / status</span>
+              <span className="text-right">Gross</span>
+              <span className="text-right">Net</span>
+              <span className="text-right">Subs</span>
+            </div>
+            {pagination.pageItems.map((l) => renderLinkRow(l))}
+            <ListPagination
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              total={pagination.total}
+              pageSize={MK_PAGE_SIZE}
+              onPageChange={pagination.setPage}
+            />
+          </>
+        ) : (
+          <EmptyState title="No marketing links" detail="Clear filters or sync marketing links." />
+        )}
+      </div>
     </div>
   );
 }
@@ -298,28 +693,35 @@ export function AdminEarningsDashboard() {
   const [customStart, setCustomStart] = React.useState("");
   const [customEnd, setCustomEnd] = React.useState("");
   const [modelId, setModelId] = React.useState("");
-  const [txSearch, setTxSearch] = React.useState("");
   const [sortKey, setSortKey] = React.useState<SortKey>("net");
   const [sortAsc, setSortAsc] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
   const [syncing, setSyncing] = React.useState(false);
+  /** Which sync button is active (`now` | `90` | `366`). */
+  const [syncKind, setSyncKind] = React.useState<"now" | "90" | "366" | null>(null);
+  const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<DashboardPayload | null>(null);
   const reduce = useReducedMotion();
 
   const load = React.useCallback(
-    async (opts?: { preset?: InflowwStatsPreset; startYmd?: string; endYmd?: string }) => {
+    async (opts?: {
+      preset?: InflowwStatsPreset;
+      startYmd?: string;
+      endYmd?: string;
+      modelId?: string;
+    }) => {
       setLoading(true);
       setError(null);
       try {
         const nextPreset = opts?.preset ?? preset;
+        const nextModelId = opts?.modelId ?? modelId;
         const qp = new URLSearchParams({ preset: nextPreset });
         if (nextPreset === "custom") {
           qp.set("startYmd", opts?.startYmd ?? customStart);
           qp.set("endYmd", opts?.endYmd ?? customEnd);
         }
-        if (modelId) qp.set("modelId", modelId);
-        if (txSearch.trim()) qp.set("txSearch", txSearch.trim());
+        if (nextModelId) qp.set("modelId", nextModelId);
         const res = await fetch(`/api/admin/creator-earnings?${qp}`, { cache: "no-store" });
         const json = (await res.json()) as DashboardPayload;
         if (!res.ok) throw new Error(json.error ?? "Failed to load earnings");
@@ -335,7 +737,7 @@ export function AdminEarningsDashboard() {
         setLoading(false);
       }
     },
-    [preset, customStart, customEnd, modelId, txSearch]
+    [preset, customStart, customEnd, modelId]
   );
 
   React.useEffect(() => {
@@ -343,25 +745,64 @@ export function AdminEarningsDashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- model filter auto-refresh
   }, [modelId]);
 
-  async function runSync() {
+  async function runSync(
+    kind: "now" | "90" | "366",
+    bodyPayload: Record<string, unknown>
+  ) {
     setSyncing(true);
+    setSyncKind(kind);
+    setSyncMsg(null);
+    setError(null);
     try {
       const res = await fetch("/api/admin/creator-earnings/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          startYmd: data?.range.startYmd,
-          endYmd: data?.range.endYmd,
-        }),
+        body: JSON.stringify(bodyPayload),
       });
-      const json = await res.json();
+      const json = (await res.json()) as {
+        error?: string;
+        startYmd?: string;
+        endYmd?: string;
+        creatorsTargeted?: number;
+        dailyStats?: { upserted?: number; errors?: Array<{ message: string }> };
+        transactions?: { upserted?: number; errors?: Array<{ message: string }> };
+        refunds?: { upserted?: number; errors?: Array<{ message: string }> };
+      };
       if (!res.ok) throw new Error(json.error ?? "Sync failed");
+      const errCount =
+        (json.dailyStats?.errors?.length ?? 0) +
+        (json.transactions?.errors?.length ?? 0) +
+        (json.refunds?.errors?.length ?? 0);
+      const range =
+        json.startYmd && json.endYmd ? ` (${json.startYmd} → ${json.endYmd})` : "";
+      setSyncMsg(
+        `Synced creator earnings for ${json.creatorsTargeted ?? 0} models${range}` +
+          (json.dailyStats?.upserted != null
+            ? ` · ${json.dailyStats.upserted} daily rows`
+            : "") +
+          (errCount ? ` (${errCount} section error(s))` : "")
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed");
     } finally {
       setSyncing(false);
+      setSyncKind(null);
     }
+  }
+
+  function syncNow() {
+    const startYmd = preset === "custom" ? customStart : data?.range.startYmd;
+    const endYmd = preset === "custom" ? customEnd : data?.range.endYmd;
+    return runSync("now", { startYmd, endYmd });
+  }
+
+  function syncLast3Months() {
+    return runSync("90", { lookbackDays: 90 });
+  }
+
+  function syncLastYear() {
+    return runSync("366", { lookbackDays: 366 });
   }
 
   const revenueTrend = React.useMemo(() => {
@@ -451,15 +892,42 @@ export function AdminEarningsDashboard() {
               {data?.linkedCount != null ? ` ${data.linkedCount} linked models.` : ""}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void runSync()}
-            disabled={syncing || loading}
-            className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 self-start")}
-          >
-            <RefreshCw className={cn("h-4 w-4", syncing && "animate-spin")} />
-            {syncing ? "Syncing…" : "Sync now"}
-          </button>
+          <div className="flex flex-col gap-2 self-start">
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void syncNow()}
+                disabled={syncing || loading}
+                className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2")}
+              >
+                <RefreshCw className={cn("h-4 w-4", syncKind === "now" && "animate-spin")} />
+                {syncKind === "now" ? "Syncing…" : "Sync now"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void syncLast3Months()}
+                disabled={syncing || loading}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-xl border border-[#D4AF8C]/35 bg-transparent px-4 py-2.5 text-xs font-medium text-[#D4AF8C] transition hover:bg-[#D4AF8C]/[0.06] disabled:opacity-40"
+                )}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "90" && "animate-spin")} />
+                {syncKind === "90" ? "Syncing…" : "Last 3 months"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void syncLastYear()}
+                disabled={syncing || loading}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-xl border border-white/15 bg-transparent px-4 py-2.5 text-xs font-medium text-white/60 transition hover:bg-white/5 disabled:opacity-40"
+                )}
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "366" && "animate-spin")} />
+                {syncKind === "366" ? "Syncing…" : "Last year"}
+              </button>
+            </div>
+            {syncMsg ? <p className="max-w-md text-[11px] text-emerald-300/80">{syncMsg}</p> : null}
+          </div>
         </div>
 
         <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
@@ -772,45 +1240,11 @@ export function AdminEarningsDashboard() {
       ) : null}
 
       {tab === "marketing" && data ? (
-        <div className="space-y-4">
-          <p className="text-xs text-white/45">
-            True CPA isn’t available — Infloww links have no cost field. Showing revenue per subscriber
-            instead. <StatInfoTooltip text={tip("rev_per_sub")} />
-          </p>
-          <div className={cn(VA_CARD, "overflow-x-auto")}>
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="border-b border-white/8 text-[10px] uppercase tracking-wider text-white/40">
-                <tr>
-                  <th className="px-4 py-3">Link</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Subs</th>
-                  <th className="px-4 py-3">Gross</th>
-                  <th className="px-4 py-3">Rev / sub</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data.analytics.acquisition ?? []).slice(0, 40).map((l) => (
-                  <tr key={l.link_id} className="border-b border-white/5">
-                    <td className="max-w-[220px] truncate px-4 py-2.5 text-white/80">
-                      {l.message || "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-white/50">{l.link_type}</td>
-                    <td className="px-4 py-2.5 tabular-nums">{l.sub_count}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-[#D4AF8C]">
-                      {money(l.earnings_gross, 0)}
-                    </td>
-                    <td className="px-4 py-2.5 tabular-nums">
-                      {l.revenue_per_sub == null ? "—" : money(l.revenue_per_sub, 2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!data.analytics.acquisition.length ? (
-              <EmptyState title="No marketing links" detail="Sync marketing links for linked creators." />
-            ) : null}
-          </div>
-        </div>
+        <MarketingPanel
+          links={data.marketingLinks}
+          models={data.models}
+          globalModelId={modelId}
+        />
       ) : null}
 
       {tab === "mass" && data ? (
@@ -864,69 +1298,13 @@ export function AdminEarningsDashboard() {
       ) : null}
 
       {tab === "transactions" && data ? (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <input
-              value={txSearch}
-              onChange={(e) => setTxSearch(e.target.value)}
-              placeholder="Search fan / tx id"
-              className={cn(VA_FILTER_INPUT, "min-w-[200px]")}
-            />
-            <button
-              type="button"
-              className={cn(VA_BTN_PRIMARY, "text-xs")}
-              onClick={() => void load()}
-            >
-              Apply
-            </button>
-          </div>
-          <div className={cn(VA_CARD, "overflow-x-auto")}>
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b border-white/8 text-[10px] uppercase tracking-wider text-white/40">
-                <tr>
-                  <th className="px-4 py-3">When</th>
-                  <th className="px-4 py-3">Model</th>
-                  <th className="px-4 py-3">Fan</th>
-                  <th className="px-4 py-3">Type</th>
-                  <th className="px-4 py-3">Gross</th>
-                  <th className="px-4 py-3">Net</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.transactions.slice(0, 80).map((t) => (
-                  <tr key={t.transaction_id} className="border-b border-white/5">
-                    <td className="px-4 py-2 text-xs text-white/45">
-                      {t.created_time?.slice(0, 16)?.replace("T", " ") ?? "—"}
-                    </td>
-                    <td className="px-4 py-2 text-white/80">{t.model_name ?? "—"}</td>
-                    <td className="px-4 py-2 text-white/60">{t.fan_name ?? "—"}</td>
-                    <td className="px-4 py-2 text-white/50">{t.type ?? "—"}</td>
-                    <td className="px-4 py-2 tabular-nums">{money(t.amount, 2)}</td>
-                    <td className="px-4 py-2 tabular-nums text-[#D4AF8C]">{money(t.net, 2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!data.transactions.length ? (
-              <EmptyState title="No transactions" detail="Widen the range or run a sync." />
-            ) : null}
-          </div>
-          {data.refunds.length ? (
-            <div className={cn(VA_CARD, "p-4")}>
-              <div className="mb-2 flex items-center gap-2">
-                <SectionLabel>Refunds in range</SectionLabel>
-                <StatInfoTooltip text={tip("refunds")} />
-              </div>
-              <p className="text-sm text-white/70">
-                {data.refunds.length} refunds ·{" "}
-                {money(
-                  data.refunds.reduce((s, r) => s + r.payment_amount, 0),
-                  2
-                )}
-              </p>
-            </div>
-          ) : null}
-        </div>
+        <TransactionsPanel
+          transactions={data.transactions}
+          txTypeCounts={data.txTypeCounts}
+          models={data.models}
+          globalModelId={modelId}
+          refunds={data.refunds}
+        />
       ) : null}
 
       {!loading && !data && !error ? (

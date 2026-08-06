@@ -248,8 +248,11 @@ export interface InflowwCreatorDayStats {
   ppvsSent: number;
   fansChatted: number;
   replyTimeMs: number | null;
-  /** Fans with auto-renew on — from GET /v1/creator-report/fans/renew-on. */
-  fansWithRenewOn: number;
+  /**
+   * Fans with auto-renew on — from GET /v1/creator-report/fans/renew-on.
+   * `null` when Infloww omitted this creator/day (distinct from a genuine 0).
+   */
+  fansWithRenewOn: number | null;
 }
 
 /** Normalized row from GET /v1/refunds. Monetary fields are dollars. */

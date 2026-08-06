@@ -42,7 +42,8 @@ export type RefundRateStats = {
 
 export type ChurnRiskStats = {
   active_fans: number;
-  fans_with_renew_on: number;
+  /** Null when renew-on was not reported for this snapshot day. */
+  fans_with_renew_on: number | null;
   /** renew-on ÷ active (0–1). Higher = healthier retention signal. */
   renew_on_share: number | null;
   at_risk: boolean;
@@ -187,25 +188,29 @@ export function computeRefundRate(profit: NetProfitBreakdown): RefundRateStats {
 
 export function computeChurnRisk(params: {
   active_fans: number;
-  fans_with_renew_on: number;
+  fans_with_renew_on: number | null;
 }): ChurnRiskStats {
   const active = Math.max(0, params.active_fans);
-  const renew = Math.max(0, params.fans_with_renew_on);
-  if (active <= 0) {
+  const renew = params.fans_with_renew_on;
+  if (active <= 0 || renew == null) {
     return {
       active_fans: active,
       fans_with_renew_on: renew,
       renew_on_share: null,
       at_risk: false,
-      label: "Not enough fan data yet to estimate auto-renew health.",
+      label:
+        renew == null
+          ? "Auto-renew data not reported by Infloww for this model yet."
+          : "Not enough fan data yet to estimate auto-renew health.",
     };
   }
-  const share = Math.min(1, renew / active);
+  const renewSafe = Math.max(0, renew);
+  const share = Math.min(1, renewSafe / active);
   const at_risk = share < CHURN_RISK_RENEW_ON_FLOOR;
   const pct = Math.round(share * 100);
   return {
     active_fans: active,
-    fans_with_renew_on: renew,
+    fans_with_renew_on: renewSafe,
     renew_on_share: share,
     at_risk,
     label: at_risk
@@ -473,7 +478,7 @@ export function deriveModelCreatorAnalytics(params: {
     : null;
   const churn = computeChurnRisk({
     active_fans: latest?.active_fans ?? 0,
-    fans_with_renew_on: latest?.fans_with_renew_on ?? 0,
+    fans_with_renew_on: latest?.fans_with_renew_on ?? null,
   });
 
   const active = latest?.active_fans ?? 0;

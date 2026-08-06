@@ -11,11 +11,15 @@ import { syncInflowwCreatorEarnings } from "@/services/infloww-creator-earnings"
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+/** Long backfills (≤366d) chunk into 31-day windows; allow full run on Pro/Hobby max. */
 export const maxDuration = 300;
 
 /**
  * POST /api/admin/creator-earnings/sync
  * Backfill / re-sync creator-level Infloww earnings for a date range.
+ * Body: { startYmd?, endYmd?, lookbackDays?, skipMarketing?, ... }
+ * endTime is always capped to Infloww-safe today (min Athens/UTC calendar day).
+ * `lookbackDays` (1–366) sets start relative to that fixed end (overrides startYmd).
  */
 export async function POST(request: Request) {
   const session = await getSessionFromCookies();
@@ -27,6 +31,7 @@ export async function POST(request: Request) {
   let body: {
     startYmd?: string;
     endYmd?: string;
+    lookbackDays?: number;
     skipMarketing?: boolean;
     skipTransactions?: boolean;
     skipDailyStats?: boolean;
@@ -41,9 +46,22 @@ export async function POST(request: Request) {
 
   const today = inflowwReportTodayYmd();
   const earliest = addDaysAthensYmd(today, -(EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS - 1));
+
   let endYmd = (body.endYmd ?? today).slice(0, 10);
   if (endYmd > today) endYmd = today;
-  let startYmd = (body.startYmd ?? addDaysAthensYmd(endYmd, -1)).slice(0, 10);
+
+  let startYmd: string;
+  const lookbackRaw = body.lookbackDays;
+  if (lookbackRaw != null && Number.isFinite(Number(lookbackRaw))) {
+    const lookback = Math.max(
+      1,
+      Math.min(EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS, Math.floor(Number(lookbackRaw)))
+    );
+    startYmd = addDaysAthensYmd(endYmd, -(lookback - 1));
+  } else {
+    startYmd = (body.startYmd ?? addDaysAthensYmd(endYmd, -1)).slice(0, 10);
+  }
+
   if (startYmd < earliest) startYmd = earliest;
   if (startYmd > endYmd) {
     return NextResponse.json({ error: "Invalid date range: start is after end." }, { status: 400 });

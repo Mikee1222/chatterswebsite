@@ -363,7 +363,7 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
         <div className="border-b border-white/8 px-4 py-3">
           <SectionLabel>Best marketing links</SectionLabel>
           <p className="mt-1 text-xs text-white/40">
-            Ranked by earnings.{" "}
+            Trial &amp; tracking links ranked by earnings (campaign links are admin-only).{" "}
             <StatInfoTooltip text={tip("marketing")} />
           </p>
         </div>

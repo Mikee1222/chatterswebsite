@@ -10,6 +10,7 @@ import {
   compareTransactionPerfVsEmployeeSales,
   listCreatorDailyStats,
   listCreatorRefunds,
+  listCreatorTransactionTypeCounts,
   listCreatorTransactions,
   listLinkedCreatorModels,
   listMarketingLinks,
@@ -44,49 +45,64 @@ export async function GET(req: NextRequest) {
   const prev = previousPeriodRange(range.startYmd, range.endYmd);
 
   try {
-    const [{ linked }, modelsAll, daily, transactions, refunds, marketingLinks, pmm, discrepancies, prevTxs] =
-      await Promise.all([
-        listLinkedCreatorModels(),
-        listAllModelss(),
-        listCreatorDailyStats({
-          startYmd: range.startYmd,
-          endYmd: range.endYmd,
-          modelRecordId,
-        }),
-        listCreatorTransactions({
-          startYmd: range.startYmd,
-          endYmd: range.endYmd,
-          modelRecordId,
-          type: txType,
-          status: txStatus,
-          search: txSearch,
-          limit: 800,
-        }),
-        listCreatorRefunds({
-          startYmd: range.startYmd,
-          endYmd: range.endYmd,
-          modelRecordId,
-          limit: 500,
-        }),
-        listMarketingLinks({ modelRecordId }),
-        listPriorityMassMessages({
-          startYmd: range.startYmd,
-          endYmd: range.endYmd,
-          modelRecordId,
-          limit: 500,
-        }),
-        compareTransactionPerfVsEmployeeSales({
-          startYmd: range.startYmd,
-          endYmd: range.endYmd,
-          modelRecordId,
-        }),
-        listCreatorTransactions({
-          startYmd: prev.startYmd,
-          endYmd: prev.endYmd,
-          modelRecordId,
-          limit: 800,
-        }),
-      ]);
+    const [
+      { linked },
+      modelsAll,
+      daily,
+      transactions,
+      refunds,
+      marketingLinks,
+      pmm,
+      discrepancies,
+      prevTxs,
+      txTypeCounts,
+    ] = await Promise.all([
+      listLinkedCreatorModels(),
+      listAllModelss(),
+      listCreatorDailyStats({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+        modelRecordId,
+      }),
+      listCreatorTransactions({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+        modelRecordId,
+        type: txType,
+        status: txStatus,
+        search: txSearch,
+        limit: 2000,
+      }),
+      listCreatorRefunds({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+        modelRecordId,
+        limit: 500,
+      }),
+      listMarketingLinks({ modelRecordId }),
+      listPriorityMassMessages({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+        modelRecordId,
+        limit: 500,
+      }),
+      compareTransactionPerfVsEmployeeSales({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+        modelRecordId,
+      }),
+      listCreatorTransactions({
+        startYmd: prev.startYmd,
+        endYmd: prev.endYmd,
+        modelRecordId,
+        limit: 800,
+      }),
+      listCreatorTransactionTypeCounts({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+        modelRecordId,
+      }),
+    ]);
 
     const createdAtByRecord = new Map(
       modelsAll.map((m) => [m.id, m.created_at || null] as const)
@@ -131,6 +147,10 @@ export async function GET(req: NextRequest) {
       ...t,
       model_name: t.model_record_id ? nameByRecord.get(t.model_record_id) ?? null : null,
     }));
+    const marketing = marketingLinks.map((l) => ({
+      ...l,
+      model_name: nameByRecord.get(l.model_id) ?? null,
+    }));
 
     const latestByModel = new Map<string, (typeof daily)[number]>();
     for (const row of daily) {
@@ -144,8 +164,9 @@ export async function GET(req: NextRequest) {
       models,
       daily,
       transactions: txs,
+      txTypeCounts,
       refunds,
-      marketingLinks,
+      marketingLinks: marketing,
       priorityMassMessages: pmm,
       discrepancies,
       analytics,

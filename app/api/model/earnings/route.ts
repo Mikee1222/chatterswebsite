@@ -56,7 +56,8 @@ export async function GET(req: NextRequest) {
         modelRecordId,
         limit: 200,
       }),
-      listMarketingLinks({ modelRecordId }),
+      // Models see Trial + Tracking only — Campaign links are admin-only.
+      listMarketingLinks({ modelRecordId, excludeLinkTypes: ["CAMPAIGN"] }),
       listCreatorTransactions({
         startYmd: prev.startYmd,
         endYmd: prev.endYmd,

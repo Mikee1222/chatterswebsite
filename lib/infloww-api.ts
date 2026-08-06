@@ -2088,7 +2088,7 @@ export function mergeCreatorDayStats(params: {
         ppvsSent: 0,
         fansChatted: 0,
         replyTimeMs: null,
-        fansWithRenewOn: 0,
+        fansWithRenewOn: null,
       };
       map.set(k, row);
     }
@@ -2282,6 +2282,10 @@ export async function fetchCreatorRefunds(params: {
 /**
  * GET /v1/creator-report/fans/renew-on — daily fansWithRenewOn per creator.
  * creatorIds up to 10; date range uses YYYY-MM-DD bounds (same as other creator-report).
+ *
+ * Infloww quirk: requesting a single creator (or a small subset) often returns an
+ * empty `list` even when agency-wide data exists. Always query the full agency
+ * creator set, then filter to the requested creators' platformPids.
  */
 export async function fetchCreatorFansRenewOn(params: {
   creatorIds: string[];
@@ -2290,17 +2294,29 @@ export async function fetchCreatorFansRenewOn(params: {
 }): Promise<import("@/types/infloww").InflowwCreatorRenewOnRow[]> {
   const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
   assertCreatorReportLookback(start, end);
+  const requested = [...new Set(params.creatorIds.map((id) => String(id).trim()).filter(Boolean))];
+  const agencyCreators = await getInflowwModels();
+  const fetchIds = [
+    ...new Set([...requested, ...agencyCreators.map((c) => c.id).filter(Boolean)]),
+  ];
+  const requestedPids = new Set(
+    agencyCreators
+      .filter((c) => requested.includes(c.id) && c.platformPid)
+      .map((c) => String(c.platformPid))
+  );
   const out: import("@/types/infloww").InflowwCreatorRenewOnRow[] = [];
   for (const chunk of chunkDateRangeYmd(start, end)) {
     const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
     const rows = await paginateCreatorReport("/creator-report/fans/renew-on", {
       ...times,
-      creatorIds: params.creatorIds,
+      creatorIds: fetchIds.length ? fetchIds : requested,
     });
     for (const row of rows) {
       const mapped = mapRenewOnRow(row);
       if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
-      if (mapped.date && mapped.platformPid) out.push(mapped);
+      if (!mapped.date || !mapped.platformPid) continue;
+      if (requestedPids.size > 0 && !requestedPids.has(mapped.platformPid)) continue;
+      out.push(mapped);
     }
   }
   return out;

@@ -203,7 +203,7 @@ async function upsertCreatorDailyStats(
       ppvs_sent: r.ppvsSent,
       fans_chatted: r.fansChatted,
       reply_time_ms: r.replyTimeMs,
-      fans_with_renew_on: r.fansWithRenewOn ?? 0,
+      fans_with_renew_on: r.fansWithRenewOn,
       synced_at: now,
       updated_at: now,
     };
@@ -775,7 +775,8 @@ export type CreatorDailyStatsRow = {
   ppvs_sent: number;
   fans_chatted: number;
   reply_time_ms: number | null;
-  fans_with_renew_on: number;
+  /** Null when Infloww omitted renew-on for this creator/day. */
+  fans_with_renew_on: number | null;
 };
 
 export async function listCreatorDailyStats(params: {
@@ -815,7 +816,8 @@ export async function listCreatorDailyStats(params: {
     ppvs_sent: Math.round(n(row.ppvs_sent)),
     fans_chatted: Math.round(n(row.fans_chatted)),
     reply_time_ms: row.reply_time_ms == null ? null : n(row.reply_time_ms),
-    fans_with_renew_on: Math.round(n(row.fans_with_renew_on)),
+    fans_with_renew_on:
+      row.fans_with_renew_on == null ? null : Math.round(n(row.fans_with_renew_on)),
   }));
 }
 
@@ -887,6 +889,47 @@ export async function listCreatorTransactions(params: {
   }));
 }
 
+export type CreatorTransactionTypeCount = {
+  type: string;
+  count: number;
+  gross: number;
+  net: number;
+};
+
+/** Distinct transaction types + counts for filter chips (range-scoped). */
+export async function listCreatorTransactionTypeCounts(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+  creatorInflowwId?: string;
+}): Promise<CreatorTransactionTypeCount[]> {
+  const sb = getSupabaseServiceClient();
+  const startIso = `${params.startYmd}T00:00:00.000Z`;
+  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  let q = sb
+    .from("infloww_transactions")
+    .select("type, amount, net")
+    .gte("created_time", startIso)
+    .lte("created_time", endIso)
+    .limit(10000);
+  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+  const { data, error } = await q;
+  if (error) throw new Error(`listCreatorTransactionTypeCounts: ${error.message}`);
+  const map = new Map<string, { count: number; gross: number; net: number }>();
+  for (const row of data ?? []) {
+    const type = (row.type ? String(row.type) : "unknown").trim() || "unknown";
+    const prev = map.get(type) ?? { count: 0, gross: 0, net: 0 };
+    prev.count += 1;
+    prev.gross += n(row.amount);
+    prev.net += n(row.net);
+    map.set(type, prev);
+  }
+  return [...map.entries()]
+    .map(([type, v]) => ({ type, ...v }))
+    .sort((a, b) => b.count - a.count);
+}
+
 export type MarketingLinkRow = {
   id: string;
   model_id: string;
@@ -907,6 +950,8 @@ export async function listMarketingLinks(params: {
   modelRecordId?: string;
   creatorInflowwId?: string;
   linkType?: string;
+  /** Exclude these link types (e.g. model view hides CAMPAIGN). */
+  excludeLinkTypes?: string[];
 }): Promise<MarketingLinkRow[]> {
   const sb = getSupabaseServiceClient();
   let q = sb
@@ -919,6 +964,11 @@ export async function listMarketingLinks(params: {
   if (params.modelRecordId) q = q.eq("model_id", params.modelRecordId);
   if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
   if (params.linkType) q = q.eq("link_type", params.linkType);
+  if (params.excludeLinkTypes?.length) {
+    for (const t of params.excludeLinkTypes) {
+      q = q.neq("link_type", t);
+    }
+  }
   const { data, error } = await q;
   if (error) throw new Error(`listMarketingLinks: ${error.message}`);
   return (data ?? []).map((row) => ({
