@@ -1,16 +1,18 @@
-import { NextResponse } from "next/server";
+import { resumeVaTaskShiftAction } from "@/app/actions/shifts";
 import { getSessionFromCookies } from "@/lib/auth";
+import { jsonNoStore } from "@/lib/api-no-store";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
-import { resumeVaTaskShiftAction } from "@/app/actions/shifts";
+
+export const dynamic = "force-dynamic";
 
 export async function POST() {
   const session = await getSessionFromCookies();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, PERMISSIONS.VA_TASKS_VIEW))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    return jsonNoStore({ error: "Forbidden" }, { status: 403 });
   }
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.tasks);
   if (blocked) return blocked;
@@ -18,11 +20,11 @@ export async function POST() {
   try {
     const result = await resumeVaTaskShiftAction();
     if ("error" in result && result.error) {
-      return NextResponse.json({ error: result.error }, { status: 400 });
+      return jsonNoStore({ error: result.error }, { status: 400 });
     }
-    return NextResponse.json({ success: true, shift: "shift" in result ? result.shift : null });
+    return jsonNoStore({ success: true, shift: "shift" in result ? result.shift : null });
   } catch (error) {
     console.error("[task-shift/resume]", error);
-    return NextResponse.json({ error: "Could not resume shift" }, { status: 500 });
+    return jsonNoStore({ error: "Could not resume shift" }, { status: 500 });
   }
 }

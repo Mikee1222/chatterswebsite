@@ -44,7 +44,10 @@ export function ChampagneCheckbox({ checked, disabled, onClick, title, className
       }
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
       className={cn(
-        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 transition-colors duration-150 motion-reduce:transition-none",
+        "relative mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 transition-colors duration-150 motion-reduce:transition-none",
+        // ~44px touch target on mobile without changing the visual 20px box
+        "before:absolute before:-inset-3 before:content-[''] md:before:hidden",
+        "touch-manipulation",
         checked
           ? "border-[#D4AF8C] bg-[#D4AF8C]/15"
           : disabled

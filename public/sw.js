@@ -1,6 +1,6 @@
 /* Gunzo Partner – Service Worker: push, notificationclick, optional cache */
 
-const CACHE_NAME = "chatter-v1";
+const CACHE_NAME = "chatter-v2";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -85,7 +85,8 @@ self.addEventListener("fetch", (event) => {
   if (u.origin !== self.location.origin) return;
 
   if (isNetworkOnlyPath(u.pathname)) {
-    event.respondWith(fetch(event.request));
+    // Never let the HTTP cache satisfy auth/API GETs via the SW (mobile Safari/PWA).
+    event.respondWith(fetch(event.request, { cache: "no-store" }));
     return;
   }
 

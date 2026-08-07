@@ -122,17 +122,28 @@ function VaShiftBar({
     const seq = ++fetchSeqRef.current;
     const epochAtStart = localMutationEpochRef.current;
     try {
-      const res = await fetch("/api/va/task-shift/active", { credentials: "include" });
+      // cache: 'no-store' — mobile Safari/PWA + SW otherwise reuse stale active-shift GETs
+      // (Vercel default Cache-Control is `public`), which desyncs ON SHIFT UI vs completion gate.
+      const res = await fetch("/api/va/task-shift/active", {
+        credentials: "include",
+        cache: "no-store",
+      });
       const data = (await res.json().catch(() => ({}))) as { shift?: ActiveShift | null };
       if (seq !== fetchSeqRef.current) return;
       if (epochAtStart !== localMutationEpochRef.current) return;
       // Don't clobber optimistic start with a stale null while start is in flight.
-      // Once we have a real shift id, trust the server (including null after race cleanup).
       if (pendingStartIdRef.current?.startsWith("optimistic-") && !data.shift) return;
       if (res.ok) {
-        if (data.shift) pendingStartIdRef.current = null;
-        setShiftState(data.shift ?? null);
-        ignoreStaleSsrRef.current = false;
+        if (data.shift) {
+          pendingStartIdRef.current = null;
+          setShiftState(data.shift);
+          ignoreStaleSsrRef.current = false;
+        } else if (ignoreStaleSsrRef.current) {
+          // Ignore one stale null right after local start/resume (common on mobile HTTP cache).
+          ignoreStaleSsrRef.current = false;
+        } else {
+          setShiftState(null);
+        }
       }
     } finally {
       if (seq === fetchSeqRef.current) setShiftLoading(false);
@@ -200,7 +211,11 @@ function VaShiftBar({
     });
     setShiftBusy(true);
     try {
-      const res = await fetch("/api/va/task-shift/start", { method: "POST", credentials: "include" });
+      const res = await fetch("/api/va/task-shift/start", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
       const data = (await res.json().catch(() => ({}))) as {
         error?: string;
         shift?: ActiveShift;
@@ -259,7 +274,11 @@ function VaShiftBar({
     const pauseIso = new Date().toISOString();
     setShiftState({ ...activeShift, status: "on_break", break_started_at: pauseIso });
     try {
-      const res = await fetch("/api/va/task-shift/pause", { method: "POST", credentials: "include" });
+      const res = await fetch("/api/va/task-shift/pause", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
       const data = (await res.json().catch(() => ({}))) as { error?: string; shift?: ActiveShift };
       if (!res.ok) {
         setShiftState(prev);
@@ -298,7 +317,11 @@ function VaShiftBar({
       break_minutes: Math.ceil(paused / 60),
     });
     try {
-      const res = await fetch("/api/va/task-shift/resume", { method: "POST", credentials: "include" });
+      const res = await fetch("/api/va/task-shift/resume", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
       const data = (await res.json().catch(() => ({}))) as { error?: string; shift?: ActiveShift };
       if (!res.ok) {
         setShiftState(prev);
@@ -327,7 +350,11 @@ function VaShiftBar({
     pendingStartIdRef.current = null;
     setShiftState(null);
     try {
-      const res = await fetch("/api/va/task-shift/end", { method: "POST", credentials: "include" });
+      const res = await fetch("/api/va/task-shift/end", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         setShiftState(prev);

@@ -2,6 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
+import { jsonNoStore } from "@/lib/api-no-store";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   attachmentFromSbToken,
@@ -18,6 +19,8 @@ import { getActiveVaTaskShift } from "@/services/shifts";
 import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
 import { readRequestFormData } from "@/lib/request-form-data";
+
+export const dynamic = "force-dynamic";
 
 async function uploadPhaseScreenshot(
   itemRowId: string,
@@ -46,21 +49,21 @@ async function uploadPhaseScreenshot(
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "va-tasks:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!session) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "va-tasks:view"))) return jsonNoStore({ error: "Forbidden" }, { status: 403 });
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.tasks);
   if (blocked) return blocked;
 
   const vaId = session.airtableUserId ?? session.id;
   const activeShift = await getActiveVaTaskShift(vaId);
   if (!activeShift) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Start your task shift before completing checklist items." },
       { status: 403 },
     );
   }
   if (activeShift.status === "on_break" || Boolean(activeShift.break_started_at?.trim())) {
-    return NextResponse.json(
+    return jsonNoStore(
       { error: "Resume your task shift before completing checklist items." },
       { status: 403 },
     );

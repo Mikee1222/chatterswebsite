@@ -371,9 +371,14 @@ export function MobileAppShell({
           {children}
         </div>
 
-        {activeShift && shiftHref && (
+        {/* Mistake-shift mini bar only — never for VA task shifts (those use VaShiftBar on /va-tasks).
+            Showing it for task shifts covered checklist taps under fixed mobile chrome. */}
+        {activeShift &&
+        shiftHref &&
+        activeShift.shift_type !== "task" &&
+        activeShift.shift_type !== "va_tasks" ? (
           <LiveShiftMiniBar activeShift={activeShift} shiftHref={shiftHref} modelsCount={activeShiftModelsCount} />
-        )}
+        ) : null}
 
         {role === "chatter" ? (
           <FloatingActionButton user={user} />
