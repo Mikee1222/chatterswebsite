@@ -115,6 +115,9 @@ export interface WinnerVideoRecord {
   text_on_screen_suggestion: string;
   /** Optional filming brief from the creative (alongside script_text). */
   script_brief: string;
+  /** Signed URL for optional brief PDF/image; empty when none. */
+  script_brief_attachment_url: string;
+  script_brief_attachment_filename: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
   script_submitted_at: string | null;
@@ -172,6 +175,7 @@ type WinnerVideoFields = {
   script_text?: string;
   text_on_screen_suggestion?: string;
   script_brief?: string;
+  script_brief_attachment_url?: string;
   script_submitted_by_name?: string;
   script_submitted_by_id?: string;
   script_submitted_at?: string;
@@ -235,6 +239,11 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     script_text: String(f.script_text ?? ""),
     text_on_screen_suggestion: String(f.text_on_screen_suggestion ?? ""),
     script_brief: String(f.script_brief ?? ""),
+    script_brief_attachment_url: String(f.script_brief_attachment_url ?? ""),
+    script_brief_attachment_filename: String(f.script_brief_attachment_url ?? "")
+      .split("/")
+      .pop()
+      ?.replace(/^[a-f0-9-]+_\d+\./, "") || "",
     script_submitted_by_name: String(f.script_submitted_by_name ?? ""),
     script_submitted_by_id: String(f.script_submitted_by_id ?? ""),
     script_submitted_at: f.script_submitted_at?.trim() ? String(f.script_submitted_at) : null,
@@ -695,10 +704,15 @@ export async function getPendingScriptsForReview(): Promise<WinnerVideoRecord[]>
 
 export type SubmitCreativeScriptInput = {
   assigned_creator_name: string;
-  script_video_type: ScriptVideoType;
+  /** Ignored — type is researcher/admin-owned; existing value is preserved. */
+  script_video_type?: ScriptVideoType | "";
   script_text: string;
   text_on_screen_suggestion?: string;
   script_brief?: string;
+  /**
+   * Direct-upload token (`sb://…`). `undefined` keeps existing; `""` clears.
+   */
+  script_brief_attachment_url?: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
 };
@@ -706,16 +720,29 @@ export type SubmitCreativeScriptInput = {
 async function writeCreativeScriptSubmission(
   id: string,
   data: SubmitCreativeScriptInput,
+  existing: WinnerVideoRecord,
 ): Promise<WinnerVideoRecord> {
   const scriptText = data.script_text.trim();
   const modelName = data.assigned_creator_name.trim();
-  const videoType = data.script_video_type;
+  // Creatives cannot change type — use researcher/admin value (or derive once from content_type).
+  let videoType = coerceScriptVideoType(existing.script_video_type);
+  if (!videoType) {
+    if (existing.content_type === "UGC") videoType = "UGC";
+    else if (existing.content_type === "Skit") videoType = "Storytelling";
+    else if (existing.sourcing_video_type?.trim() && isSupabaseBackend()) {
+      const { coerceSlotVideoType, mapSlotTypeToScriptFields } = await import(
+        "@/lib/winner-sourcing-helpers"
+      );
+      const slotType = coerceSlotVideoType(existing.sourcing_video_type);
+      if (slotType) videoType = mapSlotTypeToScriptFields(slotType).script_video_type;
+    }
+  }
   if (!modelName) throw new Error("Model is required");
-  if (!videoType) throw new Error("Script type is required");
+  if (!videoType) throw new Error("Video type is missing — ask a researcher or admin to set it");
   if (!scriptText) throw new Error("Script text is required");
 
   const now = new Date().toISOString();
-  await persistWinnerVideoFields(id, {
+  const fields: Record<string, unknown> = {
     assigned_creator_name: modelName,
     script_status: "Pending Review",
     script_video_type: videoType,
@@ -728,7 +755,11 @@ async function writeCreativeScriptSubmission(
     script_rejection_reason: "",
     script_reviewed_by_name: "",
     script_reviewed_at: null,
-  });
+  };
+  if (data.script_brief_attachment_url !== undefined) {
+    fields.script_brief_attachment_url = data.script_brief_attachment_url.trim();
+  }
+  await persistWinnerVideoFields(id, fields);
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after script submit");
@@ -744,7 +775,7 @@ export async function submitCreativeScript(
   if (existing.script_status !== "Needs Script") {
     throw new Error("This video is not available for script submission");
   }
-  const updated = await writeCreativeScriptSubmission(id, data);
+  const updated = await writeCreativeScriptSubmission(id, data, existing);
   await syncSourcingSlotStatus(id, "Pending Review");
 
   await notifyPermissionHolders({
@@ -774,7 +805,7 @@ export async function resubmitCreativeScript(
   if (existing.script_status !== "Rejected") {
     throw new Error("Only rejected scripts can be resubmitted");
   }
-  const updated = await writeCreativeScriptSubmission(id, data);
+  const updated = await writeCreativeScriptSubmission(id, data, existing);
   await syncSourcingSlotStatus(id, "Pending Review");
 
   await notifyPermissionHolders({

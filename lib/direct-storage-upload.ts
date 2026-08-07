@@ -40,6 +40,7 @@ export const DIRECT_UPLOAD_PURPOSES = [
   "sop-file",
   "link-page-asset",
   "user-contract",
+  "creative-script-brief",
 ] as const;
 
 export type DirectUploadPurpose = (typeof DIRECT_UPLOAD_PURPOSES)[number];
@@ -171,6 +172,13 @@ export const DIRECT_UPLOAD_PURPOSE_CONFIG: Record<
     kind: "image_or_pdf",
     permissions: [PERMISSIONS.ACCOUNTS_CREATE, PERMISSIONS.ACCOUNTS_EDIT],
   },
+  "creative-script-brief": {
+    bucket: ATTACHMENTS_BUCKET,
+    maxBytes: 10 * 1024 * 1024,
+    kind: "image_or_pdf",
+    permissions: [PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT, PERMISSIONS.CREATIVE_SCRIPTS_MANAGE],
+    requiresItemId: true,
+  },
 };
 
 export function isDirectUploadPurpose(v: string): v is DirectUploadPurpose {
@@ -225,6 +233,8 @@ export function directUploadPathPrefix(
     }
     case "user-contract":
       return `users/pending/contract_attachments`;
+    case "creative-script-brief":
+      return `winner_videos/${itemId}/script_brief`;
     default: {
       const _exhaustive: never = purpose;
       return _exhaustive;

@@ -11,6 +11,7 @@ import {
   PlayCircle,
   Upload,
 } from "lucide-react";
+import { AttachmentLinks } from "@/components/manager-review-ui";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
@@ -288,14 +289,31 @@ export function ShootAssignmentsClient({
                                       </p>
                                     </div>
                                   ) : null}
-                                  {slot.script_brief?.trim() ? (
+                                  {slot.script_brief?.trim() ||
+                                  slot.script_brief_attachment_url?.trim() ? (
                                     <div>
                                       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/65">
                                         Brief
                                       </p>
-                                      <p className="mt-1 whitespace-pre-wrap text-sm text-[#B8B4B8]/85">
-                                        {slot.script_brief}
-                                      </p>
+                                      {slot.script_brief?.trim() ? (
+                                        <p className="mt-1 whitespace-pre-wrap text-sm text-[#B8B4B8]/85">
+                                          {slot.script_brief}
+                                        </p>
+                                      ) : null}
+                                      {slot.script_brief_attachment_url?.trim() ? (
+                                        <div className="mt-2">
+                                          <AttachmentLinks
+                                            attachments={[
+                                              {
+                                                url: slot.script_brief_attachment_url,
+                                                filename:
+                                                  slot.script_brief_attachment_filename ||
+                                                  "Brief attachment",
+                                              },
+                                            ]}
+                                          />
+                                        </div>
+                                      ) : null}
                                     </div>
                                   ) : null}
                                 </div>

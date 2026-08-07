@@ -5,6 +5,7 @@ import { ExternalLink, ChevronDown, FileText, Loader2, X } from "lucide-react";
 import {
   FindingCard,
   ManagerReviewTextarea,
+  AttachmentLinks,
   QuickActionEscalate,
   QuickActionMarkFixed,
   ReviewEmptyState,
@@ -160,7 +161,16 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
           const textDraft = textDrafts[v.id] ?? v.text_on_screen_suggestion ?? "";
           const briefDraft = briefDrafts[v.id] ?? v.script_brief ?? "";
           const tosOpen = textOpen[v.id] ?? Boolean(textDraft.trim());
-          const brOpen = briefOpen[v.id] ?? Boolean(briefDraft.trim());
+          const briefAttachment = v.script_brief_attachment_url?.trim()
+            ? [
+                {
+                  url: v.script_brief_attachment_url,
+                  filename: v.script_brief_attachment_filename || "Brief attachment",
+                },
+              ]
+            : [];
+          const brOpen =
+            briefOpen[v.id] ?? Boolean(briefDraft.trim() || briefAttachment.length > 0);
           return (
             <FindingCard key={v.id} pending={pendingId === v.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -297,7 +307,7 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                   />
                 </button>
                 {brOpen ? (
-                  <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
+                  <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2 space-y-3">
                     <ManagerReviewTextarea
                       value={briefDraft}
                       onChange={(e) => setBriefDrafts((prev) => ({ ...prev, [v.id]: e.target.value }))}
@@ -314,6 +324,14 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                       rows={4}
                       placeholder="Filming brief — tone, framing, wardrobe…"
                     />
+                    {briefAttachment.length > 0 ? (
+                      <div>
+                        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/65">
+                          Brief file
+                        </p>
+                        <AttachmentLinks attachments={briefAttachment} />
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>

@@ -56,6 +56,8 @@ export type ShootSlotDetail = RecreateVideoSlot & {
   script_text: string;
   text_on_screen_suggestion: string;
   script_brief: string;
+  script_brief_attachment_url: string;
+  script_brief_attachment_filename: string;
   script_video_type: string;
   assigned_creator_name: string;
 };
@@ -120,6 +122,8 @@ async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<Shoot
         script_text: v?.script_text ?? "",
         text_on_screen_suggestion: v?.text_on_screen_suggestion ?? "",
         script_brief: v?.script_brief ?? "",
+        script_brief_attachment_url: v?.script_brief_attachment_url ?? "",
+        script_brief_attachment_filename: v?.script_brief_attachment_filename ?? "",
         script_video_type: v?.script_video_type ?? s.video_type ?? "",
         assigned_creator_name: v?.assigned_creator_name ?? "",
       };

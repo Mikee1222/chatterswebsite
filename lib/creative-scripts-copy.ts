@@ -13,5 +13,13 @@ export function formatCreativeScriptCopy(video: WinnerVideoRecord): string {
   if (brief) {
     lines.push("", "--- Brief ---", brief);
   }
+  const briefFile = video.script_brief_attachment_url?.trim();
+  if (briefFile) {
+    lines.push(
+      "",
+      "--- Brief attachment ---",
+      video.script_brief_attachment_filename?.trim() || briefFile,
+    );
+  }
   return lines.join("\n");
 }

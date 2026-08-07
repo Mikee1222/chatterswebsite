@@ -17,7 +17,7 @@ import {
   type SbRow,
 } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
-import { uploadToPrivateStorage, urlsToAttachments } from "@/lib/supabase-signed-url";
+import { uploadToPrivateStorage, urlsToAttachments, resolveStorageUrl } from "@/lib/supabase-signed-url";
 import {
   coerceWinnerVideoContentType,
   coerceWinnerVideoQualityRating,
@@ -55,6 +55,9 @@ export interface WinnerVideoRecord {
   script_text: string;
   text_on_screen_suggestion: string;
   script_brief: string;
+  /** Signed URL (or https) for optional brief PDF/image; empty when none. */
+  script_brief_attachment_url: string;
+  script_brief_attachment_filename: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
   script_submitted_at: string | null;
@@ -109,6 +112,7 @@ type Row = SbRow & {
   script_text?: string | null;
   text_on_screen_suggestion?: string | null;
   script_brief?: string | null;
+  script_brief_attachment_url?: string | null;
   script_submitted_by_name?: string | null;
   script_submitted_by_id?: string | null;
   script_submitted_at?: string | null;
@@ -133,10 +137,15 @@ function coerceViews(raw: unknown): number | null {
 }
 
 async function mapRow(row: Row): Promise<WinnerVideoRecord> {
-  const [screenshot, video_file] = await Promise.all([
+  const rawBriefAttachment = String(row.script_brief_attachment_url ?? "").trim();
+  const [screenshot, video_file, script_brief_attachment_url] = await Promise.all([
     urlsToAttachments(row.screenshot),
     urlsToAttachments(row.video_file),
+    rawBriefAttachment ? resolveStorageUrl(rawBriefAttachment) : Promise.resolve(""),
   ]);
+  const script_brief_attachment_filename = rawBriefAttachment
+    ? rawBriefAttachment.split("/").pop()?.replace(/^[a-f0-9-]+_\d+\./, "") || "Brief attachment"
+    : "";
   return {
     id: publicId(row),
     video_id: String(row.video_id ?? publicId(row)),
@@ -163,6 +172,8 @@ async function mapRow(row: Row): Promise<WinnerVideoRecord> {
     script_text: String(row.script_text ?? ""),
     text_on_screen_suggestion: String(row.text_on_screen_suggestion ?? ""),
     script_brief: String(row.script_brief ?? ""),
+    script_brief_attachment_url,
+    script_brief_attachment_filename,
     script_submitted_by_name: String(row.script_submitted_by_name ?? ""),
     script_submitted_by_id: String(row.script_submitted_by_id ?? ""),
     script_submitted_at: row.script_submitted_at?.trim() ? String(row.script_submitted_at) : null,

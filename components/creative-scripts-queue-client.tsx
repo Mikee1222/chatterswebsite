@@ -10,9 +10,13 @@ import {
   History,
   Info,
   Loader2,
+  Paperclip,
   PenLine,
+  Trash2,
+  Upload,
 } from "lucide-react";
 import {
+  AttachmentLinks,
   ManagerReviewSelect,
   ManagerReviewTextarea,
   ReviewFieldLabel,
@@ -22,7 +26,6 @@ import {
 } from "@/components/manager-review-ui";
 import { StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { useToast } from "@/contexts/toast-context";
-import { SCRIPT_VIDEO_TYPES } from "@/lib/creative-scripts-helpers";
 import { truncateNote } from "@/lib/winner-videos-copy";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
@@ -34,6 +37,7 @@ import type { ModelRecord } from "@/types";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { slotVideoTypeLabel } from "@/lib/winner-sourcing-helpers";
+import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import {
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
@@ -105,12 +109,22 @@ export function CreativeScriptsQueueClient({
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [modelId, setModelId] = React.useState("");
-  const [scriptType, setScriptType] = React.useState("");
   const [scriptText, setScriptText] = React.useState("");
   const [textOnScreen, setTextOnScreen] = React.useState("");
   const [textOnScreenOpen, setTextOnScreenOpen] = React.useState(false);
   const [scriptBrief, setScriptBrief] = React.useState("");
   const [scriptBriefOpen, setScriptBriefOpen] = React.useState(false);
+  /** New direct-upload sb:// token; undefined = keep existing. */
+  const [briefAttachmentToken, setBriefAttachmentToken] = React.useState<string | undefined>(
+    undefined,
+  );
+  const [briefAttachmentDisplay, setBriefAttachmentDisplay] = React.useState<{
+    url: string;
+    filename: string;
+  } | null>(null);
+  const [briefUploading, setBriefUploading] = React.useState(false);
+  const [briefUploadError, setBriefUploadError] = React.useState<string | null>(null);
+  const briefFileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => setQueue(initialQueue), [initialQueue]);
   React.useEffect(() => setHistory(initialHistory), [initialHistory]);
@@ -209,14 +223,6 @@ export function CreativeScriptsQueueClient({
     return [{ value: "", label: "Select Gunzo-team model…" }, ...base];
   }, [gunzoModels, activeId, queue]);
 
-  const typeOptions = React.useMemo<CustomSelectOption[]>(
-    () => [
-      { value: "", label: "Select type…" },
-      ...SCRIPT_VIDEO_TYPES.map((t) => ({ value: t, label: t })),
-    ],
-    [],
-  );
-
   const needsCount = queue.filter(
     (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
   ).length;
@@ -288,26 +294,79 @@ export function CreativeScriptsQueueClient({
     setActiveId(video.id);
     setModelId(resolveModelId(video, gunzoModels));
     if (isRejected) {
-      setScriptType(video.script_video_type || "");
       setScriptText(video.script_text || "");
     } else {
-      setScriptType("");
       setScriptText("");
     }
     setTextOnScreen(video.text_on_screen_suggestion ?? "");
     setTextOnScreenOpen(Boolean(video.text_on_screen_suggestion?.trim()));
     setScriptBrief(video.script_brief ?? "");
-    setScriptBriefOpen(Boolean(video.script_brief?.trim()) || isRejected);
+    const hasBriefFile = Boolean(video.script_brief_attachment_url?.trim());
+    setScriptBriefOpen(
+      Boolean(video.script_brief?.trim()) || hasBriefFile || isRejected,
+    );
+    setBriefAttachmentToken(undefined);
+    setBriefAttachmentDisplay(
+      hasBriefFile
+        ? {
+            url: video.script_brief_attachment_url,
+            filename: video.script_brief_attachment_filename || "Brief attachment",
+          }
+        : null,
+    );
+    setBriefUploadError(null);
+    if (briefFileRef.current) briefFileRef.current.value = "";
+  }
+
+  async function handleBriefFile(videoId: string, file: File | null) {
+    setBriefUploadError(null);
+    if (!file) return;
+    setBriefUploading(true);
+    try {
+      const { sbUrl, filename } = await uploadFileToSupabaseStorage(
+        file,
+        "creative-script-brief",
+        { itemId: videoId },
+      );
+      setBriefAttachmentToken(sbUrl);
+      setBriefAttachmentDisplay({
+        url: URL.createObjectURL(file),
+        filename: filename || file.name,
+      });
+    } catch (err) {
+      setBriefUploadError(err instanceof Error ? err.message : "Upload failed");
+      setBriefAttachmentToken(undefined);
+    } finally {
+      setBriefUploading(false);
+    }
+  }
+
+  function clearBriefAttachment() {
+    setBriefAttachmentToken("");
+    setBriefAttachmentDisplay(null);
+    setBriefUploadError(null);
+    if (briefFileRef.current) briefFileRef.current.value = "";
   }
 
   async function handleSubmit(video: WinnerVideoRecord) {
     const modelName = modelNameFromSelection(modelId, gunzoModels).trim();
-    if (!modelName || !scriptType || !scriptText.trim()) {
+    if (!modelName || !scriptText.trim()) {
       addToast(
         winnerVideoLocalToast(
           `cs-val-${Date.now()}`,
           "Missing fields",
-          "Model, type, and script are required.",
+          "Model and script are required.",
+          "high",
+        ),
+      );
+      return;
+    }
+    if (briefUploading) {
+      addToast(
+        winnerVideoLocalToast(
+          `cs-up-${Date.now()}`,
+          "Upload in progress",
+          "Wait for the brief file to finish uploading.",
           "high",
         ),
       );
@@ -317,6 +376,16 @@ export function CreativeScriptsQueueClient({
     const isResubmit = video.script_status === "Rejected";
     setSavingId(video.id);
     try {
+      const body: Record<string, unknown> = {
+        id: video.id,
+        assigned_creator_name: modelName,
+        script_text: scriptText,
+        text_on_screen_suggestion: textOnScreen,
+        script_brief: scriptBrief,
+      };
+      if (briefAttachmentToken !== undefined) {
+        body.script_brief_attachment_url = briefAttachmentToken;
+      }
       const res = await fetch(
         isResubmit
           ? `/api/creative-scripts/${encodeURIComponent(video.id)}`
@@ -325,14 +394,7 @@ export function CreativeScriptsQueueClient({
           method: isResubmit ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({
-            id: video.id,
-            assigned_creator_name: modelName,
-            script_video_type: scriptType,
-            script_text: scriptText,
-            text_on_screen_suggestion: textOnScreen,
-            script_brief: scriptBrief,
-          }),
+          body: JSON.stringify(body),
         },
       );
       const data = (await res.json()) as { error?: string };
@@ -545,6 +607,16 @@ export function CreativeScriptsQueueClient({
                                 <div className="min-w-0 space-y-2">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <ScriptStatusBadge status={v.script_status} />
+                                    {typeLabel ? (
+                                      <span
+                                        className={cn(
+                                          VA_STATUS_BADGE,
+                                          "border-[#D4AF8C]/30 bg-[#D4AF8C]/10 text-[#D4AF8C]",
+                                        )}
+                                      >
+                                        {typeLabel}
+                                      </span>
+                                    ) : null}
                                     {meta && meta.recreate_total > 1 ? (
                                       <span className="text-xs font-medium text-[#D4AF8C]/80">
                                         Recreate {meta.recreate_index} of {meta.recreate_total}
@@ -555,12 +627,6 @@ export function CreativeScriptsQueueClient({
                                       </span>
                                     ) : null}
                                   </div>
-                                  {typeLabel ? (
-                                    <p className="text-xs text-[#B8B4B8]/55">
-                                      Video type:{" "}
-                                      <span className="text-[#B8B4B8]/80">{typeLabel}</span>
-                                    </p>
-                                  ) : null}
                                 </div>
                                 {canWrite ? (
                                   <button
@@ -633,8 +699,8 @@ export function CreativeScriptsQueueClient({
                                           {isRejected ? "Revise script" : "Write script"}
                                         </p>
                                         <p className="mt-0.5 text-xs text-[#B8B4B8]/50">
-                                          Assign the Gunzo model, pick a type, and paste the full
-                                          script. Brief and text-on-screen help the filmer.
+                                          Assign the Gunzo model and paste the full script. Video type
+                                          is set by research — brief and text-on-screen help the filmer.
                                         </p>
                                       </div>
 
@@ -648,16 +714,24 @@ export function CreativeScriptsQueueClient({
                                           required
                                         />
                                       </div>
-                                      <div>
-                                        <ReviewFieldLabel>Type</ReviewFieldLabel>
-                                        <ManagerReviewSelect
-                                          value={scriptType}
-                                          onChange={setScriptType}
-                                          options={typeOptions}
-                                          placeholder="Select type…"
-                                          required
-                                        />
-                                      </div>
+                                      {typeLabel ? (
+                                        <div>
+                                          <ReviewFieldLabel>Type</ReviewFieldLabel>
+                                          <span
+                                            className={cn(
+                                              VA_STATUS_BADGE,
+                                              "mt-1 border-[#D4AF8C]/30 bg-[#D4AF8C]/10 text-[#D4AF8C]",
+                                            )}
+                                          >
+                                            {typeLabel}
+                                          </span>
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-amber-200/80">
+                                          Video type is missing. Ask a researcher or admin to set it
+                                          before submitting.
+                                        </p>
+                                      )}
                                       <div>
                                         <ReviewFieldLabel>Script</ReviewFieldLabel>
                                         <ManagerReviewTextarea
@@ -726,10 +800,11 @@ export function CreativeScriptsQueueClient({
                                           />
                                         </button>
                                         {scriptBriefOpen ? (
-                                          <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
-                                            <p className="mb-2 inline-flex items-start gap-1.5 text-xs text-[#B8B4B8]/50">
+                                          <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2 space-y-3">
+                                            <p className="inline-flex items-start gap-1.5 text-xs text-[#B8B4B8]/50">
                                               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
-                                              Visible to the filmer on Shoot Assignments.
+                                              Visible to the filmer on Shoot Assignments. PDF or image
+                                              optional.
                                             </p>
                                             <ManagerReviewTextarea
                                               value={scriptBrief}
@@ -737,6 +812,74 @@ export function CreativeScriptsQueueClient({
                                               rows={4}
                                               placeholder="e.g. handheld selfie angle, soft lighting, playful energy…"
                                             />
+                                            <div className="space-y-2">
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/65">
+                                                Brief file
+                                              </p>
+                                              {briefAttachmentDisplay ? (
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                  <AttachmentLinks
+                                                    attachments={[
+                                                      {
+                                                        url: briefAttachmentDisplay.url,
+                                                        filename: briefAttachmentDisplay.filename,
+                                                      },
+                                                    ]}
+                                                  />
+                                                  <button
+                                                    type="button"
+                                                    className={cn(
+                                                      VA_BTN_SECONDARY,
+                                                      "!px-2.5 !py-1.5 text-xs inline-flex items-center gap-1",
+                                                    )}
+                                                    onClick={clearBriefAttachment}
+                                                    disabled={briefUploading || savingId === v.id}
+                                                  >
+                                                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                                                    Remove
+                                                  </button>
+                                                </div>
+                                              ) : (
+                                                <label
+                                                  className={cn(
+                                                    VA_BTN_SECONDARY,
+                                                    "!px-3 !py-2 text-xs inline-flex items-center gap-1.5 cursor-pointer",
+                                                    (briefUploading || savingId === v.id) &&
+                                                      "pointer-events-none opacity-60",
+                                                  )}
+                                                >
+                                                  {briefUploading ? (
+                                                    <Loader2
+                                                      className="h-3.5 w-3.5 animate-spin"
+                                                      aria-hidden
+                                                    />
+                                                  ) : (
+                                                    <Upload className="h-3.5 w-3.5" aria-hidden />
+                                                  )}
+                                                  {briefUploading ? "Uploading…" : "Upload PDF or image"}
+                                                  <input
+                                                    ref={briefFileRef}
+                                                    type="file"
+                                                    accept="image/*,.pdf,application/pdf"
+                                                    className="sr-only"
+                                                    disabled={briefUploading || savingId === v.id}
+                                                    onChange={(e) => {
+                                                      const f = e.target.files?.[0] ?? null;
+                                                      void handleBriefFile(v.id, f);
+                                                    }}
+                                                  />
+                                                </label>
+                                              )}
+                                              {briefUploadError ? (
+                                                <p className="text-xs text-red-300">{briefUploadError}</p>
+                                              ) : null}
+                                              {!briefAttachmentDisplay ? (
+                                                <p className="inline-flex items-center gap-1 text-[11px] text-[#B8B4B8]/40">
+                                                  <Paperclip className="h-3 w-3" aria-hidden />
+                                                  Max 10MB · PDF, PNG, JPG, WebP…
+                                                </p>
+                                              ) : null}
+                                            </div>
                                           </div>
                                         ) : null}
                                       </div>
