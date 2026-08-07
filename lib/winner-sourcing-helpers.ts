@@ -81,6 +81,92 @@ export function tierLabel(tier: WinnerTier): string {
   return tier === "super_winner" ? "Super Winner" : "Winner";
 }
 
+/** 3-way bunch capacity: approved slots + pending research finds + still needed. */
+export type BunchFulfillment = {
+  filled: number;
+  pending: number;
+  remaining: number;
+  target: number;
+  occupied: number;
+  /** Share of target already filled (approved slots). */
+  filledPct: number;
+  /** Share awaiting Research Manage review. */
+  pendingPct: number;
+  /** Share still open for researcher submits. */
+  remainingPct: number;
+  /** remaining / target — higher = more urgent for researchers. */
+  needRatio: number;
+};
+
+export function getBunchFulfillment(bunch: {
+  provided_count?: number;
+  pending_review_count?: number;
+  remaining_count?: number;
+  target_video_count: number;
+}): BunchFulfillment {
+  const target = Math.max(1, Number(bunch.target_video_count) || 1);
+  const filled = Math.max(0, bunch.provided_count ?? 0);
+  const pending = Math.max(0, bunch.pending_review_count ?? 0);
+  const remaining =
+    bunch.remaining_count ?? Math.max(0, target - filled - pending);
+  const occupied = filled + pending;
+  return {
+    filled,
+    pending,
+    remaining: Math.max(0, remaining),
+    target,
+    occupied,
+    filledPct: Math.min(100, (filled / target) * 100),
+    pendingPct: Math.min(100, (pending / target) * 100),
+    remainingPct: Math.min(100, (Math.max(0, remaining) / target) * 100),
+    needRatio: Math.max(0, remaining) / target,
+  };
+}
+
+/** Urgency tone for researcher overview cards (most remaining need = amber). */
+export function bunchUrgencyTone(needRatio: number, remaining: number): {
+  accent: "amber" | "champagne" | "pink" | "emerald";
+  label: string;
+  barClass: string;
+  glow: string;
+  ring: string;
+} {
+  if (remaining <= 0) {
+    return {
+      accent: "emerald",
+      label: "Complete",
+      barClass: "from-emerald-500/80 to-emerald-400",
+      glow: "rgba(52,211,153,0.28)",
+      ring: "ring-emerald-400/25 border-emerald-400/25",
+    };
+  }
+  if (needRatio >= 0.45) {
+    return {
+      accent: "amber",
+      label: "Needs finds",
+      barClass: "from-amber-400 to-amber-300",
+      glow: "rgba(251,191,36,0.32)",
+      ring: "ring-amber-400/20 border-amber-400/20",
+    };
+  }
+  if (needRatio >= 0.2) {
+    return {
+      accent: "champagne",
+      label: "In progress",
+      barClass: "from-[#D4AF8C] to-[#E8C9A8]",
+      glow: "rgba(212,175,140,0.3)",
+      ring: "ring-[#D4AF8C]/20 border-[#D4AF8C]/20",
+    };
+  }
+  return {
+    accent: "pink",
+    label: "Nearly full",
+    barClass: "from-[#FF1493] to-[#E91E8C]",
+    glow: "rgba(255,20,147,0.3)",
+    ring: "ring-[#FF1493]/20 border-[#FF1493]/20",
+  };
+}
+
 export function slotFilled(slot: { description?: string; video_link?: string }): boolean {
   return Boolean(String(slot.description ?? "").trim() && String(slot.video_link ?? "").trim());
 }

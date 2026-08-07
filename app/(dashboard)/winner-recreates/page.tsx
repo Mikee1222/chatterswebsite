@@ -18,11 +18,10 @@ export default async function WinnerRecreatesPage() {
   }
 
   const bunches = await listVideoBunches({ status: "open" }).catch(() => []);
-  const openWithRoom = bunches.filter((b) => (b.remaining_count ?? 0) > 0);
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <WinnerRecreatesClient initialBunches={openWithRoom} />
+      <WinnerRecreatesClient initialBunches={bunches} />
     </div>
   );
 }

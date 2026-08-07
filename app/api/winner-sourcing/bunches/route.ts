@@ -16,13 +16,13 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const status = coerceBunchStatus(url.searchParams.get("status") || "open");
-  // Researchers only need open bunches with remaining capacity.
+  // Researchers get all open bunches (overview + submit); managers get filtered or all.
   const bunches = await listVideoBunches(
     url.searchParams.has("status") ? { status } : canManage ? undefined : { status: "open" },
   );
   const filtered = canManage
     ? bunches
-    : bunches.filter((b) => b.status === "open" && (b.remaining_count ?? 0) > 0);
+    : bunches.filter((b) => b.status === "open");
 
   return NextResponse.json({ bunches: filtered });
 }
