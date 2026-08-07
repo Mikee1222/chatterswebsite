@@ -1,20 +1,17 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ExternalLink,
-  FolderPlus,
+  FolderOpen,
   Loader2,
-  Plus,
   RefreshCw,
   Settings2,
   Sparkles,
   Trophy,
-  UserRound,
-  Users,
 } from "lucide-react";
-import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
@@ -26,19 +23,14 @@ import {
   VA_FILTER_INPUT,
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
-import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
-import { FILMING_STATUS_STYLES } from "@/lib/filming-helpers";
 import {
-  SLOT_VIDEO_TYPES,
-  SLOT_VIDEO_TYPE_LABELS,
   TIER_RECREATE_COUNTS,
   tierLabel,
-  type SlotVideoType,
   type WinnerSourcingRecreateConfig,
 } from "@/lib/winner-sourcing-helpers";
+import { ROUTES } from "@/lib/routes";
 import type {
   RecreationQueueItem,
-  RecreateVideoSlot,
   VideoBunch,
   WinnerSubmission,
 } from "@/services/winner-sourcing";
@@ -52,15 +44,15 @@ export type HubCreativeOption = {
   role?: string;
 };
 
+/** @deprecated Filmer assign lives on /admin/bunches */
 export type HubFilmerOption = HubCreativeOption;
 
-type TabId = "winners" | "super" | "queue" | "bunches" | "settings";
+type TabId = "winners" | "super" | "queue" | "settings";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "winners", label: "Winners" },
   { id: "super", label: "Super Winners" },
   { id: "queue", label: "Recreation Queue" },
-  { id: "bunches", label: "Bunches" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -70,19 +62,15 @@ export function WinnerVideosHubClient({
   initialQueue,
   initialBunches,
   initialRecreateConfig,
-  models,
-  creatives,
-  filmers = [],
-  canManageFilming = false,
-  initialFilmingProgress = {},
 }: {
   initialWinners: WinnerSubmission[];
   initialSuperWinners: WinnerSubmission[];
   initialQueue: RecreationQueueItem[];
   initialBunches: VideoBunch[];
   initialRecreateConfig: WinnerSourcingRecreateConfig;
-  models: HubModelOption[];
-  creatives: HubCreativeOption[];
+  /** @deprecated unused — creatives/filmers managed on Bunches page */
+  models?: HubModelOption[];
+  creatives?: HubCreativeOption[];
   filmers?: HubFilmerOption[];
   canManageFilming?: boolean;
   initialFilmingProgress?: Record<string, { filmed_count: number; filmable_count: number }>;
@@ -94,38 +82,8 @@ export function WinnerVideosHubClient({
   const [queue, setQueue] = React.useState(initialQueue);
   const [bunches, setBunches] = React.useState(initialBunches);
   const [recreateConfig, setRecreateConfig] = React.useState(initialRecreateConfig);
-  const [filmingProgress, setFilmingProgress] = React.useState(initialFilmingProgress);
   const [refreshing, setRefreshing] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
-
-  // Bunch detail
-  const [selectedBunchId, setSelectedBunchId] = React.useState<string | null>(null);
-  const [bunchSlots, setBunchSlots] = React.useState<RecreateVideoSlot[]>([]);
-  const [loadingSlots, setLoadingSlots] = React.useState(false);
-
-  // Create bunch form
-  const [showCreateBunch, setShowCreateBunch] = React.useState(false);
-  const [bunchName, setBunchName] = React.useState("");
-  const [bunchModelId, setBunchModelId] = React.useState("");
-  const [bunchTarget, setBunchTarget] = React.useState("30");
-
-  async function refreshFilmingProgress(ids: string[]) {
-    if (!canManageFilming || ids.length === 0) return;
-    try {
-      const res = await fetch(
-        `/api/filming/progress?ids=${encodeURIComponent(ids.join(","))}`,
-        { credentials: "include" },
-      );
-      if (res.ok) {
-        const d = (await res.json()) as {
-          progress?: Record<string, { filmed_count: number; filmable_count: number }>;
-        };
-        if (d.progress) setFilmingProgress((prev) => ({ ...prev, ...d.progress }));
-      }
-    } catch {
-      /* ignore */
-    }
-  }
 
   async function refreshAll() {
     setRefreshing(true);
@@ -152,8 +110,6 @@ export function WinnerVideosHubClient({
       if (bRes.ok) {
         const d = await bRes.json();
         setBunches(d.bunches ?? []);
-        const ids = (d.bunches ?? []).map((b: VideoBunch) => b.id);
-        void refreshFilmingProgress(ids);
       }
       if (cfgRes.ok) {
         const d = await cfgRes.json();
@@ -196,22 +152,6 @@ export function WinnerVideosHubClient({
       );
     } finally {
       setBusyId(null);
-    }
-  }
-
-  async function loadBunchSlots(bunchId: string) {
-    setSelectedBunchId(bunchId);
-    setLoadingSlots(true);
-    try {
-      const res = await fetch(`/api/winner-sourcing/bunches/${bunchId}`, { credentials: "include" });
-      if (!res.ok) return;
-      const d = await res.json();
-      setBunchSlots(d.slots ?? []);
-      if (d.bunch) {
-        setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...d.bunch } : b)));
-      }
-    } finally {
-      setLoadingSlots(false);
     }
   }
 
@@ -270,123 +210,6 @@ export function WinnerVideosHubClient({
         ),
       );
       await refreshAll();
-      if (selectedBunchId === bunchId) await loadBunchSlots(bunchId);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function createBunch(e: React.FormEvent) {
-    e.preventDefault();
-    const model = models.find((m) => m.model_id === bunchModelId);
-    if (!model) return;
-    setBusyId("create-bunch");
-    try {
-      const res = await fetch("/api/winner-sourcing/bunches", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: bunchName,
-          model_id: model.model_id,
-          model_name: model.model_name,
-          target_video_count: Number(bunchTarget) || 30,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        addToast(
-          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Create failed", data.error || "Error", "high"),
-        );
-        return;
-      }
-      addToast(winnerVideoLocalToast(`ws-b-${Date.now()}`, "Bunch created", data.bunch?.name ?? "", "normal"));
-      setShowCreateBunch(false);
-      setBunchName("");
-      setBunchModelId("");
-      setBunchTarget("30");
-      await refreshAll();
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function assignCreativeToBunch(bunchId: string, creativeId: string) {
-    const creative = creatives.find((c) => c.id === creativeId);
-    if (!creative) return;
-    setBusyId(bunchId);
-    try {
-      const res = await fetch(`/api/winner-sourcing/bunches/${bunchId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "assign_creative",
-          assigned_creative_id: creative.id,
-          assigned_creative_name: creative.name,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        addToast(
-          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Assign failed", data.error || "Error", "high"),
-        );
-        return;
-      }
-      const updated = data.updated_slots?.length ?? 0;
-      const skipped = data.skipped_slots ?? 0;
-      addToast(
-        winnerVideoLocalToast(
-          `ws-cr-${Date.now()}`,
-          "Bunch assigned to creative",
-          `${creative.name} · ${updated} slot${updated === 1 ? "" : "s"} updated${skipped ? ` · ${skipped} kept historical` : ""}`,
-          "normal",
-        ),
-      );
-      if (data.bunch) {
-        setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...data.bunch } : b)));
-      }
-      if (selectedBunchId === bunchId) await loadBunchSlots(bunchId);
-      else await refreshAll();
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function assignFilmerToBunch(bunchId: string, filmerId: string) {
-    const filmer = filmers.find((f) => f.id === filmerId);
-    if (!filmer) return;
-    setBusyId(`filmer-${bunchId}`);
-    try {
-      const res = await fetch(`/api/filming/bunches/${encodeURIComponent(bunchId)}/assign`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          assigned_filmer_id: filmer.id,
-          assigned_filmer_name: filmer.name,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        addToast(
-          winnerVideoLocalToast(`ws-film-err-${Date.now()}`, "Filmer assign failed", data.error || "Error", "high"),
-        );
-        return;
-      }
-      addToast(
-        winnerVideoLocalToast(
-          `ws-film-ok-${Date.now()}`,
-          "Bunch assigned to filmer",
-          filmer.name,
-          "normal",
-        ),
-      );
-      if (data.bunch) {
-        setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...data.bunch } : b)));
-      }
-      void refreshFilmingProgress([bunchId]);
-      if (selectedBunchId === bunchId) await loadBunchSlots(bunchId);
     } finally {
       setBusyId(null);
     }
@@ -395,68 +218,12 @@ export function WinnerVideosHubClient({
   const refreshAllRef = React.useRef(refreshAll);
   refreshAllRef.current = refreshAll;
   useSupabaseRealtimeRefresh(
-    ["video_bunches", "recreate_video_slots"],
+    ["video_bunches", "recreate_video_slots", "winner_submissions", "recreation_queue_items"],
     () => {
       void refreshAllRef.current();
     },
     { debounceMs: 800 },
   );
-
-  async function updateSlotType(
-    slotId: string,
-    video_type: SlotVideoType | "",
-    video_type_other?: string,
-  ) {
-    setBusyId(slotId);
-    try {
-      const res = await fetch(`/api/winner-sourcing/slots/${slotId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          video_type,
-          video_type_other: video_type === "other" ? (video_type_other ?? "") : "",
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        addToast(
-          winnerVideoLocalToast(
-            `ws-type-${Date.now()}`,
-            "Type update failed",
-            data.error || "Could not update type",
-            "high",
-          ),
-        );
-        return;
-      }
-      if (selectedBunchId) await loadBunchSlots(selectedBunchId);
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function toggleBunchStatus(id: string, status: "open" | "closed") {
-    setBusyId(id);
-    try {
-      const res = await fetch(`/api/winner-sourcing/bunches/${id}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        addToast(
-          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Update failed", data.error || "Error", "high"),
-        );
-        return;
-      }
-      await refreshAll();
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   const pendingWinners = winners.filter((w) => w.status === "pending");
   const pendingSupers = supers.filter((w) => w.status === "pending");
@@ -465,7 +232,6 @@ export function WinnerVideosHubClient({
 
   return (
     <div className="space-y-6">
-      {/* Hero */}
       <div className="relative overflow-hidden rounded-3xl border border-[#D4AF8C]/15 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8 md:px-8">
         <div
           className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-40 blur-3xl"
@@ -484,30 +250,40 @@ export function WinnerVideosHubClient({
               Winner Videos
             </h1>
             <p className="mt-2 max-w-xl text-sm text-[#B8B4B8]/70">
-              Source Winners & Super Winners, plan recreates into bunches, and hand off to Creative Scripts —
-              separate from Research finds.
+              Source Winners & Super Winners into the recreation queue, then assign them to bunches
+              for Creative Scripts and filming.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void refreshAll()}
-            disabled={refreshing}
-            className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-2 px-4 py-2.5 text-sm")}
-          >
-            <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
-            Refresh
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href={ROUTES.admin.bunches}
+              className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 px-4 py-2.5 text-sm")}
+            >
+              <FolderOpen className="h-4 w-4" />
+              Open Bunches
+            </Link>
+            <button
+              type="button"
+              onClick={() => void refreshAll()}
+              disabled={refreshing}
+              className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-2 px-4 py-2.5 text-sm")}
+            >
+              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} />
+              Refresh
+            </button>
+          </div>
         </div>
 
         <div className="relative mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatPill label="Pending Winners" value={pendingWinners.length} accent="emerald" />
           <StatPill label="Pending Super" value={pendingSupers.length} accent="amber" />
           <StatPill label="Unassigned queue" value={unassignedQueue.length} accent="pink" />
-          <StatPill label="Open bunches" value={openBunches.length} accent="champagne" />
+          <Link href={ROUTES.admin.bunches} className="block transition hover:brightness-110">
+            <StatPill label="Open bunches" value={openBunches.length} accent="champagne" />
+          </Link>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex flex-wrap gap-1 rounded-2xl border border-white/[0.06] bg-[#0D0B0D]/80 p-1.5">
         {TABS.map((t) => (
           <button
@@ -564,34 +340,6 @@ export function WinnerVideosHubClient({
               bunches={openBunches}
               busyId={busyId}
               onAssign={assignToBunch}
-            />
-          ) : null}
-          {tab === "bunches" ? (
-            <BunchesPanel
-              bunches={bunches}
-              models={models}
-              creatives={creatives}
-              filmers={filmers}
-              canManageFilming={canManageFilming}
-              filmingProgress={filmingProgress}
-              showCreate={showCreateBunch}
-              setShowCreate={setShowCreateBunch}
-              bunchName={bunchName}
-              setBunchName={setBunchName}
-              bunchModelId={bunchModelId}
-              setBunchModelId={setBunchModelId}
-              bunchTarget={bunchTarget}
-              setBunchTarget={setBunchTarget}
-              onCreate={(e) => void createBunch(e)}
-              busyId={busyId}
-              selectedBunchId={selectedBunchId}
-              slots={bunchSlots}
-              loadingSlots={loadingSlots}
-              onSelectBunch={(id) => void loadBunchSlots(id)}
-              onAssignCreative={assignCreativeToBunch}
-              onAssignFilmer={assignFilmerToBunch}
-              onUpdateSlotType={updateSlotType}
-              onToggleBunchStatus={toggleBunchStatus}
             />
           ) : null}
           {tab === "settings" ? (
@@ -826,8 +574,11 @@ function QueuePanel({
 
   if (!items.length) {
     return (
-      <div className={cn(VA_CARD, "px-6 py-16 text-center text-sm text-[#B8B4B8]/50")}>
-        Recreation queue is empty. Add Winners or Super Winners from the other tabs.
+      <div className={cn(VA_CARD, "space-y-3 px-6 py-16 text-center text-sm text-[#B8B4B8]/50")}>
+        <p>Recreation queue is empty. Add Winners or Super Winners from the other tabs.</p>
+        <Link href={ROUTES.admin.bunches} className="inline-flex text-[#FF1493] hover:underline">
+          Manage bunches →
+        </Link>
       </div>
     );
   }
@@ -860,7 +611,15 @@ function QueuePanel({
                   </a>
                 ) : null}
                 {item.bunch_id ? (
-                  <p className="text-xs text-emerald-300/80">Assigned → {item.bunch_name || item.bunch_id}</p>
+                  <p className="text-xs text-emerald-300/80">
+                    Assigned →{" "}
+                    <Link
+                      href={`${ROUTES.admin.bunches}?id=${encodeURIComponent(item.bunch_id)}`}
+                      className="underline decoration-emerald-300/40 hover:text-emerald-200"
+                    >
+                      {item.bunch_name || item.bunch_id}
+                    </Link>
+                  </p>
                 ) : (
                   <p className="text-xs text-[#B8B4B8]/50">Awaiting bunch assignment</p>
                 )}
@@ -873,6 +632,11 @@ function QueuePanel({
                     onChange={(e) => setPick((p) => ({ ...p, [item.id]: e.target.value }))}
                   >
                     <option value="">Select open bunch…</option>
+                    {bunches.length === 0 ? (
+                      <option value="" disabled>
+                        No open bunches — create one on Bunches
+                      </option>
+                    ) : null}
                     {bunches.map((b) => (
                       <option key={b.id} value={b.id}>
                         {b.name} ({b.remaining_count ?? 0} left / {b.target_video_count})
@@ -896,514 +660,3 @@ function QueuePanel({
     </ul>
   );
 }
-
-function BunchesPanel({
-  bunches,
-  models,
-  creatives,
-  filmers,
-  canManageFilming,
-  filmingProgress,
-  showCreate,
-  setShowCreate,
-  bunchName,
-  setBunchName,
-  bunchModelId,
-  setBunchModelId,
-  bunchTarget,
-  setBunchTarget,
-  onCreate,
-  busyId,
-  selectedBunchId,
-  slots,
-  loadingSlots,
-  onSelectBunch,
-  onAssignCreative,
-  onAssignFilmer,
-  onUpdateSlotType,
-  onToggleBunchStatus,
-}: {
-  bunches: VideoBunch[];
-  models: HubModelOption[];
-  creatives: HubCreativeOption[];
-  filmers: HubFilmerOption[];
-  canManageFilming: boolean;
-  filmingProgress: Record<string, { filmed_count: number; filmable_count: number }>;
-  showCreate: boolean;
-  setShowCreate: (v: boolean) => void;
-  bunchName: string;
-  setBunchName: (v: string) => void;
-  bunchModelId: string;
-  setBunchModelId: (v: string) => void;
-  bunchTarget: string;
-  setBunchTarget: (v: string) => void;
-  onCreate: (e: React.FormEvent) => void;
-  busyId: string | null;
-  selectedBunchId: string | null;
-  slots: RecreateVideoSlot[];
-  loadingSlots: boolean;
-  onSelectBunch: (id: string) => void;
-  onAssignCreative: (bunchId: string, creativeId: string) => void;
-  onAssignFilmer: (bunchId: string, filmerId: string) => void;
-  onUpdateSlotType: (
-    slotId: string,
-    video_type: SlotVideoType | "",
-    video_type_other?: string,
-  ) => void;
-  onToggleBunchStatus?: (id: string, status: "open" | "closed") => void;
-}) {
-  const [showAssignPicker, setShowAssignPicker] = React.useState(false);
-  const [showFilmerPicker, setShowFilmerPicker] = React.useState(false);
-  const selectedBunch = bunches.find((b) => b.id === selectedBunchId) ?? null;
-
-  const staffCreatives = React.useMemo<StaffUserOption[]>(
-    () =>
-      creatives.map((c) => ({
-        id: c.id,
-        full_name: c.name,
-        email: c.email ?? "",
-        role: c.role ?? "other",
-      })),
-    [creatives],
-  );
-
-  const staffFilmers = React.useMemo<StaffUserOption[]>(
-    () =>
-      filmers.map((f) => ({
-        id: f.id,
-        full_name: f.name,
-        email: f.email ?? "",
-        role: f.role ?? "other",
-      })),
-    [filmers],
-  );
-
-  const scriptsReady =
-    slots.length > 0 &&
-    slots.every((s) => s.status === "Approved" || (!s.video_link && !s.description && s.status === "Not Applicable"))
-      ? slots.filter((s) => s.status === "Approved").length > 0 &&
-        slots.filter((s) => s.video_link || s.description || s.status !== "Not Applicable").every((s) => s.status === "Approved")
-      : slots.filter((s) => s.status === "Approved" || s.status === "Pending Review" || s.status === "Needs Script" || s.status === "Rejected").length >
-          0 &&
-        slots
-          .filter((s) => s.status === "Approved" || s.status === "Pending Review" || s.status === "Needs Script" || s.status === "Rejected")
-          .every((s) => s.status === "Approved");
-
-  const selectedProgress = selectedBunchId
-    ? filmingProgress[selectedBunchId] ?? {
-        filmed_count: slots.filter((s) => s.status === "Approved" && s.filmed).length,
-        filmable_count: slots.filter((s) => s.status === "Approved").length,
-      }
-    : null;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => setShowCreate(!showCreate)}
-          className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 px-4 py-2.5 text-sm")}
-        >
-          <FolderPlus className="h-4 w-4" />
-          Create bunch
-        </button>
-      </div>
-
-      {showCreate ? (
-        <form onSubmit={onCreate} className={cn(VA_CARD, "grid gap-3 p-5 sm:grid-cols-2")}>
-          <label className="space-y-1.5 sm:col-span-2">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">Name</span>
-            <input
-              className={cn(VA_FILTER_INPUT, "w-full")}
-              value={bunchName}
-              onChange={(e) => setBunchName(e.target.value)}
-              placeholder="e.g. Maya March Recreates"
-              required
-            />
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">Model</span>
-            <select
-              className={cn(VA_FILTER_INPUT, "w-full")}
-              value={bunchModelId}
-              onChange={(e) => setBunchModelId(e.target.value)}
-              required
-            >
-              <option value="">Select model…</option>
-              {models.map((m) => (
-                <option key={m.model_id} value={m.model_id}>
-                  {m.model_name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">
-              Target video count
-            </span>
-            <input
-              type="number"
-              min={1}
-              className={cn(VA_FILTER_INPUT, "w-full")}
-              value={bunchTarget}
-              onChange={(e) => setBunchTarget(e.target.value)}
-              required
-            />
-          </label>
-          <div className="sm:col-span-2">
-            <button
-              type="submit"
-              disabled={busyId === "create-bunch"}
-              className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2")}
-            >
-              {busyId === "create-bunch" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Create
-            </button>
-          </div>
-        </form>
-      ) : null}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        <ul className="space-y-2">
-          {bunches.length === 0 ? (
-            <li className={cn(VA_CARD, "px-5 py-12 text-center text-sm text-[#B8B4B8]/50")}>
-              No bunches yet.
-            </li>
-          ) : (
-            bunches.map((b) => {
-              const provided = b.provided_count ?? 0;
-              const pending = b.pending_review_count ?? 0;
-              const remaining =
-                b.remaining_count ?? Math.max(0, b.target_video_count - provided - pending);
-              const occupied = provided + pending;
-              const pct = Math.min(100, Math.round((occupied / b.target_video_count) * 100));
-              const creativeLabel = b.assigned_creative_name?.trim();
-              const filmerLabel = b.assigned_filmer_name?.trim();
-              const fp = filmingProgress[b.id];
-              const filmSt = FILMING_STATUS_STYLES[b.filming_status] ?? FILMING_STATUS_STYLES.unassigned;
-              return (
-                <li key={b.id}>
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => onSelectBunch(b.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        onSelectBunch(b.id);
-                      }
-                    }}
-                    className={cn(
-                      VA_CARD,
-                      "w-full cursor-pointer p-4 text-left transition",
-                      selectedBunchId === b.id && "border-[#FF1493]/35 ring-1 ring-[#FF1493]/20",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-medium text-white">{b.name}</p>
-                        <p className="mt-0.5 text-xs text-[#B8B4B8]/55">
-                          {b.model_name} · {b.status}
-                        </p>
-                        <p className="mt-1 text-[11px] text-[#B8B4B8]/45">
-                          Filled {provided} · Pending {pending} · Needed {remaining}
-                        </p>
-                        <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#D4AF8C]/80">
-                          <UserRound className="h-3 w-3 opacity-70" aria-hidden />
-                          {creativeLabel ? `Creative: ${creativeLabel}` : "No creative assigned"}
-                        </p>
-                        {canManageFilming ? (
-                          <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#B8B4B8]/55">
-                            <span className={cn(VA_STATUS_BADGE, filmSt.className)}>{filmSt.label}</span>
-                            {filmerLabel ? `Filmer: ${filmerLabel}` : "No filmer"}
-                            {fp && fp.filmable_count > 0 ? (
-                              <span className="text-[#D4AF8C]/80">
-                                · {fp.filmed_count} of {fp.filmable_count} filmed
-                              </span>
-                            ) : null}
-                          </p>
-                        ) : null}
-                        {b.filming_status === "uploaded" && b.upload_folder_link ? (
-                          <a
-                            href={b.upload_folder_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 inline-flex text-[11px] text-[#FF1493] hover:underline"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            Upload folder
-                          </a>
-                        ) : null}
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <span className="text-xs tabular-nums text-[#D4AF8C]">
-                          {occupied}/{b.target_video_count}
-                        </span>
-                        <button
-                          type="button"
-                          className="text-[10px] font-medium uppercase tracking-wider text-[#B8B4B8]/50 hover:text-[#D4AF8C]"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onToggleBunchStatus?.(b.id, b.status === "open" ? "closed" : "open");
-                          }}
-                        >
-                          {b.status === "open" ? "Close" : "Reopen"}
-                        </button>
-                      </div>
-                    </div>
-                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
-                      <div
-                        className="h-full rounded-full bg-gradient-to-r from-[#FF1493] to-[#D4AF8C]"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                    <p className="mt-2 text-[11px] text-[#B8B4B8]/45">{remaining} remaining</p>
-                  </div>
-                </li>
-              );
-            })
-          )}
-        </ul>
-
-        <div className={cn(VA_CARD, "min-h-[240px] p-4")}>
-          {!selectedBunchId || !selectedBunch ? (
-            <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-sm text-[#B8B4B8]/45">
-              <Users className="h-8 w-8 opacity-40" />
-              Select a bunch to view recreate slots
-            </div>
-          ) : loadingSlots ? (
-            <div className="flex min-h-[200px] items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-[#FF1493]" />
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-white">{selectedBunch.name}</h3>
-                  <p className="mt-0.5 text-xs text-[#B8B4B8]/55">
-                    Slots ({slots.length})
-                    {selectedBunch.assigned_creative_name?.trim()
-                      ? ` · Creative: ${selectedBunch.assigned_creative_name}`
-                      : " · No creative yet"}
-                    {selectedBunch.assigned_filmer_name?.trim()
-                      ? ` · Filmer: ${selectedBunch.assigned_filmer_name}`
-                      : ""}
-                  </p>
-                  {selectedProgress && selectedProgress.filmable_count > 0 ? (
-                    <p className="mt-1 text-[11px] text-[#D4AF8C]/75">
-                      Filming {selectedProgress.filmed_count} of {selectedProgress.filmable_count}
-                      {selectedBunch.filming_status === "uploaded" && selectedBunch.upload_folder_link ? (
-                        <>
-                          {" · "}
-                          <a
-                            href={selectedBunch.upload_folder_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[#FF1493] hover:underline"
-                          >
-                            Upload folder
-                          </a>
-                        </>
-                      ) : null}
-                    </p>
-                  ) : null}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs")}
-                    onClick={() => {
-                      setShowFilmerPicker(false);
-                      setShowAssignPicker((v) => !v);
-                    }}
-                    disabled={busyId === selectedBunch.id || creatives.length === 0}
-                  >
-                    {busyId === selectedBunch.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <UserRound className="h-3.5 w-3.5" />
-                    )}
-                    {selectedBunch.assigned_creative_id ? "Re-assign creative" : "Assign creative"}
-                  </button>
-                  {canManageFilming ? (
-                    <button
-                      type="button"
-                      className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs")}
-                      onClick={() => {
-                        setShowAssignPicker(false);
-                        setShowFilmerPicker((v) => !v);
-                      }}
-                      disabled={
-                        busyId === `filmer-${selectedBunch.id}` ||
-                        filmers.length === 0 ||
-                        (!scriptsReady && !selectedBunch.assigned_filmer_id)
-                      }
-                      title={
-                        !scriptsReady && !selectedBunch.assigned_filmer_id
-                          ? "All scripts must be approved first"
-                          : undefined
-                      }
-                    >
-                      {busyId === `filmer-${selectedBunch.id}` ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-3.5 w-3.5" />
-                      )}
-                      {selectedBunch.assigned_filmer_id ? "Re-assign filmer" : "Assign filmer"}
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {creatives.length === 0 ? (
-                <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
-                  No Creatives available — grant creative_scripts:submit to a user first.
-                </p>
-              ) : null}
-
-              {canManageFilming && filmers.length === 0 ? (
-                <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
-                  No Filmers available — grant filming:view_assignments to a user first.
-                </p>
-              ) : null}
-
-              {showAssignPicker && creatives.length > 0 ? (
-                <div className="rounded-xl border border-white/[0.08] bg-[#0A0A0A]/70 p-3">
-                  <p className="mb-2 text-[11px] text-[#B8B4B8]/55">
-                    Assigns the entire bunch. New slots inherit automatically. Slots already submitted for
-                    review keep their historical writer.
-                  </p>
-                  <StaffAssigneePicker
-                    users={staffCreatives}
-                    roleLabels={{}}
-                    singleSelect
-                    selectedIds={
-                      selectedBunch.assigned_creative_id ? [selectedBunch.assigned_creative_id] : []
-                    }
-                    onChange={(ids) => {
-                      const next = ids[0];
-                      if (!next || next === selectedBunch.assigned_creative_id) return;
-                      setShowAssignPicker(false);
-                      onAssignCreative(selectedBunch.id, next);
-                    }}
-                  />
-                </div>
-              ) : null}
-
-              {showFilmerPicker && canManageFilming && filmers.length > 0 ? (
-                <div className="rounded-xl border border-white/[0.08] bg-[#0A0A0A]/70 p-3">
-                  <p className="mb-2 text-[11px] text-[#B8B4B8]/55">
-                    Assign only when every filled slot has an approved script. Filmer sees Shoot Assignments.
-                  </p>
-                  <StaffAssigneePicker
-                    users={staffFilmers}
-                    roleLabels={{}}
-                    singleSelect
-                    selectedIds={
-                      selectedBunch.assigned_filmer_id ? [selectedBunch.assigned_filmer_id] : []
-                    }
-                    onChange={(ids) => {
-                      const next = ids[0];
-                      if (!next || next === selectedBunch.assigned_filmer_id) return;
-                      setShowFilmerPicker(false);
-                      onAssignFilmer(selectedBunch.id, next);
-                    }}
-                  />
-                </div>
-              ) : null}
-
-              {slots.length === 0 ? (
-                <p className="text-sm text-[#B8B4B8]/50">No slots yet — assign queue items or wait for researchers.</p>
-              ) : (
-                <ul className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
-                  {slots.map((slot) => {
-                    const st = SCRIPT_STATUS_STYLES[slot.status] ?? SCRIPT_STATUS_STYLES["Not Applicable"];
-                    const scriptOwner =
-                      slot.assigned_creative_name?.trim() ||
-                      selectedBunch.assigned_creative_name?.trim() ||
-                      "";
-                    return (
-                      <li
-                        key={slot.id}
-                        className="rounded-xl border border-white/[0.06] bg-[#0A0A0A]/60 p-3"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-xs font-medium text-[#D4AF8C]">#{slot.sequence_number}</span>
-                          <span className={cn(VA_STATUS_BADGE, st.className)}>{st.label}</span>
-                          {slot.filmed ? (
-                            <span className={cn(VA_STATUS_BADGE, "bg-emerald-500/15 text-emerald-300")}>
-                              Filmed
-                            </span>
-                          ) : null}
-                          <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">
-                            {slot.source === "from_winner" ? "from winner" : "researcher"}
-                          </span>
-                        </div>
-                        <p className="mt-1.5 line-clamp-2 text-xs text-[#B8B4B8]/75">{slot.description || "—"}</p>
-                        {slot.video_link ? (
-                          <a
-                            href={slot.video_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-1 inline-flex text-[11px] text-[#FF1493]/90 hover:underline"
-                          >
-                            Video link
-                          </a>
-                        ) : null}
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          <select
-                            className={cn(VA_FILTER_INPUT, "h-8 text-xs")}
-                            value={slot.video_type}
-                            onChange={(e) => {
-                              const next = e.target.value as SlotVideoType | "";
-                              if (next === "other") {
-                                const custom =
-                                  slot.video_type_other?.trim() ||
-                                  window.prompt("Custom video type") ||
-                                  "";
-                                if (!custom.trim()) return;
-                                onUpdateSlotType(slot.id, next, custom.trim());
-                                return;
-                              }
-                              onUpdateSlotType(slot.id, next);
-                            }}
-                            disabled={busyId === slot.id}
-                          >
-                            <option value="">Type…</option>
-                            {SLOT_VIDEO_TYPES.map((t) => (
-                              <option key={t} value={t}>
-                                {SLOT_VIDEO_TYPE_LABELS[t]}
-                              </option>
-                            ))}
-                          </select>
-                          {slot.video_type === "other" && slot.video_type_other?.trim() ? (
-                            <span className="max-w-[10rem] truncate text-[11px] text-[#D4AF8C]/80" title={slot.video_type_other}>
-                              {slot.video_type_other}
-                            </span>
-                          ) : null}
-                          {scriptOwner ? (
-                            <span className="text-[11px] text-emerald-300/80">
-                              Scripts: {scriptOwner}
-                              {slot.status === "Pending Review" ||
-                              slot.status === "Approved" ||
-                              slot.status === "Rejected"
-                                ? " (historical)"
-                                : ""}
-                            </span>
-                          ) : (
-                            <span className="text-[11px] text-[#B8B4B8]/45">Awaiting bunch creative</span>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-

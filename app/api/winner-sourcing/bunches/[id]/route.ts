@@ -9,6 +9,8 @@ import {
   submitResearcherBunchFind,
   updateVideoBunchStatus,
 } from "@/services/winner-sourcing";
+import { assignFilmerToBunch } from "@/services/filming";
+import { listUsersWithPermission } from "@/services/users";
 import { coerceBunchStatus, coerceSlotVideoType } from "@/lib/winner-sourcing-helpers";
 
 export async function GET(
@@ -34,12 +36,34 @@ export async function PATCH(
 ) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
   const { id } = await params;
   const body = (await req.json()) as Record<string, unknown>;
   try {
+    if (body.assigned_filmer_id !== undefined || body.action === "assign_filmer") {
+      if (!(await hasPermission(session, PERMISSIONS.FILMING_MANAGE))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      let filmerId = String(body.assigned_filmer_id ?? "").trim();
+      let filmerName = String(body.assigned_filmer_name ?? "").trim();
+      if (filmerId && !filmerName) {
+        const filmers = await listUsersWithPermission(PERMISSIONS.FILMING_VIEW_ASSIGNMENTS);
+        const match = filmers.find((u) => u.id === filmerId);
+        filmerName = (match?.full_name || match?.email || "").trim();
+      }
+      const bunch = await assignFilmerToBunch({
+        bunch_id: id,
+        assigned_filmer_id: filmerId,
+        assigned_filmer_name: filmerName,
+        actor_user_id: session.airtableUserId ?? session.id,
+        actor_user_name: (session.fullName || session.email || "").trim(),
+      });
+      return NextResponse.json({ bunch });
+    }
+
+    if (!(await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     if (body.assigned_creative_id !== undefined || body.action === "assign_creative") {
       const result = await assignCreativeToBunch({
         bunch_id: id,

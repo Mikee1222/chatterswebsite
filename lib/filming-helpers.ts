@@ -34,12 +34,25 @@ export const FILMING_STATUS_STYLES: Record<FilmingStatus, { label: string; class
   },
 };
 
-/** True when every filled slot has an Approved script (ready to assign to a filmer). */
-export function bunchScriptsReadyForFilming(slots: { status: string; video_link?: string; description?: string }[]): boolean {
+/**
+ * True when every slot that has filming work (filled find or script progress) is Approved.
+ * Empty Needs Script / Not Applicable placeholders do not block filmer assignment.
+ */
+export function bunchScriptsReadyForFilming(slots: {
+  status: string;
+  video_link?: string;
+  description?: string;
+}[]): boolean {
   const filled = slots.filter((s) => {
     const link = (s.video_link ?? "").trim();
     const desc = (s.description ?? "").trim();
-    return Boolean(link || desc) || s.status === "Approved" || s.status === "Pending Review" || s.status === "Needs Script" || s.status === "Rejected";
+    const hasContent = Boolean(link || desc);
+    if (hasContent) return true;
+    return (
+      s.status === "Approved" ||
+      s.status === "Pending Review" ||
+      s.status === "Rejected"
+    );
   });
   if (filled.length === 0) return false;
   return filled.every((s) => s.status === "Approved");

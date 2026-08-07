@@ -39,6 +39,7 @@ import {
   CreditCard,
   BookOpen,
   Link2,
+  FolderOpen,
   ChevronDown,
   Search,
   Pin,
@@ -103,6 +104,7 @@ const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   CreditCard,
   BookOpen,
   Link2,
+  FolderOpen,
 };
 
 const BETA_BADGE_CLASS =

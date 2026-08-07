@@ -84,6 +84,8 @@ type StaffAssigneePickerProps = {
   selectedIds: string[];
   onChange: (ids: string[]) => void;
   singleSelect?: boolean;
+  /** Unique radio group name when multiple pickers can mount on one page. */
+  name?: string;
   className?: string;
 };
 
@@ -93,6 +95,7 @@ export function StaffAssigneePicker({
   selectedIds,
   onChange,
   singleSelect = false,
+  name = "staff-assignee",
   className,
 }: StaffAssigneePickerProps) {
   const [query, setQuery] = React.useState("");
@@ -188,7 +191,7 @@ export function StaffAssigneePicker({
                     >
                       <input
                         type={singleSelect ? "radio" : "checkbox"}
-                        name={singleSelect ? "staff-assignee" : undefined}
+                        name={singleSelect ? name : undefined}
                         checked={checked}
                         onChange={() => toggleUser(u.id)}
                         className="h-4 w-4 border-white/25 text-pink-500 focus:ring-pink-500/30"

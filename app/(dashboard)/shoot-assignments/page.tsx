@@ -12,9 +12,9 @@ export default async function ShootAssignmentsPage() {
   if (!(await hasPermission(user, PERMISSIONS.FILMING_VIEW_ASSIGNMENTS))) {
     redirect(ROUTES.dashboard);
   }
-  // Manage holders use Winner Videos Hub for assignment + progress.
+  // Manage holders use Bunches for assignment + progress overview.
   if (await hasPermission(user, PERMISSIONS.FILMING_MANAGE)) {
-    redirect(ROUTES.admin.winnerVideosHub);
+    redirect(ROUTES.admin.bunches);
   }
 
   const filmerId = user.airtableUserId ?? user.id;
