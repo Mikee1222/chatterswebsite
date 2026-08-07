@@ -1142,8 +1142,9 @@ export function AdminBunchesClient({
                     }
                     onChange={(ids) => {
                       const next = ids[0];
-                      if (!next || next === selectedBunch.assigned_creative_id) return;
+                      if (!next) return;
                       setShowAssignPicker(false);
+                      // Re-selecting the same creative re-runs propagation (slots → winner_videos).
                       void assignCreativeToBunch(selectedBunch.id, next);
                     }}
                   />

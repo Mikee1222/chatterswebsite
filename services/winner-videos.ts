@@ -452,6 +452,8 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
         }
         if (!creativeId && bunch.assigned_creative_id?.trim()) {
           creativeId = bunch.assigned_creative_id.trim();
+        }
+        if (creativeId && !creativeName) {
           creativeName = bunch.assigned_creative_name.trim() || creativeName;
         }
       }
@@ -481,9 +483,10 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     quality_rating: qualityRating,
   };
 
-  if (creativeId && creativeName) {
+  // Bunch finds: copy creative onto winner_videos so Scripts to Write can filter by it.
+  if (creativeId) {
     patch.assigned_creative_id = creativeId;
-    patch.assigned_creative_name = creativeName;
+    if (creativeName) patch.assigned_creative_name = creativeName;
     const currentScriptStatus = existing.script_status;
     if (!currentScriptStatus || currentScriptStatus === "Not Applicable") {
       patch.script_status = "Needs Script";

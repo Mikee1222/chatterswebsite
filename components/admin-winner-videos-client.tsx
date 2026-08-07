@@ -966,7 +966,8 @@ export function AdminWinnerVideosClient({
                               }
                               onChange={(ids) => {
                                 const next = ids[0];
-                                if (!next || next === bunch?.assigned_creative_id) return;
+                                if (!next) return;
+                                // Re-selecting the same creative re-runs propagation (slots → winner_videos).
                                 void assignCreativeToBunch(group.bunchId!, next);
                               }}
                             />
