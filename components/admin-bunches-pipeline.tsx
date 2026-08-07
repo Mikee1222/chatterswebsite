@@ -25,7 +25,10 @@ import {
 import { EDITING_STATUS_STYLES } from "@/lib/editing-helpers";
 import { FILMING_STATUS_STYLES } from "@/lib/filming-helpers";
 import {
+  BUNCH_PIPELINE_STAGES,
   ICLOUD_STATUS_STYLES,
+  getBunchPipelineStageIndex,
+  isBunchIcloudOutstanding,
   materialRunwayTier,
   daysUntilMaterialDate,
 } from "@/lib/icloud-helpers";
@@ -35,19 +38,7 @@ import { FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 12;
-const STAGES = ["Sourcing", "Scripting", "Filming", "Editing", "iCloud"] as const;
-
-function stageIndex(b: VideoBunch): number {
-  if (b.icloud_status === "organized") return 4;
-  if (b.editing_status === "uploaded") return 4;
-  if (b.editing_status === "assigned" || b.editing_status === "in_progress") return 3;
-  if (b.filming_status === "uploaded") return 3;
-  if (b.filming_status === "assigned" || b.filming_status === "in_progress") return 2;
-  if (b.assigned_filmer_id) return 2;
-  if (b.assigned_creative_id) return 1;
-  if ((b.provided_count ?? 0) > 0 || (b.pending_review_count ?? 0) > 0) return 0;
-  return 0;
-}
+const STAGES = BUNCH_PIPELINE_STAGES;
 
 function ymdFromIso(iso: string | undefined): string | null {
   if (!iso) return null;
@@ -111,7 +102,7 @@ export function AdminBunchesPipeline({
     const q = search.trim().toLowerCase();
     return bunches.filter((b) => {
       if (modelFilter !== "all" && b.model_id !== modelFilter) return false;
-      if (stageFilter !== "all" && stageIndex(b) !== stageFilter) return false;
+      if (stageFilter !== "all" && getBunchPipelineStageIndex(b) !== stageFilter) return false;
       if (creativeFilter !== "all") {
         if (creativeFilter === "__none__") {
           if (b.assigned_creative_id) return false;
@@ -166,7 +157,7 @@ export function AdminBunchesPipeline({
   const alerts = modelRunways.filter((m) => m.alert === "urgent" || m.alert === "low" || m.alert === "none");
   const stageCounts = React.useMemo(() => {
     const counts = [0, 0, 0, 0, 0];
-    for (const b of bunches) counts[stageIndex(b)] += 1;
+    for (const b of bunches) counts[getBunchPipelineStageIndex(b)] += 1;
     return counts;
   }, [bunches]);
 
@@ -442,7 +433,8 @@ export function AdminBunchesPipeline({
         ) : (
           <ul className="space-y-3">
             {paginated.map((b) => {
-              const idx = stageIndex(b);
+              const idx = getBunchPipelineStageIndex(b);
+              const outstanding = isBunchIcloudOutstanding(b);
               const film = FILMING_STATUS_STYLES[b.filming_status] ?? FILMING_STATUS_STYLES.unassigned;
               const edit = EDITING_STATUS_STYLES[b.editing_status] ?? EDITING_STATUS_STYLES.unassigned;
               const cloud = ICLOUD_STATUS_STYLES[b.icloud_status] ?? ICLOUD_STATUS_STYLES.pending;
@@ -456,10 +448,17 @@ export function AdminBunchesPipeline({
                     <div className="flex flex-wrap gap-1.5">
                       <span className={cn(VA_STATUS_BADGE, film.className)}>Film: {film.label}</span>
                       <span className={cn(VA_STATUS_BADGE, edit.className)}>Edit: {edit.label}</span>
-                      <span className={cn(VA_STATUS_BADGE, cloud.className)}>iCloud: {cloud.label}</span>
+                      <span
+                        className={cn(
+                          VA_STATUS_BADGE,
+                          outstanding ? "bg-amber-500/20 text-amber-200" : cloud.className,
+                        )}
+                      >
+                        iCloud: {outstanding ? "Outstanding" : cloud.label}
+                      </span>
                     </div>
                   </div>
-                  <PipelineStageStepper active={idx} />
+                  <PipelineStageStepper active={idx} outstanding={outstanding} />
                   <p className="text-[11px] text-[#B8B4B8]/45">
                     Creative: {b.assigned_creative_name || "—"} · Filmer:{" "}
                     {b.assigned_filmer_name || "—"} · Editor: {b.assigned_editor_name || "—"}

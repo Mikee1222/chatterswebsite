@@ -31,10 +31,13 @@ export function PipelineStageStepper({
   active,
   className,
   compact,
+  /** When true, the active stage is outstanding (e.g. iCloud pending) — amber urgency. */
+  outstanding = false,
 }: {
   active: number;
   className?: string;
   compact?: boolean;
+  outstanding?: boolean;
 }) {
   const reduce = useReducedMotion();
   return (
@@ -50,6 +53,7 @@ export function PipelineStageStepper({
       {PIPELINE_STAGES.map((label, i) => {
         const done = i < active;
         const current = i === active;
+        const currentOutstanding = current && outstanding;
         const isLast = i === PIPELINE_STAGES.length - 1;
         return (
           <React.Fragment key={label}>
@@ -73,26 +77,36 @@ export function PipelineStageStepper({
                 className={cn(
                   "relative flex items-center justify-center rounded-full border-2",
                   compact ? "h-2.5 w-2.5" : "h-3.5 w-3.5",
-                  current
-                    ? "border-[#FF1493] bg-[#FF1493] shadow-[0_0_12px_-2px_rgba(255,20,147,0.7)]"
-                    : done
-                      ? "border-[#D4AF8C] bg-[#D4AF8C]"
-                      : "border-[#D4AF8C]/30 bg-[#151315]",
+                  currentOutstanding
+                    ? "border-amber-400 bg-amber-400 shadow-[0_0_14px_-2px_rgba(251,191,36,0.85)] ring-2 ring-amber-400/35"
+                    : current
+                      ? "border-[#FF1493] bg-[#FF1493] shadow-[0_0_12px_-2px_rgba(255,20,147,0.7)]"
+                      : done
+                        ? "border-[#D4AF8C] bg-[#D4AF8C]"
+                        : "border-[#D4AF8C]/30 bg-[#151315]",
                 )}
                 aria-current={current ? "step" : undefined}
+                title={currentOutstanding ? `${label} — outstanding` : undefined}
               />
               <span
                 className={cn(
                   "text-center font-semibold uppercase tracking-[0.1em]",
                   compact ? "text-[8px] leading-tight" : "text-[9px] sm:text-[10px]",
-                  current
-                    ? "text-[#FF1493]"
-                    : done
-                      ? "text-[#D4AF8C]/90"
-                      : "text-white/30",
+                  currentOutstanding
+                    ? "text-amber-300"
+                    : current
+                      ? "text-[#FF1493]"
+                      : done
+                        ? "text-[#D4AF8C]/90"
+                        : "text-white/30",
                 )}
               >
                 {label}
+                {currentOutstanding && !compact ? (
+                  <span className="mt-0.5 block text-[8px] font-bold tracking-[0.12em] text-amber-300/90">
+                    Outstanding
+                  </span>
+                ) : null}
               </span>
             </div>
             {!isLast ? (
@@ -100,7 +114,12 @@ export function PipelineStageStepper({
                 className={cn(
                   "mb-4 h-px min-w-[8px] flex-1 sm:mb-5",
                   compact && "mb-3",
-                  done || current ? "bg-gradient-to-r from-[#D4AF8C]/70 to-[#FF1493]/40" : "bg-white/10",
+                  currentOutstanding && "mb-6",
+                  done || current
+                    ? currentOutstanding
+                      ? "bg-gradient-to-r from-[#D4AF8C]/70 to-amber-400/60"
+                      : "bg-gradient-to-r from-[#D4AF8C]/70 to-[#FF1493]/40"
+                    : "bg-white/10",
                 )}
                 aria-hidden
               />

@@ -12,6 +12,7 @@ import {
   type BunchModelOption,
   type BunchStaffOption,
 } from "@/components/admin-bunches-client";
+import type { IcloudFolderEntry } from "@/services/icloud";
 
 export default async function AdminBunchesPage({
   searchParams,
@@ -104,6 +105,7 @@ export default async function AdminBunchesPage({
         initialFilmingProgress={filmingProgress}
         initialEditingProgress={editingProgress}
         initialModelRunways={pipeline.modelRunways}
+        initialFoldersByBunch={pipeline.foldersByBunch}
         initialSelectedId={initialSelectedId}
       />
     </div>

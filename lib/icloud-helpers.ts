@@ -1,3 +1,47 @@
+/** Shared bunch pipeline stages (Bunches list · Pipeline Overview · detail stepper). */
+export const BUNCH_PIPELINE_STAGES = [
+  "Sourcing",
+  "Scripting",
+  "Filming",
+  "Editing",
+  "iCloud",
+] as const;
+export type BunchPipelineStage = (typeof BUNCH_PIPELINE_STAGES)[number];
+
+/** 0–4 index for Sourcing → Scripting → Filming → Editing → iCloud. */
+export function getBunchPipelineStageIndex(b: {
+  provided_count?: number;
+  pending_review_count?: number;
+  assigned_creative_id?: string;
+  assigned_filmer_id?: string;
+  filming_status?: string;
+  editing_status?: string;
+  icloud_status?: string;
+}): number {
+  if (coerceIcloudStatus(b.icloud_status) === "organized") return 4;
+  if (String(b.editing_status ?? "").toLowerCase() === "uploaded") return 4;
+  const edit = String(b.editing_status ?? "").toLowerCase();
+  if (edit === "assigned" || edit === "in_progress") return 3;
+  if (String(b.filming_status ?? "").toLowerCase() === "uploaded") return 3;
+  const film = String(b.filming_status ?? "").toLowerCase();
+  if (film === "assigned" || film === "in_progress") return 2;
+  if (b.assigned_filmer_id) return 2;
+  if (b.assigned_creative_id) return 1;
+  if ((b.provided_count ?? 0) > 0 || (b.pending_review_count ?? 0) > 0) return 0;
+  return 0;
+}
+
+/** Editing uploaded but iCloud not yet organized — outstanding stage for steppers. */
+export function isBunchIcloudOutstanding(b: {
+  editing_status?: string;
+  icloud_status?: string;
+}): boolean {
+  return (
+    String(b.editing_status ?? "").toLowerCase() === "uploaded" &&
+    coerceIcloudStatus(b.icloud_status) !== "organized"
+  );
+}
+
 /** iCloud organization status for a video bunch after editing upload. */
 export const ICLOUD_STATUSES = ["pending", "in_progress", "organized"] as const;
 export type IcloudStatus = (typeof ICLOUD_STATUSES)[number];

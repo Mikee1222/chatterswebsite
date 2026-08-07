@@ -12,6 +12,7 @@ import {
 import { assignFilmerToBunch } from "@/services/filming";
 import { listUsersWithPermission } from "@/services/users";
 import { coerceBunchStatus, coerceSlotVideoType } from "@/lib/winner-sourcing-helpers";
+import { listFoldersForBunch } from "@/services/icloud";
 
 export async function GET(
   _req: Request,
@@ -25,9 +26,13 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await params;
-  const [bunch, slots] = await Promise.all([getVideoBunch(id), listSlotsForBunch(id)]);
+  const [bunch, slots, folders] = await Promise.all([
+    getVideoBunch(id),
+    listSlotsForBunch(id),
+    canManage ? listFoldersForBunch(id).catch(() => []) : Promise.resolve([]),
+  ]);
   if (!bunch) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json({ bunch, slots });
+  return NextResponse.json({ bunch, slots, folders });
 }
 
 export async function PATCH(

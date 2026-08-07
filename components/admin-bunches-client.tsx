@@ -4,8 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  Cloud,
   ExternalLink,
   FolderKanban,
+  FolderOpen,
   FolderPlus,
   Loader2,
   Plus,
@@ -17,9 +19,12 @@ import {
 } from "lucide-react";
 import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { AdminBunchesPipeline } from "@/components/admin-bunches-pipeline";
-import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import {
+  ContentPipelineHero,
+  PipelineStageStepper,
+} from "@/components/content-pipeline-ui";
 import { FilterBar, FilterChip, ReviewEmptyState } from "@/components/manager-review-ui";
-import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -35,7 +40,15 @@ import {
 } from "@/lib/va-tasks-tokens";
 import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
 import { bunchScriptsReadyForFilming, FILMING_STATUS_STYLES, type FilmingStatus } from "@/lib/filming-helpers";
-import { bunchReadyForEditing } from "@/lib/editing-helpers";
+import { bunchReadyForEditing, EDITING_STATUS_STYLES } from "@/lib/editing-helpers";
+import {
+  BUNCH_PIPELINE_STAGES,
+  ICLOUD_STATUS_STYLES,
+  bunchReadyForIcloud,
+  formatMaterialDate,
+  getBunchPipelineStageIndex,
+  isBunchIcloudOutstanding,
+} from "@/lib/icloud-helpers";
 import {
   SLOT_VIDEO_TYPES,
   SLOT_VIDEO_TYPE_LABELS,
@@ -43,7 +56,7 @@ import {
 } from "@/lib/winner-sourcing-helpers";
 import { ROUTES } from "@/lib/routes";
 import type { RecreateVideoSlot, VideoBunch } from "@/services/winner-sourcing";
-import type { ModelMaterialRunway } from "@/services/icloud";
+import type { IcloudFolderEntry, ModelMaterialRunway } from "@/services/icloud";
 import { cn } from "@/lib/utils";
 
 export type BunchStaffOption = {
@@ -56,6 +69,7 @@ export type BunchStaffOption = {
 export type BunchModelOption = { model_id: string; model_name: string };
 
 const PAGE_SIZE = 12;
+
 const FILMING_FILTERS: Array<{ value: "all" | FilmingStatus; label: string }> = [
   { value: "all", label: "All filming" },
   { value: "unassigned", label: "Unassigned" },
@@ -64,11 +78,55 @@ const FILMING_FILTERS: Array<{ value: "all" | FilmingStatus; label: string }> = 
   { value: "uploaded", label: "Uploaded" },
 ];
 
-function formatBunchDate(iso: string | undefined): string {
+function formatBunchDate(iso: string | undefined | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatBunchDateTime(iso: string | undefined | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function ymdFromIso(iso: string | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function icloudStageLabel(
+  bunch: VideoBunch,
+  folders: IcloudFolderEntry[],
+): { label: string; className: string; pendingNoFolders: boolean } {
+  if (bunch.icloud_status === "organized") {
+    return { label: "Complete", className: ICLOUD_STATUS_STYLES.organized.className, pendingNoFolders: false };
+  }
+  if (!bunchReadyForIcloud(bunch)) {
+    return { label: "Not started", className: "bg-white/10 text-white/50", pendingNoFolders: false };
+  }
+  if (folders.length === 0) {
+    return {
+      label: "Pending — no folders",
+      className: "bg-amber-500/20 text-amber-200",
+      pendingNoFolders: true,
+    };
+  }
+  const st = ICLOUD_STATUS_STYLES[bunch.icloud_status] ?? ICLOUD_STATUS_STYLES.pending;
+  return { label: st.label, className: st.className, pendingNoFolders: false };
 }
 
 export function AdminBunchesClient({
@@ -82,6 +140,7 @@ export function AdminBunchesClient({
   initialFilmingProgress = {},
   initialEditingProgress = {},
   initialModelRunways = [],
+  initialFoldersByBunch = {},
   initialSelectedId = null,
 }: {
   initialBunches: VideoBunch[];
@@ -94,6 +153,7 @@ export function AdminBunchesClient({
   initialFilmingProgress?: Record<string, { filmed_count: number; filmable_count: number }>;
   initialEditingProgress?: Record<string, { edited_count: number; editable_count: number }>;
   initialModelRunways?: ModelMaterialRunway[];
+  initialFoldersByBunch?: Record<string, IcloudFolderEntry[]>;
   initialSelectedId?: string | null;
 }) {
   const { addToast } = useToast();
@@ -101,6 +161,9 @@ export function AdminBunchesClient({
   const [filmingProgress, setFilmingProgress] = React.useState(initialFilmingProgress);
   const [editingProgress, setEditingProgress] = React.useState(initialEditingProgress);
   const [modelRunways, setModelRunways] = React.useState(initialModelRunways);
+  const [foldersByBunch, setFoldersByBunch] = React.useState<Record<string, IcloudFolderEntry[]>>(
+    initialFoldersByBunch,
+  );
   const [viewMode, setViewMode] = React.useState<"bunches" | "pipeline">("bunches");
   const [pipelineLoading, setPipelineLoading] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
@@ -122,10 +185,24 @@ export function AdminBunchesClient({
   const [search, setSearch] = React.useState("");
   const [modelFilter, setModelFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "open" | "closed">("open");
-  const [filmingFilter, setFilmingFilter] = React.useState<"all" | FilmingStatus>("all");
+  const [stageFilter, setStageFilter] = React.useState<"all" | number>("all");
   const [creativeFilter, setCreativeFilter] = React.useState("all");
+  const [filmingFilter, setFilmingFilter] = React.useState<"all" | FilmingStatus>("all");
   const [filmerFilter, setFilmerFilter] = React.useState("all");
   const [editorFilter, setEditorFilter] = React.useState("all");
+
+  const todayYmd = React.useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+  const monthAgoYmd = React.useMemo(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+  const [dateStart, setDateStart] = React.useState(monthAgoYmd);
+  const [dateEnd, setDateEnd] = React.useState(todayYmd);
+  const [dateApplied, setDateApplied] = React.useState<{ start: string; end: string } | null>(null);
 
   const staffCreatives = React.useMemo<StaffUserOption[]>(
     () =>
@@ -204,9 +281,11 @@ export function AdminBunchesClient({
         const d = (await res.json()) as {
           bunches?: VideoBunch[];
           modelRunways?: ModelMaterialRunway[];
+          foldersByBunch?: Record<string, IcloudFolderEntry[]>;
         };
         if (d.bunches) setBunches(d.bunches);
         if (d.modelRunways) setModelRunways(d.modelRunways);
+        if (d.foldersByBunch) setFoldersByBunch(d.foldersByBunch);
       }
     } finally {
       setPipelineLoading(false);
@@ -242,6 +321,7 @@ export function AdminBunchesClient({
     setSelectedBunchId(bunchId);
     setShowAssignPicker(false);
     setShowFilmerPicker(false);
+    setShowEditorPicker(false);
     setLoadingSlots(true);
     try {
       const res = await fetch(`/api/winner-sourcing/bunches/${bunchId}`, { credentials: "include" });
@@ -250,6 +330,9 @@ export function AdminBunchesClient({
       setSlots(d.slots ?? []);
       if (d.bunch) {
         setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...d.bunch } : b)));
+      }
+      if (Array.isArray(d.folders)) {
+        setFoldersByBunch((prev) => ({ ...prev, [bunchId]: d.folders as IcloudFolderEntry[] }));
       }
     } finally {
       setLoadingSlots(false);
@@ -505,6 +588,7 @@ export function AdminBunchesClient({
     return bunches.filter((b) => {
       if (statusFilter !== "all" && b.status !== statusFilter) return false;
       if (modelFilter !== "all" && b.model_id !== modelFilter) return false;
+      if (stageFilter !== "all" && getBunchPipelineStageIndex(b) !== stageFilter) return false;
       if (filmingFilter !== "all" && b.filming_status !== filmingFilter) return false;
       if (creativeFilter !== "all") {
         if (creativeFilter === "__none__") {
@@ -521,6 +605,11 @@ export function AdminBunchesClient({
           if (b.assigned_editor_id) return false;
         } else if (b.assigned_editor_id !== editorFilter) return false;
       }
+      if (dateApplied) {
+        const ymd = ymdFromIso(b.updated_at || b.created_at);
+        if (!ymd) return false;
+        if (ymd < dateApplied.start || ymd > dateApplied.end) return false;
+      }
       if (!q) return true;
       const hay = [
         b.name,
@@ -530,6 +619,8 @@ export function AdminBunchesClient({
         b.assigned_editor_name,
         b.status,
         b.filming_status,
+        b.editing_status,
+        b.icloud_status,
       ]
         .join(" ")
         .toLowerCase();
@@ -540,10 +631,12 @@ export function AdminBunchesClient({
     search,
     modelFilter,
     statusFilter,
+    stageFilter,
     filmingFilter,
     creativeFilter,
     filmerFilter,
     editorFilter,
+    dateApplied,
   ]);
 
   const { page, setPage, totalPages, paginated, reset } = usePagination(filtered, PAGE_SIZE);
@@ -553,14 +646,18 @@ export function AdminBunchesClient({
     search,
     modelFilter,
     statusFilter,
+    stageFilter,
     filmingFilter,
     creativeFilter,
     filmerFilter,
     editorFilter,
+    dateApplied,
     reset,
   ]);
 
   const selectedBunch = bunches.find((b) => b.id === selectedBunchId) ?? null;
+  const selectedFolders =
+    selectedBunchId && foldersByBunch[selectedBunchId] ? foldersByBunch[selectedBunchId]! : [];
   const scriptsReady = bunchScriptsReadyForFilming(slots);
   const selectedProgress = selectedBunchId
     ? filmingProgress[selectedBunchId] ?? {
@@ -570,9 +667,12 @@ export function AdminBunchesClient({
     : null;
 
   const openCount = bunches.filter((b) => b.status === "open").length;
-  const filmingReadyCount = canManageFilming
-    ? bunches.filter((b) => b.filming_status === "unassigned").length
-    : 0;
+  const icloudOutstandingCount = bunches.filter((b) => isBunchIcloudOutstanding(b)).length;
+  const stageCounts = React.useMemo(() => {
+    const counts = [0, 0, 0, 0, 0];
+    for (const b of bunches) counts[getBunchPipelineStageIndex(b)] += 1;
+    return counts;
+  }, [bunches]);
 
   function handleAssignFilmerClick() {
     if (!selectedBunch) return;
@@ -678,11 +778,15 @@ export function AdminBunchesClient({
         title="Bunches"
         description={
           <>
-            Plan recreate batches, assign creatives & filmers, and track filming through upload.
+            Full pipeline from sourcing through iCloud — assign creative, filmer & editor, track every stage.
             <span className="mt-3 block text-xs text-[#B8B4B8]/45">
               Source winners in{" "}
               <Link href={ROUTES.admin.winnerVideosHub} className="text-[#FF1493]/90 hover:underline">
                 Winner Videos Hub
+              </Link>
+              {" · "}
+              <Link href={ROUTES.icloudOrganization} className="text-[#FF1493]/90 hover:underline">
+                iCloud Organization
               </Link>
               .
             </span>
@@ -711,7 +815,7 @@ export function AdminBunchesClient({
           </>
         }
         stats={
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <LuxuryStatCard
               label="Total"
               value={<CountUp value={bunches.length} />}
@@ -725,14 +829,19 @@ export function AdminBunchesClient({
               glow
               tooltip="Bunches still accepting content"
             />
-            {canManageFilming ? (
-              <LuxuryStatCard
-                label="Unassigned filming"
-                value={<CountUp value={filmingReadyCount} />}
-                accent="champagne"
-                tooltip="Open bunches without a filmer assigned"
-              />
-            ) : null}
+            <LuxuryStatCard
+              label="In filming"
+              value={<CountUp value={stageCounts[2]} />}
+              accent="champagne"
+              tooltip="Bunches currently in the Filming stage"
+            />
+            <LuxuryStatCard
+              label="iCloud outstanding"
+              value={<CountUp value={icloudOutstandingCount} />}
+              accent={icloudOutstandingCount > 0 ? "amber" : "emerald"}
+              glow={icloudOutstandingCount > 0}
+              tooltip="Editing uploaded but iCloud not organized"
+            />
           </div>
         }
       />
@@ -841,19 +950,20 @@ export function AdminBunchesClient({
                 </option>
               ))}
             </select>
-            {canManageFilming ? (
-              <select
-                value={filmingFilter}
-                onChange={(e) => setFilmingFilter(e.target.value as "all" | FilmingStatus)}
-                className={cn(VA_FILTER_INPUT, "min-w-[8rem]")}
-              >
-                {FILMING_FILTERS.map((f) => (
-                  <option key={f.value} value={f.value}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            ) : null}
+            <select
+              value={stageFilter === "all" ? "all" : String(stageFilter)}
+              onChange={(e) =>
+                setStageFilter(e.target.value === "all" ? "all" : Number(e.target.value))
+              }
+              className={cn(VA_FILTER_INPUT, "min-w-[8rem]")}
+            >
+              <option value="all">All stages</option>
+              {BUNCH_PIPELINE_STAGES.map((s, i) => (
+                <option key={s} value={i}>
+                  {s}
+                </option>
+              ))}
+            </select>
             <select
               value={creativeFilter}
               onChange={(e) => setCreativeFilter(e.target.value)}
@@ -899,13 +1009,27 @@ export function AdminBunchesClient({
             ) : null}
           </div>
         </div>
+        <InflowwCustomDateRange
+          startYmd={dateStart}
+          endYmd={dateEnd}
+          onChange={(start, end) => {
+            setDateStart(start);
+            setDateEnd(end);
+          }}
+          onApply={(start, end) => {
+            setDateStart(start);
+            setDateEnd(end);
+            setDateApplied({ start, end });
+          }}
+        />
         {(search.trim() ||
           statusFilter !== "open" ||
           modelFilter !== "all" ||
-          filmingFilter !== "all" ||
+          stageFilter !== "all" ||
           creativeFilter !== "all" ||
           filmerFilter !== "all" ||
-          editorFilter !== "all") && (
+          editorFilter !== "all" ||
+          dateApplied) && (
           <div className="flex flex-wrap gap-2">
             {search.trim() ? (
               <FilterChip label={`Search: ${search.trim()}`} onRemove={() => setSearch("")} />
@@ -922,10 +1046,10 @@ export function AdminBunchesClient({
                 onRemove={() => setModelFilter("all")}
               />
             ) : null}
-            {filmingFilter !== "all" ? (
+            {stageFilter !== "all" ? (
               <FilterChip
-                label={`Filming: ${FILMING_FILTERS.find((f) => f.value === filmingFilter)?.label ?? filmingFilter}`}
-                onRemove={() => setFilmingFilter("all")}
+                label={`Stage: ${BUNCH_PIPELINE_STAGES[stageFilter]}`}
+                onRemove={() => setStageFilter("all")}
               />
             ) : null}
             {creativeFilter !== "all" ? (
@@ -956,6 +1080,16 @@ export function AdminBunchesClient({
                     : editors.find((e) => e.id === editorFilter)?.name ?? editorFilter
                 }`}
                 onRemove={() => setEditorFilter("all")}
+              />
+            ) : null}
+            {dateApplied ? (
+              <FilterChip
+                label={`${dateApplied.start} → ${dateApplied.end}`}
+                onRemove={() => {
+                  setDateApplied(null);
+                  setDateStart(monthAgoYmd);
+                  setDateEnd(todayYmd);
+                }}
               />
             ) : null}
           </div>
