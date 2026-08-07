@@ -34,6 +34,7 @@ import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "
 import { listUsersWithPermission } from "@/services/users";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
+import { coerceFilmingStatus } from "@/lib/filming-helpers";
 
 export type { WinnerSourcingRecreateConfig };
 
@@ -51,6 +52,12 @@ export type VideoBunch = {
   /** Source of truth: creative who scripts all slots in this bunch. */
   assigned_creative_id: string;
   assigned_creative_name: string;
+  /** Filmer assigned after all scripts are approved. */
+  assigned_filmer_id: string;
+  assigned_filmer_name: string;
+  filming_status: import("@/lib/filming-helpers").FilmingStatus;
+  upload_folder_link: string;
+  uploaded_at: string | null;
   created_at: string;
   updated_at: string;
   /** Computed: recreate_video_slots currently in this bunch (approved/filled). */
@@ -59,6 +66,9 @@ export type VideoBunch = {
   pending_review_count?: number;
   /** Computed: target − provided − pending. */
   remaining_count?: number;
+  /** Computed filming progress when slots are loaded. */
+  filmed_count?: number;
+  filmable_count?: number;
 };
 
 export type WinnerSubmission = {
@@ -98,6 +108,8 @@ export type RecreateVideoSlot = {
   assigned_creative_name: string;
   winner_submission_id: string | null;
   winner_video_id: string | null;
+  filmed: boolean;
+  filmed_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -116,6 +128,11 @@ function mapBunch(row: Record<string, unknown>): VideoBunch {
     status: coerceBunchStatus(row.status),
     assigned_creative_id: String(row.assigned_creative_id ?? ""),
     assigned_creative_name: String(row.assigned_creative_name ?? ""),
+    assigned_filmer_id: String(row.assigned_filmer_id ?? ""),
+    assigned_filmer_name: String(row.assigned_filmer_name ?? ""),
+    filming_status: coerceFilmingStatus(row.filming_status),
+    upload_folder_link: String(row.upload_folder_link ?? ""),
+    uploaded_at: row.uploaded_at ? String(row.uploaded_at) : null,
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
   };
@@ -167,6 +184,8 @@ function mapSlot(row: Record<string, unknown>): RecreateVideoSlot {
     assigned_creative_name: String(row.assigned_creative_name ?? ""),
     winner_submission_id: row.winner_submission_id ? String(row.winner_submission_id) : null,
     winner_video_id: row.winner_video_id ? String(row.winner_video_id) : null,
+    filmed: Boolean(row.filmed),
+    filmed_at: row.filmed_at ? String(row.filmed_at) : null,
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
   };

@@ -70,6 +70,8 @@ export function MyScriptsClient({
   const [scriptText, setScriptText] = React.useState("");
   const [textOnScreen, setTextOnScreen] = React.useState("");
   const [textOnScreenOpen, setTextOnScreenOpen] = React.useState(false);
+  const [scriptBrief, setScriptBrief] = React.useState("");
+  const [scriptBriefOpen, setScriptBriefOpen] = React.useState(false);
 
   React.useEffect(() => setScripts(initialScripts), [initialScripts]);
   React.useEffect(() => setSlotMeta(initialSlotMeta), [initialSlotMeta]);
@@ -136,6 +138,8 @@ export function MyScriptsClient({
     setScriptText(video.script_text || "");
     setTextOnScreen(video.text_on_screen_suggestion || "");
     setTextOnScreenOpen(Boolean(video.text_on_screen_suggestion?.trim()));
+    setScriptBrief(video.script_brief || "");
+    setScriptBriefOpen(Boolean(video.script_brief?.trim()));
     setExpandedId(video.id);
   }
 
@@ -159,6 +163,7 @@ export function MyScriptsClient({
           script_video_type: scriptType,
           script_text: scriptText,
           text_on_screen_suggestion: textOnScreen,
+          script_brief: scriptBrief,
         }),
       });
       const data = (await res.json()) as { video?: WinnerVideoRecord; error?: string };
@@ -364,6 +369,38 @@ export function MyScriptsClient({
                               onChange={(e) => setTextOnScreen(e.target.value)}
                               rows={4}
                               placeholder="e.g. captions, titles, callouts…"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                          onClick={() => setScriptBriefOpen((o) => !o)}
+                          aria-expanded={scriptBriefOpen}
+                        >
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                            Brief
+                            <span className="ml-1.5 font-normal normal-case tracking-normal text-[#B8B4B8]/45">
+                              (optional)
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 text-[#D4AF8C]/70 transition-transform",
+                              scriptBriefOpen && "rotate-180",
+                            )}
+                            aria-hidden
+                          />
+                        </button>
+                        {scriptBriefOpen ? (
+                          <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
+                            <ManagerReviewTextarea
+                              value={scriptBrief}
+                              onChange={(e) => setScriptBrief(e.target.value)}
+                              rows={4}
+                              placeholder="Filming brief — tone, framing, wardrobe…"
                             />
                           </div>
                         ) : null}

@@ -27,6 +27,7 @@ export async function POST(req: Request) {
       script_video_type,
       script_text: String(body.script_text ?? ""),
       text_on_screen_suggestion: String(body.text_on_screen_suggestion ?? ""),
+      script_brief: String(body.script_brief ?? ""),
       script_submitted_by_name: (session.fullName || session.email || "").trim(),
       script_submitted_by_id: (session.airtableUserId ?? session.id).trim(),
     });

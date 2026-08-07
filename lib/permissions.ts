@@ -80,6 +80,10 @@ export const PERMISSIONS = {
   CREATIVE_SCRIPTS_SUBMIT: "creative_scripts:submit",
   CREATIVE_SCRIPTS_MANAGE: "creative_scripts:manage",
 
+  /** Filmer shoot assignments + filming calendar (opt-in via Roles UI — no hardcoded filmer role). */
+  FILMING_VIEW_ASSIGNMENTS: "filming:view_assignments",
+  FILMING_MANAGE: "filming:manage",
+
   DAILY_REVIEW_SUBMIT: "daily_review:submit",
   DAILY_REVIEW_MANAGE: "daily_review:manage",
 
@@ -193,6 +197,7 @@ const ACTION_LABELS: Record<string, string> = {
   diagnostic: "Diagnostic",
   view_own: "View own",
   view_all: "View all",
+  view_assignments: "View assignments",
 };
 
 /** Human-readable labels for permission categories (prefix before `:`). */
@@ -220,6 +225,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   winner_videos: "Winner videos",
   winner_sourcing: "Winner sourcing",
   creative_scripts: "Creative scripts",
+  filming: "Filming",
   daily_review: "Daily review",
   content: "Content",
   "spin-wheel": "Spin wheel",
@@ -338,6 +344,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "creative_scripts:submit": "Συγγραφή scripts για approved winner videos",
   "creative_scripts:manage": "Έλεγχος, επεξεργασία και έγκριση creative scripts",
+
+  "filming:view_assignments": "Προβολή ανατεθειμένων bunches/scripts προς γύρισμα (Shoot Assignments)",
+  "filming:manage": "Ανάθεση bunches σε filmers και διαχείριση ημερολογίου γυρισμάτων",
 
   "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
   "daily_review:manage": "Διαχείριση ημερήσιων αξιολογήσεων και exec audits marketing",

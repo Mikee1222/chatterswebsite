@@ -17,6 +17,7 @@ import {
 import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import {
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
@@ -26,6 +27,7 @@ import {
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
 import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
+import { FILMING_STATUS_STYLES } from "@/lib/filming-helpers";
 import {
   SLOT_VIDEO_TYPES,
   SLOT_VIDEO_TYPE_LABELS,
@@ -50,6 +52,8 @@ export type HubCreativeOption = {
   role?: string;
 };
 
+export type HubFilmerOption = HubCreativeOption;
+
 type TabId = "winners" | "super" | "queue" | "bunches" | "settings";
 
 const TABS: { id: TabId; label: string }[] = [
@@ -68,6 +72,9 @@ export function WinnerVideosHubClient({
   initialRecreateConfig,
   models,
   creatives,
+  filmers = [],
+  canManageFilming = false,
+  initialFilmingProgress = {},
 }: {
   initialWinners: WinnerSubmission[];
   initialSuperWinners: WinnerSubmission[];
@@ -76,6 +83,9 @@ export function WinnerVideosHubClient({
   initialRecreateConfig: WinnerSourcingRecreateConfig;
   models: HubModelOption[];
   creatives: HubCreativeOption[];
+  filmers?: HubFilmerOption[];
+  canManageFilming?: boolean;
+  initialFilmingProgress?: Record<string, { filmed_count: number; filmable_count: number }>;
 }) {
   const { addToast } = useToast();
   const [tab, setTab] = React.useState<TabId>("winners");
@@ -84,6 +94,7 @@ export function WinnerVideosHubClient({
   const [queue, setQueue] = React.useState(initialQueue);
   const [bunches, setBunches] = React.useState(initialBunches);
   const [recreateConfig, setRecreateConfig] = React.useState(initialRecreateConfig);
+  const [filmingProgress, setFilmingProgress] = React.useState(initialFilmingProgress);
   const [refreshing, setRefreshing] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
@@ -97,6 +108,24 @@ export function WinnerVideosHubClient({
   const [bunchName, setBunchName] = React.useState("");
   const [bunchModelId, setBunchModelId] = React.useState("");
   const [bunchTarget, setBunchTarget] = React.useState("30");
+
+  async function refreshFilmingProgress(ids: string[]) {
+    if (!canManageFilming || ids.length === 0) return;
+    try {
+      const res = await fetch(
+        `/api/filming/progress?ids=${encodeURIComponent(ids.join(","))}`,
+        { credentials: "include" },
+      );
+      if (res.ok) {
+        const d = (await res.json()) as {
+          progress?: Record<string, { filmed_count: number; filmable_count: number }>;
+        };
+        if (d.progress) setFilmingProgress((prev) => ({ ...prev, ...d.progress }));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
 
   async function refreshAll() {
     setRefreshing(true);
@@ -123,6 +152,8 @@ export function WinnerVideosHubClient({
       if (bRes.ok) {
         const d = await bRes.json();
         setBunches(d.bunches ?? []);
+        const ids = (d.bunches ?? []).map((b: VideoBunch) => b.id);
+        void refreshFilmingProgress(ids);
       }
       if (cfgRes.ok) {
         const d = await cfgRes.json();
@@ -322,6 +353,55 @@ export function WinnerVideosHubClient({
     }
   }
 
+  async function assignFilmerToBunch(bunchId: string, filmerId: string) {
+    const filmer = filmers.find((f) => f.id === filmerId);
+    if (!filmer) return;
+    setBusyId(`filmer-${bunchId}`);
+    try {
+      const res = await fetch(`/api/filming/bunches/${encodeURIComponent(bunchId)}/assign`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          assigned_filmer_id: filmer.id,
+          assigned_filmer_name: filmer.name,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(`ws-film-err-${Date.now()}`, "Filmer assign failed", data.error || "Error", "high"),
+        );
+        return;
+      }
+      addToast(
+        winnerVideoLocalToast(
+          `ws-film-ok-${Date.now()}`,
+          "Bunch assigned to filmer",
+          filmer.name,
+          "normal",
+        ),
+      );
+      if (data.bunch) {
+        setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...data.bunch } : b)));
+      }
+      void refreshFilmingProgress([bunchId]);
+      if (selectedBunchId === bunchId) await loadBunchSlots(bunchId);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const refreshAllRef = React.useRef(refreshAll);
+  refreshAllRef.current = refreshAll;
+  useSupabaseRealtimeRefresh(
+    ["video_bunches", "recreate_video_slots"],
+    () => {
+      void refreshAllRef.current();
+    },
+    { debounceMs: 800 },
+  );
+
   async function updateSlotType(
     slotId: string,
     video_type: SlotVideoType | "",
@@ -491,6 +571,9 @@ export function WinnerVideosHubClient({
               bunches={bunches}
               models={models}
               creatives={creatives}
+              filmers={filmers}
+              canManageFilming={canManageFilming}
+              filmingProgress={filmingProgress}
               showCreate={showCreateBunch}
               setShowCreate={setShowCreateBunch}
               bunchName={bunchName}
@@ -506,6 +589,7 @@ export function WinnerVideosHubClient({
               loadingSlots={loadingSlots}
               onSelectBunch={(id) => void loadBunchSlots(id)}
               onAssignCreative={assignCreativeToBunch}
+              onAssignFilmer={assignFilmerToBunch}
               onUpdateSlotType={updateSlotType}
               onToggleBunchStatus={toggleBunchStatus}
             />
@@ -817,6 +901,9 @@ function BunchesPanel({
   bunches,
   models,
   creatives,
+  filmers,
+  canManageFilming,
+  filmingProgress,
   showCreate,
   setShowCreate,
   bunchName,
@@ -832,12 +919,16 @@ function BunchesPanel({
   loadingSlots,
   onSelectBunch,
   onAssignCreative,
+  onAssignFilmer,
   onUpdateSlotType,
   onToggleBunchStatus,
 }: {
   bunches: VideoBunch[];
   models: HubModelOption[];
   creatives: HubCreativeOption[];
+  filmers: HubFilmerOption[];
+  canManageFilming: boolean;
+  filmingProgress: Record<string, { filmed_count: number; filmable_count: number }>;
   showCreate: boolean;
   setShowCreate: (v: boolean) => void;
   bunchName: string;
@@ -853,6 +944,7 @@ function BunchesPanel({
   loadingSlots: boolean;
   onSelectBunch: (id: string) => void;
   onAssignCreative: (bunchId: string, creativeId: string) => void;
+  onAssignFilmer: (bunchId: string, filmerId: string) => void;
   onUpdateSlotType: (
     slotId: string,
     video_type: SlotVideoType | "",
@@ -861,6 +953,7 @@ function BunchesPanel({
   onToggleBunchStatus?: (id: string, status: "open" | "closed") => void;
 }) {
   const [showAssignPicker, setShowAssignPicker] = React.useState(false);
+  const [showFilmerPicker, setShowFilmerPicker] = React.useState(false);
   const selectedBunch = bunches.find((b) => b.id === selectedBunchId) ?? null;
 
   const staffCreatives = React.useMemo<StaffUserOption[]>(
@@ -873,6 +966,35 @@ function BunchesPanel({
       })),
     [creatives],
   );
+
+  const staffFilmers = React.useMemo<StaffUserOption[]>(
+    () =>
+      filmers.map((f) => ({
+        id: f.id,
+        full_name: f.name,
+        email: f.email ?? "",
+        role: f.role ?? "other",
+      })),
+    [filmers],
+  );
+
+  const scriptsReady =
+    slots.length > 0 &&
+    slots.every((s) => s.status === "Approved" || (!s.video_link && !s.description && s.status === "Not Applicable"))
+      ? slots.filter((s) => s.status === "Approved").length > 0 &&
+        slots.filter((s) => s.video_link || s.description || s.status !== "Not Applicable").every((s) => s.status === "Approved")
+      : slots.filter((s) => s.status === "Approved" || s.status === "Pending Review" || s.status === "Needs Script" || s.status === "Rejected").length >
+          0 &&
+        slots
+          .filter((s) => s.status === "Approved" || s.status === "Pending Review" || s.status === "Needs Script" || s.status === "Rejected")
+          .every((s) => s.status === "Approved");
+
+  const selectedProgress = selectedBunchId
+    ? filmingProgress[selectedBunchId] ?? {
+        filmed_count: slots.filter((s) => s.status === "Approved" && s.filmed).length,
+        filmable_count: slots.filter((s) => s.status === "Approved").length,
+      }
+    : null;
 
   return (
     <div className="space-y-4">
@@ -956,6 +1078,9 @@ function BunchesPanel({
               const occupied = provided + pending;
               const pct = Math.min(100, Math.round((occupied / b.target_video_count) * 100));
               const creativeLabel = b.assigned_creative_name?.trim();
+              const filmerLabel = b.assigned_filmer_name?.trim();
+              const fp = filmingProgress[b.id];
+              const filmSt = FILMING_STATUS_STYLES[b.filming_status] ?? FILMING_STATUS_STYLES.unassigned;
               return (
                 <li key={b.id}>
                   <div
@@ -987,6 +1112,28 @@ function BunchesPanel({
                           <UserRound className="h-3 w-3 opacity-70" aria-hidden />
                           {creativeLabel ? `Creative: ${creativeLabel}` : "No creative assigned"}
                         </p>
+                        {canManageFilming ? (
+                          <p className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-[#B8B4B8]/55">
+                            <span className={cn(VA_STATUS_BADGE, filmSt.className)}>{filmSt.label}</span>
+                            {filmerLabel ? `Filmer: ${filmerLabel}` : "No filmer"}
+                            {fp && fp.filmable_count > 0 ? (
+                              <span className="text-[#D4AF8C]/80">
+                                · {fp.filmed_count} of {fp.filmable_count} filmed
+                              </span>
+                            ) : null}
+                          </p>
+                        ) : null}
+                        {b.filming_status === "uploaded" && b.upload_folder_link ? (
+                          <a
+                            href={b.upload_folder_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex text-[11px] text-[#FF1493] hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Upload folder
+                          </a>
+                        ) : null}
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <span className="text-xs tabular-nums text-[#D4AF8C]">
@@ -1038,26 +1185,85 @@ function BunchesPanel({
                     {selectedBunch.assigned_creative_name?.trim()
                       ? ` · Creative: ${selectedBunch.assigned_creative_name}`
                       : " · No creative yet"}
+                    {selectedBunch.assigned_filmer_name?.trim()
+                      ? ` · Filmer: ${selectedBunch.assigned_filmer_name}`
+                      : ""}
                   </p>
+                  {selectedProgress && selectedProgress.filmable_count > 0 ? (
+                    <p className="mt-1 text-[11px] text-[#D4AF8C]/75">
+                      Filming {selectedProgress.filmed_count} of {selectedProgress.filmable_count}
+                      {selectedBunch.filming_status === "uploaded" && selectedBunch.upload_folder_link ? (
+                        <>
+                          {" · "}
+                          <a
+                            href={selectedBunch.upload_folder_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[#FF1493] hover:underline"
+                          >
+                            Upload folder
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
                 </div>
-                <button
-                  type="button"
-                  className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs")}
-                  onClick={() => setShowAssignPicker((v) => !v)}
-                  disabled={busyId === selectedBunch.id || creatives.length === 0}
-                >
-                  {busyId === selectedBunch.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <UserRound className="h-3.5 w-3.5" />
-                  )}
-                  {selectedBunch.assigned_creative_id ? "Re-assign creative" : "Assign creative"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs")}
+                    onClick={() => {
+                      setShowFilmerPicker(false);
+                      setShowAssignPicker((v) => !v);
+                    }}
+                    disabled={busyId === selectedBunch.id || creatives.length === 0}
+                  >
+                    {busyId === selectedBunch.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <UserRound className="h-3.5 w-3.5" />
+                    )}
+                    {selectedBunch.assigned_creative_id ? "Re-assign creative" : "Assign creative"}
+                  </button>
+                  {canManageFilming ? (
+                    <button
+                      type="button"
+                      className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs")}
+                      onClick={() => {
+                        setShowAssignPicker(false);
+                        setShowFilmerPicker((v) => !v);
+                      }}
+                      disabled={
+                        busyId === `filmer-${selectedBunch.id}` ||
+                        filmers.length === 0 ||
+                        (!scriptsReady && !selectedBunch.assigned_filmer_id)
+                      }
+                      title={
+                        !scriptsReady && !selectedBunch.assigned_filmer_id
+                          ? "All scripts must be approved first"
+                          : undefined
+                      }
+                    >
+                      {busyId === `filmer-${selectedBunch.id}` ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {selectedBunch.assigned_filmer_id ? "Re-assign filmer" : "Assign filmer"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {creatives.length === 0 ? (
                 <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
                   No Creatives available — grant creative_scripts:submit to a user first.
+                </p>
+              ) : null}
+
+              {canManageFilming && filmers.length === 0 ? (
+                <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                  No Filmers available — grant filming:view_assignments to a user first.
                 </p>
               ) : null}
 
@@ -1084,6 +1290,28 @@ function BunchesPanel({
                 </div>
               ) : null}
 
+              {showFilmerPicker && canManageFilming && filmers.length > 0 ? (
+                <div className="rounded-xl border border-white/[0.08] bg-[#0A0A0A]/70 p-3">
+                  <p className="mb-2 text-[11px] text-[#B8B4B8]/55">
+                    Assign only when every filled slot has an approved script. Filmer sees Shoot Assignments.
+                  </p>
+                  <StaffAssigneePicker
+                    users={staffFilmers}
+                    roleLabels={{}}
+                    singleSelect
+                    selectedIds={
+                      selectedBunch.assigned_filmer_id ? [selectedBunch.assigned_filmer_id] : []
+                    }
+                    onChange={(ids) => {
+                      const next = ids[0];
+                      if (!next || next === selectedBunch.assigned_filmer_id) return;
+                      setShowFilmerPicker(false);
+                      onAssignFilmer(selectedBunch.id, next);
+                    }}
+                  />
+                </div>
+              ) : null}
+
               {slots.length === 0 ? (
                 <p className="text-sm text-[#B8B4B8]/50">No slots yet — assign queue items or wait for researchers.</p>
               ) : (
@@ -1102,6 +1330,11 @@ function BunchesPanel({
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs font-medium text-[#D4AF8C]">#{slot.sequence_number}</span>
                           <span className={cn(VA_STATUS_BADGE, st.className)}>{st.label}</span>
+                          {slot.filmed ? (
+                            <span className={cn(VA_STATUS_BADGE, "bg-emerald-500/15 text-emerald-300")}>
+                              Filmed
+                            </span>
+                          ) : null}
                           <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">
                             {slot.source === "from_winner" ? "from winner" : "researcher"}
                           </span>

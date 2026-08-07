@@ -71,6 +71,12 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return ROUTES.dashboard;
     case "creative_script":
       return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
+    case "filming_assignment":
+      return isAdmin ? ROUTES.admin.winnerVideosHub : ROUTES.shootAssignments;
+    case "filming_schedule":
+      if (isAdmin) return ROUTES.filmingCalendar;
+      if (isModel) return ROUTES.model.schedule;
+      return ROUTES.filmingCalendar;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "model_schedule":
@@ -162,6 +168,12 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return ROUTES.dashboard;
     case "creative_script":
       return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
+    case "filming_assignment":
+      return isAdmin ? ROUTES.admin.winnerVideosHub : ROUTES.shootAssignments;
+    case "filming_schedule":
+      if (isAdmin) return ROUTES.filmingCalendar;
+      if (isModel) return ROUTES.model.schedule;
+      return ROUTES.filmingCalendar;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "tip":
@@ -271,6 +283,9 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "creative_script_approved":
     case "creative_script_rejected":
     case "creative_script_resubmitted":
+    case "bunch_assigned_to_filmer":
+    case "bunch_filming_uploaded":
+    case "filming_schedule_created":
     case "spot_check_logged":
     case "spot_check_status_changed":
       return "Marketing";

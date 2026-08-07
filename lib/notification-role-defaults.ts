@@ -198,6 +198,9 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   creative_script_approved: ["admin", "manager", "virtual_assistant"],
   creative_script_rejected: ["admin", "manager", "virtual_assistant"],
   creative_script_resubmitted: ["admin", "manager", "virtual_assistant"],
+  bunch_assigned_to_filmer: ["admin", "manager", "virtual_assistant", "chatter"],
+  bunch_filming_uploaded: ["admin", "manager"],
+  filming_schedule_created: ["model", "chatter", "virtual_assistant"],
   spot_check_logged: ["admin", "manager"],
   spot_check_status_changed: ["admin", "manager"],
   billing_cycle_announced: ["client"],
@@ -848,6 +851,16 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Ενημερώνει τους reviewers όταν ένα απορριφθέν script υποβάλλεται ξανά"
     ),
     eventEntry(
+      "bunch_assigned_to_filmer",
+      "Bunch assigned to filmer",
+      "Αποστέλλεται στον filmer όταν του ανατίθεται bunch με εγκεκριμένα scripts για γύρισμα"
+    ),
+    eventEntry(
+      "bunch_filming_uploaded",
+      "Bunch footage uploaded",
+      "Ενημερώνει filming:manage όταν ο filmer υποβάλλει τον φάκελο upload"
+    ),
+    eventEntry(
       "spot_check_logged",
       "New spot check logged",
       "Ενημερώνει τους διαχειριστές spot check για νέο spot check"
@@ -1058,6 +1071,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "model_schedule_created",
       "Schedule item created",
       "Αποστέλλεται στο model (και τον assigned chatter/VA) όταν δημιουργείται νέο στοιχείο στο πρόγραμμά τους"
+    ),
+    eventEntry(
+      "filming_schedule_created",
+      "Filming shoot scheduled",
+      "Αποστέλλεται στο μοντέλο όταν προστίθεται γύρισμα στο ημερολόγιο (συγχρονίζεται με model schedule)"
     ),
     eventEntry(
       "time_off_requested",

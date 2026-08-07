@@ -424,6 +424,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "creative_scripts:manage holders when a rejected script is resubmitted.",
   },
+  bunch_assigned_to_filmer: {
+    rule: "assigned_party_only",
+    description: "The filmer assigned when a bunch with approved scripts is ready to shoot.",
+  },
+  bunch_filming_uploaded: {
+    rule: "admin_only",
+    description: "filming:manage holders when a filmer submits the upload folder link for a bunch.",
+  },
+  filming_schedule_created: {
+    rule: "assigned_party_only",
+    description: "The model when a filming shoot is added to the calendar (synced into model schedule).",
+  },
   spot_check_logged: {
     rule: "admin_only",
     description: "spotcheck:manage holders when a new spot check is logged.",

@@ -54,6 +54,7 @@ export interface WinnerVideoRecord {
   script_video_type: ScriptVideoType | "";
   script_text: string;
   text_on_screen_suggestion: string;
+  script_brief: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
   script_submitted_at: string | null;
@@ -107,6 +108,7 @@ type Row = SbRow & {
   script_video_type?: string | null;
   script_text?: string | null;
   text_on_screen_suggestion?: string | null;
+  script_brief?: string | null;
   script_submitted_by_name?: string | null;
   script_submitted_by_id?: string | null;
   script_submitted_at?: string | null;
@@ -160,6 +162,7 @@ async function mapRow(row: Row): Promise<WinnerVideoRecord> {
     script_video_type: coerceScriptVideoType(row.script_video_type),
     script_text: String(row.script_text ?? ""),
     text_on_screen_suggestion: String(row.text_on_screen_suggestion ?? ""),
+    script_brief: String(row.script_brief ?? ""),
     script_submitted_by_name: String(row.script_submitted_by_name ?? ""),
     script_submitted_by_id: String(row.script_submitted_by_id ?? ""),
     script_submitted_at: row.script_submitted_at?.trim() ? String(row.script_submitted_at) : null,

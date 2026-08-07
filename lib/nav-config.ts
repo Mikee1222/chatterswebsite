@@ -827,6 +827,23 @@ const sharedPermissionNavItems: NavItem[] = [
     hiddenIfPermission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
     excludeFromMobileMainTabs: true,
   },
+  {
+    href: ROUTES.shootAssignments,
+    label: "Shoot Assignments",
+    iconKey: "PlayCircle",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.FILMING_VIEW_ASSIGNMENTS,
+    hiddenIfPermission: PERMISSIONS.FILMING_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.filmingCalendar,
+    label: "Filming Calendar",
+    iconKey: "CalendarDays",
+    navSection: "CONTENT",
+    requiresAnyPermission: [PERMISSIONS.FILMING_VIEW_ASSIGNMENTS, PERMISSIONS.FILMING_MANAGE],
+    excludeFromMobileMainTabs: true,
+  },
 
   // ── REVIEW & QA ──
   {

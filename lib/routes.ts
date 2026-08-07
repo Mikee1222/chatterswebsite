@@ -196,6 +196,10 @@ export const ROUTES = {
   creativeScripts: "/creative-scripts",
   /** Submitter view of own creative scripts. */
   myScripts: "/my-scripts",
+  /** Filmer: bunches assigned for shooting (permission-gated). */
+  shootAssignments: "/shoot-assignments",
+  /** Filming calendar — filmer read-only; admin manage via filming:manage. */
+  filmingCalendar: "/filming-calendar",
   /** Standalone video transcription tool (permission-gated). */
   transcriptVideos: "/transcript-videos",
   /** VA assigned models, social accounts, and phones. */

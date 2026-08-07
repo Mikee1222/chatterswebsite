@@ -113,6 +113,8 @@ export interface WinnerVideoRecord {
   script_text: string;
   /** Optional on-screen text suggestion from the creative (alongside script_text). */
   text_on_screen_suggestion: string;
+  /** Optional filming brief from the creative (alongside script_text). */
+  script_brief: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
   script_submitted_at: string | null;
@@ -169,6 +171,7 @@ type WinnerVideoFields = {
   script_video_type?: string;
   script_text?: string;
   text_on_screen_suggestion?: string;
+  script_brief?: string;
   script_submitted_by_name?: string;
   script_submitted_by_id?: string;
   script_submitted_at?: string;
@@ -231,6 +234,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     script_video_type: coerceScriptVideoType(f.script_video_type),
     script_text: String(f.script_text ?? ""),
     text_on_screen_suggestion: String(f.text_on_screen_suggestion ?? ""),
+    script_brief: String(f.script_brief ?? ""),
     script_submitted_by_name: String(f.script_submitted_by_name ?? ""),
     script_submitted_by_id: String(f.script_submitted_by_id ?? ""),
     script_submitted_at: f.script_submitted_at?.trim() ? String(f.script_submitted_at) : null,
@@ -685,6 +689,7 @@ export type SubmitCreativeScriptInput = {
   script_video_type: ScriptVideoType;
   script_text: string;
   text_on_screen_suggestion?: string;
+  script_brief?: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
 };
@@ -707,6 +712,7 @@ async function writeCreativeScriptSubmission(
     script_video_type: videoType,
     script_text: scriptText,
     text_on_screen_suggestion: (data.text_on_screen_suggestion ?? "").trim(),
+    script_brief: (data.script_brief ?? "").trim(),
     script_submitted_by_name: data.script_submitted_by_name.trim(),
     script_submitted_by_id: data.script_submitted_by_id.trim(),
     script_submitted_at: now,
@@ -781,6 +787,7 @@ export async function resubmitCreativeScript(
 export type ReviewCreativeScriptInput = {
   script_text: string;
   text_on_screen_suggestion?: string;
+  script_brief?: string;
   reviewed_by_name: string;
   script_rejection_reason?: string;
 };
@@ -808,6 +815,9 @@ export async function approveCreativeScript(
   };
   if (data.text_on_screen_suggestion !== undefined) {
     fields.text_on_screen_suggestion = data.text_on_screen_suggestion.trim();
+  }
+  if (data.script_brief !== undefined) {
+    fields.script_brief = data.script_brief.trim();
   }
   await persistWinnerVideoFields(id, fields);
 
@@ -858,6 +868,9 @@ export async function rejectCreativeScript(
   if (data.text_on_screen_suggestion !== undefined) {
     fields.text_on_screen_suggestion = data.text_on_screen_suggestion.trim();
   }
+  if (data.script_brief !== undefined) {
+    fields.script_brief = data.script_brief.trim();
+  }
   await persistWinnerVideoFields(id, fields);
 
   const updated = await getWinnerVideoById(id);
@@ -884,6 +897,7 @@ export async function saveCreativeScriptText(
   id: string,
   script_text: string,
   text_on_screen_suggestion?: string,
+  script_brief?: string,
 ): Promise<WinnerVideoRecord> {
   const existing = await getWinnerVideoById(id);
   if (!existing) throw new Error("Winner video not found");
@@ -893,6 +907,9 @@ export async function saveCreativeScriptText(
   const fields: Record<string, unknown> = { script_text: text };
   if (text_on_screen_suggestion !== undefined) {
     fields.text_on_screen_suggestion = text_on_screen_suggestion.trim();
+  }
+  if (script_brief !== undefined) {
+    fields.script_brief = script_brief.trim();
   }
   await persistWinnerVideoFields(id, fields);
 

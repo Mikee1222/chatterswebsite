@@ -5,9 +5,13 @@ export function formatCreativeScriptCopy(video: WinnerVideoRecord): string {
   const type = video.script_video_type?.trim() || "—";
   const script = video.script_text?.trim() || "—";
   const tos = video.text_on_screen_suggestion?.trim();
+  const brief = video.script_brief?.trim();
   const lines = [`Model: ${model}`, `Type: ${type}`, "", script];
   if (tos) {
     lines.push("", "--- Text on Screen Suggestion ---", tos);
+  }
+  if (brief) {
+    lines.push("", "--- Brief ---", brief);
   }
   return lines.join("\n");
 }

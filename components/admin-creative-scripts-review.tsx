@@ -39,6 +39,8 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
   const [textDrafts, setTextDrafts] = React.useState<Record<string, string>>({});
   const [textOpen, setTextOpen] = React.useState<Record<string, boolean>>({});
+  const [briefDrafts, setBriefDrafts] = React.useState<Record<string, string>>({});
+  const [briefOpen, setBriefOpen] = React.useState<Record<string, boolean>>({});
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
 
@@ -56,6 +58,13 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
       const next = { ...prev };
       for (const s of scripts) {
         if (next[s.id] === undefined) next[s.id] = s.text_on_screen_suggestion ?? "";
+      }
+      return next;
+    });
+    setBriefDrafts((prev) => {
+      const next = { ...prev };
+      for (const s of scripts) {
+        if (next[s.id] === undefined) next[s.id] = s.script_brief ?? "";
       }
       return next;
     });
@@ -149,7 +158,9 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
         scripts.map((v) => {
           const draft = drafts[v.id] ?? v.script_text ?? "";
           const textDraft = textDrafts[v.id] ?? v.text_on_screen_suggestion ?? "";
+          const briefDraft = briefDrafts[v.id] ?? v.script_brief ?? "";
           const tosOpen = textOpen[v.id] ?? Boolean(textDraft.trim());
+          const brOpen = briefOpen[v.id] ?? Boolean(briefDraft.trim());
           return (
             <FindingCard key={v.id} pending={pendingId === v.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -174,6 +185,7 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                         action: "approve",
                         script_text: draft,
                         text_on_screen_suggestion: textDraft,
+                        script_brief: briefDraft,
                       })
                     }
                   >
@@ -211,11 +223,13 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                   onBlur={() => {
                     const changedScript = draft.trim() && draft !== v.script_text;
                     const changedTos = textDraft !== (v.text_on_screen_suggestion ?? "");
-                    if (changedScript || changedTos) {
+                    const changedBrief = briefDraft !== (v.script_brief ?? "");
+                    if (changedScript || changedTos || changedBrief) {
                       void patchScript(v.id, {
                         action: "save",
                         script_text: draft,
                         text_on_screen_suggestion: textDraft,
+                        script_brief: briefDraft,
                       });
                     }
                   }}
@@ -253,11 +267,52 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                             action: "save",
                             script_text: draft,
                             text_on_screen_suggestion: textDraft,
+                            script_brief: briefDraft,
                           });
                         }
                       }}
                       rows={4}
                       placeholder="On-screen text overlays…"
+                    />
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-3 overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  onClick={() => setBriefOpen((prev) => ({ ...prev, [v.id]: !brOpen }))}
+                  aria-expanded={brOpen}
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                    Brief
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-[#D4AF8C]/70 transition-transform",
+                      brOpen && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+                {brOpen ? (
+                  <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
+                    <ManagerReviewTextarea
+                      value={briefDraft}
+                      onChange={(e) => setBriefDrafts((prev) => ({ ...prev, [v.id]: e.target.value }))}
+                      onBlur={() => {
+                        if (briefDraft !== (v.script_brief ?? "")) {
+                          void patchScript(v.id, {
+                            action: "save",
+                            script_text: draft,
+                            text_on_screen_suggestion: textDraft,
+                            script_brief: briefDraft,
+                          });
+                        }
+                      }}
+                      rows={4}
+                      placeholder="Filming brief — tone, framing, wardrobe…"
                     />
                   </div>
                 ) : null}
@@ -301,11 +356,13 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                   if (!rejectId) return;
                   const draft = drafts[rejectId] ?? "";
                   const textDraft = textDrafts[rejectId] ?? "";
+                  const briefDraft = briefDrafts[rejectId] ?? "";
                   void (async () => {
                     const ok = await patchScript(rejectId, {
                       action: "reject",
                       script_text: draft,
                       text_on_screen_suggestion: textDraft,
+                      script_brief: briefDraft,
                       script_rejection_reason: rejectReason,
                     });
                     if (ok) setRejectId(null);

@@ -24,10 +24,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     body.text_on_screen_suggestion !== undefined
       ? String(body.text_on_screen_suggestion)
       : undefined;
+  const script_brief =
+    body.script_brief !== undefined ? String(body.script_brief) : undefined;
 
   try {
     if (action === "save") {
-      const video = await saveCreativeScriptText(id, script_text, text_on_screen_suggestion);
+      const video = await saveCreativeScriptText(id, script_text, text_on_screen_suggestion, script_brief);
       return NextResponse.json({ video });
     }
 
@@ -35,6 +37,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const video = await approveCreativeScript(id, {
         script_text,
         text_on_screen_suggestion,
+        script_brief,
         reviewed_by_name: reviewerName,
       });
       return NextResponse.json({ video });
@@ -44,6 +47,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       const video = await rejectCreativeScript(id, {
         script_text,
         text_on_screen_suggestion,
+        script_brief,
         reviewed_by_name: reviewerName,
         script_rejection_reason: String(body.script_rejection_reason ?? ""),
       });
