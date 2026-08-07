@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ExternalLink,
+  FolderKanban,
   FolderPlus,
   Loader2,
   Plus,
@@ -16,6 +17,9 @@ import {
 } from "lucide-react";
 import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { AdminBunchesPipeline } from "@/components/admin-bunches-pipeline";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import { FilterBar, FilterChip, ReviewEmptyState } from "@/components/manager-review-ui";
+import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -25,6 +29,7 @@ import {
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
   VA_CARD,
+  VA_CARD_GLOW,
   VA_FILTER_INPUT,
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
@@ -120,6 +125,7 @@ export function AdminBunchesClient({
   const [filmingFilter, setFilmingFilter] = React.useState<"all" | FilmingStatus>("all");
   const [creativeFilter, setCreativeFilter] = React.useState("all");
   const [filmerFilter, setFilmerFilter] = React.useState("all");
+  const [editorFilter, setEditorFilter] = React.useState("all");
 
   const staffCreatives = React.useMemo<StaffUserOption[]>(
     () =>
@@ -510,6 +516,11 @@ export function AdminBunchesClient({
           if (b.assigned_filmer_id) return false;
         } else if (b.assigned_filmer_id !== filmerFilter) return false;
       }
+      if (editorFilter !== "all") {
+        if (editorFilter === "__none__") {
+          if (b.assigned_editor_id) return false;
+        } else if (b.assigned_editor_id !== editorFilter) return false;
+      }
       if (!q) return true;
       const hay = [
         b.name,
@@ -524,12 +535,30 @@ export function AdminBunchesClient({
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [bunches, search, modelFilter, statusFilter, filmingFilter, creativeFilter, filmerFilter]);
+  }, [
+    bunches,
+    search,
+    modelFilter,
+    statusFilter,
+    filmingFilter,
+    creativeFilter,
+    filmerFilter,
+    editorFilter,
+  ]);
 
   const { page, setPage, totalPages, paginated, reset } = usePagination(filtered, PAGE_SIZE);
   React.useEffect(() => {
     reset();
-  }, [search, modelFilter, statusFilter, filmingFilter, creativeFilter, filmerFilter, reset]);
+  }, [
+    search,
+    modelFilter,
+    statusFilter,
+    filmingFilter,
+    creativeFilter,
+    filmerFilter,
+    editorFilter,
+    reset,
+  ]);
 
   const selectedBunch = bunches.find((b) => b.id === selectedBunchId) ?? null;
   const scriptsReady = bunchScriptsReadyForFilming(slots);
@@ -636,38 +665,32 @@ export function AdminBunchesClient({
           bunches={bunches}
           modelRunways={modelRunways}
           loading={pipelineLoading}
+          creatives={creatives}
+          filmers={filmers}
+          editors={editors}
         />
       ) : null}
 
       {viewMode === "bunches" ? (
       <>
-      <div className="relative overflow-hidden rounded-3xl border border-[#D4AF8C]/15 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8 md:px-8">
-        <div
-          className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-40 blur-3xl"
-          style={{ background: "radial-gradient(circle, rgba(255,20,147,0.35), transparent 70%)" }}
-        />
-        <div
-          className="pointer-events-none absolute -bottom-16 left-1/3 h-48 w-48 rounded-full opacity-30 blur-3xl"
-          style={{ background: "radial-gradient(circle, rgba(212,175,140,0.25), transparent 70%)" }}
-        />
-        <div className="relative flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/70">
-              Content · Production
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white md:text-4xl">Bunches</h1>
-            <p className="mt-2 max-w-xl text-sm text-[#B8B4B8]/70">
-              Plan recreate batches, assign creatives & filmers, and track filming through upload.
-            </p>
-            <p className="mt-3 text-xs text-[#B8B4B8]/45">
+      <ContentPipelineHero
+        eyebrow="Content · Production"
+        title="Bunches"
+        description={
+          <>
+            Plan recreate batches, assign creatives & filmers, and track filming through upload.
+            <span className="mt-3 block text-xs text-[#B8B4B8]/45">
               Source winners in{" "}
               <Link href={ROUTES.admin.winnerVideosHub} className="text-[#FF1493]/90 hover:underline">
                 Winner Videos Hub
               </Link>
               .
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
+            </span>
+          </>
+        }
+        orb="both"
+        actions={
+          <>
             <button
               type="button"
               onClick={() => void refreshAll()}
@@ -685,14 +708,34 @@ export function AdminBunchesClient({
               <FolderPlus className="h-4 w-4" />
               Create bunch
             </button>
+          </>
+        }
+        stats={
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <LuxuryStatCard
+              label="Total"
+              value={<CountUp value={bunches.length} />}
+              accent="white"
+              tooltip="All bunches in the system"
+            />
+            <LuxuryStatCard
+              label="Open"
+              value={<CountUp value={openCount} />}
+              accent="pink"
+              glow
+              tooltip="Bunches still accepting content"
+            />
+            {canManageFilming ? (
+              <LuxuryStatCard
+                label="Unassigned filming"
+                value={<CountUp value={filmingReadyCount} />}
+                accent="champagne"
+                tooltip="Open bunches without a filmer assigned"
+              />
+            ) : null}
           </div>
-        </div>
-        <div className="relative mt-6 flex flex-wrap gap-3">
-          <StatChip label="Total" value={bunches.length} />
-          <StatChip label="Open" value={openCount} accent />
-          {canManageFilming ? <StatChip label="Unassigned filming" value={filmingReadyCount} /> : null}
-        </div>
-      </div>
+        }
+      />
 
       <AnimatePresence>
         {showCreate ? (
@@ -764,7 +807,7 @@ export function AdminBunchesClient({
         ) : null}
       </AnimatePresence>
 
-      <div className={cn(VA_CARD, "space-y-3 p-4")}>
+      <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "space-y-3 p-4")}>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
           <label className="relative block min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#B8B4B8]/35" />
@@ -839,20 +882,102 @@ export function AdminBunchesClient({
                 ))}
               </select>
             ) : null}
+            {canManageEditing ? (
+              <select
+                value={editorFilter}
+                onChange={(e) => setEditorFilter(e.target.value)}
+                className={cn(VA_FILTER_INPUT, "min-w-[8rem]")}
+              >
+                <option value="all">All editors</option>
+                <option value="__none__">No editor</option>
+                {editors.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
           </div>
         </div>
+        {(search.trim() ||
+          statusFilter !== "open" ||
+          modelFilter !== "all" ||
+          filmingFilter !== "all" ||
+          creativeFilter !== "all" ||
+          filmerFilter !== "all" ||
+          editorFilter !== "all") && (
+          <div className="flex flex-wrap gap-2">
+            {search.trim() ? (
+              <FilterChip label={`Search: ${search.trim()}`} onRemove={() => setSearch("")} />
+            ) : null}
+            {statusFilter !== "all" ? (
+              <FilterChip
+                label={`Status: ${statusFilter}`}
+                onRemove={() => setStatusFilter("all")}
+              />
+            ) : null}
+            {modelFilter !== "all" ? (
+              <FilterChip
+                label={`Model: ${models.find((m) => m.model_id === modelFilter)?.model_name ?? modelFilter}`}
+                onRemove={() => setModelFilter("all")}
+              />
+            ) : null}
+            {filmingFilter !== "all" ? (
+              <FilterChip
+                label={`Filming: ${FILMING_FILTERS.find((f) => f.value === filmingFilter)?.label ?? filmingFilter}`}
+                onRemove={() => setFilmingFilter("all")}
+              />
+            ) : null}
+            {creativeFilter !== "all" ? (
+              <FilterChip
+                label={`Creative: ${
+                  creativeFilter === "__none__"
+                    ? "None"
+                    : creatives.find((c) => c.id === creativeFilter)?.name ?? creativeFilter
+                }`}
+                onRemove={() => setCreativeFilter("all")}
+              />
+            ) : null}
+            {filmerFilter !== "all" ? (
+              <FilterChip
+                label={`Filmer: ${
+                  filmerFilter === "__none__"
+                    ? "None"
+                    : filmers.find((f) => f.id === filmerFilter)?.name ?? filmerFilter
+                }`}
+                onRemove={() => setFilmerFilter("all")}
+              />
+            ) : null}
+            {editorFilter !== "all" ? (
+              <FilterChip
+                label={`Editor: ${
+                  editorFilter === "__none__"
+                    ? "None"
+                    : editors.find((e) => e.id === editorFilter)?.name ?? editorFilter
+                }`}
+                onRemove={() => setEditorFilter("all")}
+              />
+            ) : null}
+          </div>
+        )}
         <p className="text-xs text-[#B8B4B8]/45">
           {filtered.length} bunch{filtered.length === 1 ? "" : "es"}
           {filtered.length !== bunches.length ? ` (of ${bunches.length})` : ""}
         </p>
-      </div>
+      </FilterBar>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
         <div className="space-y-3">
           {paginated.length === 0 ? (
-            <div className={cn(VA_CARD, "px-5 py-14 text-center text-sm text-[#B8B4B8]/50")}>
-              {bunches.length === 0 ? "No bunches yet — create one to get started." : "No matches for these filters."}
-            </div>
+            <ReviewEmptyState
+              icon={FolderKanban}
+              title={bunches.length === 0 ? "No bunches yet" : "No matches for these filters"}
+              description={
+                bunches.length === 0
+                  ? "Create one to get started."
+                  : "Try clearing filters or searching a different term."
+              }
+            />
           ) : (
             <ul className="space-y-3">
               {paginated.map((b) => {
@@ -1283,24 +1408,6 @@ export function AdminBunchesClient({
       </div>
       </>
       ) : null}
-    </div>
-  );
-}
-
-function StatChip({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border px-4 py-2.5",
-        accent
-          ? "border-[#FF1493]/25 bg-[#FF1493]/10"
-          : "border-white/[0.08] bg-white/[0.03]",
-      )}
-    >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#B8B4B8]/45">{label}</p>
-      <p className={cn("mt-0.5 text-xl font-semibold tabular-nums", accent ? "text-[#FF1493]" : "text-white")}>
-        {value}
-      </p>
     </div>
   );
 }
