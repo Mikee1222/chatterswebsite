@@ -430,8 +430,6 @@ export async function getActiveVaTaskShift(userRecordId: string): Promise<Shift 
   );
 }
 
-export { selectPreferredVaTaskShift } from "./shifts-supabase";
-
 export async function listOpenVaTaskShiftsForChatter(chatterRecordId: string): Promise<Shift[]> {
   if (isSupabaseBackend()) {
     return (await import("./shifts-supabase")).listOpenVaTaskShiftsForChatter(chatterRecordId);

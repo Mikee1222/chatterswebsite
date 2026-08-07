@@ -15,8 +15,8 @@ import {
   resolveShiftChatterRecordId,
   closeOtherOpenVaTaskShifts,
   listOpenVaTaskShiftsForChatter,
-  selectPreferredVaTaskShift,
 } from "@/services/shifts";
+import { selectPreferredVaTaskShift } from "@/services/shifts-supabase";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify } from "@/services/notification-service";
 
