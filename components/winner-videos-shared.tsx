@@ -560,7 +560,6 @@ export function WinnerVideoKanbanCard({
   refreshing = false,
   onApprove,
   onReject,
-  onMarkRecreated,
   onMarkPublished,
   busy = false,
 }: {
@@ -570,7 +569,6 @@ export function WinnerVideoKanbanCard({
   refreshing?: boolean;
   onApprove?: (video: WinnerVideoRecord) => void;
   onReject?: (video: WinnerVideoRecord) => void;
-  onMarkRecreated?: (video: WinnerVideoRecord) => void;
   onMarkPublished?: (video: WinnerVideoRecord) => void;
   busy?: boolean;
 }) {
@@ -579,7 +577,6 @@ export function WinnerVideoKanbanCard({
   const stale = isStalePending(video);
   const hasActions =
     (video.status === "Pending" && (onApprove || onReject)) ||
-    (video.status === "Approved" && onMarkRecreated) ||
     (video.status === "Recreated" && onMarkPublished);
 
   return (
@@ -658,16 +655,6 @@ export function WinnerVideoKanbanCard({
               Reject
             </button>
           ) : null}
-          {video.status === "Approved" && onMarkRecreated ? (
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => onMarkRecreated(video)}
-              className="inline-flex min-h-[44px] items-center rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 disabled:opacity-50"
-            >
-              Mark recreated
-            </button>
-          ) : null}
           {video.status === "Recreated" && onMarkPublished ? (
             <button
               type="button"
@@ -692,7 +679,6 @@ type WinnerVideoKanbanBoardProps = {
   refreshing?: boolean;
   onApprove?: (video: WinnerVideoRecord) => void;
   onReject?: (video: WinnerVideoRecord) => void;
-  onMarkRecreated?: (video: WinnerVideoRecord) => void;
   onMarkPublished?: (video: WinnerVideoRecord) => void;
   busyId?: string | null;
 };
@@ -705,7 +691,6 @@ export function WinnerVideoKanbanBoard({
   refreshing = false,
   onApprove,
   onReject,
-  onMarkRecreated,
   onMarkPublished,
   busyId = null,
 }: WinnerVideoKanbanBoardProps) {
@@ -770,7 +755,6 @@ export function WinnerVideoKanbanBoard({
                       refreshing={refreshing}
                       onApprove={onApprove}
                       onReject={onReject}
-                      onMarkRecreated={onMarkRecreated}
                       onMarkPublished={onMarkPublished}
                       busy={busyId === video.id}
                     />

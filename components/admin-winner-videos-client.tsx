@@ -164,11 +164,9 @@ export function AdminWinnerVideosClient({
 
   const [approveId, setApproveId] = React.useState<string | null>(null);
   const [rejectId, setRejectId] = React.useState<string | null>(null);
-  const [recreatedId, setRecreatedId] = React.useState<string | null>(null);
   const [creatorId, setCreatorId] = React.useState("");
   const [deadline, setDeadline] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
-  const [recreationLink, setRecreationLink] = React.useState("");
   const [qualityRating, setQualityRating] = React.useState<WinnerVideoQualityRating | null>(null);
 
   React.useEffect(() => setVideos(initialVideos), [initialVideos]);
@@ -826,10 +824,6 @@ export function AdminWinnerVideosClient({
                 setRejectId(video.id);
                 setRejectReason("");
               }}
-              onMarkRecreated={(video) => {
-                setRecreatedId(video.id);
-                setRecreationLink(video.recreation_link ?? "");
-              }}
               onMarkPublished={(video) => void patchVideo(video.id, { action: "status", status: "Published" })}
             />
           ) : (
@@ -996,10 +990,6 @@ export function AdminWinnerVideosClient({
                               setRejectId(v.id);
                               setRejectReason("");
                             }}
-                            onMarkRecreated={() => {
-                              setRecreatedId(v.id);
-                              setRecreationLink(v.recreation_link ?? "");
-                            }}
                             onMarkPublished={() =>
                               void patchVideo(v.id, { action: "status", status: "Published" })
                             }
@@ -1155,45 +1145,6 @@ export function AdminWinnerVideosClient({
               </div>
             </ReviewModalShell>
           ) : null}
-
-          {recreatedId ? (
-            <ReviewModalShell title="Mark as recreated" onClose={() => setRecreatedId(null)}>
-              <p className="mb-4 text-sm text-[#B8B4B8]/60">Optional link to the recreated video.</p>
-              <div className="space-y-4">
-                <div>
-                  <ReviewFieldLabel>Recreation link (optional)</ReviewFieldLabel>
-                  <input
-                    value={recreationLink}
-                    onChange={(e) => setRecreationLink(e.target.value)}
-                    className={VA_FILTER_INPUT}
-                    placeholder="https://…"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button type="button" className={VA_BTN_SECONDARY} onClick={() => setRecreatedId(null)}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className={VA_BTN_PRIMARY}
-                    onClick={() => {
-                      if (!recreatedId) return;
-                      void (async () => {
-                        const ok = await patchVideo(recreatedId, {
-                          action: "status",
-                          status: "Recreated",
-                          recreation_link: recreationLink,
-                        });
-                        if (ok) setRecreatedId(null);
-                      })();
-                    }}
-                  >
-                    Mark recreated
-                  </button>
-                </div>
-              </div>
-            </ReviewModalShell>
-          ) : null}
         </>
       )}
     </div>
@@ -1209,7 +1160,6 @@ function ResearchSubmissionCard({
   onRefresh,
   onApprove,
   onReject,
-  onMarkRecreated,
   onMarkPublished,
   onUpdateVideoType,
 }: {
@@ -1221,7 +1171,6 @@ function ResearchSubmissionCard({
   onRefresh: () => void;
   onApprove: () => void;
   onReject: () => void;
-  onMarkRecreated: () => void;
   onMarkPublished: () => void;
   onUpdateVideoType?: (type: SlotVideoType, other: string) => void;
 }) {
@@ -1320,11 +1269,6 @@ function ResearchSubmissionCard({
                 Reject
               </QuickActionEscalate>
             </>
-          ) : null}
-          {video.status === "Approved" ? (
-            <button type="button" disabled={busy} onClick={onMarkRecreated} className={VA_BTN_SECONDARY}>
-              Mark recreated
-            </button>
           ) : null}
           {video.status === "Recreated" ? (
             <button type="button" disabled={busy} onClick={onMarkPublished} className={VA_BTN_PRIMARY}>
