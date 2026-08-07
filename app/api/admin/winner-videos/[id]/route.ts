@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   approveWinnerVideo,
+  getWinnerVideoById,
   rejectWinnerVideo,
   updateWinnerVideoStatus,
 } from "@/services/winner-videos";
@@ -29,14 +30,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!assigned_creator_name || !recreation_deadline) {
       return NextResponse.json({ error: "Creator name and recreation deadline are required" }, { status: 400 });
     }
-    if (!assigned_creative_id || !assigned_creative_name) {
+    // Creative required for standalone research finds; Fill Bunches inherits from bunch.
+    const existing = await getWinnerVideoById(id);
+    const isBunchFind = Boolean(existing?.bunch_id?.trim());
+    if (!isBunchFind && (!assigned_creative_id || !assigned_creative_name)) {
       return NextResponse.json({ error: "A Creative must be assigned to write the script" }, { status: 400 });
     }
     const video = await approveWinnerVideo(id, {
       assigned_creator_name,
       recreation_deadline,
-      assigned_creative_id,
-      assigned_creative_name,
+      assigned_creative_id: assigned_creative_id || undefined,
+      assigned_creative_name: assigned_creative_name || undefined,
       reviewed_by_name: reviewerName,
       reviewed_by_id: session.airtableUserId ?? session.id,
     });

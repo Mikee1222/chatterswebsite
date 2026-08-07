@@ -22,12 +22,18 @@ import { SCRIPT_VIDEO_TYPES } from "@/lib/creative-scripts-helpers";
 import { truncateNote } from "@/lib/winner-videos-copy";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
+import type {
+  BunchScriptProgress,
+  SlotScriptMeta,
+} from "@/services/winner-sourcing";
 import type { ModelRecord } from "@/types";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type Props = {
   initialQueue: WinnerVideoRecord[];
+  initialBunchProgress?: BunchScriptProgress[];
+  initialSlotMeta?: SlotScriptMeta[];
   gunzoModels: ModelRecord[];
 };
 
@@ -43,10 +49,24 @@ function modelNameFromSelection(modelId: string, models: ModelRecord[]): string 
   return models.find((m) => m.id === modelId)?.model_name ?? "";
 }
 
-export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props) {
+type QueueGroup = {
+  key: string;
+  title: string;
+  progress?: BunchScriptProgress;
+  videos: WinnerVideoRecord[];
+};
+
+export function CreativeScriptsQueueClient({
+  initialQueue,
+  initialBunchProgress = [],
+  initialSlotMeta = [],
+  gunzoModels,
+}: Props) {
   const { addToast } = useToast();
   const isSupabaseBackend = useIsSupabaseBackend();
   const [queue, setQueue] = React.useState(initialQueue);
+  const [bunchProgress, setBunchProgress] = React.useState(initialBunchProgress);
+  const [slotMeta, setSlotMeta] = React.useState(initialSlotMeta);
   const [loading, setLoading] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
@@ -55,6 +75,55 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
   const [scriptText, setScriptText] = React.useState("");
 
   React.useEffect(() => setQueue(initialQueue), [initialQueue]);
+  React.useEffect(() => setBunchProgress(initialBunchProgress), [initialBunchProgress]);
+  React.useEffect(() => setSlotMeta(initialSlotMeta), [initialSlotMeta]);
+
+  const metaByVideoId = React.useMemo(() => {
+    const map = new Map<string, SlotScriptMeta>();
+    for (const m of slotMeta) map.set(m.winner_video_id, m);
+    return map;
+  }, [slotMeta]);
+
+  const progressByBunchId = React.useMemo(() => {
+    const map = new Map<string, BunchScriptProgress>();
+    for (const p of bunchProgress) map.set(p.bunch_id, p);
+    return map;
+  }, [bunchProgress]);
+
+  const groups = React.useMemo<QueueGroup[]>(() => {
+    const byBunch = new Map<string, WinnerVideoRecord[]>();
+    const other: WinnerVideoRecord[] = [];
+    for (const v of queue) {
+      const bunchId = v.bunch_id?.trim();
+      if (bunchId) {
+        const list = byBunch.get(bunchId) ?? [];
+        list.push(v);
+        byBunch.set(bunchId, list);
+      } else {
+        other.push(v);
+      }
+    }
+    const out: QueueGroup[] = [];
+    for (const [bunchId, videos] of byBunch) {
+      const progress = progressByBunchId.get(bunchId);
+      const title =
+        progress?.bunch_name ||
+        videos[0]?.bunch_name?.trim() ||
+        metaByVideoId.get(videos[0]?.id ?? "")?.bunch_name ||
+        "Bunch";
+      out.push({
+        key: bunchId,
+        title,
+        progress,
+        videos,
+      });
+    }
+    out.sort((a, b) => a.title.localeCompare(b.title));
+    if (other.length > 0) {
+      out.push({ key: "__other__", title: "Other scripts", videos: other });
+    }
+    return out;
+  }, [queue, progressByBunchId, metaByVideoId]);
 
   const modelOptions = React.useMemo<CustomSelectOption[]>(() => {
     const base = gunzoModels.map((m) => ({ value: m.id, label: m.model_name }));
@@ -78,8 +147,16 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
     setLoading(true);
     try {
       const res = await fetch("/api/creative-scripts/queue", { credentials: "include" });
-      const data = (await res.json()) as { videos?: WinnerVideoRecord[] };
-      if (res.ok) setQueue(data.videos ?? []);
+      const data = (await res.json()) as {
+        videos?: WinnerVideoRecord[];
+        bunchProgress?: BunchScriptProgress[];
+        slotMeta?: SlotScriptMeta[];
+      };
+      if (res.ok) {
+        setQueue(data.videos ?? []);
+        setBunchProgress(data.bunchProgress ?? []);
+        setSlotMeta(data.slotMeta ?? []);
+      }
     } finally {
       setLoading(false);
     }
@@ -150,7 +227,7 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
         <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
         <h1 className="mt-1 text-2xl font-bold text-white">Scripts to Write</h1>
         <p className="mt-1 text-sm text-[#B8B4B8]/60">
-          Research finds assigned to you for scriptwriting. Write the script and submit it for review.
+          Winner Video bunches and research finds assigned to you. Each slot has its own script — submit them independently.
         </p>
       </div>
 
@@ -160,10 +237,10 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
         <ReviewEmptyState
           icon={FileText}
           title="No scripts to write"
-          description="When a manager assigns you an approved research find, it will appear here for scripting."
+          description="When a manager assigns you a bunch (or an approved research find), scripts appear here grouped by bunch."
         />
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <ReviewSectionHeader
             action={
               <button type="button" className={VA_BTN_SECONDARY} onClick={() => void reload()} disabled={loading}>
@@ -174,99 +251,138 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
             Queue ({queue.length})
           </ReviewSectionHeader>
 
-          {queue.map((v) => (
-            <FindingCard key={v.id} pending={savingId === v.id}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="space-y-1">
-                  <p className="text-lg font-semibold text-white">{displayOrDash(v.assigned_creator_name)}</p>
-                  <p className="text-xs text-[#B8B4B8]/55">Ref model: {displayOrDash(v.reference_model_name)}</p>
-                </div>
-                <button
-                  type="button"
-                  className={activeId === v.id ? VA_BTN_SECONDARY : VA_BTN_PRIMARY}
-                  onClick={() => openForm(v)}
-                  disabled={savingId === v.id}
-                >
-                  {activeId === v.id ? "Close" : "Write script"}
-                </button>
+          {groups.map((group) => (
+            <section key={group.key} className="space-y-3">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-semibold text-white">
+                  {group.key === "__other__" ? group.title : `Bunch: ${group.title}`}
+                </h2>
+                {group.progress ? (
+                  <p className="text-xs tabular-nums text-[#D4AF8C]/85">
+                    {group.progress.written} of {group.progress.total} scripts written
+                  </p>
+                ) : null}
               </div>
 
-              {v.video_link ? (
-                <a
-                  href={v.video_link}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="mt-3 inline-flex items-center gap-1 text-sm text-[#FF1493] hover:underline"
-                >
-                  Reference video <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                </a>
-              ) : null}
-
-              {v.note?.trim() ? (
-                <p className="mt-2 text-sm text-[#B8B4B8]/70">{truncateNote(v.note, 200) || v.note}</p>
-              ) : null}
-
-              {activeId === v.id ? (
-                <ReviewFormSection
-                  title="Write script"
-                  description="Assign the Gunzo model, pick a type, and paste the full script."
-                  className="mt-4 border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]"
-                >
-                  <div className="space-y-4">
-                    <div>
-                      <ReviewFieldLabel>Model</ReviewFieldLabel>
-                      <ManagerReviewSelect
-                        value={modelId}
-                        onChange={setModelId}
-                        options={modelOptions}
-                        placeholder="Select Gunzo-team model…"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <ReviewFieldLabel>Type</ReviewFieldLabel>
-                      <ManagerReviewSelect
-                        value={scriptType}
-                        onChange={setScriptType}
-                        options={typeOptions}
-                        placeholder="Select type…"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <ReviewFieldLabel>Script</ReviewFieldLabel>
-                      <ManagerReviewTextarea
-                        value={scriptText}
-                        onChange={(e) => setScriptText(e.target.value)}
-                        rows={10}
-                        placeholder="Write the full script here…"
-                        required
-                      />
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <button type="button" className={VA_BTN_SECONDARY} onClick={() => setActiveId(null)}>
-                        Cancel
-                      </button>
+              {group.videos.map((v) => {
+                const meta = metaByVideoId.get(v.id);
+                const typeLabel =
+                  meta?.video_type?.trim() ||
+                  v.script_video_type?.trim() ||
+                  v.content_type?.trim() ||
+                  "";
+                const description =
+                  meta?.description?.trim() ||
+                  (v.note?.trim() ? truncateNote(v.note, 200) || v.note : "");
+                const videoLink = meta?.video_link?.trim() || v.video_link?.trim() || "";
+                return (
+                  <FindingCard key={v.id} pending={savingId === v.id}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="space-y-1">
+                        <p className="text-lg font-semibold text-white">
+                          {displayOrDash(v.assigned_creator_name || v.reference_model_name)}
+                        </p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#B8B4B8]/55">
+                          {typeLabel ? <span>Type: {typeLabel}</span> : null}
+                          {meta && meta.recreate_total > 1 ? (
+                            <span className="text-[#D4AF8C]/80">
+                              Recreate {meta.recreate_index} of {meta.recreate_total}
+                            </span>
+                          ) : meta ? (
+                            <span>Slot #{meta.sequence_number}</span>
+                          ) : null}
+                          {v.reference_model_name?.trim() &&
+                          v.reference_model_name.trim() !== (v.assigned_creator_name || "").trim() ? (
+                            <span>Ref: {v.reference_model_name}</span>
+                          ) : null}
+                        </div>
+                      </div>
                       <button
                         type="button"
-                        className={VA_BTN_PRIMARY}
+                        className={activeId === v.id ? VA_BTN_SECONDARY : VA_BTN_PRIMARY}
+                        onClick={() => openForm(v)}
                         disabled={savingId === v.id}
-                        onClick={() => void handleSubmit(v.id)}
                       >
-                        {savingId === v.id ? (
-                          <>
-                            <Loader2 className="mr-2 inline h-4 w-4 animate-spin" aria-hidden />
-                            Submitting…
-                          </>
-                        ) : (
-                          "Submit for review"
-                        )}
+                        {activeId === v.id ? "Close" : "Write script"}
                       </button>
                     </div>
-                  </div>
-                </ReviewFormSection>
-              ) : null}
-            </FindingCard>
+
+                    {videoLink ? (
+                      <a
+                        href={videoLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-3 inline-flex items-center gap-1 text-sm text-[#FF1493] hover:underline"
+                      >
+                        Reference video <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                      </a>
+                    ) : null}
+
+                    {description ? (
+                      <p className="mt-2 text-sm text-[#B8B4B8]/70">{description}</p>
+                    ) : null}
+
+                    {activeId === v.id ? (
+                      <ReviewFormSection
+                        title="Write script"
+                        description="Assign the Gunzo model, pick a type, and paste the full script."
+                        className="mt-4 border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]"
+                      >
+                        <div className="space-y-4">
+                          <div>
+                            <ReviewFieldLabel>Model</ReviewFieldLabel>
+                            <ManagerReviewSelect
+                              value={modelId}
+                              onChange={setModelId}
+                              options={modelOptions}
+                              placeholder="Select Gunzo-team model…"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <ReviewFieldLabel>Type</ReviewFieldLabel>
+                            <ManagerReviewSelect
+                              value={scriptType}
+                              onChange={setScriptType}
+                              options={typeOptions}
+                              placeholder="Select type…"
+                              required
+                            />
+                          </div>
+                          <div>
+                            <ReviewFieldLabel>Script</ReviewFieldLabel>
+                            <ManagerReviewTextarea
+                              value={scriptText}
+                              onChange={(e) => setScriptText(e.target.value)}
+                              rows={10}
+                              placeholder="Write the full script here…"
+                              required
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button type="button" className={VA_BTN_SECONDARY} onClick={() => setActiveId(null)}>
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              className={VA_BTN_PRIMARY}
+                              disabled={savingId === v.id}
+                              onClick={() => void handleSubmit(v.id)}
+                            >
+                              {savingId === v.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                "Submit script"
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </ReviewFormSection>
+                    ) : null}
+                  </FindingCard>
+                );
+              })}
+            </section>
           ))}
         </div>
       )}

@@ -816,7 +816,7 @@ export function AdminWinnerVideosClient({
             <ReviewModalShell title="Approve research find" onClose={() => setApproveId(null)}>
               <p className="mb-4 text-sm text-[#B8B4B8]/60">
                 {approveTarget?.bunch_id
-                  ? `Approving spawns a recreate slot into “${approveTarget.bunch_name || "the linked bunch"}” and assigns a Creative for the script.`
+                  ? `Approving spawns a recreate slot into “${approveTarget.bunch_name || "the linked bunch"}”. Script creative is assigned at the bunch level in Winner Videos Hub.`
                   : "Pick the Gunzo-team creator who will recreate this video and assign a Creative to write the script."}
               </p>
               {approveTarget?.bunch_id ? (
@@ -842,24 +842,34 @@ export function AdminWinnerVideosClient({
                       required
                     />
                   </div>
-                  <div>
-                    <ReviewFieldLabel>Assign to Creative</ReviewFieldLabel>
-                    {creatives.length === 0 ? (
-                      <p className="mt-1 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
-                        No Creatives available — grant creative_scripts:submit to a user first.
-                      </p>
-                    ) : (
-                      <ManagerReviewSelect
-                        value={creativeId}
-                        onChange={setCreativeId}
-                        options={creativeOptions}
-                        placeholder="Select Creative…"
-                        searchable
-                        searchPlaceholder="Search Creatives…"
-                        required
-                      />
-                    )}
-                  </div>
+                  {approveTarget?.bunch_id ? (
+                    <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-xs text-[#B8B4B8]/70">
+                      Creative for scripts is managed on the bunch in{" "}
+                      <Link href={ROUTES.admin.winnerVideosHub} className="text-[#FF1493] hover:underline">
+                        Winner Videos Hub
+                      </Link>
+                      . New slots inherit the bunch assignment automatically.
+                    </div>
+                  ) : (
+                    <div>
+                      <ReviewFieldLabel>Assign to Creative</ReviewFieldLabel>
+                      {creatives.length === 0 ? (
+                        <p className="mt-1 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                          No Creatives available — grant creative_scripts:submit to a user first.
+                        </p>
+                      ) : (
+                        <ManagerReviewSelect
+                          value={creativeId}
+                          onChange={setCreativeId}
+                          options={creativeOptions}
+                          placeholder="Select Creative…"
+                          searchable
+                          searchPlaceholder="Search Creatives…"
+                          required
+                        />
+                      )}
+                    </div>
+                  )}
                   <div>
                     <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
                     <input
@@ -879,9 +889,9 @@ export function AdminWinnerVideosClient({
                       disabled={
                         !creatorId ||
                         !selectedCreatorName.trim() ||
-                        !creativeId ||
-                        !selectedCreativeName.trim() ||
-                        !deadline
+                        !deadline ||
+                        (!approveTarget?.bunch_id &&
+                          (!creativeId || !selectedCreativeName.trim()))
                       }
                       className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
                       onClick={() => {
@@ -889,9 +899,13 @@ export function AdminWinnerVideosClient({
                           !approveId ||
                           !creatorId ||
                           !selectedCreatorName.trim() ||
-                          !creativeId ||
-                          !selectedCreativeName.trim() ||
                           !deadline
+                        ) {
+                          return;
+                        }
+                        if (
+                          !approveTarget?.bunch_id &&
+                          (!creativeId || !selectedCreativeName.trim())
                         ) {
                           return;
                         }

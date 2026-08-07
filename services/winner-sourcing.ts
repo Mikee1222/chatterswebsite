@@ -48,6 +48,9 @@ export type VideoBunch = {
   created_by_id: string;
   created_by_name: string;
   status: BunchStatus;
+  /** Source of truth: creative who scripts all slots in this bunch. */
+  assigned_creative_id: string;
+  assigned_creative_name: string;
   created_at: string;
   updated_at: string;
   /** Computed: recreate_video_slots currently in this bunch (approved/filled). */
@@ -110,9 +113,16 @@ function mapBunch(row: Record<string, unknown>): VideoBunch {
     created_by_id: String(row.created_by_id ?? ""),
     created_by_name: String(row.created_by_name ?? ""),
     status: coerceBunchStatus(row.status),
+    assigned_creative_id: String(row.assigned_creative_id ?? ""),
+    assigned_creative_name: String(row.assigned_creative_name ?? ""),
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
   };
+}
+
+/** Slots that pick up a new bunch creative on reassignment (not yet script-submitted). */
+export function slotInheritsBunchCreative(status: ScriptStatus): boolean {
+  return status === "Not Applicable" || status === "Needs Script";
 }
 
 function mapSubmission(row: Record<string, unknown>): WinnerSubmission {
@@ -406,6 +416,8 @@ export async function assignQueueItemToBunch(
 
   const existingSlots = await listSlotsForBunch(bunchId);
   const startSeq = existingSlots.reduce((m, s) => Math.max(m, s.sequence_number), 0) + 1;
+  const creativeId = bunch.assigned_creative_id.trim();
+  const creativeName = bunch.assigned_creative_name.trim();
 
   const rows = Array.from({ length: item.required_recreate_count }, (_, i) => ({
     bunch_id: bunchId,
@@ -416,6 +428,9 @@ export async function assignQueueItemToBunch(
     video_type: "",
     status: "Not Applicable",
     winner_submission_id: submission.id,
+    // Inherit bunch creative (denormalized); scripts work items spawned below if present.
+    assigned_creative_id: creativeId || null,
+    assigned_creative_name: creativeName,
   }));
 
   const { data: slotRows, error: slotErr } = await sb
@@ -424,9 +439,37 @@ export async function assignQueueItemToBunch(
     .select("*");
   if (slotErr) throw new Error(`spawn slots: ${slotErr.message}`);
 
+  let slots = (slotRows ?? []).map((r) => mapSlot(r as Record<string, unknown>));
+
+  // Auto-spawn Creative Scripts work items when the bunch already has a creative.
+  if (creativeId && creativeName && slots.length > 0) {
+    const spawned: RecreateVideoSlot[] = [];
+    for (const slot of slots) {
+      spawned.push(
+        await assignCreativeToSlot({
+          slot_id: slot.id,
+          assigned_creative_id: creativeId,
+          assigned_creative_name: creativeName,
+          skip_notify: true,
+        }),
+      );
+    }
+    slots = spawned;
+    await notify({
+      user_id: creativeId,
+      event_type: NOTIFICATION_EVENT.RESEARCH_ASSIGNED_TO_CREATIVE,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title: "🎬 New recreate bunch needs scripts",
+      body: `${slots.length} recreate(s) in “${bunch.name}” were assigned to you.`,
+      entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+      entity_id: slots[0]?.winner_video_id || bunchId,
+      _triggerSource: "winner_sourcing_queue_inherit_bunch_creative",
+    }).catch(() => {});
+  }
+
   return {
     item: { ...item, bunch_id: bunchId, submission, bunch_name: bunch.name },
-    slots: (slotRows ?? []).map((r) => mapSlot(r as Record<string, unknown>)),
+    slots,
   };
 }
 
@@ -623,11 +666,13 @@ export async function submitResearcherBunchFind(input: {
 /**
  * On Research Manage Approve of a Fill Bunches find: create recreate_video_slot in that bunch
  * and link it to the winner_videos row (Creative Scripts work item).
+ * Creative assignment is inherited from the parent bunch (source of truth).
  */
 export async function createSlotFromApprovedWinnerVideo(input: {
   winner_video: WinnerVideoRecord;
-  assigned_creative_id: string;
-  assigned_creative_name: string;
+  /** @deprecated Prefer bunch.assigned_creative_*; used only as fallback when bunch has none. */
+  assigned_creative_id?: string;
+  assigned_creative_name?: string;
 }): Promise<RecreateVideoSlot> {
   const wv = input.winner_video;
   const bunchId = wv.bunch_id?.trim();
@@ -646,10 +691,15 @@ export async function createSlotFromApprovedWinnerVideo(input: {
   const bunch = await getVideoBunch(bunchId);
   if (!bunch) throw new Error("Bunch not found");
 
+  const creativeId =
+    bunch.assigned_creative_id.trim() || String(input.assigned_creative_id ?? "").trim();
+  const creativeName =
+    bunch.assigned_creative_name.trim() || String(input.assigned_creative_name ?? "").trim();
+  const hasCreative = Boolean(creativeId);
+
   const video_type = mapScriptFieldsToSlotType(wv.content_type, wv.script_video_type);
   const existing = await listSlotsForBunch(bunchId);
   const nextSeq = existing.reduce((m, s) => Math.max(m, s.sequence_number), 0) + 1;
-  const hasCreative = Boolean(input.assigned_creative_id.trim());
 
   const { data, error } = await sb
     .from("recreate_video_slots")
@@ -661,13 +711,23 @@ export async function createSlotFromApprovedWinnerVideo(input: {
       video_link: wv.video_link || "",
       video_type,
       status: hasCreative ? "Needs Script" : "Not Applicable",
-      assigned_creative_id: input.assigned_creative_id.trim() || null,
-      assigned_creative_name: input.assigned_creative_name.trim(),
+      assigned_creative_id: creativeId || null,
+      assigned_creative_name: creativeName,
       winner_video_id: wv.id,
     })
     .select("*")
     .single();
   if (error) throw new Error(`createSlotFromApprovedWinnerVideo: ${error.message}`);
+
+  // Keep winner_videos creative in sync with bunch when inheriting.
+  if (hasCreative) {
+    await updateWinnerVideoFields(wv.id, {
+      assigned_creative_id: creativeId,
+      assigned_creative_name: creativeName,
+      script_status: "Needs Script",
+    }).catch(() => {});
+  }
+
   return mapSlot(data as Record<string, unknown>);
 }
 
@@ -698,6 +758,8 @@ export async function updateSlotContent(
 /**
  * Assign a creative to a filled slot and spawn a Creative Scripts work item
  * on `winner_videos` (Approved + Needs Script) — same queue creatives already use.
+ * Prefer `assignCreativeToBunch` for admin assignment; this is used internally
+ * and for denormalized slot + winner_videos updates.
  */
 export async function assignCreativeToSlot(input: {
   slot_id: string;
@@ -706,6 +768,8 @@ export async function assignCreativeToSlot(input: {
   assigned_creator_name?: string;
   actor_user_id?: string;
   actor_user_name?: string;
+  /** Skip per-slot notify (e.g. when bunch assign sends one summary). */
+  skip_notify?: boolean;
 }): Promise<RecreateVideoSlot> {
   const sb = getSupabaseServiceClient();
   const { data: row, error } = await sb
@@ -735,6 +799,7 @@ export async function assignCreativeToSlot(input: {
       `slot:${slot.id}`,
       `bunch:${slot.bunch_id}`,
       slot.source === "from_winner" ? `from_winner:${slot.winner_submission_id ?? ""}` : "researcher_submitted",
+      `seq:${slot.sequence_number}`,
       slot.description,
     ]
       .filter(Boolean)
@@ -758,20 +823,24 @@ export async function assignCreativeToSlot(input: {
       script_video_type,
       reviewed_by_name: input.actor_user_name?.trim() || "Winner sourcing",
       reviewed_at: new Date().toISOString(),
+      bunch_id: slot.bunch_id,
+      bunch_name: bunch?.name || "",
     });
     winnerVideoId = wv.id;
 
-    await notify({
-      user_id: input.assigned_creative_id.trim(),
-      event_type: NOTIFICATION_EVENT.RESEARCH_ASSIGNED_TO_CREATIVE,
-      priority: NOTIFICATION_PRIORITY.HIGH,
-      title: "🎬 New recreate needs a script",
-      body: `A Winner sourcing recreate for ${creatorName} was assigned to you.`,
-      entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
-      entity_id: wv.id,
-      actor_user_id: input.actor_user_id,
-      _triggerSource: "winner_sourcing_assign_creative",
-    }).catch(() => {});
+    if (!input.skip_notify) {
+      await notify({
+        user_id: input.assigned_creative_id.trim(),
+        event_type: NOTIFICATION_EVENT.RESEARCH_ASSIGNED_TO_CREATIVE,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: "🎬 New recreate needs a script",
+        body: `A Winner sourcing recreate for ${creatorName} was assigned to you.`,
+        entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+        entity_id: wv.id,
+        actor_user_id: input.actor_user_id,
+        _triggerSource: "winner_sourcing_assign_creative",
+      }).catch(() => {});
+    }
   } else {
     await updateWinnerVideoFields(winnerVideoId, {
       assigned_creative_id: input.assigned_creative_id.trim(),
@@ -779,6 +848,8 @@ export async function assignCreativeToSlot(input: {
       assigned_creator_name: creatorName,
       script_status: "Needs Script",
       script_video_type,
+      bunch_id: slot.bunch_id,
+      bunch_name: bunch?.name || "",
     });
   }
 
@@ -798,6 +869,319 @@ export async function assignCreativeToSlot(input: {
 
   slot = mapSlot(updated as Record<string, unknown>);
   return slot;
+}
+
+/**
+ * Assign (or re-assign) a creative to an entire video bunch.
+ * Updates the bunch, then applies to current slots that have not yet submitted a script
+ * (Not Applicable / Needs Script). Slots at Pending Review or later keep historical attribution.
+ * Future slots inherit via createSlotFromApprovedWinnerVideo / assignQueueItemToBunch.
+ */
+export async function assignCreativeToBunch(input: {
+  bunch_id: string;
+  assigned_creative_id: string;
+  assigned_creative_name: string;
+  actor_user_id?: string;
+  actor_user_name?: string;
+}): Promise<{ bunch: VideoBunch; updated_slots: RecreateVideoSlot[]; skipped_slots: number }> {
+  const creativeId = input.assigned_creative_id.trim();
+  const creativeName = input.assigned_creative_name.trim();
+  if (!creativeId) throw new Error("Creative is required");
+  if (!creativeName) throw new Error("Creative name is required");
+
+  const sb = getSupabaseServiceClient();
+  const { data: bunchRow, error: bunchErr } = await sb
+    .from("video_bunches")
+    .update({
+      assigned_creative_id: creativeId,
+      assigned_creative_name: creativeName,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", input.bunch_id)
+    .select("*")
+    .single();
+  if (bunchErr) throw new Error(`assignCreativeToBunch: ${bunchErr.message}`);
+  if (!bunchRow) throw new Error("Bunch not found");
+
+  const bunch = mapBunch(bunchRow as Record<string, unknown>);
+  const slots = await listSlotsForBunch(bunch.id);
+  const updatedSlots: RecreateVideoSlot[] = [];
+  let skipped = 0;
+
+  for (const slot of slots) {
+    if (!slotInheritsBunchCreative(slot.status)) {
+      skipped += 1;
+      continue;
+    }
+    if (!slotFilled(slot)) {
+      // Stamp denormalized creative; scripts spawn once the slot is filled.
+      const { data: stamped, error: stampErr } = await sb
+        .from("recreate_video_slots")
+        .update({
+          assigned_creative_id: creativeId,
+          assigned_creative_name: creativeName,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", slot.id)
+        .select("*")
+        .single();
+      if (stampErr) throw new Error(stampErr.message);
+      updatedSlots.push(mapSlot(stamped as Record<string, unknown>));
+      continue;
+    }
+    updatedSlots.push(
+      await assignCreativeToSlot({
+        slot_id: slot.id,
+        assigned_creative_id: creativeId,
+        assigned_creative_name: creativeName,
+        actor_user_id: input.actor_user_id,
+        actor_user_name: input.actor_user_name,
+        skip_notify: true,
+      }),
+    );
+  }
+
+  if (updatedSlots.length > 0) {
+    await notify({
+      user_id: creativeId,
+      event_type: NOTIFICATION_EVENT.RESEARCH_ASSIGNED_TO_CREATIVE,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title: "🎬 Bunch assigned for scripting",
+      body: `“${bunch.name}” was assigned to you (${updatedSlots.length} slot${updatedSlots.length === 1 ? "" : "s"} ready for scripts).`,
+      entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+      entity_id: updatedSlots.find((s) => s.winner_video_id)?.winner_video_id || bunch.id,
+      actor_user_id: input.actor_user_id,
+      _triggerSource: "winner_sourcing_assign_bunch_creative",
+    }).catch(() => {});
+  }
+
+  const refreshed = await getVideoBunch(bunch.id);
+  return {
+    bunch: refreshed ?? bunch,
+    updated_slots: updatedSlots,
+    skipped_slots: skipped,
+  };
+}
+
+/** Script progress for a creative across bunches they are assigned to. */
+export type BunchScriptProgress = {
+  bunch_id: string;
+  bunch_name: string;
+  total: number;
+  written: number;
+};
+
+/**
+ * Progress of scripts for bunches assigned to a creative (or with slots assigned to them).
+ * `written` = slots past Needs Script (Pending Review / Approved / Rejected).
+ */
+export async function listBunchScriptProgressForCreative(
+  creativeId: string,
+): Promise<BunchScriptProgress[]> {
+  const id = creativeId.trim();
+  if (!id) return [];
+  const sb = getSupabaseServiceClient();
+
+  const { data: bunches, error: bErr } = await sb
+    .from("video_bunches")
+    .select("id, name")
+    .eq("assigned_creative_id", id);
+  if (bErr) throw new Error(bErr.message);
+
+  const bunchOwnedIds = new Set((bunches ?? []).map((b) => String((b as { id: string }).id)));
+  const nameById = new Map(
+    (bunches ?? []).map((b) => [
+      String((b as { id: string }).id),
+      String((b as { name?: string }).name ?? ""),
+    ]),
+  );
+
+  // Include bunches where slots still reference this creative (historical / transitional).
+  const { data: slotHintRows, error: sErr } = await sb
+    .from("recreate_video_slots")
+    .select("bunch_id")
+    .eq("assigned_creative_id", id);
+  if (sErr) throw new Error(sErr.message);
+
+  const extraBunchIds = [
+    ...new Set(
+      (slotHintRows ?? [])
+        .map((r) => String((r as { bunch_id: string }).bunch_id))
+        .filter((bid) => bid && !nameById.has(bid)),
+    ),
+  ];
+  if (extraBunchIds.length > 0) {
+    const { data: extra } = await sb.from("video_bunches").select("id, name").in("id", extraBunchIds);
+    for (const b of extra ?? []) {
+      const bid = String((b as { id: string }).id);
+      nameById.set(bid, String((b as { name?: string }).name ?? ""));
+    }
+  }
+
+  if (nameById.size === 0) return [];
+
+  const ids = [...nameById.keys()];
+  const { data: allSlots, error: allErr } = await sb
+    .from("recreate_video_slots")
+    .select("bunch_id, status, assigned_creative_id, winner_video_id")
+    .in("bunch_id", ids);
+  if (allErr) throw new Error(allErr.message);
+
+  const progress = new Map<string, { total: number; written: number }>();
+  for (const raw of allSlots ?? []) {
+    const r = raw as {
+      bunch_id: string;
+      status: string;
+      assigned_creative_id?: string | null;
+      winner_video_id?: string | null;
+    };
+    const bid = String(r.bunch_id);
+    const slotCreative = String(r.assigned_creative_id ?? "").trim();
+    const status = coerceScriptStatus(r.status);
+    const bunchOwned = bunchOwnedIds.has(bid);
+
+    // Count slots owned by this creative (denormalized) or active script work under a bunch they own.
+    const countThis =
+      slotCreative === id ||
+      (bunchOwned && (status === "Needs Script" || Boolean(r.winner_video_id)));
+    if (!countThis) continue;
+
+    const cur = progress.get(bid) ?? { total: 0, written: 0 };
+    cur.total += 1;
+    if (status === "Pending Review" || status === "Approved" || status === "Rejected") {
+      cur.written += 1;
+    }
+    progress.set(bid, cur);
+  }
+
+  return ids
+    .map((bid) => {
+      const p = progress.get(bid) ?? { total: 0, written: 0 };
+      return {
+        bunch_id: bid,
+        bunch_name: nameById.get(bid) || "Bunch",
+        total: p.total,
+        written: p.written,
+      };
+    })
+    .filter((p) => p.total > 0)
+    .sort((a, b) => a.bunch_name.localeCompare(b.bunch_name));
+}
+
+/** Slot metadata for Creative Scripts UI (recreate index within a winner group). */
+export type SlotScriptMeta = {
+  winner_video_id: string;
+  bunch_id: string;
+  bunch_name: string;
+  sequence_number: number;
+  recreate_index: number;
+  recreate_total: number;
+  video_type: string;
+  description: string;
+  video_link: string;
+};
+
+type SlotRowForMeta = {
+  id: string;
+  bunch_id: string;
+  sequence_number: number;
+  winner_submission_id: string | null;
+  winner_video_id: string | null;
+  video_type: string;
+  description: string;
+  video_link: string;
+  assigned_creative_id: string | null;
+};
+
+export async function listSlotScriptMetaForCreative(
+  creativeId: string,
+): Promise<SlotScriptMeta[]> {
+  const id = creativeId.trim();
+  if (!id) return [];
+  const sb = getSupabaseServiceClient();
+
+  const { data: bunches } = await sb
+    .from("video_bunches")
+    .select("id, name")
+    .eq("assigned_creative_id", id);
+  const nameById = new Map(
+    (bunches ?? []).map((b) => [
+      String((b as { id: string }).id),
+      String((b as { name?: string }).name ?? ""),
+    ]),
+  );
+
+  const selectCols =
+    "id, bunch_id, sequence_number, winner_submission_id, winner_video_id, video_type, description, video_link, assigned_creative_id, status";
+
+  const { data: slots, error } = await sb
+    .from("recreate_video_slots")
+    .select(selectCols)
+    .not("winner_video_id", "is", null)
+    .eq("assigned_creative_id", id);
+  if (error) throw new Error(error.message);
+
+  const bunchIds = [...nameById.keys()];
+  let bunchSlots: unknown[] = [];
+  if (bunchIds.length > 0) {
+    const { data } = await sb
+      .from("recreate_video_slots")
+      .select(selectCols)
+      .in("bunch_id", bunchIds)
+      .not("winner_video_id", "is", null);
+    bunchSlots = data ?? [];
+  }
+
+  const byId = new Map<string, SlotRowForMeta>();
+  for (const raw of [...(slots ?? []), ...bunchSlots]) {
+    const r = raw as Record<string, unknown>;
+    const sid = String(r.id ?? "");
+    if (!sid) continue;
+    byId.set(sid, {
+      id: sid,
+      bunch_id: String(r.bunch_id ?? ""),
+      sequence_number: Number(r.sequence_number) || 1,
+      winner_submission_id: r.winner_submission_id ? String(r.winner_submission_id) : null,
+      winner_video_id: r.winner_video_id ? String(r.winner_video_id) : null,
+      video_type: String(r.video_type ?? ""),
+      description: String(r.description ?? ""),
+      video_link: String(r.video_link ?? ""),
+      assigned_creative_id: r.assigned_creative_id ? String(r.assigned_creative_id) : null,
+    });
+  }
+  const merged = [...byId.values()];
+
+  const groups = new Map<string, SlotRowForMeta[]>();
+  for (const s of merged) {
+    const key = s.winner_submission_id ? `w:${s.winner_submission_id}` : `s:${s.id}`;
+    const list = groups.get(key) ?? [];
+    list.push(s);
+    groups.set(key, list);
+  }
+  for (const list of groups.values()) {
+    list.sort((a, b) => a.sequence_number - b.sequence_number);
+  }
+
+  const out: SlotScriptMeta[] = [];
+  for (const list of groups.values()) {
+    const total = list.length;
+    list.forEach((s, i) => {
+      const wvId = String(s.winner_video_id ?? "").trim();
+      if (!wvId) return;
+      out.push({
+        winner_video_id: wvId,
+        bunch_id: s.bunch_id,
+        bunch_name: nameById.get(s.bunch_id) || "",
+        sequence_number: s.sequence_number,
+        recreate_index: i + 1,
+        recreate_total: total,
+        video_type: s.video_type || "",
+        description: s.description || "",
+        video_link: s.video_link || "",
+      });
+    });
+  }
+  return out;
 }
 
 /** Sync slot status from its linked winner_videos Creative Scripts row. */

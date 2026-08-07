@@ -11,8 +11,10 @@ import {
   Settings2,
   Sparkles,
   Trophy,
+  UserRound,
   Users,
 } from "lucide-react";
+import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import {
@@ -39,7 +41,12 @@ import type {
 import { cn } from "@/lib/utils";
 
 export type HubModelOption = { model_id: string; model_name: string };
-export type HubCreativeOption = { id: string; name: string };
+export type HubCreativeOption = {
+  id: string;
+  name: string;
+  email?: string;
+  role?: string;
+};
 
 type TabId = "winners" | "super" | "queue" | "bunches" | "settings";
 
@@ -271,13 +278,13 @@ export function WinnerVideosHubClient({
     }
   }
 
-  async function assignCreative(slotId: string, creativeId: string) {
+  async function assignCreativeToBunch(bunchId: string, creativeId: string) {
     const creative = creatives.find((c) => c.id === creativeId);
     if (!creative) return;
-    setBusyId(slotId);
+    setBusyId(bunchId);
     try {
-      const res = await fetch(`/api/winner-sourcing/slots/${slotId}`, {
-        method: "POST",
+      const res = await fetch(`/api/winner-sourcing/bunches/${bunchId}`, {
+        method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -293,15 +300,21 @@ export function WinnerVideosHubClient({
         );
         return;
       }
+      const updated = data.updated_slots?.length ?? 0;
+      const skipped = data.skipped_slots ?? 0;
       addToast(
         winnerVideoLocalToast(
           `ws-cr-${Date.now()}`,
-          "Creative Scripts work item created",
-          `Assigned to ${creative.name}`,
+          "Bunch assigned to creative",
+          `${creative.name} · ${updated} slot${updated === 1 ? "" : "s"} updated${skipped ? ` · ${skipped} kept historical` : ""}`,
           "normal",
         ),
       );
-      if (selectedBunchId) await loadBunchSlots(selectedBunchId);
+      if (data.bunch) {
+        setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...data.bunch } : b)));
+      }
+      if (selectedBunchId === bunchId) await loadBunchSlots(bunchId);
+      else await refreshAll();
     } finally {
       setBusyId(null);
     }
@@ -471,7 +484,7 @@ export function WinnerVideosHubClient({
               slots={bunchSlots}
               loadingSlots={loadingSlots}
               onSelectBunch={(id) => void loadBunchSlots(id)}
-              onAssignCreative={assignCreative}
+              onAssignCreative={assignCreativeToBunch}
               onUpdateSlotType={updateSlotType}
               onToggleBunchStatus={toggleBunchStatus}
             />
@@ -818,10 +831,24 @@ function BunchesPanel({
   slots: RecreateVideoSlot[];
   loadingSlots: boolean;
   onSelectBunch: (id: string) => void;
-  onAssignCreative: (slotId: string, creativeId: string) => void;
+  onAssignCreative: (bunchId: string, creativeId: string) => void;
   onUpdateSlotType: (slotId: string, video_type: SlotVideoType) => void;
   onToggleBunchStatus?: (id: string, status: "open" | "closed") => void;
 }) {
+  const [showAssignPicker, setShowAssignPicker] = React.useState(false);
+  const selectedBunch = bunches.find((b) => b.id === selectedBunchId) ?? null;
+
+  const staffCreatives = React.useMemo<StaffUserOption[]>(
+    () =>
+      creatives.map((c) => ({
+        id: c.id,
+        full_name: c.name,
+        email: c.email ?? "",
+        role: c.role ?? "other",
+      })),
+    [creatives],
+  );
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
@@ -903,6 +930,7 @@ function BunchesPanel({
                 b.remaining_count ?? Math.max(0, b.target_video_count - provided - pending);
               const occupied = provided + pending;
               const pct = Math.min(100, Math.round((occupied / b.target_video_count) * 100));
+              const creativeLabel = b.assigned_creative_name?.trim();
               return (
                 <li key={b.id}>
                   <div
@@ -929,6 +957,10 @@ function BunchesPanel({
                         </p>
                         <p className="mt-1 text-[11px] text-[#B8B4B8]/45">
                           Filled {provided} · Pending {pending} · Needed {remaining}
+                        </p>
+                        <p className="mt-1.5 flex items-center gap-1 text-[11px] text-[#D4AF8C]/80">
+                          <UserRound className="h-3 w-3 opacity-70" aria-hidden />
+                          {creativeLabel ? `Creative: ${creativeLabel}` : "No creative assigned"}
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
@@ -962,7 +994,7 @@ function BunchesPanel({
         </ul>
 
         <div className={cn(VA_CARD, "min-h-[240px] p-4")}>
-          {!selectedBunchId ? (
+          {!selectedBunchId || !selectedBunch ? (
             <div className="flex h-full min-h-[200px] flex-col items-center justify-center gap-2 text-sm text-[#B8B4B8]/45">
               <Users className="h-8 w-8 opacity-40" />
               Select a bunch to view recreate slots
@@ -973,15 +1005,70 @@ function BunchesPanel({
             </div>
           ) : (
             <div className="space-y-3">
-              <h3 className="text-sm font-semibold text-white">
-                Slots ({slots.length})
-              </h3>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-white">{selectedBunch.name}</h3>
+                  <p className="mt-0.5 text-xs text-[#B8B4B8]/55">
+                    Slots ({slots.length})
+                    {selectedBunch.assigned_creative_name?.trim()
+                      ? ` · Creative: ${selectedBunch.assigned_creative_name}`
+                      : " · No creative yet"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs")}
+                  onClick={() => setShowAssignPicker((v) => !v)}
+                  disabled={busyId === selectedBunch.id || creatives.length === 0}
+                >
+                  {busyId === selectedBunch.id ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <UserRound className="h-3.5 w-3.5" />
+                  )}
+                  {selectedBunch.assigned_creative_id ? "Re-assign creative" : "Assign creative"}
+                </button>
+              </div>
+
+              {creatives.length === 0 ? (
+                <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                  No Creatives available — grant creative_scripts:submit to a user first.
+                </p>
+              ) : null}
+
+              {showAssignPicker && creatives.length > 0 ? (
+                <div className="rounded-xl border border-white/[0.08] bg-[#0A0A0A]/70 p-3">
+                  <p className="mb-2 text-[11px] text-[#B8B4B8]/55">
+                    Assigns the entire bunch. New slots inherit automatically. Slots already submitted for
+                    review keep their historical writer.
+                  </p>
+                  <StaffAssigneePicker
+                    users={staffCreatives}
+                    roleLabels={{}}
+                    singleSelect
+                    selectedIds={
+                      selectedBunch.assigned_creative_id ? [selectedBunch.assigned_creative_id] : []
+                    }
+                    onChange={(ids) => {
+                      const next = ids[0];
+                      if (!next || next === selectedBunch.assigned_creative_id) return;
+                      setShowAssignPicker(false);
+                      onAssignCreative(selectedBunch.id, next);
+                    }}
+                  />
+                </div>
+              ) : null}
+
               {slots.length === 0 ? (
                 <p className="text-sm text-[#B8B4B8]/50">No slots yet — assign queue items or wait for researchers.</p>
               ) : (
                 <ul className="max-h-[520px] space-y-2 overflow-y-auto pr-1">
                   {slots.map((slot) => {
                     const st = SCRIPT_STATUS_STYLES[slot.status] ?? SCRIPT_STATUS_STYLES["Not Applicable"];
+                    const scriptOwner =
+                      slot.assigned_creative_name?.trim() ||
+                      selectedBunch.assigned_creative_name?.trim() ||
+                      "";
                     return (
                       <li
                         key={slot.id}
@@ -1019,26 +1106,17 @@ function BunchesPanel({
                             <option value="ugc">UGC</option>
                             <option value="other">Other</option>
                           </select>
-                          {!slot.winner_video_id ? (
-                            <select
-                              className={cn(VA_FILTER_INPUT, "h-8 min-w-[140px] text-xs")}
-                              defaultValue=""
-                              onChange={(e) => {
-                                if (e.target.value) onAssignCreative(slot.id, e.target.value);
-                              }}
-                              disabled={busyId === slot.id || !slot.video_link}
-                            >
-                              <option value="">Assign creative → Scripts</option>
-                              {creatives.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
+                          {scriptOwner ? (
                             <span className="text-[11px] text-emerald-300/80">
-                              Scripts: {slot.assigned_creative_name || "assigned"}
+                              Scripts: {scriptOwner}
+                              {slot.status === "Pending Review" ||
+                              slot.status === "Approved" ||
+                              slot.status === "Rejected"
+                                ? " (historical)"
+                                : ""}
                             </span>
+                          ) : (
+                            <span className="text-[11px] text-[#B8B4B8]/45">Awaiting bunch creative</span>
                           )}
                         </div>
                       </li>
@@ -1053,3 +1131,4 @@ function BunchesPanel({
     </div>
   );
 }
+

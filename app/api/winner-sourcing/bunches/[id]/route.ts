@@ -3,6 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
+  assignCreativeToBunch,
   getVideoBunch,
   listSlotsForBunch,
   submitResearcherBunchFind,
@@ -37,11 +38,24 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await params;
-  const body = (await req.json()) as { status?: string };
-  const status = coerceBunchStatus(body.status);
+  const body = (await req.json()) as Record<string, unknown>;
   try {
-    const bunch = await updateVideoBunchStatus(id, status);
-    return NextResponse.json({ bunch });
+    if (body.assigned_creative_id !== undefined || body.action === "assign_creative") {
+      const result = await assignCreativeToBunch({
+        bunch_id: id,
+        assigned_creative_id: String(body.assigned_creative_id ?? ""),
+        assigned_creative_name: String(body.assigned_creative_name ?? ""),
+        actor_user_id: session.airtableUserId ?? session.id,
+        actor_user_name: (session.fullName || session.email || "").trim(),
+      });
+      return NextResponse.json(result);
+    }
+    if (body.status !== undefined) {
+      const status = coerceBunchStatus(body.status);
+      const bunch = await updateVideoBunchStatus(id, status);
+      return NextResponse.json({ bunch });
+    }
+    return NextResponse.json({ error: "No valid fields to update" }, { status: 400 });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed" },

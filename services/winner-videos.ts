@@ -380,9 +380,9 @@ export async function appendWinnerVideoScreenshotUrls(id: string, urls: string[]
 export type ApproveWinnerVideoInput = {
   assigned_creator_name: string;
   recreation_deadline: string;
-  /** Creative (staff) who will write the script for this find. */
-  assigned_creative_id: string;
-  assigned_creative_name: string;
+  /** Creative (staff) who will write the script. Optional for Fill Bunches finds (inherits from bunch). */
+  assigned_creative_id?: string;
+  assigned_creative_name?: string;
   reviewed_by_name: string;
   reviewed_by_id?: string;
 };
@@ -392,20 +392,47 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
   if (!existing) throw new Error("Winner video not found");
 
   const now = new Date().toISOString();
+  const isBunchFind = Boolean(existing.bunch_id?.trim());
+
+  let creativeId = String(data.assigned_creative_id ?? "").trim();
+  let creativeName = String(data.assigned_creative_name ?? "").trim();
+
+  // Fill Bunches: inherit creative from the parent bunch when not provided on approve.
+  if (isBunchFind && isSupabaseBackend()) {
+    try {
+      const { getVideoBunch } = await import("./winner-sourcing");
+      const bunch = await getVideoBunch(existing.bunch_id);
+      if (bunch?.assigned_creative_id?.trim()) {
+        if (!creativeId) {
+          creativeId = bunch.assigned_creative_id.trim();
+          creativeName = bunch.assigned_creative_name.trim() || creativeName;
+        }
+      }
+    } catch (err) {
+      console.error("[winner-sourcing] load bunch creative on approve failed", err);
+    }
+  }
+
+  if (!isBunchFind && (!creativeId || !creativeName)) {
+    throw new Error("A Creative must be assigned to write the script");
+  }
+
   const patch: WinnerVideoFields = {
     status: "Approved",
     assigned_creator_name: data.assigned_creator_name.trim(),
     recreation_deadline: data.recreation_deadline.trim(),
-    assigned_creative_id: data.assigned_creative_id.trim(),
-    assigned_creative_name: data.assigned_creative_name.trim(),
     reviewed_by_name: data.reviewed_by_name.trim(),
     reviewed_at: now,
     rejection_reason: "",
   };
 
-  const currentScriptStatus = existing.script_status;
-  if (!currentScriptStatus || currentScriptStatus === "Not Applicable") {
-    patch.script_status = "Needs Script";
+  if (creativeId && creativeName) {
+    patch.assigned_creative_id = creativeId;
+    patch.assigned_creative_name = creativeName;
+    const currentScriptStatus = existing.script_status;
+    if (!currentScriptStatus || currentScriptStatus === "Not Applicable") {
+      patch.script_status = "Needs Script";
+    }
   }
 
   await persistWinnerVideoFields(id, patch);
@@ -419,8 +446,8 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
       const { createSlotFromApprovedWinnerVideo } = await import("./winner-sourcing");
       await createSlotFromApprovedWinnerVideo({
         winner_video: updated,
-        assigned_creative_id: data.assigned_creative_id.trim(),
-        assigned_creative_name: data.assigned_creative_name.trim(),
+        assigned_creative_id: creativeId,
+        assigned_creative_name: creativeName,
       });
     } catch (err) {
       console.error("[winner-sourcing] create slot on approve failed", err);
@@ -442,10 +469,9 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     }).catch((err) => console.error("[winner_video_approved] notify failed", err));
   }
 
-  const assignedCreativeId = data.assigned_creative_id.trim();
-  if (assignedCreativeId) {
+  if (creativeId) {
     await notify({
-      user_id: assignedCreativeId,
+      user_id: creativeId,
       event_type: NOTIFICATION_EVENT.RESEARCH_ASSIGNED_TO_CREATIVE,
       priority: NOTIFICATION_PRIORITY.HIGH,
       title: "📋 New script assignment",
@@ -457,7 +483,7 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     }).catch((err) => console.error("[research_assigned_to_creative] notify failed", err));
   }
 
-  return updated;
+  return (await getWinnerVideoById(id)) ?? updated;
 }
 
 export type RejectWinnerVideoInput = {

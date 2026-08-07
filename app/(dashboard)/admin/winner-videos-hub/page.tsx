@@ -39,7 +39,12 @@ export default async function AdminWinnerVideosHubPage() {
   }));
 
   const creatives: HubCreativeOption[] = creativeUsers
-    .map((u) => ({ id: u.id, name: (u.full_name || u.email || "").trim() }))
+    .map((u) => ({
+      id: u.id,
+      name: (u.full_name || u.email || "").trim(),
+      email: u.email || "",
+      role: u.role || "other",
+    }))
     .filter((c) => c.id && c.name)
     .sort((a, b) => a.name.localeCompare(b.name));
 

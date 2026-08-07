@@ -3,6 +3,10 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getScriptsQueue } from "@/services/winner-videos";
+import {
+  listBunchScriptProgressForCreative,
+  listSlotScriptMetaForCreative,
+} from "@/services/winner-sourcing";
 
 export async function GET() {
   const session = await getSessionFromCookies();
@@ -11,6 +15,11 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const videos = await getScriptsQueue(session.airtableUserId ?? session.id);
-  return NextResponse.json({ videos });
+  const creativeId = session.airtableUserId ?? session.id;
+  const [videos, bunchProgress, slotMeta] = await Promise.all([
+    getScriptsQueue(creativeId),
+    listBunchScriptProgressForCreative(creativeId).catch(() => []),
+    listSlotScriptMetaForCreative(creativeId).catch(() => []),
+  ]);
+  return NextResponse.json({ videos, bunchProgress, slotMeta });
 }
