@@ -379,7 +379,12 @@ export function ModelScheduleClient({
                   <p className="py-4 text-sm text-white/40">{t("schedule.noScheduleItems")}</p>
               ) : (
                 <ul className="space-y-2">
-                  {dayItems.map((item) => (
+                  {dayItems.map((item) => {
+                    const locationLine =
+                      item.item_type === "content_shoot"
+                        ? (item.details?.match(/^Location:\s*(.+)$/m)?.[1]?.trim() || "")
+                        : "";
+                    return (
                     <li key={item.id}>
                       <button
                         type="button"
@@ -396,12 +401,19 @@ export function ModelScheduleClient({
                           </span>
                         )}
                           </div>
+                        {item.item_type === "content_shoot" ? (
+                          <p className="mt-1 text-xs text-emerald-300/80">
+                            {itemTypeLabel(item.item_type)}
+                            {locationLine ? ` · ${locationLine}` : ""}
+                          </p>
+                        ) : null}
                         {item.duration_minutes != null && (
                             <p className="mt-1 text-xs text-white/50">{item.duration_minutes} min</p>
                         )}
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>

@@ -4,7 +4,11 @@
  */
 
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
-import { coerceFilmingStatus, type FilmingStatus } from "@/lib/filming-helpers";
+import {
+  bunchScriptsReadyForFilming,
+  coerceFilmingStatus,
+  type FilmingStatus,
+} from "@/lib/filming-helpers";
 import { slotFilled } from "@/lib/winner-sourcing-helpers";
 import {
   getVideoBunch,
@@ -103,6 +107,24 @@ function mapSchedule(row: Record<string, unknown>): FilmingScheduleEntry {
   };
 }
 
+/**
+ * model_schedule.date / start_time / end_time are timestamptz.
+ * filming_schedule stores plain YYYY-MM-DD + HH:MM — combine before sync.
+ */
+function toModelScheduleTimestamptz(dateYmd: string, timeHm?: string | null): string | null {
+  const date = (dateYmd ?? "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const raw = (timeHm ?? "").trim();
+  if (!raw) return `${date}T00:00:00.000Z`;
+  if (raw.includes("T")) return raw;
+  const m = raw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return `${date}T00:00:00.000Z`;
+  const hh = m[1]!.padStart(2, "0");
+  const mm = m[2]!;
+  const ss = (m[3] ?? "00").padStart(2, "0");
+  return `${date}T${hh}:${mm}:${ss}.000Z`;
+}
+
 async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<ShootSlotDetail[]> {
   const approved = slots.filter((s) => s.status === "Approved" && Boolean(s.winner_video_id));
   const videos = await Promise.all(
@@ -181,9 +203,7 @@ export async function listBunchesForFilmingManage(): Promise<
   const out: Array<VideoBunch & { slots: RecreateVideoSlot[]; scripts_ready: boolean }> = [];
   for (const bunch of bunches) {
     const slots = await listSlotsForBunch(bunch.id);
-    const filled = slots.filter((s) => slotFilled(s) || s.status === "Approved" || s.status === "Pending Review" || s.status === "Needs Script" || s.status === "Rejected");
-    const scripts_ready =
-      filled.length > 0 && filled.every((s) => s.status === "Approved");
+    const scripts_ready = bunchScriptsReadyForFilming(slots);
     const progress = filmingProgress(slots);
     if (!scripts_ready && !bunch.assigned_filmer_id && bunch.filming_status === "unassigned") {
       continue;
@@ -209,18 +229,19 @@ export async function assignFilmerToBunch(input: {
   if (!bunch) throw new Error("Bunch not found");
 
   const slots = await listSlotsForBunch(bunch.id);
-  const filled = slots.filter(
-    (s) =>
-      slotFilled(s) ||
-      s.status === "Approved" ||
-      s.status === "Pending Review" ||
-      s.status === "Needs Script" ||
-      s.status === "Rejected",
-  );
-  if (filled.length === 0) throw new Error("Bunch has no slots to film");
-  if (!filled.every((s) => s.status === "Approved")) {
+  if (!bunchScriptsReadyForFilming(slots)) {
+    const hasAny = slots.some(
+      (s) =>
+        slotFilled(s) ||
+        Boolean((s.video_link ?? "").trim() || (s.description ?? "").trim()) ||
+        s.status === "Approved" ||
+        s.status === "Pending Review" ||
+        s.status === "Rejected",
+    );
+    if (!hasAny) throw new Error("Bunch has no slots to film");
     throw new Error("All scripts in the bunch must be approved before assigning a filmer");
   }
+  const filled = slots.filter((s) => s.status === "Approved");
 
   const sb = getSupabaseServiceClient();
   const nextStatus: FilmingStatus =
@@ -423,18 +444,39 @@ async function syncModelScheduleFromFilming(
   ].filter(Boolean);
   const details = detailsParts.join("\n");
 
+  const dateTs = toModelScheduleTimestamptz(entry.schedule_date);
+  const startTs = entry.start_time?.trim()
+    ? toModelScheduleTimestamptz(entry.schedule_date, entry.start_time)
+    : null;
+  const endTs = entry.end_time?.trim()
+    ? toModelScheduleTimestamptz(entry.schedule_date, entry.end_time)
+    : null;
+  if (!dateTs) {
+    console.error("[filming_schedule] model_schedule sync skipped: invalid schedule_date", entry.schedule_date);
+    return null;
+  }
+
   const payload: Record<string, unknown> = {
     model_id: entry.model_id,
     model_name: entry.model_name,
     title,
     item_type: "content_shoot",
-    date: entry.schedule_date,
-    start_time: entry.start_time || null,
-    end_time: entry.end_time || null,
+    date: dateTs,
+    start_time: startTs,
+    end_time: endTs,
     details,
     status: "scheduled",
     updated_at: new Date().toISOString(),
   };
+
+  // Link modelss UUID when available (listModelScheduleItems resolves either model[] or model_id)
+  try {
+    const { requireSbUuids } = await import("@/lib/supabase-data");
+    const modelUuids = await requireSbUuids("modelss", [entry.model_id], "model");
+    if (modelUuids.length) payload.model = modelUuids;
+  } catch (err) {
+    console.error("[filming_schedule] model UUID resolve failed", err);
+  }
 
   if (entry.model_schedule_item_id) {
     const { error } = await sb
