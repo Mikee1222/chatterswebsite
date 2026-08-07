@@ -141,7 +141,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   va_content_assigned: {
     rule: "assigned_user_only",
-    description: "Assigned VA when they receive a content assignment.",
+    description: "Assigned VA when they receive chatting content.",
   },
   va_task_assigned: {
     rule: "assigned_user_only",

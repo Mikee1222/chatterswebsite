@@ -126,7 +126,7 @@ export function AdminExpenseRequestsClient({ initialRows, modelNameById }: Props
       <div className="mb-6">
         <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">Administration</p>
         <h1 className="text-3xl font-bold text-white">Expense requests</h1>
-        <p className="mt-1 text-sm text-white/50">Airbnb requests from model VA content assignments</p>
+        <p className="mt-1 text-sm text-white/50">Airbnb requests from model Chatting Assignments</p>
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">

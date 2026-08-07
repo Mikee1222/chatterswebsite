@@ -2,12 +2,41 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Download, Loader2, Home } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  Download,
+  FileText,
+  Loader2,
+  Home,
+  Search,
+} from "lucide-react";
 import { useSWRConfig } from "swr";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import {
+  ChattingStatusBadge,
+  chattingPriorityClass,
+  dateInOrOverlapsRange,
+} from "@/components/chatting-content-ui";
+import { FilterBar, FilterChip, ReviewEmptyState } from "@/components/manager-review-ui";
+import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
+import { usePagination } from "@/lib/use-pagination";
+import {
+  VA_BTN_PRIMARY,
+  VA_BTN_SECONDARY,
+  VA_CARD,
+  VA_CARD_GLOW,
+  VA_FILTER_INPUT,
+} from "@/lib/va-tasks-tokens";
 import type { ModelContentAssignmentCardDTO } from "@/types";
 import { useTranslations } from "@/lib/use-translations";
 import { formatDateTime as formatDateTimeUk } from "@/lib/format-date";
@@ -60,23 +89,33 @@ function hoursUntil(iso: string | null): number | null {
   return (d - Date.now()) / (1000 * 60 * 60);
 }
 
-function priorityClass(p: string): string {
-  const x = (p || "").toLowerCase();
-  if (x === "urgent") return "border-rose-500/40 bg-rose-500/15 text-rose-200";
-  if (x === "high") return "border-amber-500/35 bg-amber-500/12 text-amber-200";
-  if (x === "low") return "border-white/15 bg-white/[0.06] text-white/65";
-  return "border-pink-400/30 bg-pink-500/12 text-pink-200";
-}
-
 export type ModelContentAssignmentsClientProps = {
   assignments: ModelContentAssignmentCardDTO[];
+  emptyTitle?: string;
+  emptyDescription?: string;
+  eyebrow?: string;
+  title?: string;
+  description?: string;
 };
 
-export function ModelContentAssignmentsClient({ assignments }: ModelContentAssignmentsClientProps) {
+export function ModelContentAssignmentsClient({
+  assignments,
+  emptyTitle = "No chatting assignments yet",
+  emptyDescription = "Nothing has been assigned yet.",
+  eyebrow = "Content",
+  title = "Chatting Assignments",
+  description = "Briefs and files prepared for you. Schedule when you will shoot or post them, then mark them complete.",
+}: ModelContentAssignmentsClientProps) {
   const { t } = useTranslations();
   const { mutate } = useSWRConfig();
+  const reduce = useReducedMotion();
+  const today = getTodayYmdAthens();
   const active = assignments.filter((a) => (a.status || "").toLowerCase() !== "cancelled");
   const [filter, setFilter] = React.useState<Filter>("pending");
+  const [search, setSearch] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState(() => addDaysAthensYmd(today, -90));
+  const [dateTo, setDateTo] = React.useState(today);
+  const [dateActive, setDateActive] = React.useState(false);
   const [scheduleFor, setScheduleFor] = React.useState<ModelContentAssignmentCardDTO | null>(null);
   const [completeFor, setCompleteFor] = React.useState<ModelContentAssignmentCardDTO | null>(null);
   const [scheduleDate, setScheduleDate] = React.useState("");
@@ -90,18 +129,33 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
   const [isRequestingExpense, setIsRequestingExpense] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const filtered = React.useMemo(() => {
-    const f = active.filter((a) => (a.status || "").toLowerCase() === filter);
-    return [...f].sort((a, b) => deadlineSortKey(a.deadline) - deadlineSortKey(b.deadline));
-  }, [active, filter]);
-
   const counts = React.useMemo(() => {
     return {
       pending: active.filter((a) => (a.status || "").toLowerCase() === "pending").length,
       scheduled: active.filter((a) => (a.status || "").toLowerCase() === "scheduled").length,
       completed: active.filter((a) => (a.status || "").toLowerCase() === "completed").length,
+      total: active.length,
     };
   }, [active]);
+
+  const filtered = React.useMemo(() => {
+    let f = active.filter((a) => (a.status || "").toLowerCase() === filter);
+    if (dateActive) {
+      f = f.filter((a) => dateInOrOverlapsRange(a.deadline || "", a.deadline, dateFrom, dateTo) || dateInOrOverlapsRange(a.scheduled_date || "", a.completed_at, dateFrom, dateTo));
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      f = f.filter((a) =>
+        `${a.title ?? ""} ${a.description ?? ""} ${a.va_name ?? ""} ${a.content_type ?? ""}`.toLowerCase().includes(q),
+      );
+    }
+    return [...f].sort((a, b) => deadlineSortKey(a.deadline) - deadlineSortKey(b.deadline));
+  }, [active, filter, search, dateActive, dateFrom, dateTo]);
+
+  const { page, setPage, totalPages, paginated, reset } = usePagination(filtered, 12);
+  React.useEffect(() => {
+    reset();
+  }, [filter, search, dateActive, dateFrom, dateTo, reset]);
 
   React.useEffect(() => {
     if (scheduleFor) {
@@ -222,182 +276,260 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
     return null;
   };
 
+  const clearFilters = () => {
+    setSearch("");
+    setDateActive(false);
+    setDateFrom(addDaysAthensYmd(today, -90));
+    setDateTo(today);
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        {(["pending", "scheduled", "completed"] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setFilter(key)}
-            className={cn(
-              "rounded-full border px-4 py-2 text-sm font-medium transition",
-              filter === key
-                ? "border-pink-400/50 bg-pink-500/20 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85"
-            )}
-          >
-            {key === "pending"
-              ? t("common.pending")
-              : key === "scheduled"
-                ? t("common.scheduled")
-                : t("common.completed")}
-            <span className="ml-1.5 tabular-nums text-white/40">({counts[key]})</span>
-          </button>
-        ))}
-      </div>
+      <ContentPipelineHero
+        eyebrow={eyebrow}
+        title={title}
+        description={description}
+        orb="both"
+        stats={
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <LuxuryStatCard label="Total" value={<CountUp value={counts.total} />} accent="champagne" tooltip="All chatting assignments" />
+            <LuxuryStatCard label="Pending" value={<CountUp value={counts.pending} />} accent="amber" glow tooltip="Ready to schedule" />
+            <LuxuryStatCard label="Scheduled" value={<CountUp value={counts.scheduled} />} accent="pink" tooltip="Date set — mark complete when done" />
+            <LuxuryStatCard label="Completed" value={<CountUp value={counts.completed} />} accent="emerald" tooltip="Finished assignments" />
+          </div>
+        }
+      />
 
-      {filtered.length === 0 ? (
-        <p className="rounded-2xl border border-white/10 bg-black/30 px-5 py-10 text-center text-sm text-white/50">
-          {t("common.nothingInTab")}
-        </p>
+      {active.length === 0 ? (
+        <ReviewEmptyState icon={FileText} title={emptyTitle} description={emptyDescription} />
       ) : (
-        <ul className="grid gap-4 md:grid-cols-2">
-          {filtered.map((a) => {
-            const st = (a.status || "").toLowerCase();
-            const deadlineIso = a.deadline;
-            const h = hoursUntil(deadlineIso);
-            const urgent = st !== "completed" && h != null && h > 0 && h < 48;
-            const overdue = st !== "completed" && h != null && h < 0;
-            const downloadInfo = downloadTarget(a);
+        <>
+          <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "space-y-3 p-4")}>
+            <div className="flex flex-wrap items-center gap-2">
+              {(["pending", "scheduled", "completed"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setFilter(key)}
+                  className={cn(
+                    "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                    filter === key
+                      ? "border-[#FF1493]/55 bg-[#FF1493]/20 text-pink-100"
+                      : "border-white/12 bg-white/[0.04] text-[#B8B4B8]/80 hover:bg-white/[0.08]",
+                  )}
+                >
+                  {key === "pending" ? t("common.pending") : key === "scheduled" ? t("common.scheduled") : t("common.completed")}
+                  <span className="ml-1 text-white/45">{counts[key]}</span>
+                </button>
+              ))}
+            </div>
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#B8B4B8]/35" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search assignments…"
+                className={cn(VA_FILTER_INPUT, "w-full pl-9")}
+              />
+            </label>
+            <InflowwCustomDateRange
+              startYmd={dateFrom}
+              endYmd={dateTo}
+              onChange={(s, e) => {
+                setDateFrom(s);
+                setDateTo(e);
+              }}
+              onApply={(s, e) => {
+                setDateFrom(s);
+                setDateTo(e);
+                setDateActive(true);
+              }}
+            />
+            <div className="flex flex-wrap items-center gap-2">
+              {search.trim() ? <FilterChip label={`Search: ${search.trim()}`} onRemove={() => setSearch("")} /> : null}
+              {dateActive ? <FilterChip label={`${dateFrom} → ${dateTo}`} onRemove={() => setDateActive(false)} /> : null}
+              {search.trim() || dateActive ? (
+                <button type="button" onClick={clearFilters} className={cn(VA_BTN_SECONDARY, "px-3 py-1.5 text-xs")}>
+                  Clear filters
+                </button>
+              ) : null}
+              <span className="ml-auto text-xs text-[#B8B4B8]/45">{filtered.length} shown</span>
+            </div>
+          </FilterBar>
 
-            return (
-              <li
-                key={a.id}
-                className={cn(
-                  "relative flex flex-col overflow-hidden rounded-2xl border bg-black/35 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl",
-                  urgent || overdue ? "border-pink-500/35" : "border-white/10"
-                )}
-              >
-                {(urgent || overdue) && (
-                  <div
-                    className={cn(
-                      "mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium",
-                      overdue ? "border-rose-500/35 bg-rose-500/10 text-rose-200" : "border-amber-500/35 bg-amber-500/10 text-amber-100"
-                    )}
-                  >
-                    {overdue ? (
-                      <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
-                    ) : (
-                      <Clock className="h-4 w-4 shrink-0" aria-hidden />
-                    )}
-                    {overdue
-                      ? t("assignments.pastDeadline")
-                      : t("assignments.due48h")}
-                  </div>
-                )}
+          {filtered.length === 0 ? (
+            <ReviewEmptyState
+              icon={FileText}
+              title={t("common.nothingInTab")}
+              description="Try another status or clear filters."
+              action={
+                search.trim() || dateActive ? (
+                  <button type="button" onClick={clearFilters} className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-xs")}>
+                    Clear filters
+                  </button>
+                ) : null
+              }
+            />
+          ) : (
+            <>
+              <ul className="grid gap-4 md:grid-cols-2">
+                {paginated.map((a, i) => {
+                  const st = (a.status || "").toLowerCase();
+                  const deadlineIso = a.deadline;
+                  const h = hoursUntil(deadlineIso);
+                  const urgent = st !== "completed" && h != null && h > 0 && h < 48;
+                  const overdue = st !== "completed" && h != null && h < 0;
+                  const downloadInfo = downloadTarget(a);
 
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <h2 className="text-lg font-semibold leading-snug text-white">{a.title || "—"}</h2>
-                  {a.priority ? (
-                    <span
+                  return (
+                    <motion.li
+                      key={a.id}
+                      initial={reduce ? false : { opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: reduce ? 0 : 0.28, delay: reduce ? 0 : Math.min(i * 0.03, 0.18) }}
                       className={cn(
-                        "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                        priorityClass(a.priority)
+                        VA_CARD,
+                        VA_CARD_GLOW,
+                        "relative flex flex-col overflow-hidden border p-5",
+                        urgent || overdue ? "border-pink-500/35" : "border-white/10",
                       )}
                     >
-                      {a.priority}
-                    </span>
-                  ) : null}
-                </div>
-
-                {a.description ? (
-                  <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-white/60">{a.description}</p>
-                ) : null}
-
-                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/45">
-                  <span className="inline-flex items-center gap-1">
-                    <CalendarClock className="h-3.5 w-3.5 text-pink-300/80" aria-hidden />
-                    {t("assignments.deadline")}
-                    {": "}
-                    <span className={cn("font-medium text-white/70", urgent && "text-pink-200")}>
-                      {formatDateTimeUk(a.deadline)}
-                    </span>
-                  </span>
-                  {a.va_name ? (
-                    <span>
-                      {t("assignments.vaLabel")}: <span className="text-white/65">{a.va_name}</span>
-                    </span>
-                  ) : null}
-                  {a.content_type ? (
-                    <span>
-                      {t("common.type")}: {a.content_type}
-                    </span>
-                  ) : null}
-                </div>
-
-                {st === "scheduled" && a.scheduled_date ? (
-                  <p className="mt-2 text-xs text-white/50">
-                    {t("assignments.youScheduledFor")}{""}
-                    <span className="font-medium text-pink-200/95">{formatDateTimeUk(a.scheduled_date)}</span>
-                  </p>
-                ) : null}
-
-                {st === "completed" && a.completed_at ? (
-                  <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-300/90">
-                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                    {t("assignments.completedAt")} {formatDateTimeUk(a.completed_at)}
-                  </p>
-                ) : null}
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  {downloadInfo ? (
-                    <a
-                      href={downloadInfo.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={cn(
-                        "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-lg transition",
-                        "bg-gradient-to-r from-pink-600 to-fuchsia-600 ring-1 ring-pink-400/40 hover:from-pink-500 hover:to-fuchsia-500",
-                        "focus:outline-none focus-visible:ring-2 focus-visible:ring-pink-400 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                      {(urgent || overdue) && (
+                        <div
+                          className={cn(
+                            "mb-3 flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium",
+                            overdue
+                              ? "border-rose-500/35 bg-rose-500/10 text-rose-200"
+                              : "border-amber-500/35 bg-amber-500/10 text-amber-100",
+                          )}
+                        >
+                          {overdue ? (
+                            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+                          ) : (
+                            <Clock className="h-4 w-4 shrink-0" aria-hidden />
+                          )}
+                          {overdue ? t("assignments.pastDeadline") : t("assignments.due48h")}
+                        </div>
                       )}
-                    >
-                      <Download className="h-4 w-4 shrink-0" aria-hidden />
-                      {downloadInfo.label}
-                    </a>
-                  ) : null}
 
-                  {st === "pending" ? (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => setScheduleFor(a)}
-                      className="inline-flex min-h-[44px] items-center rounded-xl border border-pink-400/35 bg-pink-500/10 px-4 py-2.5 text-sm font-semibold text-pink-100 transition hover:bg-pink-500/18 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      {t("assignments.schedule")}
-                    </button>
-                  ) : null}
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <h2 className="text-lg font-semibold leading-snug text-white">{a.title || "—"}</h2>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <ChattingStatusBadge status={a.status} />
+                          {a.priority ? (
+                            <span
+                              className={cn(
+                                "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                                chattingPriorityClass(a.priority),
+                              )}
+                            >
+                              {a.priority}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
 
-                  {(st === "pending" || st === "scheduled") ? (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => setExpenseFor(a)}
-                      className="inline-flex min-h-[44px] items-center rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      <span className="inline-flex items-center gap-1.5"><Home className="h-4 w-4" aria-hidden />Request Airbnb</span>
-                    </button>
-                  ) : null}
+                      {a.description ? (
+                        <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-[#B8B4B8]/70">{a.description}</p>
+                      ) : null}
 
-                  {st === "scheduled" ? (
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => setCompleteFor(a)}
-                      className="inline-flex min-h-[44px] items-center rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      {t("assignments.markComplete")}
-                    </button>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
+                      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#B8B4B8]/50">
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarClock className="h-3.5 w-3.5 text-[#FF1493]/80" aria-hidden />
+                          {t("assignments.deadline")}
+                          {": "}
+                          <span className={cn("font-medium text-white/70", urgent && "text-pink-200")}>
+                            {formatDateTimeUk(a.deadline)}
+                          </span>
+                        </span>
+                        {a.va_name ? (
+                          <span>
+                            {t("assignments.vaLabel")}: <span className="text-white/65">{a.va_name}</span>
+                          </span>
+                        ) : null}
+                        {a.content_type ? (
+                          <span>
+                            {t("common.type")}: {a.content_type}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      {st === "scheduled" && a.scheduled_date ? (
+                        <p className="mt-2 text-xs text-[#B8B4B8]/55">
+                          {t("assignments.youScheduledFor")}{" "}
+                          <span className="font-medium text-pink-200/95">{formatDateTimeUk(a.scheduled_date)}</span>
+                        </p>
+                      ) : null}
+
+                      {st === "completed" && a.completed_at ? (
+                        <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-300/90">
+                          <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                          {t("assignments.completedAt")} {formatDateTimeUk(a.completed_at)}
+                        </p>
+                      ) : null}
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        {downloadInfo ? (
+                          <a
+                            href={downloadInfo.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={cn(VA_BTN_PRIMARY, "inline-flex min-h-[44px] items-center justify-center gap-2 px-4 py-2.5 text-sm")}
+                          >
+                            <Download className="h-4 w-4 shrink-0" aria-hidden />
+                            {downloadInfo.label}
+                          </a>
+                        ) : null}
+
+                        {st === "pending" ? (
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => setScheduleFor(a)}
+                            className={cn(VA_BTN_SECONDARY, "inline-flex min-h-[44px] items-center px-4 py-2.5 text-sm disabled:opacity-45")}
+                          >
+                            {t("assignments.schedule")}
+                          </button>
+                        ) : null}
+
+                        {st === "pending" || st === "scheduled" ? (
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => setExpenseFor(a)}
+                            className="inline-flex min-h-[44px] items-center rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:opacity-45"
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <Home className="h-4 w-4" aria-hidden />
+                              Request Airbnb
+                            </span>
+                          </button>
+                        ) : null}
+
+                        {st === "scheduled" ? (
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => setCompleteFor(a)}
+                            className="inline-flex min-h-[44px] items-center rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:opacity-45"
+                          >
+                            {t("assignments.markComplete")}
+                          </button>
+                        ) : null}
+                      </div>
+                    </motion.li>
+                  );
+                })}
+              </ul>
+              <PaginationControls page={page} totalPages={totalPages} onPage={setPage} totalItems={filtered.length} />
+            </>
+          )}
+        </>
       )}
 
       <p className="text-center text-xs text-white/35">
-        <Link href={ROUTES.model.home} className="text-pink-300/90 underline-offset-2 hover:underline">
+        <Link href={ROUTES.model.home} className="text-[#FF1493]/90 underline-offset-2 hover:underline">
           {t("common.backToHome")}
         </Link>
       </p>

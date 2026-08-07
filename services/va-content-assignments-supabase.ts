@@ -585,12 +585,12 @@ export async function reviewVAContentAssignmentByAdmin(
     const mapped = await mapRow(updated);
     const vaTarget = current.va_id?.trim();
     if (vaTarget) {
-      const displayTitle = (mapped.title || current.title).trim() || "VA content assignment";
+      const displayTitle = (mapped.title || current.title).trim() || "Chatting content assignment";
       await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
         personal_user_id: vaTarget,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "📋 New VA content assignment",
-        body: `${displayTitle} — open Content assignments or your calendar.`,
+        title: "📋 New Chatting Content",
+        body: `${displayTitle} — open Chatting Content or your calendar.`,
         entity_type: "va_content_assignment",
         entity_id: rid,
       }).catch(() => {});

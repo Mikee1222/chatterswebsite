@@ -20,6 +20,10 @@ import {
 } from "lucide-react";
 import type { ClientContentModelData } from "@/app/(dashboard)/client/content/page";
 import { GlassModal } from "@/components/ui/glass-modal";
+import { ChattingStatusBadge, chattingPriorityClass } from "@/components/chatting-content-ui";
+import { ReviewEmptyState } from "@/components/manager-review-ui";
+import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
 import { formatDateEuropean } from "@/lib/format";
 import { formatDate, formatDateTime as formatDateTimeUk } from "@/lib/format-date";
@@ -189,7 +193,7 @@ function buildCalEvents(models: ClientContentModelData[]): CalEvent[] {
         })
         .map((a) => ({
           id: `va-${a.id}`,
-          title: a.title || "VA assignment",
+          title: a.title || "Chatting assignment",
           modelName: m.modelName,
           date: eventDateFromIso(a.scheduled_date) || eventDateFromIso(a.deadline),
           kind: "va" as const,
@@ -293,6 +297,17 @@ export function ClientContentHub({ models }: Props) {
       (a, b) => deadlineSortKey(a.deadline) - deadlineSortKey(b.deadline),
     );
   }, [allAssignments, modelTab, statusTab]);
+
+  const assignmentCounts = React.useMemo(() => {
+    const active = allAssignments.filter((a) => (a.status || "").toLowerCase() !== "cancelled");
+    const byModel =
+      modelTab === "all" ? active : active.filter((a) => a.modelRecordId === modelTab);
+    return {
+      pending: byModel.filter((a) => assignmentInTab(a.status, "pending")).length,
+      scheduled: byModel.filter((a) => assignmentInTab(a.status, "scheduled")).length,
+      completed: byModel.filter((a) => assignmentInTab(a.status, "completed")).length,
+    };
+  }, [allAssignments, modelTab]);
 
   const filteredCustoms = React.useMemo(() => {
     const byModel =
@@ -791,11 +806,24 @@ export function ClientContentHub({ models }: Props) {
       ) : (
         <>
       <section className="space-y-4">
-        <h2 className="text-lg font-semibold text-white">VA Assignments</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/70">Manage</p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight text-white">Chatting Assignments</h2>
+            <p className="mt-1 text-sm text-[#B8B4B8]/55">Schedule and complete chatting briefs across your models.</p>
+          </div>
+          <div className="grid grid-cols-3 gap-2 sm:min-w-[280px]">
+            <LuxuryStatCard label="Pending" value={<CountUp value={assignmentCounts.pending} />} accent="amber" className="!p-3" />
+            <LuxuryStatCard label="Scheduled" value={<CountUp value={assignmentCounts.scheduled} />} accent="pink" className="!p-3" />
+            <LuxuryStatCard label="Done" value={<CountUp value={assignmentCounts.completed} />} accent="emerald" className="!p-3" />
+          </div>
+        </div>
         {filteredAssignments.length === 0 ? (
-          <p className={cn(glassCard, "px-5 py-8 text-center text-sm text-white/50")}>
-            No VA assignments in this tab.
-          </p>
+          <ReviewEmptyState
+            icon={Package}
+            title="No Chatting Assignments in this tab"
+            description="Switch status tabs or check back when new briefs are assigned."
+          />
         ) : (
           <ul className="grid gap-4 md:grid-cols-2">
             {filteredAssignments.map((a) => {
@@ -809,8 +837,9 @@ export function ClientContentHub({ models }: Props) {
                 <li
                   key={a.id}
                   className={cn(
-                    glassCard,
-                    "relative flex flex-col p-5",
+                    VA_CARD,
+                    VA_CARD_GLOW,
+                    "relative flex flex-col border p-5",
                     urgent || overdue ? "border-pink-500/35" : "border-white/10",
                   )}
                 >
@@ -841,11 +870,12 @@ export function ClientContentHub({ models }: Props) {
                         {a.title || "—"}
                       </h3>
                     </div>
+                    <ChattingStatusBadge status={a.status} />
                     {a.priority ? (
                       <span
                         className={cn(
                           "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                          priorityClass(a.priority),
+                          chattingPriorityClass(a.priority),
                         )}
                       >
                         {a.priority}

@@ -159,7 +159,7 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.admin.marketing || pathname.startsWith(`${ROUTES.admin.marketing}/`)) return "Marketing";
   if (pathname === ROUTES.chatter.informations) return "Informations";
   if (pathname === ROUTES.admin.informations) return "Informations";
-  if (pathname === ROUTES.va.contentAssignments) return "Content assignments";
+  if (pathname === ROUTES.va.contentAssignments) return "Chatting Content";
   if (pathname === ROUTES.va.scheduleOverview) return "Schedule overview";
   if (pathname === "/admin/schedule-overview" || pathname.startsWith("/admin/schedule-overview/")) return "Schedule overview";
   if (pathname === ROUTES.va.customRequests) return "Custom requests";
@@ -197,7 +197,7 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.model.home || pathname === ROUTES.model.dashboard || pathname.startsWith("/model")) {
     if (pathname === ROUTES.model.myEarnings) return "My earnings";
     if (pathname === ROUTES.model.contentCalendar) return "Calendar";
-    if (pathname === ROUTES.model.contentAssignments) return "VA content";
+    if (pathname === ROUTES.model.contentAssignments) return "Chatting Assignments";
     if (pathname === ROUTES.model.weeklyAvailability) return "Weekly availability";
     if (pathname === ROUTES.model.schedule) return "Availability";
     if (pathname === ROUTES.model.tasks) return "Tasks";
@@ -208,7 +208,7 @@ function getMobileTitle(pathname: string): string {
   }
   if (pathname === ROUTES.admin.modelAvailability) return "Model availability";
   if (pathname === ROUTES.admin.modelSchedulesOverview) return "Schedule overview";
-  if (pathname === ROUTES.admin.vaContentAssignments) return "VA content";
+  if (pathname === ROUTES.admin.vaContentAssignments) return "Chatting Content";
   if (pathname === ROUTES.admin.modelSchedules) return "Model schedules";
   if (pathname === ROUTES.admin.modelTasks) return "Model tasks";
   if (pathname === ROUTES.admin.modelLiveStreams) return "Model live streams";

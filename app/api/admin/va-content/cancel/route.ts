@@ -41,7 +41,7 @@ export async function POST(req: Request) {
   });
   if (!updated) return NextResponse.json({ error: "Unable to cancel assignment" }, { status: 400 });
 
-  const title = updated.title.trim() || "VA content assignment";
+  const title = updated.title.trim() || "Chatting content assignment";
   const body = `${title} was cancelled. Reason: ${parsed.data.reason.trim()}`;
 
   if (updated.va_id) {
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       user_id: updated.va_id,
       event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "❌ VA Content Assignment Cancelled",
+      title: "❌ Chatting Content Cancelled",
       body,
       entity_type: "va_content_assignment",
       entity_id: updated.id,
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       user_id: modelUserId,
       event_type: NOTIFICATION_EVENT.MODEL_CONTENT_SCHEDULED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "❌ VA Content Assignment Cancelled",
+      title: "❌ Chatting Content Cancelled",
       body,
       entity_type: "va_content_assignment",
       entity_id: updated.id,

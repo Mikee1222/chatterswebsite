@@ -825,7 +825,7 @@ export function AdminModelSchedulesClient({
             VA view
           </span>
           <p className="text-[13px] text-white/75">
-            Read-only agency schedule overview. Open a <span className="text-white/90">VA content</span> row to append notes or mark sent to model.
+            Read-only agency schedule overview. Open a <span className="text-white/90">Chatting Content</span> row to append notes or mark sent to model.
           </p>
         </div>
       ) : null}

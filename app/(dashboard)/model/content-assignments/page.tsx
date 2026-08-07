@@ -6,7 +6,6 @@ import { listVAContentAssignmentsForModel } from "@/services/va-content-assignme
 import { getUserByAirtableId } from "@/services/users";
 import { ModelContentAssignmentsClient } from "@/components/model-content-assignments-client";
 import type { ModelContentAssignmentCardDTO } from "@/types";
-import { ModelRouteEmptyState } from "@/components/model-route-feedback";
 import { Suspense } from "react";
 
 export default async function ModelContentAssignmentsPage() {
@@ -20,7 +19,7 @@ export default async function ModelContentAssignmentsPage() {
     console.error("[model/content-assignments] getModelContext failed; rendering fallback", error);
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-white">VA content</h1>
+        <h1 className="text-xl font-semibold text-white">Chatting Assignments</h1>
         <p className="text-white/70">Unable to load account context right now. Please try again.</p>
       </div>
     );
@@ -30,7 +29,7 @@ export default async function ModelContentAssignmentsPage() {
   if (!user) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-white">VA content</h1>
+        <h1 className="text-xl font-semibold text-white">Chatting Assignments</h1>
         <p className="text-white/70">Please log in.</p>
       </div>
     );
@@ -39,7 +38,7 @@ export default async function ModelContentAssignmentsPage() {
   if (!linkedModelId || !modelRecord) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-white">VA content</h1>
+        <h1 className="text-xl font-semibold text-white">Chatting Assignments</h1>
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           Your account is not linked to a model profile. Contact an admin to link your account.
         </p>
@@ -83,17 +82,15 @@ export default async function ModelContentAssignmentsPage() {
 
   return (
     <div className="space-y-8 pb-8 md:space-y-10 md:pb-10">
-      <header className="max-md:pt-2">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">{tr("assignmentsPage.eyebrow")}</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">{tr("assignmentsPage.title")}</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55 md:text-[15px]">{tr("assignmentsPage.description")}</p>
-      </header>
-
-      {assignments.length === 0 ? (
-        <ModelRouteEmptyState title={tr("assignmentsPage.emptyTitle")} description={tr("assignmentsPage.emptyDescription")} />
-      ) : null}
       <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-white/[0.04]" />}>
-        <ModelContentAssignmentsClient assignments={assignments} />
+        <ModelContentAssignmentsClient
+          assignments={assignments}
+          emptyTitle={tr("assignmentsPage.emptyTitle")}
+          emptyDescription={tr("assignmentsPage.emptyDescription")}
+          eyebrow={tr("assignmentsPage.eyebrow")}
+          title={tr("assignmentsPage.title")}
+          description={tr("assignmentsPage.description")}
+        />
       </Suspense>
     </div>
   );

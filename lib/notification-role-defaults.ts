@@ -455,7 +455,7 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     eventEntry("va_task_assigned", "New VA task assigned", "Αποστέλλεται στον VA όταν του ανατίθεται νέο task"),
     ...pairedEvents(
       "model_content_scheduled",
-      "Model schedules content assignment",
+      "Model schedules chatting assignment",
       "Model schedules content (admin)",
       "Αποστέλλεται όταν το model προγραμματίζει παράδοση περιεχομένου",
       "Ενημερώνει τον admin για προγραμματισμό περιεχομένου"
@@ -469,22 +469,22 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     ),
     ...pairedEvents(
       "va_content_assigned",
-      "VA receives a content assignment",
-      "VA content assignment created (admin)",
+      "VA receives chatting content",
+      "Chatting Content created (admin)",
       "Αποστέλλεται στον VA όταν του ανατίθεται περιεχόμενο",
       "Ενημερώνει τον admin για νέα ανάθεση περιεχομένου"
     ),
     ...pairedEvents(
       "va_content_scheduled",
-      "VA content delivery scheduled",
-      "VA content delivery scheduled (admin)",
+      "Chatting Content delivery scheduled",
+      "Chatting Content delivery scheduled (admin)",
       "Αποστέλλεται όταν προγραμματίζεται παράδοση περιεχομένου VA",
       "Ενημερώνει τον admin για προγραμματισμό παράδοσης"
     ),
     ...pairedEvents(
       "va_content_completed",
-      "VA content marked complete",
-      "VA content marked complete (admin)",
+      "Chatting Content marked complete",
+      "Chatting Content marked complete (admin)",
       "Αποστέλλεται όταν ο VA ολοκληρώνει παράδοση περιεχομένου",
       "Ενημερώνει τον admin για ολοκλήρωση παράδοσης περιεχομένου"
     ),

@@ -4,7 +4,7 @@
       "home": "Home",
       "myEarnings": "My earnings",
       "contentCalendar": "Calendar",
-      "vaContent": "VA content",
+      "vaContent": "Chatting Assignments",
       "mySchedule": "Availability",
       "customRequests": "Custom requests",
       "settings": "Settings",
@@ -19,7 +19,7 @@
       "home": "Home",
       "myEarnings": "My earnings",
       "contentCalendar": "Calendar",
-      "vaContent": "VA content",
+      "vaContent": "Chatting Assignments",
       "weeklyAvailability": "Weekly availability",
       "schedule": "Availability",
       "tasks": "Tasks",
@@ -103,8 +103,8 @@
       "overview": "Overview",
       "customRequests": "Custom requests",
       "customRequestsSub": "Agency-approved work waiting for your schedule.",
-      "vaDeliveries": "VA content deliveries",
-      "vaDeliveriesSub": "Briefs and files from your VA — schedule and mark complete when done.",
+      "vaDeliveries": "Chatting Assignments",
+      "vaDeliveriesSub": "Briefs and files from chatting — schedule and mark complete when done.",
       "comingSoon": "Coming soon",
       "recentActivity": "Recent activity",
       "noRecentActivity": "No recent activity yet. Completed customs, lives, and updates will show up here."
@@ -116,7 +116,7 @@
       "title": "Quick actions",
       "close": "Close quick actions",
       "open": "Open quick actions",
-      "vaDeliveries": "VA content deliveries",
+      "vaDeliveries": "Chatting Assignments",
       "submitAvailability": "Submit availability",
       "requestTimeOff": "Request time off"
     },
@@ -204,11 +204,11 @@
       "confirm": "Confirm"
     },
     "assignmentsPage": {
-      "eyebrow": "Your VA",
-      "title": "Content deliveries",
-      "description": "Briefs and files your VA prepares for you. Schedule when you will shoot or post them, then mark them complete.",
-      "emptyTitle": "No content deliveries yet",
-      "emptyDescription": "Your VA has not assigned any deliveries yet. This section updates automatically when new work is added."
+      "eyebrow": "Content",
+      "title": "Chatting Assignments",
+      "description": "Briefs and files prepared for you. Schedule when you will shoot or post them, then mark them complete.",
+      "emptyTitle": "No chatting assignments yet",
+      "emptyDescription": "Nothing has been assigned yet. This section updates automatically when new work is added."
     },
     "assignments": {
       "downloadFile": "Download file",
@@ -314,8 +314,8 @@
     },
     "calendar": {
       "title": "Calendar",
-      "subtitleWithModel": "{name} · VA assignments, approved customs, and tasks",
-      "subtitle": "VA assignments, approved customs, and tasks",
+      "subtitleWithModel": "{name} · Chatting Assignments, approved customs, and tasks",
+      "subtitle": "Chatting Assignments, approved customs, and tasks",
       "allTypes": "All types",
       "customs": "Customs",
       "tasks": "Tasks",
@@ -323,11 +323,11 @@
       "statusLabel": "Status",
       "emptyTitle": "Nothing on the calendar",
       "emptyFiltered": "Try clearing filters, or check back when assignments and customs are scheduled.",
-      "emptyDefault": "When VA assignments, accepted customs, or tasks have dates, they will appear here.",
+      "emptyDefault": "When Chatting Assignments, accepted customs, or tasks have dates, they will appear here.",
       "moreCount": "+{count} more",
       "details": "Details",
       "badgeCustomRequest": "Custom request",
-      "badgeVa": "VA assignment",
+      "badgeVa": "Chatting assignment",
       "badgeTask": "Task",
       "statStatus": "Status",
       "statPriority": "Priority",
@@ -341,11 +341,11 @@
       "viewDetails": "View details",
       "markScheduled": "Mark as scheduled",
       "noticeSchedulingSoon": "Scheduling from the calendar is coming soon — use Customs to set dates.",
-      "noticeVaSoon": "VA assignment updates from the calendar are coming soon.",
+      "noticeVaSoon": "Chatting Assignment updates from the calendar are coming soon.",
       "viewTasks": "View tasks",
       "uploadInfo": "Upload info",
       "openFileUrl": "Open file URL",
-      "assignmentFallback": "VA assignment",
+      "assignmentFallback": "Chatting assignment",
       "customFallback": "Custom",
       "taskFallback": "Task",
       "contentFallback": "Content"
@@ -368,7 +368,7 @@
       "notLinked": "Your account is not linked to a model profile. Contact an admin to link your account to a model.",
       "notLinkedShort": "Your account is not linked to a model profile. Contact an admin to link your account.",
       "calendarEmptyTitle": "No content planned yet",
-      "calendarEmptyDesc": "No VA assignments, accepted customs, or tasks are currently scheduled. New work will appear here automatically."
+      "calendarEmptyDesc": "No Chatting Assignments, accepted customs, or tasks are currently scheduled. New work will appear here automatically."
     },
     "pages": {
       "homeUnlinkedEyebrow": "Home"

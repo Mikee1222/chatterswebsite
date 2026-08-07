@@ -83,7 +83,7 @@ export default async function ClientContentPage() {
         <p className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Content</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Content Hub</h1>
         <p className="mt-2 max-w-2xl text-sm text-white/55">
-          Manage VA content assignments and custom requests across your models.
+          Manage Chatting Assignments and custom requests across your models.
         </p>
       </div>
       <ClientContentHub clientId={clientId} models={models} />

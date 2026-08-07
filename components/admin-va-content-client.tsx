@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation";
 import {
   Bell,
@@ -14,17 +15,33 @@ import {
   Timer,
   X,
   XCircle,
-  type LucideIcon,
 } from "lucide-react";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
-import { MobileCard } from "@/components/mobile-card";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import {
+  ChattingStatusBadge,
+  chattingPriorityClass,
+  chattingStatusKey,
+  chattingStatusLabel,
+  dateInOrOverlapsRange,
+} from "@/components/chatting-content-ui";
+import { FilterBar, FilterChip, ReviewEmptyState } from "@/components/manager-review-ui";
+import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
 import { FormInput } from "@/components/ui/form-input";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { VaContentAssignmentForm } from "@/components/va-content-assignment-form";
 import { gradientClassForContentType } from "@/lib/detail-modal-gradients";
+import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { formatDateEuropean } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
+import {
+  VA_BTN_PRIMARY,
+  VA_BTN_SECONDARY,
+  VA_CARD,
+  VA_CARD_GLOW,
+  VA_FILTER_INPUT,
+} from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { VaContentAssignmentRecord } from "@/types";
 
@@ -50,106 +67,9 @@ type StatusFilterValue =
   | "rejected"
   | "cancelled";
 
-function statusKey(s: string): string {
-  return (s || "").trim().toLowerCase();
-}
-
-function statusLabelForList(s: string): string {
-  const k = statusKey(s);
-  if (k === "pending_approval") return "pending approval";
-  return k || "—";
-}
-
-function ymdFromField(value: string | null | undefined): string | null {
-  if (value == null || typeof value !== "string") return null;
-  const t = value.trim();
-  if (t.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
-  const d = Date.parse(t);
-  if (!Number.isFinite(d)) return null;
-  return new Date(d).toISOString().slice(0, 10);
-}
-
-function dateInOrOverlapsRange(
-  createdRaw: string,
-  deadlineRaw: string | null,
-  fromYmd: string,
-  toYmd: string
-): boolean {
-  if (!fromYmd && !toYmd) return true;
-  const created = ymdFromField(createdRaw);
-  const deadline = ymdFromField(deadlineRaw ?? null);
-
-  const inRange = (ymd: string | null): boolean => {
-    if (!ymd) return false;
-    if (fromYmd && ymd < fromYmd) return false;
-    if (toYmd && ymd > toYmd) return false;
-    return true;
-  };
-
-  return inRange(created) || inRange(deadline);
-}
-
-function priorityClass(p: string): string {
-  const x = (p || "").toLowerCase();
-  if (x === "urgent") return "border-rose-500/40 bg-rose-500/15 text-rose-200";
-  if (x === "high") return "border-amber-500/35 bg-amber-500/12 text-amber-200";
-  if (x === "low") return "border-white/15 bg-white/[0.06] text-white/65";
-  return "border-sky-400/30 bg-sky-500/12 text-sky-200";
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const k = statusKey(status);
-  const label = statusLabelForList(status);
-  const variant =
-    k === "completed"
-      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-      : k === "pending"
-        ? "border-amber-500/30 bg-amber-500/15 text-amber-300"
-        : k === "pending_approval"
-          ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
-          : k === "rejected"
-            ? "border-rose-500/35 bg-rose-500/15 text-rose-300"
-            : k === "cancelled"
-              ? "border-red-500/30 bg-red-500/15 text-red-300"
-              : k === "scheduled"
-                ? "border-violet-500/30 bg-violet-500/15 text-violet-300"
-                : "border-white/15 bg-white/[0.06] text-white/70";
-
-  return (
-    <span className={cn("inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize", variant)}>
-      {label}
-    </span>
-  );
-}
-
-function StatCard({
-  label,
-  value,
-  icon: Icon,
-  accentClass,
-}: {
-  label: string;
-  value: number;
-  icon: LucideIcon;
-  accentClass: string;
-}) {
-  return (
-    <MobileCard
-      padding="md"
-      className={cn("min-w-[140px] shrink-0 snap-start border-white/10 bg-white/[0.04]", accentClass)}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">{label}</p>
-          <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</p>
-        </div>
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/55">
-          <Icon className="h-4 w-4" aria-hidden />
-        </div>
-      </div>
-    </MobileCard>
-  );
-}
+const statusKey = chattingStatusKey;
+const statusLabelForList = chattingStatusLabel;
+const priorityClass = chattingPriorityClass;
 
 const STATUS_TABS: StatusFilterValue[] = [
   "pending_approval",
@@ -174,12 +94,14 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
   const [rejectionReason, setRejectionReason] = React.useState("");
   const [reviewing, setReviewing] = React.useState(false);
 
+  const today = getTodayYmdAthens();
   const [searchTitle, setSearchTitle] = React.useState("");
   const [filterModelId, setFilterModelId] = React.useState("");
   const [filterVaId, setFilterVaId] = React.useState("");
   const [filterStatus, setFilterStatus] = React.useState<StatusFilterValue>("all");
-  const [dateFrom, setDateFrom] = React.useState("");
-  const [dateTo, setDateTo] = React.useState("");
+  const [dateFrom, setDateFrom] = React.useState(() => addDaysAthensYmd(today, -90));
+  const [dateTo, setDateTo] = React.useState(today);
+  const [dateActive, setDateActive] = React.useState(false);
 
   React.useEffect(() => {
     if (!reviewModal) return;
@@ -247,40 +169,39 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
         if ((r.va_id ?? "").trim()) return false;
       } else if (filterVaId && r.va_id !== filterVaId) return false;
       if (filterStatus !== "all" && statusKey(r.status) !== filterStatus) return false;
-      if (!dateInOrOverlapsRange(r.created_at, r.deadline, dateFrom, dateTo)) return false;
+      if (dateActive && !dateInOrOverlapsRange(r.created_at, r.deadline, dateFrom, dateTo)) return false;
       return true;
     });
-  }, [rows, searchTitle, filterModelId, filterVaId, filterStatus, dateFrom, dateTo]);
+  }, [rows, searchTitle, filterModelId, filterVaId, filterStatus, dateFrom, dateTo, dateActive]);
 
-  const { page, setPage, totalPages, paginated, reset } = usePagination(filteredRows, 20);
+  const { page, setPage, totalPages, paginated, reset } = usePagination(filteredRows, 12);
 
   React.useEffect(() => {
     reset();
-  }, [searchTitle, filterModelId, filterVaId, filterStatus, dateFrom, dateTo, reset]);
+  }, [searchTitle, filterModelId, filterVaId, filterStatus, dateFrom, dateTo, dateActive, reset]);
 
   const filtersActive =
     searchTitle.trim() !== "" ||
     filterModelId !== "" ||
     filterVaId !== "" ||
     filterStatus !== "all" ||
-    dateFrom !== "" ||
-    dateTo !== "";
+    dateActive;
 
   const activeFilterCount =
     (searchTitle.trim() ? 1 : 0) +
     (filterModelId ? 1 : 0) +
     (filterVaId ? 1 : 0) +
     (filterStatus !== "all" ? 1 : 0) +
-    (dateFrom ? 1 : 0) +
-    (dateTo ? 1 : 0);
+    (dateActive ? 1 : 0);
 
   const clearFilters = () => {
     setSearchTitle("");
     setFilterModelId("");
     setFilterVaId("");
     setFilterStatus("all");
-    setDateFrom("");
-    setDateTo("");
+    setDateActive(false);
+    setDateFrom(addDaysAthensYmd(today, -90));
+    setDateTo(today);
   };
 
   const tabLabel = (key: StatusFilterValue): string => {
@@ -389,73 +310,40 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
     [rows]
   );
 
+  const reduce = useReducedMotion();
+
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Administration</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">VA content assignments</h1>
-          <p className="mt-2 max-w-2xl text-sm text-white/60">
-            Review VA-submitted work, approve assignments for models, and manage reminders or cancellations from the
-            agency side.
-          </p>
-        </div>
-        {canManage ? (
-          <button
-            type="button"
-            onClick={() => setCreateOpen(true)}
-            className={cn(
-              "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-pink-400/35 px-4 py-2.5 text-sm font-semibold text-pink-50 shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.35)] transition hover:brightness-110",
-              "bg-gradient-to-r from-pink-500/25 to-fuchsia-600/20"
-            )}
-          >
-            + New assignment
-          </button>
-        ) : null}
-      </header>
-
-      <div className="-mx-1 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
-        <div className="flex min-w-min gap-3">
-          <StatCard label="Total" value={counts.total} icon={ListChecks} accentClass="border-white/10 ring-white/[0.06]" />
-          <StatCard
-            label="Pending approval"
-            value={counts.pending_approval}
-            icon={Clock}
-            accentClass="border-sky-500/25 bg-sky-500/5 ring-sky-500/10"
-          />
-          <StatCard
-            label="Pending"
-            value={counts.pending}
-            icon={Timer}
-            accentClass="border-amber-500/25 bg-amber-500/5 ring-amber-500/10"
-          />
-          <StatCard
-            label="Scheduled"
-            value={counts.scheduled}
-            icon={CalendarClock}
-            accentClass="border-violet-500/25 bg-violet-500/5 ring-violet-500/10"
-          />
-          <StatCard
-            label="Completed"
-            value={counts.completed}
-            icon={CheckCircle2}
-            accentClass="border-emerald-500/25 bg-emerald-500/5 ring-emerald-500/10"
-          />
-          <StatCard
-            label="Rejected"
-            value={counts.rejected}
-            icon={XCircle}
-            accentClass="border-rose-500/25 bg-rose-500/5 ring-rose-500/10"
-          />
-        </div>
-      </div>
+      <ContentPipelineHero
+        eyebrow="Administration"
+        title="Chatting Content"
+        description="Review VA-submitted briefs, approve work for models, and manage reminders or cancellations."
+        orb="both"
+        actions={
+          canManage ? (
+            <button type="button" onClick={() => setCreateOpen(true)} className={cn(VA_BTN_PRIMARY, "px-4 py-2.5 text-sm")}>
+              + New Content
+            </button>
+          ) : null
+        }
+        stats={
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+            <LuxuryStatCard label="Total" value={<CountUp value={counts.total} />} accent="champagne" tooltip="All chatting content across models" />
+            <LuxuryStatCard label="Pending approval" value={<CountUp value={counts.pending_approval} />} accent="pink" glow tooltip="Waiting for your review" />
+            <LuxuryStatCard label="Pending" value={<CountUp value={counts.pending} />} accent="amber" tooltip="Approved, awaiting model schedule" />
+            <LuxuryStatCard label="Scheduled" value={<CountUp value={counts.scheduled} />} accent="white" tooltip="Model has set a date" />
+            <LuxuryStatCard label="Completed" value={<CountUp value={counts.completed} />} accent="emerald" tooltip="Marked complete" />
+            <LuxuryStatCard label="Rejected" value={<CountUp value={counts.rejected} />} accent="white" tooltip="Sent back to VA" />
+          </div>
+        }
+      />
 
       {pendingApprovalItems.length > 0 ? (
-        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 md:p-5">
+        <div className={cn(VA_CARD, VA_CARD_GLOW, "border border-sky-500/25 bg-sky-500/10 p-4 md:p-5")}>
           <div className="mb-3 flex items-center gap-2">
-            <div className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-sky-400" aria-hidden />
+            <div className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-sky-400 motion-reduce:animate-none" aria-hidden />
             <p className="text-sm font-semibold text-sky-300">
-              {pendingApprovalItems.length} assignment{pendingApprovalItems.length > 1 ? "s" : ""} waiting for review
+              {pendingApprovalItems.length} item{pendingApprovalItems.length > 1 ? "s" : ""} waiting for review
             </p>
           </div>
           <div className="space-y-2">
@@ -483,9 +371,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
         </div>
       ) : null}
 
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-white/45">Status</span>
+      <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "space-y-3 p-4")}>
+        <div className="flex flex-wrap items-center gap-2">
           {(["all", ...STATUS_TABS] as StatusFilterValue[]).map((key) => (
             <button
               key={key}
@@ -494,8 +381,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
                 filterStatus === key
-                  ? "border-pink-400/55 bg-pink-500/20 text-pink-100"
-                  : "border-white/12 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+                  ? "border-[#FF1493]/55 bg-[#FF1493]/20 text-pink-100"
+                  : "border-white/12 bg-white/[0.04] text-[#B8B4B8]/80 hover:bg-white/[0.08]"
               )}
             >
               {tabLabel(key)}
@@ -504,142 +391,133 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
           ))}
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          <div className="relative md:col-span-2 lg:col-span-3">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-            <FormInput
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <label className="relative block min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#B8B4B8]/35" />
+            <input
+              type="search"
               value={searchTitle}
               onChange={(e) => setSearchTitle(e.target.value)}
               placeholder="Search by title…"
-              className="border-white/10 bg-zinc-950/80 pl-9"
+              className={cn(VA_FILTER_INPUT, "w-full pl-9")}
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-white/50">Model</label>
-            <select
-              value={filterModelId}
-              onChange={(e) => setFilterModelId(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
-            >
-              {modelSelectOptions.map((o) => (
-                <option key={o.value || "all"} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] font-medium text-white/50">VA</label>
-            <select
-              value={filterVaId}
-              onChange={(e) => setFilterVaId(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
-            >
-              {vaSelectOptions.map((o) => (
-                <option key={o.value || "all"} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="mb-1 block text-[11px] font-medium text-white/50">From</label>
-              <FormInput
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="border-white/10 bg-zinc-950/80 [color-scheme:dark]"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-[11px] font-medium text-white/50">To</label>
-              <FormInput
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="border-white/10 bg-zinc-950/80 [color-scheme:dark]"
-              />
-            </div>
-          </div>
+          </label>
+          <select
+            value={filterModelId}
+            onChange={(e) => setFilterModelId(e.target.value)}
+            className={cn(VA_FILTER_INPUT, "w-full lg:w-44")}
+            aria-label="Filter by model"
+          >
+            {modelSelectOptions.map((o) => (
+              <option key={o.value || "all"} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <select
+            value={filterVaId}
+            onChange={(e) => setFilterVaId(e.target.value)}
+            className={cn(VA_FILTER_INPUT, "w-full lg:w-44")}
+            aria-label="Filter by submitter"
+          >
+            {vaSelectOptions.map((o) => (
+              <option key={o.value || "all"} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {activeFilterCount > 0 ? (
-            <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-2 py-0.5 text-[11px] font-medium text-pink-100">
-              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
-            </span>
+        <InflowwCustomDateRange
+          startYmd={dateFrom}
+          endYmd={dateTo}
+          onChange={(s, e) => {
+            setDateFrom(s);
+            setDateTo(e);
+          }}
+          onApply={(s, e) => {
+            setDateFrom(s);
+            setDateTo(e);
+            setDateActive(true);
+          }}
+        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          {searchTitle.trim() ? <FilterChip label={`Search: ${searchTitle.trim()}`} onRemove={() => setSearchTitle("")} /> : null}
+          {filterModelId ? (
+            <FilterChip
+              label={`Model: ${modelSelectOptions.find((o) => o.value === filterModelId)?.label || filterModelId}`}
+              onRemove={() => setFilterModelId("")}
+            />
           ) : null}
-          <button
-            type="button"
-            onClick={clearFilters}
-            disabled={!filtersActive}
-            className="inline-flex items-center gap-1 text-xs font-medium text-pink-300/90 underline-offset-4 hover:text-pink-200 hover:underline disabled:opacity-40"
-          >
-            <X className="h-3 w-3" aria-hidden />
-            Clear filters
-          </button>
-          <span className="ml-auto text-xs text-white/45">
-            {filteredRows.length} of {rows.length} assignments
+          {filterVaId ? (
+            <FilterChip
+              label={`Submitter: ${vaSelectOptions.find((o) => o.value === filterVaId)?.label || filterVaId}`}
+              onRemove={() => setFilterVaId("")}
+            />
+          ) : null}
+          {dateActive ? <FilterChip label={`${dateFrom} → ${dateTo}`} onRemove={() => setDateActive(false)} /> : null}
+          {filtersActive ? (
+            <button type="button" onClick={clearFilters} className={cn(VA_BTN_SECONDARY, "px-3 py-1.5 text-xs")}>
+              <X className="mr-1 inline h-3 w-3" aria-hidden />
+              Clear filters
+            </button>
+          ) : null}
+          <span className="ml-auto text-xs text-[#B8B4B8]/45">
+            {filteredRows.length} of {rows.length}
           </span>
         </div>
-      </div>
+      </FilterBar>
 
       {rows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-12 text-center">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
-            <ClipboardList className="h-7 w-7" aria-hidden />
-          </div>
-          <p className="mt-4 text-sm font-medium text-white/75">No assignments yet</p>
-          <p className="mt-1 text-xs text-white/45">
-            When VAs create content work for models, rows will show up here for agency oversight.
-          </p>
-        </div>
+        <ReviewEmptyState
+          icon={ClipboardList}
+          title="No chatting content yet"
+          description="When VAs create briefs for models, they will appear here for agency oversight."
+        />
       ) : filteredRows.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-12 text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-200/90">
-            <Search className="h-6 w-6" aria-hidden />
-          </div>
-          <p className="mt-3 text-sm font-medium text-white/85">No assignments match your filters</p>
-          <p className="mt-1 text-xs text-white/45">Try clearing filters or widening the date range.</p>
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-pink-500/35 bg-pink-500/15 px-4 py-2 text-xs font-semibold text-pink-200 hover:bg-pink-500/25"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden />
-            Clear filters
-          </button>
-        </div>
+        <ReviewEmptyState
+          icon={Search}
+          title="No content matches your filters"
+          description="Try clearing filters or widening the date range."
+          action={
+            <button type="button" onClick={clearFilters} className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-xs")}>
+              Clear filters
+            </button>
+          }
+        />
       ) : (
         <>
           <div className="space-y-3">
-            {paginated.map((r) => (
-              <MobileCard
+            {paginated.map((r, i) => (
+              <motion.button
                 key={r.id}
+                type="button"
                 onClick={() => setSelected(r)}
-                padding="none"
-                className="flex overflow-hidden border-white/10 bg-zinc-950/80 ring-white/[0.06] transition hover:bg-white/[0.03]"
+                initial={reduce ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: reduce ? 0 : 0.25, delay: reduce ? 0 : Math.min(i * 0.03, 0.18) }}
+                className={cn(VA_CARD, VA_CARD_GLOW, "flex w-full overflow-hidden border border-white/10 bg-[#151315]/90 p-0 text-left")}
               >
                 <div
                   className={cn("w-1 shrink-0 bg-gradient-to-b", gradientClassForContentType(r.content_type))}
                   aria-hidden
                 />
-                <div className="min-w-0 flex-1 p-4 text-left">
+                <div className="min-w-0 flex-1 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium text-white" title={r.title || "—"}>
                         {r.title || "—"}
                       </p>
-                      <p className="mt-0.5 text-xs text-white/55">
+                      <p className="mt-0.5 text-xs text-[#B8B4B8]/70">
                         {r.va_name} → {r.model_name}
                       </p>
                     </div>
-                    <StatusBadge status={r.status} />
+                    <ChattingStatusBadge status={r.status} />
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/70">
+                    <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-[#B8B4B8]/80">
                       {r.content_type || "Type"}
                     </span>
                     <span
@@ -650,7 +528,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
                     >
                       {r.priority || "normal"}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-[11px] text-white/45">
+                    <span className="inline-flex items-center gap-1 text-[11px] text-[#B8B4B8]/50">
                       <CalendarClock className="h-3 w-3" aria-hidden />
                       Due {formatDateEuropean(r.deadline)}
                     </span>
@@ -699,7 +577,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
                     </div>
                   ) : null}
                 </div>
-              </MobileCard>
+              </motion.button>
             ))}
           </div>
 
@@ -710,7 +588,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
       {canManage && createOpen ? (
         <GlassModal
           onClose={() => setCreateOpen(false)}
-          title="New assignment"
+          title="New Chatting Content"
           subtitle="Assign content work directly to a VA and model"
           className="md:max-w-lg"
         >
@@ -727,7 +605,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
       {reviewModal ? (
         <GlassModal
           onClose={() => !reviewing && setReviewModal(null)}
-          title="Review assignment"
+          title="Review Chatting Content"
           subtitle={`${reviewModal.va_name} → ${reviewModal.model_name}`}
           className="md:max-w-lg"
         >
@@ -840,9 +718,9 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
         onOpenChange={(open) => {
           if (!open) setSelected(null);
         }}
-        title={selected?.title || "Assignment details"}
+        title={selected?.title || "Content details"}
         subtitle={selected ? `${selected.va_name} → ${selected.model_name} · ${selected.content_type || "Content"}` : ""}
-        badge="VA content assignment"
+        badge="Chatting Content"
         headerGradientClass={selected ? gradientClassForContentType(selected.content_type) : undefined}
         stats={
           selected

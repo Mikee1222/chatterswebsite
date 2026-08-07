@@ -44,13 +44,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No active model account linked to assignment" }, { status: 400 });
   }
 
-  const title = assignment.title.trim() || "VA content assignment";
+  const title = assignment.title.trim() || "Chatting content assignment";
   await notify({
     user_id: modelUserId,
     event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "⏰ Reminder: Pending VA Content Assignment",
-    body: `${title} — please review your VA content assignments.`,
+    title: "⏰ Reminder: Pending Chatting Content",
+    body: `${title} — please review your Chatting Content.`,
     entity_type: "va_content_assignment",
     entity_id: assignment.id,
     actor_user_id: session.airtableUserId ?? session.id,

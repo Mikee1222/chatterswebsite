@@ -134,12 +134,12 @@ export async function POST(req: Request) {
       }
     }
 
-    const displayTitle = parsed.data.title.trim() || "VA content assignment";
+    const displayTitle = parsed.data.title.trim() || "Chatting content assignment";
     await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
       personal_user_id: parsed.data.va_user_record_id,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📋 New VA content assignment",
-      body: `${displayTitle} — assigned by admin. Open Content assignments or your calendar.`,
+      title: "📋 New Chatting Content",
+      body: `${displayTitle} — assigned by admin. Open Chatting Content or your calendar.`,
       entity_type: "va_content_assignment",
       entity_id: row.id,
     }).catch(() => {});

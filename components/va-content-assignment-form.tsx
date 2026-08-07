@@ -141,7 +141,7 @@ export function VaContentAssignmentForm({
       }
       style={embedded ? undefined : { boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
     >
-      {!embedded ? <h2 className="text-lg font-semibold text-white">New assignment</h2> : null}
+      {!embedded ? <h2 className="text-lg font-semibold text-white">New Chatting Content</h2> : null}
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
       {uploadProgress ? <p className="text-xs text-white/50">{uploadProgress}</p> : null}
 

@@ -45,7 +45,7 @@ export default async function VaScheduleOverviewPage({
         <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Virtual assistant</p>
         <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-3xl">Schedule overview</h1>
         <p className="mt-2 max-w-3xl text-sm text-white/60">
-          Read-only agency calendar: model shifts, accepted customs, VA content rows, and live streams. Window loads{""}
+          Read-only agency calendar: model shifts, accepted customs, Chatting Content rows, and live streams. Window loads{""}
           <span className="text-white/85">{WEEKS_PAD} weeks</span> before and after the selected Monday (
           <span className="font-mono text-white/80">{data.windowStart}</span> –{""}
           <span className="font-mono text-white/80">{data.windowEnd}</span>

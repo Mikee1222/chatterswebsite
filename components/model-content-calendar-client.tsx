@@ -184,7 +184,7 @@ function buildEvents(
     out.push({
       id: `va-${a.id}`,
       kind: "va",
-      title: a.title || "VA assignment",
+      title: a.title || "Chatting assignment",
       dateYmd,
       status: a.status || "—",
       sublabel: a.content_type || "Content",
@@ -610,7 +610,7 @@ function CalendarEventPopover(props: {
                     className="inline-flex w-full items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20 py-2 text-sm font-medium text-indigo-400 transition-all hover:bg-indigo-500/30"
                     onClick={onClose}
                   >
-                    Open VA content →
+                    Open Chatting Assignments →
                   </Link>
                 ) : null}
                 {ev.kind === "custom" ? (

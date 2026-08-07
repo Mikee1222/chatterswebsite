@@ -344,7 +344,7 @@ const vaNav: NavItem[] = [
   // ── TASKS ──
   { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo", navSection: "TASKS" },
   { href: ROUTES.va.whales, label: "Whales", iconKey: "Users", navSection: "TASKS" },
-  { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText", navSection: "TASKS" },
+  { href: ROUTES.va.contentAssignments, label: "Chatting Content", iconKey: "FileText", navSection: "TASKS" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package", navSection: "TASKS" },
   // NOTE: "Mistakes" (MISTAKES_VIEW) moved to `sharedPermissionNavItems` so the VA mistakes
   // feature is gated by a permission and can be toggled per role in Roles & Permissions.
@@ -482,7 +482,7 @@ const adminNav: NavItem[] = [
   // under TOOLS; Fill Bunches + creative scripts also live there under CONTENT.
   {
     href: ROUTES.admin.vaContentAssignments,
-    label: "VA Content",
+    label: "Chatting Content",
     iconKey: "FileText",
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.CONTENT_ASSIGN,
@@ -724,7 +724,7 @@ const adminNav: NavItem[] = [
 
 /**
  * Model nav grouped by `navSection`: OVERVIEW (home/earnings/calendar/availability),
- * CONTENT (VA content), REQUESTS (custom requests), SETTINGS. Customs / lives also on + menu.
+ * CONTENT (Chatting Assignments), REQUESTS (custom requests), SETTINGS. Customs / lives also on + menu.
  */
 const modelNav: NavItem[] = [
   // ── OVERVIEW ──
@@ -739,7 +739,7 @@ const modelNav: NavItem[] = [
   { href: ROUTES.model.schedule, label: "Availability", iconKey: "CalendarClock", navSection: "OVERVIEW" },
 
   // ── CONTENT ──
-  { href: ROUTES.model.contentAssignments, label: "VA content", iconKey: "FileText", navSection: "CONTENT" },
+  { href: ROUTES.model.contentAssignments, label: "Chatting Assignments", iconKey: "FileText", navSection: "CONTENT" },
 
   // ── REQUESTS ──
   { href: ROUTES.model.customs, label: "Custom requests", iconKey: "Package", navSection: "REQUESTS" },

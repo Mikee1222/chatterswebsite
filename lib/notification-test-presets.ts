@@ -424,8 +424,8 @@ export const NOTIFICATION_TEST_PRESETS: NotificationTestPreset[] = [
     id: "va_content_assigned",
     group: "model",
     event_type: "va_content_assigned",
-    title: "TEST: VA content assigned",
-    body: "New VA content assignment (debug).",
+    title: "TEST: Chatting Content assigned",
+    body: "New Chatting Content assignment (debug).",
     entity_type: "va_content_assignment",
   },
   // —— Period ——
