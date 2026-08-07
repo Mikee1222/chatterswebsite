@@ -430,6 +430,8 @@ export async function getActiveVaTaskShift(userRecordId: string): Promise<Shift 
   );
 }
 
+export { selectPreferredVaTaskShift } from "./shifts-supabase";
+
 export async function listOpenVaTaskShiftsForChatter(chatterRecordId: string): Promise<Shift[]> {
   if (isSupabaseBackend()) {
     return (await import("./shifts-supabase")).listOpenVaTaskShiftsForChatter(chatterRecordId);
@@ -453,10 +455,19 @@ export async function closeOtherOpenVaTaskShifts(
     );
   }
   const open = await listOpenVaTaskShiftsForChatter(chatterRecordId);
+  const keep = open.find((s) => s.id === keepShiftId) ?? null;
+  const keepStart = keep?.start_time?.trim() || "";
+  const keepHealthy =
+    !!keep && keep.status === "active" && !keep.break_started_at?.trim();
   const endIso = new Date().toISOString();
   let closed = 0;
   for (const s of open) {
     if (s.id === keepShiftId) continue;
+    const sPaused = s.status === "on_break" || Boolean(s.break_started_at?.trim());
+    if (!(keepHealthy && sPaused)) {
+      const sStart = s.start_time?.trim() || "";
+      if (keepStart && sStart && sStart > keepStart) continue;
+    }
     await updateShift(s.id, {
       status: "completed",
       end_time: endIso,

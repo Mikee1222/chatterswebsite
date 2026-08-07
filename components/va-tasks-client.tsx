@@ -127,8 +127,10 @@ function VaShiftBar({
       if (seq !== fetchSeqRef.current) return;
       if (epochAtStart !== localMutationEpochRef.current) return;
       // Don't clobber optimistic start with a stale null while start is in flight.
-      if (pendingStartIdRef.current && !data.shift) return;
+      // Once we have a real shift id, trust the server (including null after race cleanup).
+      if (pendingStartIdRef.current?.startsWith("optimistic-") && !data.shift) return;
       if (res.ok) {
+        if (data.shift) pendingStartIdRef.current = null;
         setShiftState(data.shift ?? null);
         ignoreStaleSsrRef.current = false;
       }
@@ -206,7 +208,7 @@ function VaShiftBar({
       };
       if (!res.ok) {
         if (res.status === 409 && data.shift) {
-          pendingStartIdRef.current = data.shift.id;
+          pendingStartIdRef.current = null;
           setShiftState(data.shift);
           setShiftErr(null);
           return;
@@ -223,10 +225,10 @@ function VaShiftBar({
         return;
       }
       if (data.shift) {
-        pendingStartIdRef.current = data.shift.id;
+        pendingStartIdRef.current = null;
         setShiftState(data.shift);
       } else if (data.shiftId) {
-        pendingStartIdRef.current = data.shiftId;
+        pendingStartIdRef.current = null;
         setShiftState({
           id: data.shiftId,
           start_time: optimisticStartedAt,

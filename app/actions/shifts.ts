@@ -15,6 +15,7 @@ import {
   resolveShiftChatterRecordId,
   closeOtherOpenVaTaskShifts,
   listOpenVaTaskShiftsForChatter,
+  selectPreferredVaTaskShift,
 } from "@/services/shifts";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify } from "@/services/notification-service";
@@ -295,11 +296,23 @@ export async function startVaTaskShiftAction() {
     paused_seconds: 0,
   });
 
-  // Collapse race duplicates from parallel Start clicks.
+  // Collapse older/paused duplicates from parallel Start — never kill a newer row.
   if (chatterRecordId) {
     await closeOtherOpenVaTaskShifts(chatterRecordId, shift.id).catch((err) =>
       console.error("[startVaTaskShift] duplicate cleanup failed", err),
     );
+  }
+
+  // Re-read after cleanup so we never hand the client a shift that lost a Start race.
+  const preferred = (await getActiveVaTaskShift(vaId)) ?? shift;
+  if (preferred.id !== shift.id) {
+    // Another concurrent Start won; end our duplicate if still open.
+    await updateShift(shift.id, {
+      status: "completed",
+      end_time: new Date().toISOString(),
+      break_started_at: null,
+      break_reminder_at: null,
+    }).catch((err) => console.error("[startVaTaskShift] self-close lost race failed", err));
   }
 
   // Non-blocking side effects — return ON SHIFT to the client immediately.
@@ -308,7 +321,7 @@ export async function startVaTaskShiftAction() {
     actor_name: user.fullName ?? user.email,
     action_type: "task_shift_started",
     entity_type: "shift",
-    entity_id: shift.id,
+    entity_id: preferred.id,
     summary: `${user.fullName ?? user.email} started a VA tasks shift`,
   }).catch((err) => console.error("[task-shift/start] activity log failed", err));
 
@@ -332,14 +345,14 @@ export async function startVaTaskShiftAction() {
 
   return {
     success: true,
-    shiftId: shift.id,
+    shiftId: preferred.id,
     shift: {
-      id: shift.id,
-      start_time: shift.start_time ?? startIso,
-      status: shift.status,
-      break_started_at: shift.break_started_at,
-      paused_seconds: shift.paused_seconds ?? 0,
-      break_minutes: shift.break_minutes ?? 0,
+      id: preferred.id,
+      start_time: preferred.start_time ?? startIso,
+      status: preferred.status,
+      break_started_at: preferred.break_started_at,
+      paused_seconds: preferred.paused_seconds ?? 0,
+      break_minutes: preferred.break_minutes ?? 0,
     },
   };
 }
@@ -407,9 +420,15 @@ export async function resumeVaTaskShiftAction() {
   const vaId = user.airtableUserId ?? user.id;
   const chatterRecordId = await resolveShiftChatterRecordId(vaId);
   const open = chatterRecordId ? await listOpenVaTaskShiftsForChatter(chatterRecordId) : [];
-  const healthy = open.find(
-    (s) => s.status === "active" && !s.break_started_at?.trim(),
-  );
+  const preferredOpen = selectPreferredVaTaskShift(open);
+  const healthy =
+    preferredOpen &&
+    preferredOpen.status === "active" &&
+    !preferredOpen.break_started_at?.trim()
+      ? preferredOpen
+      : open
+          .filter((s) => s.status === "active" && !s.break_started_at?.trim())
+          .sort((a, b) => (b.start_time || "").localeCompare(a.start_time || ""))[0] ?? null;
   // Dual open rows: keep the healthy active and drop stuck on_break duplicates.
   if (healthy) {
     if (chatterRecordId) {
@@ -421,7 +440,10 @@ export async function resumeVaTaskShiftAction() {
   }
 
   const myActive =
-    open.find((s) => s.status === "on_break" || Boolean(s.break_started_at?.trim())) ??
+    open
+      .filter((s) => s.status === "on_break" || Boolean(s.break_started_at?.trim()))
+      .sort((a, b) => (b.start_time || "").localeCompare(a.start_time || ""))[0] ??
+    preferredOpen ??
     (await getActiveVaTaskShift(vaId));
   if (!myActive) return { error: "No active VA tasks shift found" };
   if (myActive.status !== "on_break" && !myActive.break_started_at?.trim()) {

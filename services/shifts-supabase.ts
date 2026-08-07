@@ -421,16 +421,33 @@ export async function listOpenVaTaskShiftsForChatter(chatterRecordId: string): P
   );
 }
 
-/** End every open VA task shift for this chatter except `keepShiftId` (duplicate cleanup). */
+/**
+ * End open VA task duplicates for this chatter except `keepShiftId`.
+ *
+ * Safety for parallel Start: never close a *newer* open shift than `keep`.
+ * Otherwise two concurrent starts each close the other → zero open shifts while
+ * both clients still believe they are ON SHIFT (checklist complete 403).
+ * Paused/on_break rows are always safe to close when keeping a healthy active.
+ */
 export async function closeOtherOpenVaTaskShifts(
   chatterRecordId: string,
   keepShiftId: string,
 ): Promise<number> {
   const open = await listOpenVaTaskShiftsForChatter(chatterRecordId);
+  const keep = open.find((s) => s.id === keepShiftId) ?? null;
+  const keepStart = keep?.start_time?.trim() || "";
+  const keepHealthy =
+    !!keep && keep.status === "active" && !keep.break_started_at?.trim();
   const endIso = new Date().toISOString();
   let closed = 0;
   for (const s of open) {
     if (s.id === keepShiftId) continue;
+    const sPaused = s.status === "on_break" || Boolean(s.break_started_at?.trim());
+    if (!(keepHealthy && sPaused)) {
+      const sStart = s.start_time?.trim() || "";
+      // Parallel Start race: the older request must not kill the newer shift.
+      if (keepStart && sStart && sStart > keepStart) continue;
+    }
     await updateShift(s.id, {
       status: "completed",
       end_time: endIso,
