@@ -61,10 +61,10 @@ export const MATERIAL_RUNWAY_LABELS: Record<MaterialRunwayTier, string> = {
 };
 
 export const MATERIAL_RUNWAY_STYLES: Record<MaterialRunwayTier, string> = {
-  healthy: "bg-emerald-500/15 text-emerald-300",
-  low: "bg-amber-500/20 text-amber-300",
-  urgent: "bg-red-500/20 text-red-300",
-  none: "bg-white/10 text-white/50",
+  healthy: "border-emerald-500/45 bg-emerald-500/15 text-emerald-300",
+  low: "border-amber-500/50 bg-amber-500/20 text-amber-200",
+  urgent: "border-red-500/50 bg-red-500/20 text-red-200",
+  none: "border-white/20 bg-white/10 text-white/55",
 };
 
 export const MATERIAL_RUNWAY_SORT: Record<MaterialRunwayTier, number> = {
@@ -98,9 +98,42 @@ export function formatMaterialDate(ymd: string | null | undefined): string {
   });
 }
 
+/** Short human date for runway cards — "Aug 27" (no year). */
+export function formatMaterialDateShort(ymd: string | null | undefined): string {
+  const raw = (ymd ?? "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return "—";
+  const [y, m, d] = raw.split("-").map((n) => Number.parseInt(n, 10));
+  if (!y || !m || !d) return raw;
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/** 12h clock for shoot times — "11:00 AM". Accepts HH:mm or ISO. */
+export function formatShootTime12h(time: string | null | undefined): string | null {
+  const raw = (time ?? "").trim();
+  if (!raw) return null;
+  const hhmm = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec(raw);
+  if (hhmm) {
+    let h = Number.parseInt(hhmm[1]!, 10);
+    const min = hhmm[2]!;
+    if (Number.isNaN(h)) return null;
+    const ap = h >= 12 ? "PM" : "AM";
+    h = h % 12 || 12;
+    return `${h}:${min} ${ap}`;
+  }
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
+}
+
 export function formatDaysRemaining(days: number | null): string {
   if (days == null) return "No coverage date";
-  if (days < 0) return `${Math.abs(days)}d past`;
+  if (days < 0) {
+    const n = Math.abs(days);
+    return `${n} day${n === 1 ? "" : "s"} past`;
+  }
   if (days === 0) return "Ends today";
-  return `${days} day${days === 1 ? "" : "s"} left`;
+  return `${days} day${days === 1 ? "" : "s"} remaining`;
 }
