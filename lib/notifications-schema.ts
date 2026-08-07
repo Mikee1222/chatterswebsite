@@ -101,6 +101,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   "bunch_editing_uploaded",
   "bunch_icloud_organized",
   "material_until_approaching",
+  "infloww_performance_alert",
   // Marketing spot checks (P2 coverage).
   "spot_check_logged",
   "spot_check_status_changed",
@@ -253,6 +254,7 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   bunch_editing_uploaded: "bunch_editing_uploaded",
   bunch_icloud_organized: "bunch_icloud_organized",
   material_until_approaching: "material_until_approaching",
+  infloww_performance_alert: "infloww_performance_alert",
   spot_check_logged: "spot_check_logged",
   spot_check_status_changed: "spot_check_status_changed",
   tip_approved: "tip_approved",

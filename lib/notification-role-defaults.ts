@@ -205,6 +205,7 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   bunch_editing_uploaded: ["admin", "manager"],
   bunch_icloud_organized: ["admin", "manager"],
   material_until_approaching: ["admin", "manager"],
+  infloww_performance_alert: ["admin", "manager"],
   spot_check_logged: ["admin", "manager"],
   spot_check_status_changed: ["admin", "manager"],
   billing_cycle_announced: ["client"],
@@ -883,6 +884,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "material_until_approaching",
       "Material runway approaching",
       "Ενημερώνει icloud_management:manage όταν το material_until πλησιάζει ή έχει περάσει"
+    ),
+    eventEntry(
+      "infloww_performance_alert",
+      "Infloww performance alert",
+      "Ενημερώνει infloww_stats:view_all για κρίσιμα alerts (πωλήσεις WoW, refunds, churn)"
     ),
     eventEntry(
       "spot_check_logged",

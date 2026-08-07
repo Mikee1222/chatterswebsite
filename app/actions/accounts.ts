@@ -20,6 +20,7 @@ import {
   updateUser,
   setPasswordHash,
   uploadUserContractAttachments,
+  getUserByAirtableId,
   type CreateUserInput,
   type UpdateUserInput,
 } from "@/services/users";
@@ -31,6 +32,8 @@ import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import { getRoles } from "@/services/roles";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import { isAllowedDirectUploadToken } from "@/lib/direct-storage-upload";
+import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
+import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 async function requireAccountsPermission(permission: Permission) {
   const user = await getSessionFromCookies();
@@ -259,6 +262,18 @@ export async function createAccount(formData: FormData) {
     await createDefaultPreferencesForUser(created.id, role).catch((err) => {
       console.error("[createAccount] notification prefs init failed", err);
     });
+    try {
+      await notifyByRoleConfig(NOTIFICATION_EVENT.USER_CREATED, {
+        priority: NOTIFICATION_PRIORITY.LOW,
+        title: "New account created",
+        body: `${created.full_name || full_name} (${email}) was created as ${role}.`,
+        entity_type: NOTIFICATION_ENTITY.ACCOUNT,
+        entity_id: created.id,
+        context: { user_name: created.full_name || full_name, role },
+      });
+    } catch (notifyErr) {
+      console.error("[createAccount] user_created notify failed", notifyErr);
+    }
     revalidateAccountsPaths();
     redirect(ACCOUNTS_LIST + "?success=created");
   } catch (err) {
@@ -381,6 +396,23 @@ export async function updateAccount(formData: FormData) {
       : await readContractUploadFiles(formData);
 
   try {
+    const existing = await getUserByAirtableId(recordId);
+    const previousRole = (existing?.role ?? "").trim().toLowerCase();
+    const nextRole = (input.role ?? previousRole).trim().toLowerCase();
+    const roleChanged = Boolean(input.role) && previousRole !== nextRole;
+
+    const meaningfulUpdate =
+      (full_name !== undefined && full_name !== (existing?.full_name ?? "")) ||
+      (email !== undefined && email !== (existing?.email ?? "").toLowerCase()) ||
+      (status !== undefined && status !== (existing?.status ?? "")) ||
+      (typeof existing?.can_login === "boolean" && existing.can_login !== can_login) ||
+      (telegram_username !== undefined &&
+        (telegram_username ?? "") !== (existing?.telegram_username ?? "")) ||
+      (infloww_employee_id !== undefined &&
+        (infloww_employee_id ?? null) !== (existing?.infloww_employee_id ?? null)) ||
+      compensation.compensation_type !== (existing?.compensation_type ?? null) ||
+      compensation.compensation_value !== (existing?.compensation_value ?? null);
+
     await updateUser(recordId, input);
     if (contractFiles.length > 0) {
       try {
@@ -394,6 +426,35 @@ export async function updateAccount(formData: FormData) {
         );
       }
     }
+
+    const displayName = full_name || existing?.full_name || "Account";
+    try {
+      if (roleChanged) {
+        await notifyByRoleConfig(NOTIFICATION_EVENT.ROLE_CHANGED, {
+          personal_user_id: recordId,
+          priority: NOTIFICATION_PRIORITY.HIGH,
+          title: "Your role was changed",
+          body: `Your account role changed from ${previousRole || "previous"} to ${nextRole}.`,
+          entity_type: NOTIFICATION_ENTITY.ACCOUNT,
+          entity_id: `role_changed:${recordId}:${Date.now()}`,
+          context: { previous_role: previousRole, role: nextRole, user_name: displayName },
+        });
+      }
+      if (meaningfulUpdate && !roleChanged) {
+        await notifyByRoleConfig(NOTIFICATION_EVENT.ACCOUNT_UPDATE, {
+          personal_user_id: recordId,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: "Your account was updated",
+          body: "An admin updated your account settings. Review your profile if anything looks unexpected.",
+          entity_type: NOTIFICATION_ENTITY.ACCOUNT,
+          entity_id: `account_update:${recordId}:${Date.now()}`,
+          context: { user_name: displayName },
+        });
+      }
+    } catch (notifyErr) {
+      console.error("[updateAccount] account lifecycle notify failed", notifyErr);
+    }
+
     revalidateAccountsPaths();
     redirect(ACCOUNTS_LIST + "?success=updated");
   } catch (err) {
@@ -468,8 +529,24 @@ export async function deleteUserAction(recordId: string) {
     return;
   }
   try {
+    const existing = await getUserByAirtableId(id).catch(() => null);
+    const label = existing?.full_name || existing?.email || id;
+    const roleLabel = existing?.role || "unknown";
     devLog("[delete-user]", { userId: id, step: "forceDeleteUser" });
     await forceDeleteUser(id);
+    try {
+      await notifyAdmins({
+        event_type: NOTIFICATION_EVENT.ACCOUNT_DELETED,
+        priority: NOTIFICATION_PRIORITY.CRITICAL,
+        title: "Account deleted",
+        body: `${label} (${roleLabel}) was permanently deleted.`,
+        entity_type: NOTIFICATION_ENTITY.ACCOUNT,
+        entity_id: `account_deleted:${id}:${Date.now()}`,
+        _triggerSource: "deleteUserAction",
+      });
+    } catch (notifyErr) {
+      console.error("[deleteUserAction] account_deleted notify failed", notifyErr);
+    }
     revalidateAccountsPaths();
     redirect(ACCOUNTS_LIST + "?success=user_deleted");
   } catch (err) {

@@ -1165,6 +1165,7 @@ export type NotificationEventType =
   | "bunch_editing_uploaded"
   | "bunch_icloud_organized"
   | "material_until_approaching"
+  | "infloww_performance_alert"
   | "spot_check_logged"
   | "spot_check_status_changed"
   | "sop_quiz_passed"

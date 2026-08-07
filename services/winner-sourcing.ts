@@ -260,7 +260,7 @@ export async function createWinnerSubmission(input: {
     if (!u.id || u.id === input.submitted_by_id) continue;
     await notify({
       user_id: u.id,
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: `${tier === "super_winner" ? "🔥 Super Winner" : "🏆 Winner"} submitted`,
       body: `${submission.submitted_by_name} submitted a ${tier === "super_winner" ? "Super Winner" : "Winner"} for ${submission.model_name} (${viewCount.toLocaleString()} views).`,

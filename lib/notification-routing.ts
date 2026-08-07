@@ -452,6 +452,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "icloud_management:manage holders when material_until_date is within 7 days or past.",
   },
+  infloww_performance_alert: {
+    rule: "admin_only",
+    description: "infloww_stats:view_all holders when high-value performance alerts fire after sync.",
+  },
   spot_check_logged: {
     rule: "admin_only",
     description: "spotcheck:manage holders when a new spot check is logged.",
@@ -638,6 +642,7 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "form_submitted",
   "user_created",
   "account_deleted",
+  "infloww_performance_alert",
   "daily_summary",
   "va_statistics_weekly_summary",
   "system_alert",

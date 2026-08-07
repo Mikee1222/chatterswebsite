@@ -81,6 +81,8 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
     case "icloud_organization":
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
+    case "infloww_performance":
+      return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "model_schedule":
@@ -182,6 +184,8 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
     case "icloud_organization":
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
+    case "infloww_performance":
+      return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "tip":
@@ -298,6 +302,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "bunch_editing_uploaded":
     case "bunch_icloud_organized":
     case "material_until_approaching":
+    case "infloww_performance_alert":
     case "spot_check_logged":
     case "spot_check_status_changed":
       return "Marketing";

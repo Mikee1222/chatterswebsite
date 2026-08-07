@@ -3,6 +3,7 @@ import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { inflowwReportTodayYmd } from "@/lib/infloww-api";
 import { syncInflowwCreatorEarnings } from "@/services/infloww-creator-earnings";
 import { syncInflowwDailyStats } from "@/services/infloww-daily-stats";
+import { runInflowwPerformanceAlerts } from "@/services/infloww-performance-alerts";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,6 +27,7 @@ function isCronAuthorized(request: Request): boolean {
  * 2) Creator earnings (modelss matched to Infloww creators — transactions,
  *    creator-report incl. renew-on, marketing links/fans, refunds,
  *    priority mass messages; re-syncs status=loading txs)
+ * 3) High-value performance alerts (declining chatter WoW, refunds, churn)
  *
  * Cadence: daily via vercel.json (Hobby max). For more frequent runs use the
  * GitHub Actions / external cron path — see docs/infloww-employee-performance.md
@@ -67,10 +69,18 @@ export async function GET(request: Request) {
       });
     }
 
+    let performanceAlerts: Awaited<ReturnType<typeof runInflowwPerformanceAlerts>> | null = null;
+    try {
+      performanceAlerts = await runInflowwPerformanceAlerts();
+    } catch (alertErr) {
+      console.error("[cron/sync-infloww-stats] performance alerts", alertErr);
+    }
+
     return NextResponse.json({
       success: employee.errors.length === 0 && creatorErrorCount === 0,
       employee,
       creator,
+      performanceAlerts,
     });
   } catch (err) {
     console.error("[cron/sync-infloww-stats]", err);
