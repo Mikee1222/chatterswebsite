@@ -12,7 +12,6 @@ import {
   type BunchModelOption,
   type BunchStaffOption,
 } from "@/components/admin-bunches-client";
-import type { IcloudFolderEntry } from "@/services/icloud";
 
 export default async function AdminBunchesPage({
   searchParams,

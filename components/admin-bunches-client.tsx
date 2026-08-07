@@ -39,7 +39,7 @@ import {
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
 import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
-import { bunchScriptsReadyForFilming, FILMING_STATUS_STYLES, type FilmingStatus } from "@/lib/filming-helpers";
+import { bunchScriptsReadyForFilming, FILMING_STATUS_STYLES } from "@/lib/filming-helpers";
 import { bunchReadyForEditing, EDITING_STATUS_STYLES } from "@/lib/editing-helpers";
 import {
   BUNCH_PIPELINE_STAGES,
@@ -69,14 +69,6 @@ export type BunchStaffOption = {
 export type BunchModelOption = { model_id: string; model_name: string };
 
 const PAGE_SIZE = 12;
-
-const FILMING_FILTERS: Array<{ value: "all" | FilmingStatus; label: string }> = [
-  { value: "all", label: "All filming" },
-  { value: "unassigned", label: "Unassigned" },
-  { value: "assigned", label: "Assigned" },
-  { value: "in_progress", label: "In progress" },
-  { value: "uploaded", label: "Uploaded" },
-];
 
 function formatBunchDate(iso: string | undefined | null): string {
   if (!iso) return "—";
@@ -187,7 +179,6 @@ export function AdminBunchesClient({
   const [statusFilter, setStatusFilter] = React.useState<"all" | "open" | "closed">("open");
   const [stageFilter, setStageFilter] = React.useState<"all" | number>("all");
   const [creativeFilter, setCreativeFilter] = React.useState("all");
-  const [filmingFilter, setFilmingFilter] = React.useState<"all" | FilmingStatus>("all");
   const [filmerFilter, setFilmerFilter] = React.useState("all");
   const [editorFilter, setEditorFilter] = React.useState("all");
 
@@ -295,14 +286,26 @@ export function AdminBunchesClient({
   async function refreshAll() {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/winner-sourcing/bunches", { credentials: "include" });
-      if (res.ok) {
-        const d = await res.json();
+      const [bunchesRes, pipelineRes] = await Promise.all([
+        fetch("/api/winner-sourcing/bunches", { credentials: "include" }),
+        fetch("/api/icloud/pipeline-overview", { credentials: "include" }),
+      ]);
+      if (bunchesRes.ok) {
+        const d = await bunchesRes.json();
         const next = (d.bunches ?? []) as VideoBunch[];
         setBunches(next);
         void refreshFilmingProgress(next.map((b) => b.id));
         void refreshEditingProgress(next.map((b) => b.id));
-        if (viewMode === "pipeline") void refreshPipeline();
+      }
+      if (pipelineRes.ok) {
+        const d = (await pipelineRes.json()) as {
+          bunches?: VideoBunch[];
+          modelRunways?: ModelMaterialRunway[];
+          foldersByBunch?: Record<string, IcloudFolderEntry[]>;
+        };
+        if (d.modelRunways) setModelRunways(d.modelRunways);
+        if (d.foldersByBunch) setFoldersByBunch(d.foldersByBunch);
+        if (d.bunches && !bunchesRes.ok) setBunches(d.bunches);
       }
     } finally {
       setRefreshing(false);
@@ -312,7 +315,7 @@ export function AdminBunchesClient({
   const refreshAllRef = React.useRef(refreshAll);
   refreshAllRef.current = refreshAll;
   useSupabaseRealtimeRefresh(
-    ["video_bunches", "recreate_video_slots"],
+    ["video_bunches", "recreate_video_slots", "icloud_folder_entries"],
     () => void refreshAllRef.current(),
     { debounceMs: 800 },
   );
@@ -589,7 +592,6 @@ export function AdminBunchesClient({
       if (statusFilter !== "all" && b.status !== statusFilter) return false;
       if (modelFilter !== "all" && b.model_id !== modelFilter) return false;
       if (stageFilter !== "all" && getBunchPipelineStageIndex(b) !== stageFilter) return false;
-      if (filmingFilter !== "all" && b.filming_status !== filmingFilter) return false;
       if (creativeFilter !== "all") {
         if (creativeFilter === "__none__") {
           if (b.assigned_creative_id) return false;
@@ -632,7 +634,6 @@ export function AdminBunchesClient({
     modelFilter,
     statusFilter,
     stageFilter,
-    filmingFilter,
     creativeFilter,
     filmerFilter,
     editorFilter,
@@ -647,7 +648,6 @@ export function AdminBunchesClient({
     modelFilter,
     statusFilter,
     stageFilter,
-    filmingFilter,
     creativeFilter,
     filmerFilter,
     editorFilter,
@@ -1123,8 +1123,15 @@ export function AdminBunchesClient({
                 const pct = Math.min(100, Math.round((occupied / Math.max(1, b.target_video_count)) * 100));
                 const creativeLabel = b.assigned_creative_name?.trim();
                 const filmerLabel = b.assigned_filmer_name?.trim();
+                const editorLabel = b.assigned_editor_name?.trim();
                 const fp = filmingProgress[b.id];
+                const ep = editingProgress[b.id];
+                const stageIdx = getBunchPipelineStageIndex(b);
+                const outstanding = isBunchIcloudOutstanding(b);
+                const folders = foldersByBunch[b.id] ?? [];
+                const icloudMeta = icloudStageLabel(b, folders);
                 const filmSt = FILMING_STATUS_STYLES[b.filming_status] ?? FILMING_STATUS_STYLES.unassigned;
+                const editSt = EDITING_STATUS_STYLES[b.editing_status] ?? EDITING_STATUS_STYLES.unassigned;
                 return (
                   <li key={b.id}>
                     <button
@@ -1132,8 +1139,10 @@ export function AdminBunchesClient({
                       onClick={() => void loadBunchSlots(b.id)}
                       className={cn(
                         VA_CARD,
-                        "w-full p-4 text-left transition",
+                        VA_CARD_GLOW,
+                        "w-full space-y-3 p-4 text-left transition",
                         selectedBunchId === b.id && "border-[#FF1493]/35 ring-1 ring-[#FF1493]/20",
+                        outstanding && selectedBunchId !== b.id && "border-amber-500/25",
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -1141,36 +1150,48 @@ export function AdminBunchesClient({
                           <p className="truncate font-medium text-white">{b.name}</p>
                           <p className="mt-0.5 text-xs text-[#B8B4B8]/55">
                             {b.model_name} · {b.status}
-                            <span className="text-[#B8B4B8]/35"> · {formatBunchDate(b.updated_at || b.created_at)}</span>
+                            <span className="text-[#B8B4B8]/35">
+                              {" "}
+                              · {formatBunchDate(b.updated_at || b.created_at)}
+                            </span>
                           </p>
                           <p className="mt-1.5 text-[11px] text-[#B8B4B8]/45">
                             Filled {provided} · Pending {pending} · Needed {remaining}
                           </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-                            <span className="inline-flex items-center gap-1 text-[#D4AF8C]/85">
-                              <UserRound className="h-3 w-3 opacity-70" />
-                              {creativeLabel || "No creative"}
-                            </span>
-                            {canManageFilming ? (
-                              <>
-                                <span className={cn(VA_STATUS_BADGE, filmSt.className)}>{filmSt.label}</span>
-                                <span className="text-[#B8B4B8]/55">
-                                  {filmerLabel ? `Filmer: ${filmerLabel}` : "No filmer"}
-                                </span>
-                                {fp && fp.filmable_count > 0 ? (
-                                  <span className="text-[#D4AF8C]/80">
-                                    · {fp.filmed_count}/{fp.filmable_count} filmed
-                                  </span>
-                                ) : null}
-                              </>
-                            ) : null}
-                          </div>
                         </div>
                         <span className="shrink-0 text-xs tabular-nums text-[#D4AF8C]">
                           {occupied}/{b.target_video_count}
                         </span>
                       </div>
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
+                      <PipelineStageStepper active={stageIdx} outstanding={outstanding} compact />
+                      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                        <span className="inline-flex items-center gap-1 text-[#D4AF8C]/85">
+                          <UserRound className="h-3 w-3 opacity-70" />
+                          {creativeLabel || "No creative"}
+                        </span>
+                        <span className={cn(VA_STATUS_BADGE, filmSt.className)}>{filmSt.label}</span>
+                        {filmerLabel ? (
+                          <span className="text-[#B8B4B8]/55">Filmer: {filmerLabel}</span>
+                        ) : null}
+                        {fp && fp.filmable_count > 0 ? (
+                          <span className="text-[#D4AF8C]/80">
+                            · {fp.filmed_count}/{fp.filmable_count} filmed
+                          </span>
+                        ) : null}
+                        <span className={cn(VA_STATUS_BADGE, editSt.className)}>Edit: {editSt.label}</span>
+                        {editorLabel ? (
+                          <span className="text-[#B8B4B8]/55">Editor: {editorLabel}</span>
+                        ) : null}
+                        {ep && ep.editable_count > 0 ? (
+                          <span className="text-[#D4AF8C]/80">
+                            · {ep.edited_count}/{ep.editable_count} edited
+                          </span>
+                        ) : null}
+                        <span className={cn(VA_STATUS_BADGE, icloudMeta.className)}>
+                          iCloud: {icloudMeta.label}
+                        </span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-[#FF1493] to-[#D4AF8C]"
                           style={{ width: `${pct}%` }}
@@ -1202,9 +1223,9 @@ export function AdminBunchesClient({
               <Loader2 className="h-6 w-6 animate-spin text-[#FF1493]" />
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-white">{selectedBunch.name}</h3>
                   <p className="mt-0.5 text-xs text-[#B8B4B8]/55">
                     {selectedBunch.model_name} · Slots ({slots.length})
@@ -1218,46 +1239,6 @@ export function AdminBunchesClient({
                       ? ` · Editor: ${selectedBunch.assigned_editor_name}`
                       : ""}
                   </p>
-                  {selectedProgress && selectedProgress.filmable_count > 0 ? (
-                    <p className="mt-1 text-[11px] text-[#D4AF8C]/75">
-                      Filming {selectedProgress.filmed_count} of {selectedProgress.filmable_count}
-                      {selectedBunch.filming_status === "uploaded" && selectedBunch.upload_folder_link ? (
-                        <>
-                          {" · "}
-                          <a
-                            href={selectedBunch.upload_folder_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[#FF1493] hover:underline"
-                          >
-                            Upload folder
-                          </a>
-                        </>
-                      ) : null}
-                    </p>
-                  ) : null}
-                  {canManageEditing &&
-                  editingProgress[selectedBunch.id] &&
-                  editingProgress[selectedBunch.id]!.editable_count > 0 ? (
-                    <p className="mt-1 text-[11px] text-[#D4AF8C]/75">
-                      Editing {editingProgress[selectedBunch.id]!.edited_count} of{" "}
-                      {editingProgress[selectedBunch.id]!.editable_count}
-                      {selectedBunch.editing_status === "uploaded" &&
-                      selectedBunch.edited_upload_folder_link ? (
-                        <>
-                          {" · "}
-                          <a
-                            href={selectedBunch.edited_upload_folder_link}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[#FF1493] hover:underline"
-                          >
-                            Edited folder
-                          </a>
-                        </>
-                      ) : null}
-                    </p>
-                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -1351,6 +1332,214 @@ export function AdminBunchesClient({
                     {selectedBunch.status === "open" ? "Close bunch" : "Reopen bunch"}
                   </button>
                 </div>
+              </div>
+
+              {(() => {
+                const stageIdx = getBunchPipelineStageIndex(selectedBunch);
+                const outstanding = isBunchIcloudOutstanding(selectedBunch);
+                const icloudMeta = icloudStageLabel(selectedBunch, selectedFolders);
+                return (
+                  <div className="space-y-3 rounded-xl border border-white/[0.06] bg-[#0A0A0A]/50 p-3">
+                    <PipelineStageStepper active={stageIdx} outstanding={outstanding} />
+                    <div className="flex flex-wrap gap-1.5">
+                      <span
+                        className={cn(
+                          VA_STATUS_BADGE,
+                          FILMING_STATUS_STYLES[selectedBunch.filming_status]?.className ??
+                            FILMING_STATUS_STYLES.unassigned.className,
+                        )}
+                      >
+                        Film:{" "}
+                        {FILMING_STATUS_STYLES[selectedBunch.filming_status]?.label ??
+                          selectedBunch.filming_status}
+                      </span>
+                      <span
+                        className={cn(
+                          VA_STATUS_BADGE,
+                          EDITING_STATUS_STYLES[selectedBunch.editing_status]?.className ??
+                            EDITING_STATUS_STYLES.unassigned.className,
+                        )}
+                      >
+                        Edit:{" "}
+                        {EDITING_STATUS_STYLES[selectedBunch.editing_status]?.label ??
+                          selectedBunch.editing_status}
+                      </span>
+                      <span className={cn(VA_STATUS_BADGE, icloudMeta.className)}>
+                        iCloud: {icloudMeta.label}
+                      </span>
+                    </div>
+                    {selectedProgress && selectedProgress.filmable_count > 0 ? (
+                      <p className="text-[11px] text-[#D4AF8C]/75">
+                        Filming {selectedProgress.filmed_count} of {selectedProgress.filmable_count}
+                        {selectedBunch.filming_status === "uploaded" &&
+                        selectedBunch.upload_folder_link ? (
+                          <>
+                            {" · "}
+                            <a
+                              href={selectedBunch.upload_folder_link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#FF1493] hover:underline"
+                            >
+                              Upload folder
+                            </a>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
+                    {canManageEditing &&
+                    editingProgress[selectedBunch.id] &&
+                    editingProgress[selectedBunch.id]!.editable_count > 0 ? (
+                      <p className="text-[11px] text-[#D4AF8C]/75">
+                        Editing {editingProgress[selectedBunch.id]!.edited_count} of{" "}
+                        {editingProgress[selectedBunch.id]!.editable_count}
+                        {selectedBunch.editing_status === "uploaded" &&
+                        selectedBunch.edited_upload_folder_link ? (
+                          <>
+                            {" · "}
+                            <a
+                              href={selectedBunch.edited_upload_folder_link}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-[#FF1493] hover:underline"
+                            >
+                              Edited folder
+                            </a>
+                          </>
+                        ) : null}
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })()}
+
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/65">
+                  Timeline
+                </p>
+                <ul className="space-y-1.5 text-xs text-[#B8B4B8]/70">
+                  <li className="flex flex-wrap justify-between gap-2 border-b border-white/[0.04] py-1.5">
+                    <span>Created</span>
+                    <span className="tabular-nums text-[#D4AF8C]/80">
+                      {formatBunchDateTime(selectedBunch.created_at)}
+                      {selectedBunch.created_by_name ? ` · ${selectedBunch.created_by_name}` : ""}
+                    </span>
+                  </li>
+                  <li className="flex flex-wrap justify-between gap-2 border-b border-white/[0.04] py-1.5">
+                    <span>Creative</span>
+                    <span className="text-[#D4AF8C]/80">
+                      {selectedBunch.assigned_creative_name?.trim() || "Unassigned"}
+                    </span>
+                  </li>
+                  <li className="flex flex-wrap justify-between gap-2 border-b border-white/[0.04] py-1.5">
+                    <span>Filmer</span>
+                    <span className="text-[#D4AF8C]/80">
+                      {selectedBunch.assigned_filmer_name?.trim() || "Unassigned"}
+                    </span>
+                  </li>
+                  <li className="flex flex-wrap justify-between gap-2 border-b border-white/[0.04] py-1.5">
+                    <span>Filming uploaded</span>
+                    <span className="tabular-nums text-[#D4AF8C]/80">
+                      {selectedBunch.uploaded_at
+                        ? formatBunchDateTime(selectedBunch.uploaded_at)
+                        : "—"}
+                    </span>
+                  </li>
+                  <li className="flex flex-wrap justify-between gap-2 border-b border-white/[0.04] py-1.5">
+                    <span>Editor</span>
+                    <span className="text-[#D4AF8C]/80">
+                      {selectedBunch.assigned_editor_name?.trim() || "Unassigned"}
+                    </span>
+                  </li>
+                  <li className="flex flex-wrap justify-between gap-2 border-b border-white/[0.04] py-1.5">
+                    <span>Editing uploaded</span>
+                    <span className="tabular-nums text-[#D4AF8C]/80">
+                      {selectedBunch.edited_uploaded_at
+                        ? formatBunchDateTime(selectedBunch.edited_uploaded_at)
+                        : "—"}
+                    </span>
+                  </li>
+                  <li className="flex flex-wrap justify-between gap-2 py-1.5">
+                    <span>iCloud organized</span>
+                    <span className="tabular-nums text-[#D4AF8C]/80">
+                      {selectedBunch.icloud_organized_at
+                        ? formatBunchDateTime(selectedBunch.icloud_organized_at)
+                        : isBunchIcloudOutstanding(selectedBunch)
+                          ? "Outstanding"
+                          : "—"}
+                    </span>
+                  </li>
+                </ul>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/65">
+                    <Cloud className="h-3.5 w-3.5" />
+                    iCloud Organization
+                  </p>
+                  {(() => {
+                    const meta = icloudStageLabel(selectedBunch, selectedFolders);
+                    return <span className={cn(VA_STATUS_BADGE, meta.className)}>{meta.label}</span>;
+                  })()}
+                </div>
+                {!bunchReadyForIcloud(selectedBunch) ? (
+                  <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-[#B8B4B8]/65">
+                    iCloud organization unlocks after editing is uploaded.
+                  </p>
+                ) : selectedFolders.length === 0 ? (
+                  <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                    Editing is done but no iCloud folders yet — pending organization.
+                    {" "}
+                    <Link href={ROUTES.icloudOrganization} className="underline hover:text-amber-100">
+                      Open iCloud Organization →
+                    </Link>
+                  </p>
+                ) : (
+                  <ul className="space-y-2">
+                    {selectedFolders.map((folder) => (
+                      <li
+                        key={folder.id}
+                        className="rounded-xl border border-white/[0.06] bg-[#0A0A0A]/60 px-3 py-2.5"
+                      >
+                        <div className="flex flex-wrap items-start gap-2">
+                          <FolderOpen className="mt-0.5 h-4 w-4 shrink-0 text-[#D4AF8C]/70" />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium text-white">
+                                {folder.folder_label || "Untitled folder"}
+                              </span>
+                              {folder.folder_link ? (
+                                <a
+                                  href={folder.folder_link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-1 text-[11px] text-[#FF1493] hover:underline"
+                                >
+                                  Open <ExternalLink className="h-3 w-3" />
+                                </a>
+                              ) : null}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[#B8B4B8]/55">
+                              <span>
+                                Material until {formatMaterialDate(folder.material_until_date)}
+                              </span>
+                              <span>Submitted by {folder.created_by_name || "—"}</span>
+                              <span className="tabular-nums">
+                                {formatBunchDateTime(folder.created_at)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {selectedBunch.icloud_status === "organized" && selectedFolders.length > 0 ? (
+                  <p className="text-[11px] text-emerald-300/80">
+                    Complete · organized {formatBunchDateTime(selectedBunch.icloud_organized_at)}
+                  </p>
+                ) : null}
               </div>
 
               {creatives.length === 0 ? (
@@ -1510,6 +1699,13 @@ export function AdminBunchesClient({
                         {scriptOwner ? (
                           <p className="mt-1 text-[10px] text-[#B8B4B8]/45">Script: {scriptOwner}</p>
                         ) : null}
+                        {(slot.filmed_at || slot.edited_at) && (
+                          <p className="mt-1 text-[10px] text-[#B8B4B8]/40">
+                            {slot.filmed_at ? `Filmed ${formatBunchDateTime(slot.filmed_at)}` : ""}
+                            {slot.filmed_at && slot.edited_at ? " · " : ""}
+                            {slot.edited_at ? `Edited ${formatBunchDateTime(slot.edited_at)}` : ""}
+                          </p>
+                        )}
                         <label className="mt-2 block space-y-1">
                           <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">
                             Video type
