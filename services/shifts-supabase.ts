@@ -388,17 +388,65 @@ export async function resolveShiftChatterRecordId(userIdOrRecordId: string): Pro
   }
 }
 
+/**
+ * Pick the VA task shift that should gate checklist completion / shift bar.
+ * Prefer a truly active (not paused) row; if several exist, newest start_time wins.
+ * Unordered `.find()` over dual open rows (stuck on_break + newer active) caused
+ * UI/resume to show ON SHIFT while complete still hit the paused duplicate.
+ */
+export function selectPreferredVaTaskShift(candidates: Shift[]): Shift | null {
+  const taskShifts = candidates.filter(
+    (s) => s.shift_type === "task" || s.shift_type === "va_tasks",
+  );
+  if (taskShifts.length === 0) return null;
+  const rank = (s: Shift) => {
+    const paused = s.status === "on_break" || Boolean(s.break_started_at?.trim());
+    return !paused && s.status === "active" ? 0 : 1;
+  };
+  return [...taskShifts].sort((a, b) => {
+    const byStatus = rank(a) - rank(b);
+    if (byStatus !== 0) return byStatus;
+    return (b.start_time || "").localeCompare(a.start_time || "");
+  })[0]!;
+}
+
+export async function listOpenVaTaskShiftsForChatter(chatterRecordId: string): Promise<Shift[]> {
+  const trimmed = chatterRecordId.trim();
+  if (!trimmed) return [];
+  const shifts = await getActiveShifts("virtual_assistant");
+  return shifts.filter(
+    (s) =>
+      s.chatter_id === trimmed &&
+      (s.shift_type === "task" || s.shift_type === "va_tasks"),
+  );
+}
+
+/** End every open VA task shift for this chatter except `keepShiftId` (duplicate cleanup). */
+export async function closeOtherOpenVaTaskShifts(
+  chatterRecordId: string,
+  keepShiftId: string,
+): Promise<number> {
+  const open = await listOpenVaTaskShiftsForChatter(chatterRecordId);
+  const endIso = new Date().toISOString();
+  let closed = 0;
+  for (const s of open) {
+    if (s.id === keepShiftId) continue;
+    await updateShift(s.id, {
+      status: "completed",
+      end_time: endIso,
+      break_started_at: null,
+      break_reminder_at: null,
+    });
+    closed += 1;
+  }
+  return closed;
+}
+
 export async function getActiveVaTaskShift(userRecordId: string): Promise<Shift | null> {
   const chatterRecordId = await resolveShiftChatterRecordId(userRecordId);
   if (!chatterRecordId) return null;
-  const shifts = await getActiveShifts("virtual_assistant");
-  return (
-    shifts.find(
-      (s) =>
-        s.chatter_id === chatterRecordId &&
-        (s.shift_type === "task" || s.shift_type === "va_tasks")
-    ) ?? null
-  );
+  const shifts = await listOpenVaTaskShiftsForChatter(chatterRecordId);
+  return selectPreferredVaTaskShift(shifts);
 }
 
 export type ShiftWriteFields = Partial<{

@@ -304,11 +304,7 @@ function VaShiftBar({
         return;
       }
       if (data.shift) {
-        setShiftState({
-          ...data.shift,
-          status: "active",
-          break_started_at: null,
-        });
+        setShiftState(data.shift);
       }
       setShiftErr(null);
       void fetchActiveShift();

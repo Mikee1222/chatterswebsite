@@ -421,16 +421,51 @@ export async function getActiveVaTaskShift(userRecordId: string): Promise<Shift 
   if (isSupabaseBackend()) {
     return (await import("./shifts-supabase")).getActiveVaTaskShift(userRecordId);
   }
+  const { selectPreferredVaTaskShift } = await import("./shifts-supabase");
   const chatterRecordId = await resolveShiftChatterRecordId(userRecordId);
   if (!chatterRecordId) return null;
   const shifts = await getActiveShifts("virtual_assistant");
-  return (
-    shifts.find(
-      (s) =>
-        s.chatter_id === chatterRecordId &&
-        (s.shift_type === "task" || s.shift_type === "va_tasks"),
-    ) ?? null
+  return selectPreferredVaTaskShift(
+    shifts.filter((s) => s.chatter_id === chatterRecordId),
   );
+}
+
+export async function listOpenVaTaskShiftsForChatter(chatterRecordId: string): Promise<Shift[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).listOpenVaTaskShiftsForChatter(chatterRecordId);
+  }
+  const shifts = await getActiveShifts("virtual_assistant");
+  return shifts.filter(
+    (s) =>
+      s.chatter_id === chatterRecordId &&
+      (s.shift_type === "task" || s.shift_type === "va_tasks"),
+  );
+}
+
+export async function closeOtherOpenVaTaskShifts(
+  chatterRecordId: string,
+  keepShiftId: string,
+): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).closeOtherOpenVaTaskShifts(
+      chatterRecordId,
+      keepShiftId,
+    );
+  }
+  const open = await listOpenVaTaskShiftsForChatter(chatterRecordId);
+  const endIso = new Date().toISOString();
+  let closed = 0;
+  for (const s of open) {
+    if (s.id === keepShiftId) continue;
+    await updateShift(s.id, {
+      status: "completed",
+      end_time: endIso,
+      break_started_at: null,
+      break_reminder_at: null,
+    });
+    closed += 1;
+  }
+  return closed;
 }
 
 export type ShiftWriteFields = Partial<{

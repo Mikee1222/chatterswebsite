@@ -13,6 +13,8 @@ import {
   getActiveShifts,
   getActiveVaTaskShift,
   resolveShiftChatterRecordId,
+  closeOtherOpenVaTaskShifts,
+  listOpenVaTaskShiftsForChatter,
 } from "@/services/shifts";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify } from "@/services/notification-service";
@@ -293,6 +295,13 @@ export async function startVaTaskShiftAction() {
     paused_seconds: 0,
   });
 
+  // Collapse race duplicates from parallel Start clicks.
+  if (chatterRecordId) {
+    await closeOtherOpenVaTaskShifts(chatterRecordId, shift.id).catch((err) =>
+      console.error("[startVaTaskShift] duplicate cleanup failed", err),
+    );
+  }
+
   // Non-blocking side effects — return ON SHIFT to the client immediately.
   void createActivityLog({
     actor_user_id: user.id,
@@ -396,10 +405,27 @@ export async function resumeVaTaskShiftAction() {
   }
 
   const vaId = user.airtableUserId ?? user.id;
-  const myActive = await getActiveVaTaskShift(vaId);
+  const chatterRecordId = await resolveShiftChatterRecordId(vaId);
+  const open = chatterRecordId ? await listOpenVaTaskShiftsForChatter(chatterRecordId) : [];
+  const healthy = open.find(
+    (s) => s.status === "active" && !s.break_started_at?.trim(),
+  );
+  // Dual open rows: keep the healthy active and drop stuck on_break duplicates.
+  if (healthy) {
+    if (chatterRecordId) {
+      await closeOtherOpenVaTaskShifts(chatterRecordId, healthy.id).catch((err) =>
+        console.error("[resumeVaTaskShift] duplicate cleanup failed", err),
+      );
+    }
+    return { success: true, shift: serializeVaTaskShift(healthy) };
+  }
+
+  const myActive =
+    open.find((s) => s.status === "on_break" || Boolean(s.break_started_at?.trim())) ??
+    (await getActiveVaTaskShift(vaId));
   if (!myActive) return { error: "No active VA tasks shift found" };
   if (myActive.status !== "on_break" && !myActive.break_started_at?.trim()) {
-    return { success: true, shift: serializeVaTaskShift({ ...myActive, status: "active", break_started_at: null }) };
+    return { success: true, shift: serializeVaTaskShift(myActive) };
   }
 
   const now = Date.now();
@@ -420,26 +446,24 @@ export async function resumeVaTaskShiftAction() {
     break_minutes: breakMinutes,
   });
 
+  if (chatterRecordId) {
+    await closeOtherOpenVaTaskShifts(chatterRecordId, myActive.id).catch((err) =>
+      console.error("[resumeVaTaskShift] duplicate cleanup failed", err),
+    );
+  }
+
   // Re-read so client + subsequent completion gates see cleared pause (not a synthetic object).
   const resumed = await getActiveVaTaskShift(vaId);
   return {
     success: true,
     shift: serializeVaTaskShift(
-      resumed
-        ? {
-            ...resumed,
-            status: "active",
-            break_started_at: null,
-            paused_seconds: resumed.paused_seconds ?? pausedSeconds,
-            break_minutes: resumed.break_minutes ?? breakMinutes,
-          }
-        : {
-            ...myActive,
-            status: "active",
-            break_started_at: null,
-            paused_seconds: pausedSeconds,
-            break_minutes: breakMinutes,
-          },
+      resumed ?? {
+        ...myActive,
+        status: "active",
+        break_started_at: null,
+        paused_seconds: pausedSeconds,
+        break_minutes: breakMinutes,
+      },
     ),
   };
 }
