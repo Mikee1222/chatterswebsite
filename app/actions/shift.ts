@@ -597,7 +597,7 @@ export async function startBreak(
   if (!before) {
     return { success: false, error: "Shift not found." };
   }
-  if (before.status === "on_break" || before.break_started_at) {
+  if (before.status === "on_break" || Boolean(before.break_started_at?.trim())) {
     console.warn("[startBreak] already on break:", shiftRecordId);
     return { success: false, error: "Already on break" };
   }
@@ -692,8 +692,8 @@ export async function endBreak(shiftRecordId: string, additionalBreakMinutes: nu
   await updateShift(shiftRecordId, {
     break_minutes: newBreakTotal,
     status: "active",
-    break_started_at: "",
-    break_reminder_at: "",
+    break_started_at: null,
+    break_reminder_at: null,
   });
   const shift = await getShiftById(shiftRecordId);
   revalidatePath(ROUTES.chatter.shift);

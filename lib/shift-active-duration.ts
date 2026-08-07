@@ -1,3 +1,12 @@
+/** True when a shift is paused / on break (empty break_started_at does not count). */
+export function isShiftPausedOrOnBreak(shift: {
+  status?: string | null;
+  break_started_at?: string | null;
+} | null | undefined): boolean {
+  if (!shift) return false;
+  return shift.status === "on_break" || Boolean(shift.break_started_at?.trim());
+}
+
 /**
  * Active (worked) seconds for a shift — wall-clock minus closed pauses,
  * and minus the open pause segment when status is on_break.
@@ -28,9 +37,8 @@ export function shiftActiveSeconds(
     paused = Math.max(0, Math.floor(Number(shift.break_minutes) * 60));
   }
 
-  const onBreak =
-    shift.status === "on_break" || Boolean(shift.break_started_at?.trim());
-  if (onBreak && shift.break_started_at) {
+  const onBreak = isShiftPausedOrOnBreak(shift);
+  if (onBreak && shift.break_started_at?.trim()) {
     const pauseStart = new Date(shift.break_started_at).getTime();
     if (Number.isFinite(pauseStart)) {
       paused += Math.max(0, Math.floor((Math.min(endMs, nowMs) - pauseStart) / 1000));

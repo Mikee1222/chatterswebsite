@@ -180,7 +180,7 @@ export async function updateVaTaskStatusAction(input: {
     if (!activeShift) {
       return { success: false, error: "Start your task shift before marking tasks done." };
     }
-    if (activeShift.status === "on_break" || activeShift.break_started_at) {
+    if (activeShift.status === "on_break" || Boolean(activeShift.break_started_at?.trim())) {
       return { success: false, error: "Resume your task shift before marking tasks done." };
     }
   }

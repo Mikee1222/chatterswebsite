@@ -21,6 +21,8 @@ async function main() {
     ["model_social_accounts", "shadowban_screenshot"],
     ["rebills", "screenshot"],
     ["invoices", "attachment"],
+    ["va_content_assignments", "file_attachment"],
+    ["pdf_documents", "file_url"],
   ];
 
   for (const [table, col] of tables) {
@@ -31,9 +33,13 @@ async function main() {
     }
     let token = "";
     for (const row of data ?? []) {
-      const arr = (row as unknown as Record<string, unknown>)[col];
-      if (!Array.isArray(arr)) continue;
-      const hit = arr.find((u) => typeof u === "string" && u.startsWith("sb://"));
+      const val = (row as unknown as Record<string, unknown>)[col];
+      if (typeof val === "string" && val.startsWith("sb://")) {
+        token = val;
+        break;
+      }
+      if (!Array.isArray(val)) continue;
+      const hit = val.find((u) => typeof u === "string" && u.startsWith("sb://"));
       if (typeof hit === "string") {
         token = hit;
         break;

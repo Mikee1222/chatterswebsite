@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
 import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
-import { formatActiveDuration, shiftActiveSeconds } from "@/lib/shift-active-duration";
+import { formatActiveDuration, isShiftPausedOrOnBreak, shiftActiveSeconds } from "@/lib/shift-active-duration";
 import { VA_CARD, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
@@ -78,8 +78,7 @@ function isOptimisticShiftId(id: string): boolean {
 }
 
 function isShiftPaused(shift: ActiveShift | null | undefined): boolean {
-  if (!shift) return false;
-  return shift.status === "on_break" || Boolean(shift.break_started_at?.trim());
+  return isShiftPausedOrOnBreak(shift);
 }
 
 /** Isolated shift UI + 1s timer so the task list does not re-render every second. */
@@ -100,6 +99,9 @@ function VaShiftBar({
   const [shiftDuration, setShiftDuration] = React.useState("0s");
   const fetchSeqRef = React.useRef(0);
   const pendingStartIdRef = React.useRef<string | null>(null);
+  /** After local pause/resume/start/end, ignore stale SSR until a fresh active-shift fetch applies. */
+  const ignoreStaleSsrRef = React.useRef(false);
+  const localMutationEpochRef = React.useRef(0);
 
   const setShiftState = React.useCallback(
     (shift: ActiveShift | null) => {
@@ -109,27 +111,43 @@ function VaShiftBar({
     [onShiftChange],
   );
 
+  const bumpLocalMutation = React.useCallback(() => {
+    localMutationEpochRef.current += 1;
+    // Invalidate in-flight /api/va/task-shift/active responses.
+    fetchSeqRef.current += 1;
+    ignoreStaleSsrRef.current = true;
+  }, []);
+
   const fetchActiveShift = React.useCallback(async () => {
     const seq = ++fetchSeqRef.current;
+    const epochAtStart = localMutationEpochRef.current;
     try {
       const res = await fetch("/api/va/task-shift/active", { credentials: "include" });
       const data = (await res.json().catch(() => ({}))) as { shift?: ActiveShift | null };
       if (seq !== fetchSeqRef.current) return;
+      if (epochAtStart !== localMutationEpochRef.current) return;
       // Don't clobber optimistic start with a stale null while start is in flight.
       if (pendingStartIdRef.current && !data.shift) return;
-      if (res.ok) setShiftState(data.shift ?? null);
+      if (res.ok) {
+        setShiftState(data.shift ?? null);
+        ignoreStaleSsrRef.current = false;
+      }
     } finally {
       if (seq === fetchSeqRef.current) setShiftLoading(false);
     }
   }, [setShiftState]);
 
   React.useEffect(() => {
+    // Never flip parent onShift from SSR alone without updating VaShiftBar activeShift —
+    // that desync locks checkboxes while the bar still shows On Shift.
     if (initialActiveShift) {
       setShiftLoading(false);
-      onShiftChange(!isShiftPaused(initialActiveShift));
+      if (!ignoreStaleSsrRef.current) {
+        setShiftState(initialActiveShift);
+      }
     }
     void fetchActiveShift();
-  }, [fetchActiveShift, initialActiveShift, onShiftChange]);
+  }, [fetchActiveShift, initialActiveShift, setShiftState]);
 
   React.useEffect(() => {
     if (!activeShift?.start_time) {
@@ -165,6 +183,7 @@ function VaShiftBar({
   async function handleStartShift() {
     if (shiftBusy) return;
     setShiftErr(null);
+    bumpLocalMutation();
     const optimisticId = `optimistic-${Date.now()}`;
     const optimisticStartedAt = new Date().toISOString();
     pendingStartIdRef.current = optimisticId;
@@ -234,6 +253,7 @@ function VaShiftBar({
     setShiftBusy(true);
     setShiftErr(null);
     const prev = activeShift;
+    bumpLocalMutation();
     const pauseIso = new Date().toISOString();
     setShiftState({ ...activeShift, status: "on_break", break_started_at: pauseIso });
     try {
@@ -259,9 +279,10 @@ function VaShiftBar({
     setShiftBusy(true);
     setShiftErr(null);
     const prev = activeShift;
+    bumpLocalMutation();
     // Optimistically close the open pause into paused_seconds.
     let paused = Math.max(0, Math.floor(Number(activeShift.paused_seconds ?? 0)));
-    if (activeShift.break_started_at) {
+    if (activeShift.break_started_at?.trim()) {
       const startMs = new Date(activeShift.break_started_at).getTime();
       if (Number.isFinite(startMs)) {
         paused += Math.max(0, Math.floor((Date.now() - startMs) / 1000));
@@ -282,8 +303,15 @@ function VaShiftBar({
         setShiftErr(data.error?.trim() || "Could not resume shift");
         return;
       }
-      if (data.shift) setShiftState(data.shift);
+      if (data.shift) {
+        setShiftState({
+          ...data.shift,
+          status: "active",
+          break_started_at: null,
+        });
+      }
       setShiftErr(null);
+      void fetchActiveShift();
     } catch {
       setShiftState(prev);
       setShiftErr("Could not resume shift");
@@ -297,6 +325,7 @@ function VaShiftBar({
     setShiftBusy(true);
     setShiftErr(null);
     const prev = activeShift;
+    bumpLocalMutation();
     pendingStartIdRef.current = null;
     setShiftState(null);
     try {
@@ -460,7 +489,9 @@ export function VaTasksClient({
   const [filterPriority, setFilterPriority] = React.useState("");
   const [showAllTasks, setShowAllTasks] = React.useState(false);
 
-  const [onShift, setOnShift] = React.useState(!!initialActiveShift);
+  const [onShift, setOnShift] = React.useState(
+    () => !!initialActiveShift && !isShiftPaused(initialActiveShift),
+  );
   const handleShiftChange = React.useCallback((next: boolean) => setOnShift(next), []);
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
   const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});

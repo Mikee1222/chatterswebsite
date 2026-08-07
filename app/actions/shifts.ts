@@ -364,7 +364,7 @@ export async function pauseVaTaskShiftAction() {
   const vaId = user.airtableUserId ?? user.id;
   const myActive = await getActiveVaTaskShift(vaId);
   if (!myActive) return { error: "No active VA tasks shift found" };
-  if (myActive.status === "on_break" || myActive.break_started_at) {
+  if (myActive.status === "on_break" || Boolean(myActive.break_started_at?.trim())) {
     return { success: true, shift: serializeVaTaskShift(myActive) };
   }
   if (myActive.status !== "active") {
@@ -398,7 +398,7 @@ export async function resumeVaTaskShiftAction() {
   const vaId = user.airtableUserId ?? user.id;
   const myActive = await getActiveVaTaskShift(vaId);
   if (!myActive) return { error: "No active VA tasks shift found" };
-  if (myActive.status !== "on_break" && !myActive.break_started_at) {
+  if (myActive.status !== "on_break" && !myActive.break_started_at?.trim()) {
     return { success: true, shift: serializeVaTaskShift({ ...myActive, status: "active", break_started_at: null }) };
   }
 
@@ -414,21 +414,33 @@ export async function resumeVaTaskShiftAction() {
 
   await updateShift(myActive.id, {
     status: "active",
-    break_started_at: "",
-    break_reminder_at: "",
+    break_started_at: null,
+    break_reminder_at: null,
     paused_seconds: pausedSeconds,
     break_minutes: breakMinutes,
   });
 
+  // Re-read so client + subsequent completion gates see cleared pause (not a synthetic object).
+  const resumed = await getActiveVaTaskShift(vaId);
   return {
     success: true,
-    shift: serializeVaTaskShift({
-      ...myActive,
-      status: "active",
-      break_started_at: null,
-      paused_seconds: pausedSeconds,
-      break_minutes: breakMinutes,
-    }),
+    shift: serializeVaTaskShift(
+      resumed
+        ? {
+            ...resumed,
+            status: "active",
+            break_started_at: null,
+            paused_seconds: resumed.paused_seconds ?? pausedSeconds,
+            break_minutes: resumed.break_minutes ?? breakMinutes,
+          }
+        : {
+            ...myActive,
+            status: "active",
+            break_started_at: null,
+            paused_seconds: pausedSeconds,
+            break_minutes: breakMinutes,
+          },
+    ),
   };
 }
 
@@ -449,8 +461,8 @@ export async function endVaTaskShiftAction() {
 
   // Finalize any open pause into paused_seconds before completing.
   let pausedSeconds = Math.max(0, Math.floor(Number(myActive.paused_seconds ?? 0)));
-  if (myActive.status === "on_break" || myActive.break_started_at) {
-    if (myActive.break_started_at) {
+  if (myActive.status === "on_break" || Boolean(myActive.break_started_at?.trim())) {
+    if (myActive.break_started_at?.trim()) {
       const startMs = new Date(myActive.break_started_at).getTime();
       if (Number.isFinite(startMs)) {
         pausedSeconds += Math.max(0, Math.floor((endTime.getTime() - startMs) / 1000));
@@ -469,8 +481,8 @@ export async function endVaTaskShiftAction() {
   await updateShift(myActive.id, {
     end_time: endIso,
     status: "completed",
-    break_started_at: "",
-    break_reminder_at: "",
+    break_started_at: null,
+    break_reminder_at: null,
     paused_seconds: pausedSeconds,
     break_minutes: breakMinutes,
     total_minutes: totalMinutes,

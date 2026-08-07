@@ -443,8 +443,9 @@ export type ShiftWriteFields = Partial<{
   start_time: string;
   end_time: string;
   status: string;
-  break_started_at: string;
-  break_reminder_at: string;
+  /** Empty string or null clears the open pause/break timestamp. */
+  break_started_at: string | null;
+  break_reminder_at: string | null;
   break_minutes: number;
   paused_seconds: number;
   staff_role: string;

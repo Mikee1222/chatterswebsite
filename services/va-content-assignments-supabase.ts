@@ -59,18 +59,29 @@ type Row = SbRow & {
   reviewed_at?: string | null;
 };
 
-function attachmentsFromUrls(v: string[] | null | undefined): VaAttachmentCell[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is string => typeof x === "string" && x.length > 0).map((url) => ({ url }));
+async function attachmentsFromUrls(v: string[] | null | undefined): Promise<VaAttachmentCell[]> {
+  if (!Array.isArray(v) || v.length === 0) return [];
+  const { urlsToAttachments } = await import("@/lib/supabase-signed-url");
+  const signed = await urlsToAttachments(
+    v.filter((u): u is string => typeof u === "string" && u.length > 0),
+  );
+  return signed.map((a) => ({ url: a.url, filename: a.filename }));
 }
 
 async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
   const modelUuids = row.model ?? [];
   const vaUuids = row.va ?? [];
-  const [modelAtIds, vaAtIds] = await Promise.all([
+  const [modelAtIds, vaAtIds, file_attachment] = await Promise.all([
     sbAirtableIdsForUuids("modelss", modelUuids),
     sbAirtableIdsForUuids("users", vaUuids),
+    attachmentsFromUrls(row.file_attachment),
   ]);
+  const rawFileUrl = (row.file_url ?? "").trim();
+  let file_url: string | null = rawFileUrl || null;
+  if (file_url) {
+    const { resolveStorageUrl } = await import("@/lib/supabase-signed-url");
+    file_url = await resolveStorageUrl(file_url);
+  }
   return {
     id: publicId(row),
     assignment_id: row.assignment_id ?? "",
@@ -79,8 +90,8 @@ async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
     title: row.title ?? "",
     description: row.description ?? "",
     content_type: row.content_type ?? "",
-    file_url: row.file_url ?? null,
-    file_attachment: attachmentsFromUrls(row.file_attachment),
+    file_url,
+    file_attachment,
     deadline: row.deadline ?? null,
     scheduled_date: row.scheduled_date ?? null,
     status: row.status ?? "",

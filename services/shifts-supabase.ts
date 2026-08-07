@@ -411,8 +411,9 @@ export type ShiftWriteFields = Partial<{
   start_time: string;
   end_time: string;
   status: string;
-  break_started_at: string;
-  break_reminder_at: string;
+  /** Empty string or null clears the open pause/break timestamp. */
+  break_started_at: string | null;
+  break_reminder_at: string | null;
   break_minutes: number;
   paused_seconds: number;
   staff_role: string;
@@ -425,10 +426,23 @@ export type ShiftWriteFields = Partial<{
   updated_at: string;
 }>;
 
+function nullIfEmptyTimestamp(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed : null;
+}
+
 async function shiftWriteToPg(fields: ShiftWriteFields): Promise<Record<string, unknown>> {
   const patch: Record<string, unknown> = { ...fields };
   if (fields.chatter !== undefined) {
     patch.chatter = await sbUuidsForAirtableIds("users", fields.chatter);
+  }
+  // TEXT timestamp columns: "" must become null or resume leaves a truthy pause marker.
+  if (fields.break_started_at !== undefined) {
+    patch.break_started_at = nullIfEmptyTimestamp(fields.break_started_at);
+  }
+  if (fields.break_reminder_at !== undefined) {
+    patch.break_reminder_at = nullIfEmptyTimestamp(fields.break_reminder_at);
   }
   return patch;
 }
