@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listVideoBunches } from "@/services/winner-sourcing";
+import { getWinnerVideosBySubmitter } from "@/services/winner-videos";
 import { WinnerRecreatesClient } from "@/components/winner-recreates-client";
 
 export default async function WinnerRecreatesPage() {
@@ -17,11 +18,15 @@ export default async function WinnerRecreatesPage() {
     redirect(ROUTES.admin.winnerVideosHub);
   }
 
-  const bunches = await listVideoBunches({ status: "open" }).catch(() => []);
+  const submitterId = user.airtableUserId ?? user.id;
+  const [bunches, mySubmissions] = await Promise.all([
+    listVideoBunches({ status: "open" }).catch(() => []),
+    getWinnerVideosBySubmitter(submitterId).catch(() => []),
+  ]);
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <WinnerRecreatesClient initialBunches={bunches} />
+      <WinnerRecreatesClient initialBunches={bunches} initialSubmissions={mySubmissions} />
     </div>
   );
 }

@@ -430,6 +430,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   winner_videos: {
     status: new Set(["Pending", "Approved", "Rejected", "Recreated", "Published"]),
+    quality_rating: new Set(["good", "excellent", "fire"]),
   },
   task_templates: {
     category: new Set(["marketing", "chatting", "content", "other"]),

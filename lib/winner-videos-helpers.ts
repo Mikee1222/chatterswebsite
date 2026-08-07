@@ -36,6 +36,51 @@ export function coerceWinnerVideoStatus(raw: unknown): WinnerVideoStatus {
   return (WINNER_VIDEO_STATUSES as readonly string[]).includes(s) ? s : "Pending";
 }
 
+/** Optional quality rating set when admins approve a research find. */
+export const WINNER_VIDEO_QUALITY_RATINGS = ["good", "excellent", "fire"] as const;
+
+export type WinnerVideoQualityRating = (typeof WINNER_VIDEO_QUALITY_RATINGS)[number];
+
+export const WINNER_VIDEO_QUALITY_RATING_META: Record<
+  WinnerVideoQualityRating,
+  { emoji: string; label: string; labelEl: string }
+> = {
+  good: { emoji: "👍", label: "Good", labelEl: "Καλό" },
+  excellent: { emoji: "🌟", label: "Excellent", labelEl: "Εξαιρετικό" },
+  fire: { emoji: "🔥", label: "Fire", labelEl: "Φωτιά" },
+};
+
+export function coerceWinnerVideoQualityRating(raw: unknown): WinnerVideoQualityRating | null {
+  const s = String(raw ?? "").trim().toLowerCase();
+  return (WINNER_VIDEO_QUALITY_RATINGS as readonly string[]).includes(s)
+    ? (s as WinnerVideoQualityRating)
+    : null;
+}
+
+export function qualityRatingEmoji(rating: WinnerVideoQualityRating | null | undefined): string {
+  if (!rating) return "";
+  return WINNER_VIDEO_QUALITY_RATING_META[rating].emoji;
+}
+
+/** Aggregate line e.g. "🔥 x3 · 🌟 x5 · 👍 x8" (omits zero tiers). */
+export function formatQualityRatingAggregate(
+  ratings: Array<WinnerVideoQualityRating | null | undefined>,
+): string {
+  let fire = 0;
+  let excellent = 0;
+  let good = 0;
+  for (const r of ratings) {
+    if (r === "fire") fire += 1;
+    else if (r === "excellent") excellent += 1;
+    else if (r === "good") good += 1;
+  }
+  const parts: string[] = [];
+  if (fire > 0) parts.push(`🔥 x${fire}`);
+  if (excellent > 0) parts.push(`🌟 x${excellent}`);
+  if (good > 0) parts.push(`👍 x${good}`);
+  return parts.join(" · ");
+}
+
 export const WINNER_VIDEO_STATUS_STYLES: Record<
   WinnerVideoStatus,
   { label: string; className: string; glowClassName?: string }

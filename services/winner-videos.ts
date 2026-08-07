@@ -11,8 +11,11 @@ import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   coerceWinnerVideoContentType,
+  coerceWinnerVideoQualityRating,
   coerceWinnerVideoStatus,
+  qualityRatingEmoji,
   type WinnerVideoContentType,
+  type WinnerVideoQualityRating,
   type WinnerVideoStatus,
 } from "@/lib/winner-videos-helpers";
 import {
@@ -121,6 +124,8 @@ export interface WinnerVideoRecord {
   /** Winner sourcing bunch (Fill Bunches → Research Manage). Empty when non-bunch legacy. */
   bunch_id: string;
   bunch_name: string;
+  /** Optional quality rating set on approve (👍 / 🌟 / 🔥). */
+  quality_rating: WinnerVideoQualityRating | null;
 }
 
 export interface WinnerVideoFilters {
@@ -168,6 +173,7 @@ type WinnerVideoFields = {
   assigned_creative_id?: string;
   bunch_id?: string | null;
   bunch_name?: string;
+  quality_rating?: string | null;
 };
 
 function escapeFormulaString(value: string): string {
@@ -226,6 +232,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     assigned_creative_id: String(f.assigned_creative_id ?? ""),
     bunch_id: String(f.bunch_id ?? ""),
     bunch_name: String(f.bunch_name ?? ""),
+    quality_rating: coerceWinnerVideoQualityRating(f.quality_rating),
   };
 }
 
@@ -385,6 +392,8 @@ export type ApproveWinnerVideoInput = {
   assigned_creative_name?: string;
   reviewed_by_name: string;
   reviewed_by_id?: string;
+  /** Optional 👍 / 🌟 / 🔥 rating for the submitting researcher. */
+  quality_rating?: WinnerVideoQualityRating | null;
 };
 
 export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInput): Promise<WinnerVideoRecord> {
@@ -417,6 +426,8 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     throw new Error("A Creative must be assigned to write the script");
   }
 
+  const qualityRating = coerceWinnerVideoQualityRating(data.quality_rating);
+
   const patch: WinnerVideoFields = {
     status: "Approved",
     assigned_creator_name: data.assigned_creator_name.trim(),
@@ -424,6 +435,7 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     reviewed_by_name: data.reviewed_by_name.trim(),
     reviewed_at: now,
     rejection_reason: "",
+    quality_rating: qualityRating,
   };
 
   if (creativeId && creativeName) {
@@ -456,12 +468,13 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
   }
 
   if (existing.submitted_by_id) {
+    const ratingEmoji = qualityRatingEmoji(qualityRating);
     await notify({
       user_id: existing.submitted_by_id,
       event_type: NOTIFICATION_EVENT.WINNER_VIDEO_APPROVED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "✅ Winner video approved",
-      body: `Your winner video for ${existing.reference_model_name || "a reference model"} was approved.`,
+      body: `Your winner video for ${existing.reference_model_name || "a reference model"} was approved${ratingEmoji ? ` ${ratingEmoji}` : ""}.`,
       entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
       entity_id: id,
       actor_user_id: data.reviewed_by_id,

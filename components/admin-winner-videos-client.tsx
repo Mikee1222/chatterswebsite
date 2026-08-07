@@ -36,6 +36,8 @@ import {
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
 import {
+  QualityRatingBadge,
+  QualityRatingPicker,
   ResearchBunchLink,
   ResearchDisplayVideoTypeBadge,
   ResearchSourceBadge,
@@ -66,7 +68,12 @@ import {
   type WinnerVideoDateRange,
   type WinnerVideoViewMode,
 } from "@/lib/winner-videos-filters";
-import { WINNER_VIDEO_STATUSES, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import {
+  WINNER_VIDEO_STATUSES,
+  qualityRatingEmoji,
+  type WinnerVideoQualityRating,
+  type WinnerVideoStatus,
+} from "@/lib/winner-videos-helpers";
 import { ROUTES } from "@/lib/routes";
 import { VA_BTN_SECONDARY as VA_SECONDARY, VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
@@ -142,6 +149,7 @@ export function AdminWinnerVideosClient({
   const [deadline, setDeadline] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
   const [recreationLink, setRecreationLink] = React.useState("");
+  const [qualityRating, setQualityRating] = React.useState<WinnerVideoQualityRating | null>(null);
 
   React.useEffect(() => setVideos(initialVideos), [initialVideos]);
 
@@ -326,6 +334,7 @@ export function AdminWinnerVideosClient({
     setCreatorId(match?.id ?? "");
     setCreativeId("");
     setDeadline("");
+    setQualityRating(null);
   }
 
   const approveTarget = videos.find((v) => v.id === approveId) ?? null;
@@ -880,6 +889,10 @@ export function AdminWinnerVideosClient({
                       required
                     />
                   </div>
+                  <div>
+                    <ReviewFieldLabel>Quality rating</ReviewFieldLabel>
+                    <QualityRatingPicker value={qualityRating} onChange={setQualityRating} />
+                  </div>
                   <div className="flex justify-end gap-2 pt-2">
                     <button type="button" className={VA_BTN_SECONDARY} onClick={() => setApproveId(null)}>
                       Cancel
@@ -916,6 +929,7 @@ export function AdminWinnerVideosClient({
                             assigned_creative_id: creativeId,
                             assigned_creative_name: selectedCreativeName.trim(),
                             recreation_deadline: deadline,
+                            quality_rating: qualityRating,
                           });
                           if (ok) setApproveId(null);
                         })();
@@ -1058,6 +1072,7 @@ function ResearchSubmissionCard({
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <WinnerVideoStatusBadge status={video.status} />
+            <QualityRatingBadge rating={video.quality_rating} />
             <ResearchSourceBadge video={video} />
             <ResearchDisplayVideoTypeBadge video={video} />
             {age ? (
@@ -1191,6 +1206,11 @@ function ResearchSubmissionCard({
       {video.status === "Approved" || video.status === "Recreated" || video.status === "Published" ? (
         <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-emerald-400/70">
           <Check className="h-3 w-3" aria-hidden /> Research approved
+          {video.quality_rating ? (
+            <span className="ml-0.5" aria-hidden>
+              {qualityRatingEmoji(video.quality_rating)}
+            </span>
+          ) : null}
           {video.reviewed_by_name?.trim() ? ` by ${video.reviewed_by_name.trim()}` : ""}
         </p>
       ) : null}

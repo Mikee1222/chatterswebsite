@@ -34,9 +34,14 @@ import {
 } from "@/lib/winner-videos-filters";
 import {
   WINNER_VIDEO_CONTENT_TYPE_STYLES,
+  WINNER_VIDEO_QUALITY_RATINGS,
+  WINNER_VIDEO_QUALITY_RATING_META,
   WINNER_VIDEO_STATUSES,
   WINNER_VIDEO_STATUS_STYLES,
+  formatQualityRatingAggregate,
+  qualityRatingEmoji,
   type WinnerVideoContentType,
+  type WinnerVideoQualityRating,
   type WinnerVideoStatus,
 } from "@/lib/winner-videos-helpers";
 import { ROUTES } from "@/lib/routes";
@@ -95,6 +100,106 @@ export function WinnerVideoContentTypeBadge({ contentType }: { contentType: Winn
     </span>
   );
 }
+
+/** Compact emoji chip for an approved video's quality rating. */
+export function QualityRatingBadge({
+  rating,
+  size = "md",
+  showLabel = false,
+}: {
+  rating: WinnerVideoQualityRating | null | undefined;
+  size?: "sm" | "md";
+  showLabel?: boolean;
+}) {
+  if (!rating) return null;
+  const meta = WINNER_VIDEO_QUALITY_RATING_META[rating];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 font-medium text-[#D4AF8C]",
+        size === "sm" ? "px-1.5 py-0.5 text-[11px]" : "px-2 py-0.5 text-xs",
+      )}
+      title={`${meta.label} (${meta.labelEl})`}
+      aria-label={`Quality: ${meta.label}`}
+    >
+      <span className={size === "sm" ? "text-sm leading-none" : "text-base leading-none"} aria-hidden>
+        {meta.emoji}
+      </span>
+      {showLabel ? <span>{meta.label}</span> : null}
+    </span>
+  );
+}
+
+/** Optional 3-tier emoji picker for Research Manage approve. */
+export function QualityRatingPicker({
+  value,
+  onChange,
+  disabled = false,
+}: {
+  value: WinnerVideoQualityRating | null;
+  onChange: (next: WinnerVideoQualityRating | null) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {WINNER_VIDEO_QUALITY_RATINGS.map((key) => {
+          const meta = WINNER_VIDEO_QUALITY_RATING_META[key];
+          const selected = value === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              disabled={disabled}
+              onClick={() => onChange(selected ? null : key)}
+              aria-pressed={selected}
+              title={`${meta.label} (${meta.labelEl})`}
+              className={cn(
+                "group relative flex min-w-[5.5rem] flex-col items-center gap-1 rounded-xl border px-3 py-2.5 transition-all duration-200",
+                "disabled:cursor-not-allowed disabled:opacity-40",
+                selected
+                  ? "border-[#D4AF8C]/55 bg-gradient-to-b from-[#D4AF8C]/18 to-[#FF1493]/10 text-white shadow-[0_0_24px_-8px_rgba(212,175,140,0.55),inset_0_1px_0_rgba(255,255,255,0.08)] ring-1 ring-[#D4AF8C]/35"
+                  : "border-white/10 bg-white/[0.03] text-[#B8B4B8]/70 hover:border-[#D4AF8C]/25 hover:bg-white/[0.06] hover:text-[#E8E4E8]",
+              )}
+            >
+              <span className={cn("text-2xl leading-none transition-transform", selected && "scale-110")}>
+                {meta.emoji}
+              </span>
+              <span className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", selected ? "text-[#D4AF8C]" : "text-[#B8B4B8]/45")}>
+                {meta.label}
+              </span>
+              <span className={cn("text-[10px]", selected ? "text-[#B8B4B8]/70" : "text-[#B8B4B8]/35")}>
+                {meta.labelEl}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-[#B8B4B8]/40">
+        Optional — tap again to clear. Researcher sees the emoji on approval.
+      </p>
+    </div>
+  );
+}
+
+/** Aggregate line for researcher history, e.g. 🔥 x3 · 🌟 x5 · 👍 x8 */
+export function QualityRatingAggregate({
+  ratings,
+  className,
+}: {
+  ratings: Array<WinnerVideoQualityRating | null | undefined>;
+  className?: string;
+}) {
+  const line = formatQualityRatingAggregate(ratings);
+  if (!line) return null;
+  return (
+    <p className={cn("text-sm tabular-nums tracking-wide text-[#D4AF8C]/85", className)} aria-label="Quality rating totals">
+      {line}
+    </p>
+  );
+}
+
+export { qualityRatingEmoji };
 
 const DISPLAY_VIDEO_TYPE_STYLES: Record<ResearchDisplayVideoType, string> = {
   Skit: "border-violet-500/35 bg-violet-500/12 text-violet-200",
@@ -484,6 +589,7 @@ export function WinnerVideoKanbanCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <ResearchSourceBadge video={video} />
             <ResearchDisplayVideoTypeBadge video={video} />
+            <QualityRatingBadge rating={video.quality_rating} size="sm" />
           </div>
           <ResearchBunchLink video={video} />
           <p className="inline-flex items-center gap-1 text-[11px] text-[#B8B4B8]/50">

@@ -20,8 +20,10 @@ import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { uploadToPrivateStorage, urlsToAttachments } from "@/lib/supabase-signed-url";
 import {
   coerceWinnerVideoContentType,
+  coerceWinnerVideoQualityRating,
   coerceWinnerVideoStatus,
   type WinnerVideoContentType,
+  type WinnerVideoQualityRating,
   type WinnerVideoStatus,
 } from "@/lib/winner-videos-helpers";
 
@@ -62,6 +64,7 @@ export interface WinnerVideoRecord {
   assigned_creative_id: string;
   bunch_id: string;
   bunch_name: string;
+  quality_rating: WinnerVideoQualityRating | null;
 }
 
 export interface WinnerVideoFilters {
@@ -111,6 +114,7 @@ type Row = SbRow & {
   assigned_creative_id?: string | null;
   bunch_id?: string | null;
   bunch_name?: string | null;
+  quality_rating?: string | null;
 };
 
 function coerceViews(raw: unknown): number | null {
@@ -160,6 +164,7 @@ async function mapRow(row: Row): Promise<WinnerVideoRecord> {
     assigned_creative_id: String(row.assigned_creative_id ?? ""),
     bunch_id: row.bunch_id ? String(row.bunch_id) : "",
     bunch_name: String(row.bunch_name ?? ""),
+    quality_rating: coerceWinnerVideoQualityRating(row.quality_rating),
   };
 }
 

@@ -2,15 +2,22 @@
 
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { Loader2, Send, Trophy } from "lucide-react";
+import { ExternalLink, Loader2, Send, Trophy } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
-import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
+import {
+  QualityRatingAggregate,
+  QualityRatingBadge,
+  winnerVideoLocalToast,
+} from "@/components/winner-videos-shared";
+import { WinnerVideoStatusBadge } from "@/components/manager-review-ui";
+import { formatDateTimeAthens } from "@/lib/format";
 import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import {
   bunchUrgencyTone,
   getBunchFulfillment,
 } from "@/lib/winner-sourcing-helpers";
 import type { VideoBunch } from "@/services/winner-sourcing";
+import type { WinnerVideoRecord } from "@/services/winner-videos";
 import { cn } from "@/lib/utils";
 
 function sortByUrgency(list: VideoBunch[]): VideoBunch[] {
@@ -226,16 +233,27 @@ function BunchOverviewCard({
   );
 }
 
-export function WinnerRecreatesClient({ initialBunches }: { initialBunches: VideoBunch[] }) {
+export function WinnerRecreatesClient({
+  initialBunches,
+  initialSubmissions = [],
+}: {
+  initialBunches: VideoBunch[];
+  initialSubmissions?: WinnerVideoRecord[];
+}) {
   const { addToast } = useToast();
   const formRef = React.useRef<HTMLFormElement>(null);
   const [bunches, setBunches] = React.useState(() => sortByUrgency(initialBunches));
+  const [submissions, setSubmissions] = React.useState(initialSubmissions);
   const [bunchId, setBunchId] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [videoLink, setVideoLink] = React.useState("");
   const [videoType, setVideoType] = React.useState<"skit" | "ugc" | "other" | "">("");
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => setSubmissions(initialSubmissions), [initialSubmissions]);
+
+  const ratingAggregate = submissions.map((v) => v.quality_rating);
 
   const selected = bunches.find((b) => b.id === bunchId);
   const selectedFulfillment = selected ? getBunchFulfillment(selected) : null;
@@ -263,6 +281,13 @@ export function WinnerRecreatesClient({ initialBunches }: { initialBunches: Vide
         setBunchId("");
       }
     }
+  }
+
+  async function refreshSubmissions() {
+    const res = await fetch("/api/winner-videos", { credentials: "include" });
+    if (!res.ok) return;
+    const d = (await res.json()) as { videos?: WinnerVideoRecord[] };
+    setSubmissions(d.videos ?? []);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -308,7 +333,7 @@ export function WinnerRecreatesClient({ initialBunches }: { initialBunches: Vide
       setDescription("");
       setVideoLink("");
       setVideoType("");
-      await refreshBunches();
+      await Promise.all([refreshBunches(), refreshSubmissions()]);
     } catch {
       setError("Network error");
     } finally {
@@ -489,6 +514,61 @@ export function WinnerRecreatesClient({ initialBunches }: { initialBunches: Vide
           {submitting ? "Submitting…" : "Submit for review"}
         </button>
       </motion.form>
+
+      {submissions.length > 0 ? (
+        <section className="space-y-4" aria-labelledby="my-submissions-heading">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/70">
+                History
+              </p>
+              <h2 id="my-submissions-heading" className="mt-1 text-lg font-semibold tracking-tight text-white">
+                Your submissions
+              </h2>
+              <p className="mt-0.5 text-xs text-[#B8B4B8]/45">
+                Approved finds show the quality rating from Research Manage.
+              </p>
+            </div>
+            <QualityRatingAggregate ratings={ratingAggregate} />
+          </div>
+
+          <ul className="space-y-2">
+            {submissions.slice(0, 20).map((v) => (
+              <li
+                key={v.id}
+                className={cn(
+                  VA_CARD,
+                  "flex flex-wrap items-center justify-between gap-3 border border-white/[0.06] bg-white/[0.03] px-4 py-3",
+                )}
+              >
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <WinnerVideoStatusBadge status={v.status} />
+                    <QualityRatingBadge rating={v.quality_rating} />
+                    <span className="truncate text-sm font-medium text-white">
+                      {v.reference_model_name?.trim() || "—"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-[#B8B4B8]/45">
+                    {v.bunch_name?.trim() ? `${v.bunch_name} · ` : ""}
+                    {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : "—"}
+                  </p>
+                </div>
+                {v.video_link ? (
+                  <a
+                    href={v.video_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-medium text-[#FF1493] hover:underline"
+                  >
+                    Video <ExternalLink className="h-3 w-3" aria-hidden />
+                  </a>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -8,7 +8,10 @@ import {
   rejectWinnerVideo,
   updateWinnerVideoStatus,
 } from "@/services/winner-videos";
-import { coerceWinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import {
+  coerceWinnerVideoQualityRating,
+  coerceWinnerVideoStatus,
+} from "@/lib/winner-videos-helpers";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -36,6 +39,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (!isBunchFind && (!assigned_creative_id || !assigned_creative_name)) {
       return NextResponse.json({ error: "A Creative must be assigned to write the script" }, { status: 400 });
     }
+    const quality_rating = coerceWinnerVideoQualityRating(body.quality_rating);
     const video = await approveWinnerVideo(id, {
       assigned_creator_name,
       recreation_deadline,
@@ -43,6 +47,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       assigned_creative_name: assigned_creative_name || undefined,
       reviewed_by_name: reviewerName,
       reviewed_by_id: session.airtableUserId ?? session.id,
+      quality_rating,
     });
     return NextResponse.json({ video });
   }
