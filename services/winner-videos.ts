@@ -403,34 +403,43 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
   const now = new Date().toISOString();
   const isBunchFind = Boolean(existing.bunch_id?.trim());
 
+  let creatorName = data.assigned_creator_name.trim();
   let creativeId = String(data.assigned_creative_id ?? "").trim();
   let creativeName = String(data.assigned_creative_name ?? "").trim();
 
-  // Fill Bunches: inherit creative from the parent bunch when not provided on approve.
+  // Fill Bunches: inherit target model + creative from the parent bunch (source of truth).
   if (isBunchFind && isSupabaseBackend()) {
     try {
       const { getVideoBunch } = await import("./winner-sourcing");
       const bunch = await getVideoBunch(existing.bunch_id);
-      if (bunch?.assigned_creative_id?.trim()) {
-        if (!creativeId) {
+      if (bunch) {
+        if (!creatorName) {
+          creatorName = bunch.model_name.trim();
+        }
+        if (!creativeId && bunch.assigned_creative_id?.trim()) {
           creativeId = bunch.assigned_creative_id.trim();
           creativeName = bunch.assigned_creative_name.trim() || creativeName;
         }
       }
     } catch (err) {
-      console.error("[winner-sourcing] load bunch creative on approve failed", err);
+      console.error("[winner-sourcing] load bunch context on approve failed", err);
     }
   }
 
-  if (!isBunchFind && (!creativeId || !creativeName)) {
-    throw new Error("A Creative must be assigned to write the script");
+  if (!creatorName) {
+    throw new Error("Creator name is required");
+  }
+
+  // Standalone (non-bunch) finds may still assign a creative; bunch finds inherit or stay unassigned.
+  if (!isBunchFind && creativeId && !creativeName) {
+    throw new Error("Creative name is required when assigning a creative");
   }
 
   const qualityRating = coerceWinnerVideoQualityRating(data.quality_rating);
 
   const patch: WinnerVideoFields = {
     status: "Approved",
-    assigned_creator_name: data.assigned_creator_name.trim(),
+    assigned_creator_name: creatorName,
     recreation_deadline: data.recreation_deadline.trim(),
     reviewed_by_name: data.reviewed_by_name.trim(),
     reviewed_at: now,

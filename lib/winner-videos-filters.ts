@@ -269,6 +269,48 @@ export function groupWinnerVideosBySource(videos: WinnerVideoRecord[]): {
   return { bunchFills: sortResearchManageVideos(bunchFills), other: sortResearchManageVideos(other) };
 }
 
+/** Primary Research Manage grouping: submissions under parent bunch sections. */
+export type ResearchBunchGroup = {
+  bunchId: string | null;
+  bunchName: string;
+  videos: WinnerVideoRecord[];
+};
+
+export function groupWinnerVideosByBunch(videos: WinnerVideoRecord[]): ResearchBunchGroup[] {
+  const byBunch = new Map<string, WinnerVideoRecord[]>();
+  const ungrouped: WinnerVideoRecord[] = [];
+
+  for (const v of videos) {
+    const id = v.bunch_id?.trim();
+    if (!id) {
+      ungrouped.push(v);
+      continue;
+    }
+    const list = byBunch.get(id) ?? [];
+    list.push(v);
+    byBunch.set(id, list);
+  }
+
+  const groups: ResearchBunchGroup[] = [...byBunch.entries()].map(([bunchId, list]) => {
+    const sorted = sortResearchManageVideos(list);
+    const name =
+      sorted.find((v) => v.bunch_name?.trim())?.bunch_name?.trim() || "Unnamed bunch";
+    return { bunchId, bunchName: name, videos: sorted };
+  });
+
+  groups.sort((a, b) => a.bunchName.localeCompare(b.bunchName));
+
+  if (ungrouped.length > 0) {
+    groups.push({
+      bunchId: null,
+      bunchName: "Ungrouped",
+      videos: sortResearchManageVideos(ungrouped),
+    });
+  }
+
+  return groups;
+}
+
 export function researchManageStats(videos: WinnerVideoRecord[]) {
   const today = getTodayYmdAthens();
   const todayStart = startOfDayMs(today);

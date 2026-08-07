@@ -26,19 +26,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const reviewerName = (session.fullName || session.email || "").trim();
 
   if (action === "approve") {
-    const assigned_creator_name = String(body.assigned_creator_name ?? "").trim();
     const recreation_deadline = String(body.recreation_deadline ?? "").trim();
-    const assigned_creative_id = String(body.assigned_creative_id ?? "").trim();
-    const assigned_creative_name = String(body.assigned_creative_name ?? "").trim();
-    if (!assigned_creator_name || !recreation_deadline) {
-      return NextResponse.json({ error: "Creator name and recreation deadline are required" }, { status: 400 });
+    if (!recreation_deadline) {
+      return NextResponse.json({ error: "Recreation deadline is required" }, { status: 400 });
     }
-    // Creative required for standalone research finds; Fill Bunches inherits from bunch.
+    // Bunch finds inherit target model + creative from the bunch; ungrouped still need a creator.
     const existing = await getWinnerVideoById(id);
     const isBunchFind = Boolean(existing?.bunch_id?.trim());
-    if (!isBunchFind && (!assigned_creative_id || !assigned_creative_name)) {
-      return NextResponse.json({ error: "A Creative must be assigned to write the script" }, { status: 400 });
+    const assigned_creator_name = String(body.assigned_creator_name ?? "").trim();
+    if (!isBunchFind && !assigned_creator_name) {
+      return NextResponse.json({ error: "Creator name is required" }, { status: 400 });
     }
+    const assigned_creative_id = String(body.assigned_creative_id ?? "").trim();
+    const assigned_creative_name = String(body.assigned_creative_name ?? "").trim();
     const quality_rating = coerceWinnerVideoQualityRating(body.quality_rating);
     const video = await approveWinnerVideo(id, {
       assigned_creator_name,

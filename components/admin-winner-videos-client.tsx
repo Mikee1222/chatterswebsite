@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Search,
   Trophy,
+  UserRound,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -48,6 +49,7 @@ import {
   useWinnerVideoCopy,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
+import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateOnlyEuropean, formatDateTimeAthens } from "@/lib/format";
@@ -56,7 +58,7 @@ import {
   RESEARCH_SOURCE_FILTER_OPTIONS,
   WINNER_VIDEO_DATE_RANGE_OPTIONS,
   filterWinnerVideosClient,
-  groupWinnerVideosBySource,
+  groupWinnerVideosByBunch,
   groupWinnerVideosByStatus,
   isStalePending,
   pendingAgeLabel,
@@ -78,6 +80,7 @@ import { ROUTES } from "@/lib/routes";
 import { VA_BTN_SECONDARY as VA_SECONDARY, VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
+import type { VideoBunch } from "@/services/winner-sourcing";
 import type { ModelRecord } from "@/types";
 import { AdminCreativeScriptsReview } from "@/components/admin-creative-scripts-review";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
@@ -86,7 +89,12 @@ import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 type AdminTab = "submissions" | "scripts";
 type StatusTab = WinnerVideoStatus | "all";
 
-export type CreativeOption = { id: string; name: string };
+export type CreativeOption = {
+  id: string;
+  name: string;
+  email?: string;
+  role?: string;
+};
 
 type FilterDraft = {
   statusTab: StatusTab;
@@ -117,26 +125,32 @@ const EMPTY_FILTERS: FilterDraft = {
 type Props = {
   initialVideos: WinnerVideoRecord[];
   initialPendingScripts?: WinnerVideoRecord[];
+  initialBunches?: VideoBunch[];
   gunzoModels: ModelRecord[];
   creatives?: CreativeOption[];
   canManageScripts?: boolean;
+  canAssignCreative?: boolean;
 };
 
 export function AdminWinnerVideosClient({
   initialVideos,
   initialPendingScripts = [],
+  initialBunches = [],
   gunzoModels,
   creatives = [],
   canManageScripts = false,
+  canAssignCreative = false,
 }: Props) {
   const { addToast } = useToast();
   const isSupabaseBackend = useIsSupabaseBackend();
   const copySubmission = useWinnerVideoCopy(addToast);
   const [videos, setVideos] = React.useState(initialVideos);
+  const [bunches, setBunches] = React.useState(initialBunches);
   const [loading, setLoading] = React.useState(false);
   const [pendingId, setPendingId] = React.useState<string | null>(null);
   const [viewMode, setViewMode] = React.useState<WinnerVideoViewMode>("list");
   const [adminTab, setAdminTab] = React.useState<AdminTab>("submissions");
+  const [assignPickerBunchId, setAssignPickerBunchId] = React.useState<string | null>(null);
 
   const [draft, setDraft] = React.useState<FilterDraft>(EMPTY_FILTERS);
   const [applied, setApplied] = React.useState<FilterDraft>(EMPTY_FILTERS);
@@ -145,13 +159,30 @@ export function AdminWinnerVideosClient({
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [recreatedId, setRecreatedId] = React.useState<string | null>(null);
   const [creatorId, setCreatorId] = React.useState("");
-  const [creativeId, setCreativeId] = React.useState("");
   const [deadline, setDeadline] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
   const [recreationLink, setRecreationLink] = React.useState("");
   const [qualityRating, setQualityRating] = React.useState<WinnerVideoQualityRating | null>(null);
 
   React.useEffect(() => setVideos(initialVideos), [initialVideos]);
+  React.useEffect(() => setBunches(initialBunches), [initialBunches]);
+
+  const bunchById = React.useMemo(() => {
+    const map = new Map<string, VideoBunch>();
+    for (const b of bunches) map.set(b.id, b);
+    return map;
+  }, [bunches]);
+
+  const staffCreatives = React.useMemo<StaffUserOption[]>(
+    () =>
+      creatives.map((c) => ({
+        id: c.id,
+        full_name: c.name,
+        email: c.email ?? "",
+        role: c.role ?? "other",
+      })),
+    [creatives],
+  );
 
   const modelOptions = React.useMemo<CustomSelectOption[]>(
     () => [
@@ -164,19 +195,6 @@ export function AdminWinnerVideosClient({
   const selectedCreatorName = React.useMemo(
     () => gunzoModels.find((m) => m.id === creatorId)?.model_name ?? "",
     [gunzoModels, creatorId],
-  );
-
-  const creativeOptions = React.useMemo<CustomSelectOption[]>(
-    () => [
-      { value: "", label: "Select Creative…" },
-      ...creatives.map((c) => ({ value: c.id, label: c.name })),
-    ],
-    [creatives],
-  );
-
-  const selectedCreativeName = React.useMemo(
-    () => creatives.find((c) => c.id === creativeId)?.name ?? "",
-    [creatives, creativeId],
   );
 
   const filterModelOptions = React.useMemo<CustomSelectOption[]>(() => {
@@ -229,11 +247,67 @@ export function AdminWinnerVideosClient({
   async function reload() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/winner-videos`, { credentials: "include" });
-      const data = (await res.json()) as { videos?: WinnerVideoRecord[] };
-      if (res.ok) setVideos(data.videos ?? []);
+      const [videosRes, bunchesRes] = await Promise.all([
+        fetch(`/api/admin/winner-videos`, { credentials: "include" }),
+        fetch(`/api/winner-sourcing/bunches`, { credentials: "include" }),
+      ]);
+      const videosData = (await videosRes.json()) as { videos?: WinnerVideoRecord[] };
+      if (videosRes.ok) setVideos(videosData.videos ?? []);
+      if (bunchesRes.ok) {
+        const bunchesData = (await bunchesRes.json()) as { bunches?: VideoBunch[] };
+        setBunches(bunchesData.bunches ?? []);
+      }
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function assignCreativeToBunch(bunchId: string, creativeId: string) {
+    const creative = creatives.find((c) => c.id === creativeId);
+    if (!creative) return;
+    setPendingId(bunchId);
+    try {
+      const res = await fetch(`/api/winner-sourcing/bunches/${encodeURIComponent(bunchId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "assign_creative",
+          assigned_creative_id: creative.id,
+          assigned_creative_name: creative.name,
+        }),
+      });
+      const data = (await res.json()) as {
+        bunch?: VideoBunch;
+        updated_slots?: unknown[];
+        skipped_slots?: number;
+        error?: string;
+      };
+      if (!res.ok || !data.bunch) {
+        addToast(
+          winnerVideoLocalToast(
+            `wv-assign-${Date.now()}`,
+            "Assign failed",
+            data.error ?? "Could not assign creative",
+            "high",
+          ),
+        );
+        return;
+      }
+      setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...data.bunch! } : b)));
+      const updated = data.updated_slots?.length ?? 0;
+      const skipped = data.skipped_slots ?? 0;
+      addToast(
+        winnerVideoLocalToast(
+          `wv-assign-ok-${Date.now()}`,
+          "Bunch assigned to creative",
+          `${creative.name} · ${updated} slot${updated === 1 ? "" : "s"} updated${skipped ? ` · ${skipped} kept historical` : ""}`,
+          "normal",
+        ),
+      );
+      setAssignPickerBunchId(null);
+    } finally {
+      setPendingId(null);
     }
   }
 
@@ -278,7 +352,7 @@ export function AdminWinnerVideosClient({
     );
   }, [videos, applied, filterModelOptions]);
 
-  const groupedBySource = React.useMemo(() => groupWinnerVideosBySource(filtered), [filtered]);
+  const groupedByBunch = React.useMemo(() => groupWinnerVideosByBunch(filtered), [filtered]);
 
   const hasActiveFilters = React.useMemo(() => {
     return Boolean(
@@ -328,16 +402,31 @@ export function AdminWinnerVideosClient({
 
   function openApprove(video: WinnerVideoRecord) {
     setApproveId(video.id);
-    const match = gunzoModels.find(
-      (m) => m.id === video.reference_model_id || m.model_name === video.reference_model_name,
-    );
-    setCreatorId(match?.id ?? "");
-    setCreativeId("");
+    if (video.bunch_id?.trim()) {
+      setCreatorId("");
+    } else {
+      const match = gunzoModels.find(
+        (m) => m.id === video.reference_model_id || m.model_name === video.reference_model_name,
+      );
+      setCreatorId(match?.id ?? "");
+    }
     setDeadline("");
     setQualityRating(null);
   }
 
   const approveTarget = videos.find((v) => v.id === approveId) ?? null;
+  const approveBunch = approveTarget?.bunch_id
+    ? (bunchById.get(approveTarget.bunch_id) ?? null)
+    : null;
+  const approveInheritedModel =
+    approveBunch?.model_name?.trim() ||
+    approveTarget?.reference_model_name?.trim() ||
+    "";
+  const approveInheritedCreative =
+    approveBunch?.assigned_creative_name?.trim() ||
+    approveTarget?.assigned_creative_name?.trim() ||
+    "";
+  const isBunchApprove = Boolean(approveTarget?.bunch_id?.trim());
 
   return (
     <div className="space-y-6">
@@ -746,77 +835,172 @@ export function AdminWinnerVideosClient({
                 transition={{ duration: 0.2 }}
                 className="space-y-8"
               >
-                {groupedBySource.bunchFills.length > 0 ? (
-                  <section className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">
-                        Researcher bunch-fills
-                      </h2>
-                      <span className="rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-2 py-0.5 text-[10px] tabular-nums text-[#D4AF8C]">
-                        {groupedBySource.bunchFills.length}
-                      </span>
-                      <div className="h-px flex-1 bg-gradient-to-r from-[#D4AF8C]/25 to-transparent" />
-                    </div>
-                    <div className="space-y-3">
-                      {groupedBySource.bunchFills.map((v) => (
-                        <ResearchSubmissionCard
-                          key={v.id}
-                          video={v}
-                          pendingId={pendingId}
-                          loading={loading}
-                          onCopy={() => void copySubmission(v)}
-                          onRefresh={() => void reload()}
-                          onApprove={() => openApprove(v)}
-                          onReject={() => {
-                            setRejectId(v.id);
-                            setRejectReason("");
-                          }}
-                          onMarkRecreated={() => {
-                            setRecreatedId(v.id);
-                            setRecreationLink(v.recreation_link ?? "");
-                          }}
-                          onMarkPublished={() => void patchVideo(v.id, { action: "status", status: "Published" })}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
+                {groupedByBunch.map((group) => {
+                  const bunch = group.bunchId ? bunchById.get(group.bunchId) : null;
+                  const isUngrouped = !group.bunchId;
+                  const modelName =
+                    bunch?.model_name?.trim() ||
+                    group.videos.find((v) => v.reference_model_name?.trim())?.reference_model_name?.trim() ||
+                    "";
+                  const provided = bunch?.provided_count ?? 0;
+                  const pending = bunch?.pending_review_count ?? 0;
+                  const target = bunch?.target_video_count ?? 0;
+                  const remaining =
+                    bunch?.remaining_count ??
+                    (target > 0 ? Math.max(0, target - provided - pending) : 0);
+                  const occupied = provided + pending;
+                  const pct =
+                    target > 0 ? Math.min(100, Math.round((occupied / target) * 100)) : 0;
+                  const creativeLabel =
+                    bunch?.assigned_creative_name?.trim() ||
+                    group.videos.find((v) => v.assigned_creative_name?.trim())?.assigned_creative_name?.trim() ||
+                    "";
+                  const showAssignPicker = assignPickerBunchId === group.bunchId;
 
-                {groupedBySource.other.length > 0 ? (
-                  <section className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-emerald-300/80">
-                        Winner / research finds
-                      </h2>
-                      <span className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] tabular-nums text-emerald-200">
-                        {groupedBySource.other.length}
-                      </span>
-                      <div className="h-px flex-1 bg-gradient-to-r from-emerald-500/25 to-transparent" />
-                    </div>
-                    <div className="space-y-3">
-                      {groupedBySource.other.map((v) => (
-                        <ResearchSubmissionCard
-                          key={v.id}
-                          video={v}
-                          pendingId={pendingId}
-                          loading={loading}
-                          onCopy={() => void copySubmission(v)}
-                          onRefresh={() => void reload()}
-                          onApprove={() => openApprove(v)}
-                          onReject={() => {
-                            setRejectId(v.id);
-                            setRejectReason("");
-                          }}
-                          onMarkRecreated={() => {
-                            setRecreatedId(v.id);
-                            setRecreationLink(v.recreation_link ?? "");
-                          }}
-                          onMarkPublished={() => void patchVideo(v.id, { action: "status", status: "Published" })}
-                        />
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
+                  return (
+                    <section key={group.bunchId ?? "ungrouped"} className="space-y-3">
+                      <div
+                        className={cn(
+                          VA_CARD,
+                          "space-y-3 border border-white/[0.06] p-4",
+                          isUngrouped && "border-dashed border-white/[0.1]",
+                        )}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h2 className="text-base font-semibold text-white">
+                                {isUngrouped ? "Ungrouped" : group.bunchName}
+                              </h2>
+                              <span className="rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-2 py-0.5 text-[10px] tabular-nums text-[#D4AF8C]">
+                                {group.videos.length}
+                              </span>
+                              {!isUngrouped && bunch?.status ? (
+                                <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wider text-[#B8B4B8]/55">
+                                  {bunch.status}
+                                </span>
+                              ) : null}
+                            </div>
+                            {isUngrouped ? (
+                              <p className="text-xs text-[#B8B4B8]/55">
+                                Direct submissions without a parent bunch
+                              </p>
+                            ) : (
+                              <>
+                                <p className="text-xs text-[#B8B4B8]/65">
+                                  Target model:{" "}
+                                  <span className="font-medium text-[#D4AF8C]">
+                                    {modelName || "—"}
+                                  </span>
+                                </p>
+                                {target > 0 ? (
+                                  <p className="text-[11px] text-[#B8B4B8]/45">
+                                    Filled {provided} · Pending {pending} · Needed {remaining} ·{" "}
+                                    {occupied}/{target}
+                                  </p>
+                                ) : null}
+                                <p className="flex items-center gap-1 text-[11px] text-[#D4AF8C]/80">
+                                  <UserRound className="h-3 w-3 opacity-70" aria-hidden />
+                                  {creativeLabel
+                                    ? `Creative: ${creativeLabel}`
+                                    : "No creative assigned"}
+                                </p>
+                              </>
+                            )}
+                          </div>
+
+                          {!isUngrouped && group.bunchId && canAssignCreative ? (
+                            <button
+                              type="button"
+                              className={cn(
+                                VA_BTN_SECONDARY,
+                                "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs",
+                              )}
+                              onClick={() =>
+                                setAssignPickerBunchId((prev) =>
+                                  prev === group.bunchId ? null : group.bunchId,
+                                )
+                              }
+                              disabled={pendingId === group.bunchId || creatives.length === 0}
+                            >
+                              {pendingId === group.bunchId ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <UserRound className="h-3.5 w-3.5" />
+                              )}
+                              {bunch?.assigned_creative_id
+                                ? "Change creative"
+                                : "Assign creative"}
+                            </button>
+                          ) : null}
+                        </div>
+
+                        {!isUngrouped && target > 0 ? (
+                          <div className="h-1.5 overflow-hidden rounded-full bg-white/5">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-[#FF1493] to-[#D4AF8C]"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        ) : null}
+
+                        {showAssignPicker && group.bunchId && creatives.length > 0 ? (
+                          <div className="rounded-xl border border-white/[0.08] bg-[#0A0A0A]/70 p-3">
+                            <p className="mb-2 text-[11px] text-[#B8B4B8]/55">
+                              Assigns the entire bunch. New slots inherit automatically. Slots already
+                              submitted for review keep their historical writer.
+                            </p>
+                            <StaffAssigneePicker
+                              users={staffCreatives}
+                              roleLabels={{}}
+                              singleSelect
+                              selectedIds={
+                                bunch?.assigned_creative_id ? [bunch.assigned_creative_id] : []
+                              }
+                              onChange={(ids) => {
+                                const next = ids[0];
+                                if (!next || next === bunch?.assigned_creative_id) return;
+                                void assignCreativeToBunch(group.bunchId!, next);
+                              }}
+                            />
+                          </div>
+                        ) : null}
+
+                        {showAssignPicker && creatives.length === 0 ? (
+                          <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                            No Creatives available — grant creative_scripts:submit to a user first.
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="space-y-3">
+                        {group.videos.map((v) => (
+                          <ResearchSubmissionCard
+                            key={v.id}
+                            video={v}
+                            pendingId={pendingId}
+                            loading={loading}
+                            hideBunchLink
+                            onCopy={() => void copySubmission(v)}
+                            onRefresh={() => void reload()}
+                            onApprove={() => openApprove(v)}
+                            onReject={() => {
+                              setRejectId(v.id);
+                              setRejectReason("");
+                            }}
+                            onMarkRecreated={() => {
+                              setRecreatedId(v.id);
+                              setRecreationLink(v.recreation_link ?? "");
+                            }}
+                            onMarkPublished={() =>
+                              void patchVideo(v.id, { action: "status", status: "Published" })
+                            }
+                          />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
               </motion.div>
             </AnimatePresence>
           )}
@@ -824,61 +1008,51 @@ export function AdminWinnerVideosClient({
           {approveId ? (
             <ReviewModalShell title="Approve research find" onClose={() => setApproveId(null)}>
               <p className="mb-4 text-sm text-[#B8B4B8]/60">
-                {approveTarget?.bunch_id
-                  ? `Approving spawns a recreate slot into “${approveTarget.bunch_name || "the linked bunch"}”. Script creative is assigned at the bunch level in Winner Videos Hub.`
-                  : "Pick the Gunzo-team creator who will recreate this video and assign a Creative to write the script."}
+                {isBunchApprove
+                  ? `Approving spawns a recreate slot into “${approveTarget?.bunch_name || "the linked bunch"}”. Target model and creative are inherited from the bunch.`
+                  : "Pick the Gunzo-team creator who will recreate this direct submission."}
               </p>
-              {approveTarget?.bunch_id ? (
-                <div className="mb-4 flex flex-wrap items-center gap-2">
-                  <ResearchBunchLink video={approveTarget} />
-                  <Link
-                    href={ROUTES.admin.winnerVideosHub}
-                    className="inline-flex items-center gap-1 text-xs text-[#FF1493] hover:underline"
-                  >
-                    Open Winner Videos Hub <ExternalLink className="h-3 w-3" />
-                  </Link>
+              {isBunchApprove && approveTarget ? (
+                <div className="mb-4 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ResearchBunchLink video={approveTarget} />
+                    <Link
+                      href={ROUTES.admin.winnerVideosHub}
+                      className="inline-flex items-center gap-1 text-xs text-[#FF1493] hover:underline"
+                    >
+                      Open Winner Videos Hub <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </div>
+                  <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-xs text-[#B8B4B8]/70">
+                    <p>
+                      Target model:{" "}
+                      <span className="font-medium text-[#D4AF8C]">
+                        {approveInheritedModel || "—"}
+                      </span>
+                    </p>
+                    <p className="mt-1">
+                      Creative:{" "}
+                      <span className="font-medium text-[#D4AF8C]">
+                        {approveInheritedCreative || "Unassigned (slot will inherit when assigned)"}
+                      </span>
+                    </p>
+                  </div>
                 </div>
               ) : null}
-              <ReviewFormSection title="Assignment" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
+              <ReviewFormSection title="Approval" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
                 <div className="space-y-4">
-                  <div>
-                    <ReviewFieldLabel>Assigned creator</ReviewFieldLabel>
-                    <ManagerReviewSelect
-                      value={creatorId}
-                      onChange={setCreatorId}
-                      options={modelOptions}
-                      placeholder="Select Gunzo-team creator…"
-                      required
-                    />
-                  </div>
-                  {approveTarget?.bunch_id ? (
-                    <div className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-xs text-[#B8B4B8]/70">
-                      Creative for scripts is managed on the bunch in{" "}
-                      <Link href={ROUTES.admin.winnerVideosHub} className="text-[#FF1493] hover:underline">
-                        Winner Videos Hub
-                      </Link>
-                      . New slots inherit the bunch assignment automatically.
-                    </div>
-                  ) : (
+                  {!isBunchApprove ? (
                     <div>
-                      <ReviewFieldLabel>Assign to Creative</ReviewFieldLabel>
-                      {creatives.length === 0 ? (
-                        <p className="mt-1 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
-                          No Creatives available — grant creative_scripts:submit to a user first.
-                        </p>
-                      ) : (
-                        <ManagerReviewSelect
-                          value={creativeId}
-                          onChange={setCreativeId}
-                          options={creativeOptions}
-                          placeholder="Select Creative…"
-                          searchable
-                          searchPlaceholder="Search Creatives…"
-                          required
-                        />
-                      )}
+                      <ReviewFieldLabel>Assigned creator</ReviewFieldLabel>
+                      <ManagerReviewSelect
+                        value={creatorId}
+                        onChange={setCreatorId}
+                        options={modelOptions}
+                        placeholder="Select Gunzo-team creator…"
+                        required
+                      />
                     </div>
-                  )}
+                  ) : null}
                   <div>
                     <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
                     <input
@@ -900,34 +1074,19 @@ export function AdminWinnerVideosClient({
                     <button
                       type="button"
                       disabled={
-                        !creatorId ||
-                        !selectedCreatorName.trim() ||
                         !deadline ||
-                        (!approveTarget?.bunch_id &&
-                          (!creativeId || !selectedCreativeName.trim()))
+                        (!isBunchApprove && (!creatorId || !selectedCreatorName.trim()))
                       }
                       className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
                       onClick={() => {
-                        if (
-                          !approveId ||
-                          !creatorId ||
-                          !selectedCreatorName.trim() ||
-                          !deadline
-                        ) {
-                          return;
-                        }
-                        if (
-                          !approveTarget?.bunch_id &&
-                          (!creativeId || !selectedCreativeName.trim())
-                        ) {
-                          return;
-                        }
+                        if (!approveId || !deadline) return;
+                        if (!isBunchApprove && (!creatorId || !selectedCreatorName.trim())) return;
                         void (async () => {
                           const ok = await patchVideo(approveId, {
                             action: "approve",
-                            assigned_creator_name: selectedCreatorName.trim(),
-                            assigned_creative_id: creativeId,
-                            assigned_creative_name: selectedCreativeName.trim(),
+                            assigned_creator_name: isBunchApprove
+                              ? approveInheritedModel
+                              : selectedCreatorName.trim(),
                             recreation_deadline: deadline,
                             quality_rating: qualityRating,
                           });
@@ -1030,6 +1189,7 @@ function ResearchSubmissionCard({
   video,
   pendingId,
   loading,
+  hideBunchLink = false,
   onCopy,
   onRefresh,
   onApprove,
@@ -1040,6 +1200,7 @@ function ResearchSubmissionCard({
   video: WinnerVideoRecord;
   pendingId: string | null;
   loading: boolean;
+  hideBunchLink?: boolean;
   onCopy: () => void;
   onRefresh: () => void;
   onApprove: () => void;
@@ -1106,18 +1267,20 @@ function ResearchSubmissionCard({
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <ResearchBunchLink video={video} />
-            {video.bunch_id ? (
-              <Link
-                href={ROUTES.admin.winnerVideosHub}
-                className="inline-flex items-center gap-1 text-[11px] text-[#B8B4B8]/50 hover:text-[#D4AF8C]"
-              >
-                <FolderOpen className="h-3 w-3" />
-                Hub
-              </Link>
-            ) : null}
-          </div>
+          {!hideBunchLink ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <ResearchBunchLink video={video} />
+              {video.bunch_id ? (
+                <Link
+                  href={ROUTES.admin.winnerVideosHub}
+                  className="inline-flex items-center gap-1 text-[11px] text-[#B8B4B8]/50 hover:text-[#D4AF8C]"
+                >
+                  <FolderOpen className="h-3 w-3" />
+                  Hub
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap gap-2">
