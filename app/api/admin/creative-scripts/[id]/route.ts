@@ -20,16 +20,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const action = String(body.action ?? "").trim();
   const reviewerName = (session.fullName || session.email || "").trim();
   const script_text = String(body.script_text ?? "");
+  const text_on_screen_suggestion =
+    body.text_on_screen_suggestion !== undefined
+      ? String(body.text_on_screen_suggestion)
+      : undefined;
 
   try {
     if (action === "save") {
-      const video = await saveCreativeScriptText(id, script_text);
+      const video = await saveCreativeScriptText(id, script_text, text_on_screen_suggestion);
       return NextResponse.json({ video });
     }
 
     if (action === "approve") {
       const video = await approveCreativeScript(id, {
         script_text,
+        text_on_screen_suggestion,
         reviewed_by_name: reviewerName,
       });
       return NextResponse.json({ video });
@@ -38,6 +43,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (action === "reject") {
       const video = await rejectCreativeScript(id, {
         script_text,
+        text_on_screen_suggestion,
         reviewed_by_name: reviewerName,
         script_rejection_reason: String(body.script_rejection_reason ?? ""),
       });

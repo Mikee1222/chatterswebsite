@@ -15,8 +15,37 @@ export type BunchStatus = (typeof BUNCH_STATUSES)[number];
 export const SLOT_SOURCES = ["from_winner", "researcher_submitted"] as const;
 export type SlotSource = (typeof SLOT_SOURCES)[number];
 
-export const SLOT_VIDEO_TYPES = ["skit", "ugc", "other"] as const;
+export const SLOT_VIDEO_TYPES = [
+  "skit",
+  "ugc",
+  "text_on_screen",
+  "interview",
+  "clips",
+  "other",
+] as const;
 export type SlotVideoType = (typeof SLOT_VIDEO_TYPES)[number];
+
+export const SLOT_VIDEO_TYPE_LABELS: Record<SlotVideoType, string> = {
+  skit: "Skit",
+  ugc: "UGC",
+  text_on_screen: "Text on screen",
+  interview: "Interview",
+  clips: "Clips",
+  other: "Other",
+};
+
+export function slotVideoTypeLabel(
+  type: string | null | undefined,
+  otherText?: string | null,
+): string {
+  const t = coerceSlotVideoType(type);
+  if (!t) return "";
+  if (t === "other") {
+    const custom = String(otherText ?? "").trim();
+    return custom ? `Other: ${custom}` : SLOT_VIDEO_TYPE_LABELS.other;
+  }
+  return SLOT_VIDEO_TYPE_LABELS[t];
+}
 
 /** Default recreate counts when a submission is added to the recreation queue. */
 export const TIER_RECREATE_COUNTS: Record<WinnerTier, number> = {
@@ -178,14 +207,18 @@ export function mapSlotTypeToScriptFields(videoType: SlotVideoType | ""): {
 } {
   if (videoType === "ugc") return { content_type: "UGC", script_video_type: "UGC" };
   if (videoType === "other") return { content_type: "Skit", script_video_type: "Other" };
+  // skit / text_on_screen / interview / clips → storytelling skit bucket for creatives
   return { content_type: "Skit", script_video_type: "Storytelling" };
 }
 
-/** Reverse map Research fields → slot video_type (best-effort). */
+/** Reverse map Research fields → slot video_type (best-effort; prefer sourcing_video_type when set). */
 export function mapScriptFieldsToSlotType(
   contentType: string,
   scriptVideoType: string,
+  sourcingVideoType?: string | null,
 ): SlotVideoType {
+  const fromSourcing = coerceSlotVideoType(sourcingVideoType);
+  if (fromSourcing) return fromSourcing;
   const script = String(scriptVideoType ?? "").trim();
   if (script === "Other") return "other";
   if (script === "UGC" || String(contentType ?? "").trim() === "UGC") return "ugc";

@@ -247,7 +247,10 @@ export function WinnerRecreatesClient({
   const [bunchId, setBunchId] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [videoLink, setVideoLink] = React.useState("");
-  const [videoType, setVideoType] = React.useState<"skit" | "ugc" | "other" | "">("");
+  const [videoType, setVideoType] = React.useState<
+    "skit" | "ugc" | "text_on_screen" | "interview" | "clips" | "other" | ""
+  >("");
+  const [videoTypeOther, setVideoTypeOther] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -305,6 +308,10 @@ export function WinnerRecreatesClient({
       setError("Select video type");
       return;
     }
+    if (videoType === "other" && !videoTypeOther.trim()) {
+      setError("Enter a custom type when Other is selected");
+      return;
+    }
     setSubmitting(true);
     try {
       const res = await fetch(`/api/winner-sourcing/bunches/${bunchId}`, {
@@ -315,6 +322,7 @@ export function WinnerRecreatesClient({
           description,
           video_link: videoLink,
           video_type: videoType,
+          video_type_other: videoType === "other" ? videoTypeOther.trim() : "",
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -333,6 +341,7 @@ export function WinnerRecreatesClient({
       setDescription("");
       setVideoLink("");
       setVideoType("");
+      setVideoTypeOther("");
       await Promise.all([refreshBunches(), refreshSubmissions()]);
     } catch {
       setError("Network error");
@@ -492,16 +501,40 @@ export function WinnerRecreatesClient({
           <select
             className={cn(VA_FILTER_INPUT, "w-full")}
             value={videoType}
-            onChange={(e) => setVideoType(e.target.value as typeof videoType)}
+            onChange={(e) => {
+              const next = e.target.value as typeof videoType;
+              setVideoType(next);
+              if (next !== "other") setVideoTypeOther("");
+            }}
             required
             disabled={submitting}
           >
             <option value="">Select…</option>
             <option value="skit">Skit</option>
             <option value="ugc">UGC</option>
+            <option value="text_on_screen">Text on screen</option>
+            <option value="interview">Interview</option>
+            <option value="clips">Clips</option>
             <option value="other">Other</option>
           </select>
         </label>
+
+        {videoType === "other" ? (
+          <label className="block space-y-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">
+              Custom type <span className="text-red-300/80">*</span>
+            </span>
+            <input
+              type="text"
+              className={cn(VA_FILTER_INPUT, "w-full")}
+              value={videoTypeOther}
+              onChange={(e) => setVideoTypeOther(e.target.value)}
+              placeholder="Describe the video type…"
+              required
+              disabled={submitting}
+            />
+          </label>
+        ) : null}
 
         {error ? <p className="text-sm text-red-300">{error}</p> : null}
 

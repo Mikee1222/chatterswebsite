@@ -4,5 +4,10 @@ export function formatCreativeScriptCopy(video: WinnerVideoRecord): string {
   const model = video.assigned_creator_name?.trim() || "—";
   const type = video.script_video_type?.trim() || "—";
   const script = video.script_text?.trim() || "—";
-  return [`Model: ${model}`, `Type: ${type}`, "", script].join("\n");
+  const tos = video.text_on_screen_suggestion?.trim();
+  const lines = [`Model: ${model}`, `Type: ${type}`, "", script];
+  if (tos) {
+    lines.push("", "--- Text on Screen Suggestion ---", tos);
+  }
+  return lines.join("\n");
 }

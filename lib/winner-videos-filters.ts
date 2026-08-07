@@ -4,16 +4,25 @@ import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { CustomSelectOption } from "@/components/manager-review-ui";
 import { WINNER_VIDEO_CONTENT_TYPES } from "@/lib/winner-videos-helpers";
 import {
+  coerceSlotVideoType,
   mapScriptFieldsToSlotType,
+  SLOT_VIDEO_TYPE_LABELS,
   tierFromViewCount,
+  type SlotVideoType,
 } from "@/lib/winner-sourcing-helpers";
 
 export type WinnerVideoDateRange = "all" | "7d" | "30d" | "custom";
 
 export type WinnerVideoViewMode = "list" | "board";
 
-/** Display video type for Research Manage (Fill Bunches Skit/UGC/Other). */
-export type ResearchDisplayVideoType = "Skit" | "UGC" | "Other";
+/** Display video type for Research Manage (Fill Bunches types). */
+export type ResearchDisplayVideoType =
+  | "Skit"
+  | "UGC"
+  | "Text on screen"
+  | "Interview"
+  | "Clips"
+  | "Other";
 
 /**
  * Source / tier for Research Manage queue.
@@ -34,8 +43,37 @@ export const RESEARCH_DISPLAY_VIDEO_TYPE_OPTIONS: CustomSelectOption[] = [
   { value: "", label: "All video types" },
   { value: "Skit", label: "Skit" },
   { value: "UGC", label: "UGC" },
+  { value: "Text on screen", label: "Text on screen" },
+  { value: "Interview", label: "Interview" },
+  { value: "Clips", label: "Clips" },
   { value: "Other", label: "Other" },
 ];
+
+const SLOT_TO_DISPLAY: Record<SlotVideoType, ResearchDisplayVideoType> = {
+  skit: "Skit",
+  ugc: "UGC",
+  text_on_screen: "Text on screen",
+  interview: "Interview",
+  clips: "Clips",
+  other: "Other",
+};
+
+export function slotTypeFromResearchDisplay(
+  display: ResearchDisplayVideoType | "",
+): SlotVideoType | "" {
+  if (!display) return "";
+  const entry = (Object.entries(SLOT_TO_DISPLAY) as [SlotVideoType, ResearchDisplayVideoType][]).find(
+    ([, label]) => label === display,
+  );
+  return entry?.[0] ?? "";
+}
+
+export function researchDisplayFromSlotType(
+  type: SlotVideoType | "" | null | undefined,
+): ResearchDisplayVideoType {
+  const t = coerceSlotVideoType(type);
+  return t ? SLOT_TO_DISPLAY[t] : "Skit";
+}
 
 export const RESEARCH_SOURCE_FILTER_OPTIONS: CustomSelectOption[] = [
   { value: "", label: "All sources" },
@@ -46,11 +84,25 @@ export const RESEARCH_SOURCE_FILTER_OPTIONS: CustomSelectOption[] = [
 ];
 
 export function researchDisplayVideoType(video: WinnerVideoRecord): ResearchDisplayVideoType {
-  const slot = mapScriptFieldsToSlotType(video.content_type, video.script_video_type);
-  if (slot === "ugc") return "UGC";
-  if (slot === "other") return "Other";
-  return "Skit";
+  const slot = mapScriptFieldsToSlotType(
+    video.content_type,
+    video.script_video_type,
+    video.sourcing_video_type,
+  );
+  return SLOT_TO_DISPLAY[slot] ?? "Skit";
 }
+
+/** Label including Other custom text when present. */
+export function researchVideoTypeLabel(video: WinnerVideoRecord): string {
+  const display = researchDisplayVideoType(video);
+  if (display === "Other") {
+    const custom = video.video_type_other?.trim();
+    return custom ? `Other: ${custom}` : "Other";
+  }
+  return display;
+}
+
+export { SLOT_VIDEO_TYPE_LABELS };
 
 export function researchSubmissionSource(video: WinnerVideoRecord): ResearchSubmissionSource {
   if (video.bunch_id?.trim()) return "bunch_fill";

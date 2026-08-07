@@ -62,14 +62,21 @@ import {
   groupWinnerVideosByStatus,
   isStalePending,
   pendingAgeLabel,
+  researchDisplayVideoType,
   researchManageStats,
   researchSourceLabel,
+  slotTypeFromResearchDisplay,
   sortResearchManageVideos,
   type ResearchDisplayVideoType,
   type ResearchSubmissionSource,
   type WinnerVideoDateRange,
   type WinnerVideoViewMode,
 } from "@/lib/winner-videos-filters";
+import {
+  SLOT_VIDEO_TYPES,
+  SLOT_VIDEO_TYPE_LABELS,
+  type SlotVideoType,
+} from "@/lib/winner-sourcing-helpers";
 import {
   WINNER_VIDEO_STATUSES,
   qualityRatingEmoji,
@@ -995,6 +1002,13 @@ export function AdminWinnerVideosClient({
                             onMarkPublished={() =>
                               void patchVideo(v.id, { action: "status", status: "Published" })
                             }
+                            onUpdateVideoType={(type, other) =>
+                              void patchVideo(v.id, {
+                                action: "update_video_type",
+                                sourcing_video_type: type,
+                                video_type_other: other,
+                              })
+                            }
                           />
                         ))}
                       </div>
@@ -1196,6 +1210,7 @@ function ResearchSubmissionCard({
   onReject,
   onMarkRecreated,
   onMarkPublished,
+  onUpdateVideoType,
 }: {
   video: WinnerVideoRecord;
   pendingId: string | null;
@@ -1207,6 +1222,7 @@ function ResearchSubmissionCard({
   onReject: () => void;
   onMarkRecreated: () => void;
   onMarkPublished: () => void;
+  onUpdateVideoType?: (type: SlotVideoType, other: string) => void;
 }) {
   const age = pendingAgeLabel(video);
   const stale = isStalePending(video);
@@ -1221,6 +1237,15 @@ function ResearchSubmissionCard({
     submitterName.toLowerCase() === creativeName.toLowerCase();
   const showScriptAssignee = Boolean(creativeName) && !sameSubmitterAndCreative;
   const hasAssignmentMeta = Boolean(recreateModelName || deadlineLabel || showScriptAssignee);
+  const currentType =
+    slotTypeFromResearchDisplay(researchDisplayVideoType(video)) ||
+    (video.sourcing_video_type as SlotVideoType) ||
+    "skit";
+  const [typeOtherDraft, setTypeOtherDraft] = React.useState(video.video_type_other ?? "");
+
+  React.useEffect(() => {
+    setTypeOtherDraft(video.video_type_other ?? "");
+  }, [video.video_type_other, video.id]);
 
   return (
     <FindingCard
@@ -1321,6 +1346,58 @@ function ResearchSubmissionCard({
 
       {video.note?.trim() ? (
         <p className="mt-2 text-sm leading-relaxed text-[#B8B4B8]/75">{video.note}</p>
+      ) : null}
+
+      {onUpdateVideoType ? (
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="block min-w-[10rem] space-y-1">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/65">
+              Video type
+            </span>
+            <select
+              className={cn(VA_FILTER_INPUT, "h-9 w-full text-xs")}
+              value={currentType}
+              disabled={busy}
+              onChange={(e) => {
+                const next = e.target.value as SlotVideoType;
+                if (next === "other") {
+                  const custom = typeOtherDraft.trim() || window.prompt("Custom video type") || "";
+                  if (!custom.trim()) return;
+                  setTypeOtherDraft(custom.trim());
+                  onUpdateVideoType(next, custom.trim());
+                  return;
+                }
+                onUpdateVideoType(next, "");
+              }}
+            >
+              {SLOT_VIDEO_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {SLOT_VIDEO_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {currentType === "other" ? (
+            <label className="block min-w-[12rem] flex-1 space-y-1">
+              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/65">
+                Custom type
+              </span>
+              <input
+                type="text"
+                className={cn(VA_FILTER_INPUT, "h-9 w-full text-xs")}
+                value={typeOtherDraft}
+                disabled={busy}
+                onChange={(e) => setTypeOtherDraft(e.target.value)}
+                onBlur={() => {
+                  if (typeOtherDraft.trim() && typeOtherDraft.trim() !== (video.video_type_other ?? "").trim()) {
+                    onUpdateVideoType("other", typeOtherDraft.trim());
+                  }
+                }}
+                placeholder="Required custom type…"
+              />
+            </label>
+          ) : null}
+        </div>
       ) : null}
 
       {video.views_at_submission != null ? (

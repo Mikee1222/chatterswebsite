@@ -6,6 +6,7 @@ import {
   approveWinnerVideo,
   getWinnerVideoById,
   rejectWinnerVideo,
+  updateWinnerVideoSourcingType,
   updateWinnerVideoStatus,
 } from "@/services/winner-videos";
 import {
@@ -74,6 +75,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       reviewed_by_id: session.airtableUserId ?? session.id,
     });
     return NextResponse.json({ video });
+  }
+
+  if (action === "update_video_type") {
+    try {
+      const video = await updateWinnerVideoSourcingType(id, {
+        sourcing_video_type: String(body.sourcing_video_type ?? body.video_type ?? ""),
+        video_type_other: String(body.video_type_other ?? ""),
+      });
+      return NextResponse.json({ video });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update video type";
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

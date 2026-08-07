@@ -27,6 +27,8 @@ import {
 } from "@/lib/va-tasks-tokens";
 import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
 import {
+  SLOT_VIDEO_TYPES,
+  SLOT_VIDEO_TYPE_LABELS,
   TIER_RECREATE_COUNTS,
   tierLabel,
   type SlotVideoType,
@@ -320,15 +322,34 @@ export function WinnerVideosHubClient({
     }
   }
 
-  async function updateSlotType(slotId: string, video_type: SlotVideoType) {
+  async function updateSlotType(
+    slotId: string,
+    video_type: SlotVideoType | "",
+    video_type_other?: string,
+  ) {
     setBusyId(slotId);
     try {
-      await fetch(`/api/winner-sourcing/slots/${slotId}`, {
+      const res = await fetch(`/api/winner-sourcing/slots/${slotId}`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ video_type }),
+        body: JSON.stringify({
+          video_type,
+          video_type_other: video_type === "other" ? (video_type_other ?? "") : "",
+        }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast(
+          winnerVideoLocalToast(
+            `ws-type-${Date.now()}`,
+            "Type update failed",
+            data.error || "Could not update type",
+            "high",
+          ),
+        );
+        return;
+      }
       if (selectedBunchId) await loadBunchSlots(selectedBunchId);
     } finally {
       setBusyId(null);
@@ -832,7 +853,11 @@ function BunchesPanel({
   loadingSlots: boolean;
   onSelectBunch: (id: string) => void;
   onAssignCreative: (bunchId: string, creativeId: string) => void;
-  onUpdateSlotType: (slotId: string, video_type: SlotVideoType) => void;
+  onUpdateSlotType: (
+    slotId: string,
+    video_type: SlotVideoType | "",
+    video_type_other?: string,
+  ) => void;
   onToggleBunchStatus?: (id: string, status: "open" | "closed") => void;
 }) {
   const [showAssignPicker, setShowAssignPicker] = React.useState(false);
@@ -1096,16 +1121,33 @@ function BunchesPanel({
                           <select
                             className={cn(VA_FILTER_INPUT, "h-8 text-xs")}
                             value={slot.video_type}
-                            onChange={(e) =>
-                              onUpdateSlotType(slot.id, e.target.value as SlotVideoType)
-                            }
+                            onChange={(e) => {
+                              const next = e.target.value as SlotVideoType | "";
+                              if (next === "other") {
+                                const custom =
+                                  slot.video_type_other?.trim() ||
+                                  window.prompt("Custom video type") ||
+                                  "";
+                                if (!custom.trim()) return;
+                                onUpdateSlotType(slot.id, next, custom.trim());
+                                return;
+                              }
+                              onUpdateSlotType(slot.id, next);
+                            }}
                             disabled={busyId === slot.id}
                           >
                             <option value="">Type…</option>
-                            <option value="skit">Skit</option>
-                            <option value="ugc">UGC</option>
-                            <option value="other">Other</option>
+                            {SLOT_VIDEO_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {SLOT_VIDEO_TYPE_LABELS[t]}
+                              </option>
+                            ))}
                           </select>
+                          {slot.video_type === "other" && slot.video_type_other?.trim() ? (
+                            <span className="max-w-[10rem] truncate text-[11px] text-[#D4AF8C]/80" title={slot.video_type_other}>
+                              {slot.video_type_other}
+                            </span>
+                          ) : null}
                           {scriptOwner ? (
                             <span className="text-[11px] text-emerald-300/80">
                               Scripts: {scriptOwner}

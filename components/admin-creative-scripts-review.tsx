@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, FileText, Loader2, X } from "lucide-react";
+import { ExternalLink, ChevronDown, FileText, Loader2, X } from "lucide-react";
 import {
   FindingCard,
   ManagerReviewTextarea,
@@ -37,6 +37,8 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
   const [loading, setLoading] = React.useState(false);
   const [pendingId, setPendingId] = React.useState<string | null>(null);
   const [drafts, setDrafts] = React.useState<Record<string, string>>({});
+  const [textDrafts, setTextDrafts] = React.useState<Record<string, string>>({});
+  const [textOpen, setTextOpen] = React.useState<Record<string, boolean>>({});
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
 
@@ -47,6 +49,13 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
       const next = { ...prev };
       for (const s of scripts) {
         if (next[s.id] === undefined) next[s.id] = s.script_text ?? "";
+      }
+      return next;
+    });
+    setTextDrafts((prev) => {
+      const next = { ...prev };
+      for (const s of scripts) {
+        if (next[s.id] === undefined) next[s.id] = s.text_on_screen_suggestion ?? "";
       }
       return next;
     });
@@ -139,6 +148,8 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
       ) : (
         scripts.map((v) => {
           const draft = drafts[v.id] ?? v.script_text ?? "";
+          const textDraft = textDrafts[v.id] ?? v.text_on_screen_suggestion ?? "";
+          const tosOpen = textOpen[v.id] ?? Boolean(textDraft.trim());
           return (
             <FindingCard key={v.id} pending={pendingId === v.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -158,7 +169,13 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                 <div className="flex flex-wrap gap-2">
                   <QuickActionMarkFixed
                     disabled={pendingId === v.id}
-                    onClick={() => void patchScript(v.id, { action: "approve", script_text: draft })}
+                    onClick={() =>
+                      void patchScript(v.id, {
+                        action: "approve",
+                        script_text: draft,
+                        text_on_screen_suggestion: textDraft,
+                      })
+                    }
                   >
                     Approve
                   </QuickActionMarkFixed>
@@ -192,13 +209,58 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                   value={draft}
                   onChange={(e) => setDrafts((prev) => ({ ...prev, [v.id]: e.target.value }))}
                   onBlur={() => {
-                    if (draft.trim() && draft !== v.script_text) {
-                      void patchScript(v.id, { action: "save", script_text: draft });
+                    const changedScript = draft.trim() && draft !== v.script_text;
+                    const changedTos = textDraft !== (v.text_on_screen_suggestion ?? "");
+                    if (changedScript || changedTos) {
+                      void patchScript(v.id, {
+                        action: "save",
+                        script_text: draft,
+                        text_on_screen_suggestion: textDraft,
+                      });
                     }
                   }}
                   rows={12}
                   className="mt-1.5"
                 />
+              </div>
+
+              <div className="mt-3 overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                  onClick={() => setTextOpen((prev) => ({ ...prev, [v.id]: !tosOpen }))}
+                  aria-expanded={tosOpen}
+                >
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                    Text on Screen Suggestion
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 text-[#D4AF8C]/70 transition-transform",
+                      tosOpen && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
+                {tosOpen ? (
+                  <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
+                    <ManagerReviewTextarea
+                      value={textDraft}
+                      onChange={(e) => setTextDrafts((prev) => ({ ...prev, [v.id]: e.target.value }))}
+                      onBlur={() => {
+                        if (textDraft !== (v.text_on_screen_suggestion ?? "")) {
+                          void patchScript(v.id, {
+                            action: "save",
+                            script_text: draft,
+                            text_on_screen_suggestion: textDraft,
+                          });
+                        }
+                      }}
+                      rows={4}
+                      placeholder="On-screen text overlays…"
+                    />
+                  </div>
+                ) : null}
               </div>
 
               {pendingId === v.id ? (
@@ -238,10 +300,12 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                 onClick={() => {
                   if (!rejectId) return;
                   const draft = drafts[rejectId] ?? "";
+                  const textDraft = textDrafts[rejectId] ?? "";
                   void (async () => {
                     const ok = await patchScript(rejectId, {
                       action: "reject",
                       script_text: draft,
+                      text_on_screen_suggestion: textDraft,
                       script_rejection_reason: rejectReason,
                     });
                     if (ok) setRejectId(null);

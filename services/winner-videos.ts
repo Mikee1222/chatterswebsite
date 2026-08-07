@@ -111,6 +111,8 @@ export interface WinnerVideoRecord {
   script_status: ScriptStatus;
   script_video_type: ScriptVideoType | "";
   script_text: string;
+  /** Optional on-screen text suggestion from the creative (alongside script_text). */
+  text_on_screen_suggestion: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
   script_submitted_at: string | null;
@@ -118,6 +120,10 @@ export interface WinnerVideoRecord {
   script_reviewed_at: string | null;
   script_rejection_reason: string;
   content_type: WinnerVideoContentType | "";
+  /** Fill Bunches slot type (skit/ugc/text_on_screen/interview/clips/other). */
+  sourcing_video_type: string;
+  /** Free-text when sourcing_video_type is other. */
+  video_type_other: string;
   /** Creative (staff with creative_scripts:submit) assigned to write the script on approve. */
   assigned_creative_name: string;
   assigned_creative_id: string;
@@ -162,6 +168,7 @@ type WinnerVideoFields = {
   script_status?: string;
   script_video_type?: string;
   script_text?: string;
+  text_on_screen_suggestion?: string;
   script_submitted_by_name?: string;
   script_submitted_by_id?: string;
   script_submitted_at?: string;
@@ -169,6 +176,8 @@ type WinnerVideoFields = {
   script_reviewed_at?: string | null;
   script_rejection_reason?: string;
   content_type?: string;
+  sourcing_video_type?: string;
+  video_type_other?: string;
   assigned_creative_name?: string;
   assigned_creative_id?: string;
   bunch_id?: string | null;
@@ -221,6 +230,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     script_status: coerceScriptStatus(f.script_status),
     script_video_type: coerceScriptVideoType(f.script_video_type),
     script_text: String(f.script_text ?? ""),
+    text_on_screen_suggestion: String(f.text_on_screen_suggestion ?? ""),
     script_submitted_by_name: String(f.script_submitted_by_name ?? ""),
     script_submitted_by_id: String(f.script_submitted_by_id ?? ""),
     script_submitted_at: f.script_submitted_at?.trim() ? String(f.script_submitted_at) : null,
@@ -228,6 +238,8 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     script_reviewed_at: f.script_reviewed_at?.trim() ? String(f.script_reviewed_at) : null,
     script_rejection_reason: String(f.script_rejection_reason ?? ""),
     content_type: coerceWinnerVideoContentType(f.content_type),
+    sourcing_video_type: String(f.sourcing_video_type ?? ""),
+    video_type_other: String(f.video_type_other ?? ""),
     assigned_creative_name: String(f.assigned_creative_name ?? ""),
     assigned_creative_id: String(f.assigned_creative_id ?? ""),
     bunch_id: String(f.bunch_id ?? ""),
@@ -310,6 +322,8 @@ export type CreateWinnerVideoInput = {
   bunch_id?: string;
   bunch_name?: string;
   script_video_type?: ScriptVideoType | "";
+  sourcing_video_type?: string;
+  video_type_other?: string;
 };
 
 export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<WinnerVideoRecord> {
@@ -331,6 +345,13 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
   };
   if (data.script_video_type) {
     fields.script_video_type = data.script_video_type;
+  }
+  if (data.sourcing_video_type?.trim() && isSupabaseBackend()) {
+    fields.sourcing_video_type = data.sourcing_video_type.trim();
+    fields.video_type_other =
+      data.sourcing_video_type.trim() === "other"
+        ? (data.video_type_other ?? "").trim()
+        : "";
   }
   if (bunchId && isSupabaseBackend()) {
     fields.bunch_id = bunchId;
@@ -663,6 +684,7 @@ export type SubmitCreativeScriptInput = {
   assigned_creator_name: string;
   script_video_type: ScriptVideoType;
   script_text: string;
+  text_on_screen_suggestion?: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
 };
@@ -684,6 +706,7 @@ async function writeCreativeScriptSubmission(
     script_status: "Pending Review",
     script_video_type: videoType,
     script_text: scriptText,
+    text_on_screen_suggestion: (data.text_on_screen_suggestion ?? "").trim(),
     script_submitted_by_name: data.script_submitted_by_name.trim(),
     script_submitted_by_id: data.script_submitted_by_id.trim(),
     script_submitted_at: now,
@@ -757,6 +780,7 @@ export async function resubmitCreativeScript(
 
 export type ReviewCreativeScriptInput = {
   script_text: string;
+  text_on_screen_suggestion?: string;
   reviewed_by_name: string;
   script_rejection_reason?: string;
 };
@@ -775,13 +799,17 @@ export async function approveCreativeScript(
   if (!scriptText) throw new Error("Script text is required");
 
   const now = new Date().toISOString();
-  await persistWinnerVideoFields(id, {
+  const fields: Record<string, unknown> = {
     script_status: "Approved",
     script_text: scriptText,
     script_reviewed_by_name: data.reviewed_by_name.trim(),
     script_reviewed_at: now,
     script_rejection_reason: "",
-  });
+  };
+  if (data.text_on_screen_suggestion !== undefined) {
+    fields.text_on_screen_suggestion = data.text_on_screen_suggestion.trim();
+  }
+  await persistWinnerVideoFields(id, fields);
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after script approval");
@@ -820,13 +848,17 @@ export async function rejectCreativeScript(
   if (!scriptText) throw new Error("Script text is required");
 
   const now = new Date().toISOString();
-  await persistWinnerVideoFields(id, {
+  const fields: Record<string, unknown> = {
     script_status: "Rejected",
     script_text: scriptText,
     script_rejection_reason: reason,
     script_reviewed_by_name: data.reviewed_by_name.trim(),
     script_reviewed_at: now,
-  });
+  };
+  if (data.text_on_screen_suggestion !== undefined) {
+    fields.text_on_screen_suggestion = data.text_on_screen_suggestion.trim();
+  }
+  await persistWinnerVideoFields(id, fields);
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after script rejection");
@@ -848,16 +880,62 @@ export async function rejectCreativeScript(
   return updated;
 }
 
-export async function saveCreativeScriptText(id: string, script_text: string): Promise<WinnerVideoRecord> {
+export async function saveCreativeScriptText(
+  id: string,
+  script_text: string,
+  text_on_screen_suggestion?: string,
+): Promise<WinnerVideoRecord> {
   const existing = await getWinnerVideoById(id);
   if (!existing) throw new Error("Winner video not found");
   const text = script_text.trim();
   if (!text) throw new Error("Script text is required");
 
-  await persistWinnerVideoFields(id, { script_text: text });
+  const fields: Record<string, unknown> = { script_text: text };
+  if (text_on_screen_suggestion !== undefined) {
+    fields.text_on_screen_suggestion = text_on_screen_suggestion.trim();
+  }
+  await persistWinnerVideoFields(id, fields);
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after save");
+  return updated;
+}
+
+/** Admin: update Fill Bunches / Research video type (and Other custom text). */
+export async function updateWinnerVideoSourcingType(
+  id: string,
+  input: { sourcing_video_type: string; video_type_other?: string },
+): Promise<WinnerVideoRecord> {
+  const { coerceSlotVideoType, mapSlotTypeToScriptFields } = await import(
+    "@/lib/winner-sourcing-helpers"
+  );
+  const videoType = coerceSlotVideoType(input.sourcing_video_type);
+  if (!videoType) throw new Error("Valid video type is required");
+  const other =
+    videoType === "other" ? String(input.video_type_other ?? "").trim() : "";
+  if (videoType === "other" && !other) {
+    throw new Error("Custom type text is required when Other is selected");
+  }
+  const { content_type, script_video_type } = mapSlotTypeToScriptFields(videoType);
+
+  await persistWinnerVideoFields(id, {
+    sourcing_video_type: videoType,
+    video_type_other: other,
+    content_type,
+    script_video_type,
+  });
+
+  if (isSupabaseBackend()) {
+    try {
+      const { syncSlotVideoTypeForWinnerVideo } = await import("./winner-sourcing");
+      await syncSlotVideoTypeForWinnerVideo(id, videoType, other);
+    } catch (err) {
+      console.error("[winner-sourcing] slot video type sync failed", err);
+    }
+  }
+
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after type update");
   return updated;
 }
 

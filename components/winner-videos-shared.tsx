@@ -204,6 +204,9 @@ export { qualityRatingEmoji };
 const DISPLAY_VIDEO_TYPE_STYLES: Record<ResearchDisplayVideoType, string> = {
   Skit: "border-violet-500/35 bg-violet-500/12 text-violet-200",
   UGC: "border-teal-500/35 bg-teal-500/12 text-teal-200",
+  "Text on screen": "border-fuchsia-500/35 bg-fuchsia-500/12 text-fuchsia-200",
+  Interview: "border-amber-500/35 bg-amber-500/12 text-amber-200",
+  Clips: "border-rose-500/35 bg-rose-500/12 text-rose-200",
   Other: "border-sky-500/35 bg-sky-500/12 text-sky-200",
 };
 
@@ -215,14 +218,19 @@ export function ResearchDisplayVideoTypeBadge({
   videoType?: ResearchDisplayVideoType;
 }) {
   const type = videoType ?? (video ? researchDisplayVideoType(video) : "Skit");
+  const label =
+    video && type === "Other" && video.video_type_other?.trim()
+      ? `Other: ${video.video_type_other.trim()}`
+      : type;
   return (
     <span
       className={cn(
-        "inline-flex rounded-md border px-2 py-0.5 text-xs font-medium backdrop-blur-sm",
+        "inline-flex max-w-full truncate rounded-md border px-2 py-0.5 text-xs font-medium backdrop-blur-sm",
         DISPLAY_VIDEO_TYPE_STYLES[type],
       )}
+      title={label}
     >
-      {type}
+      {label}
     </span>
   );
 }

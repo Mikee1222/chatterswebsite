@@ -92,6 +92,7 @@ export type RecreateVideoSlot = {
   description: string;
   video_link: string;
   video_type: SlotVideoType | "";
+  video_type_other: string;
   status: ScriptStatus;
   assigned_creative_id: string;
   assigned_creative_name: string;
@@ -160,6 +161,7 @@ function mapSlot(row: Record<string, unknown>): RecreateVideoSlot {
     description: String(row.description ?? ""),
     video_link: String(row.video_link ?? ""),
     video_type: coerceSlotVideoType(row.video_type),
+    video_type_other: String(row.video_type_other ?? ""),
     status: coerceScriptStatus(row.status),
     assigned_creative_id: String(row.assigned_creative_id ?? ""),
     assigned_creative_name: String(row.assigned_creative_name ?? ""),
@@ -631,6 +633,7 @@ export async function submitResearcherBunchFind(input: {
   description: string;
   video_link: string;
   video_type: SlotVideoType;
+  video_type_other?: string;
   submitted_by_id: string;
   submitted_by_name: string;
 }): Promise<WinnerVideoRecord> {
@@ -645,6 +648,11 @@ export async function submitResearcherBunchFind(input: {
   if (!description) throw new Error("Description is required");
   if (!video_link) throw new Error("Video link is required");
   if (!input.video_type) throw new Error("Video type is required");
+  const video_type_other =
+    input.video_type === "other" ? String(input.video_type_other ?? "").trim() : "";
+  if (input.video_type === "other" && !video_type_other) {
+    throw new Error("Custom type text is required when Other is selected");
+  }
 
   const { content_type, script_video_type } = mapSlotTypeToScriptFields(input.video_type);
 
@@ -660,6 +668,8 @@ export async function submitResearcherBunchFind(input: {
     bunch_id: bunch.id,
     bunch_name: bunch.name,
     script_video_type,
+    sourcing_video_type: input.video_type,
+    video_type_other,
   });
 }
 
@@ -697,7 +707,13 @@ export async function createSlotFromApprovedWinnerVideo(input: {
     bunch.assigned_creative_name.trim() || String(input.assigned_creative_name ?? "").trim();
   const hasCreative = Boolean(creativeId);
 
-  const video_type = mapScriptFieldsToSlotType(wv.content_type, wv.script_video_type);
+  const video_type = mapScriptFieldsToSlotType(
+    wv.content_type,
+    wv.script_video_type,
+    wv.sourcing_video_type,
+  );
+  const video_type_other =
+    video_type === "other" ? String(wv.video_type_other ?? "").trim() : "";
   const existing = await listSlotsForBunch(bunchId);
   const nextSeq = existing.reduce((m, s) => Math.max(m, s.sequence_number), 0) + 1;
 
@@ -710,6 +726,7 @@ export async function createSlotFromApprovedWinnerVideo(input: {
       description: wv.note || "",
       video_link: wv.video_link || "",
       video_type,
+      video_type_other,
       status: hasCreative ? "Needs Script" : "Not Applicable",
       assigned_creative_id: creativeId || null,
       assigned_creative_name: creativeName,
@@ -737,13 +754,27 @@ export async function updateSlotContent(
     description?: string;
     video_link?: string;
     video_type?: SlotVideoType | "";
+    video_type_other?: string;
   },
 ): Promise<RecreateVideoSlot> {
   const sb = getSupabaseServiceClient();
   const fields: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.description !== undefined) fields.description = patch.description.trim();
   if (patch.video_link !== undefined) fields.video_link = patch.video_link.trim();
-  if (patch.video_type !== undefined) fields.video_type = patch.video_type;
+  if (patch.video_type !== undefined) {
+    fields.video_type = patch.video_type;
+    if (patch.video_type === "other") {
+      const other = String(patch.video_type_other ?? "").trim();
+      if (!other) throw new Error("Custom type text is required when Other is selected");
+      fields.video_type_other = other;
+    } else if (patch.video_type) {
+      fields.video_type_other = "";
+    } else if (patch.video_type_other !== undefined) {
+      fields.video_type_other = patch.video_type_other.trim();
+    }
+  } else if (patch.video_type_other !== undefined) {
+    fields.video_type_other = patch.video_type_other.trim();
+  }
 
   const { data, error } = await sb
     .from("recreate_video_slots")
@@ -752,7 +783,37 @@ export async function updateSlotContent(
     .select("*")
     .single();
   if (error) throw new Error(`updateSlotContent: ${error.message}`);
-  return mapSlot(data as Record<string, unknown>);
+
+  const slot = mapSlot(data as Record<string, unknown>);
+  // Keep linked winner_videos sourcing type in sync when admin edits from Hub.
+  if (slot.winner_video_id && patch.video_type) {
+    const { content_type, script_video_type } = mapSlotTypeToScriptFields(patch.video_type);
+    await updateWinnerVideoFields(slot.winner_video_id, {
+      sourcing_video_type: patch.video_type,
+      video_type_other: slot.video_type_other,
+      content_type,
+      script_video_type,
+    }).catch(() => {});
+  }
+  return slot;
+}
+
+/** Mirror admin type edit from Research Manage onto linked recreate_video_slots. */
+export async function syncSlotVideoTypeForWinnerVideo(
+  winnerVideoId: string,
+  videoType: SlotVideoType,
+  videoTypeOther = "",
+): Promise<void> {
+  const sb = getSupabaseServiceClient();
+  const other = videoType === "other" ? videoTypeOther.trim() : "";
+  await sb
+    .from("recreate_video_slots")
+    .update({
+      video_type: videoType,
+      video_type_other: other,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("winner_video_id", winnerVideoId);
 }
 
 /**
@@ -1077,6 +1138,7 @@ export type SlotScriptMeta = {
   recreate_index: number;
   recreate_total: number;
   video_type: string;
+  video_type_other: string;
   description: string;
   video_link: string;
 };
@@ -1088,6 +1150,7 @@ type SlotRowForMeta = {
   winner_submission_id: string | null;
   winner_video_id: string | null;
   video_type: string;
+  video_type_other: string;
   description: string;
   video_link: string;
   assigned_creative_id: string | null;
@@ -1112,7 +1175,7 @@ export async function listSlotScriptMetaForCreative(
   );
 
   const selectCols =
-    "id, bunch_id, sequence_number, winner_submission_id, winner_video_id, video_type, description, video_link, assigned_creative_id, status";
+    "id, bunch_id, sequence_number, winner_submission_id, winner_video_id, video_type, video_type_other, description, video_link, assigned_creative_id, status";
 
   const { data: slots, error } = await sb
     .from("recreate_video_slots")
@@ -1144,6 +1207,7 @@ export async function listSlotScriptMetaForCreative(
       winner_submission_id: r.winner_submission_id ? String(r.winner_submission_id) : null,
       winner_video_id: r.winner_video_id ? String(r.winner_video_id) : null,
       video_type: String(r.video_type ?? ""),
+      video_type_other: String(r.video_type_other ?? ""),
       description: String(r.description ?? ""),
       video_link: String(r.video_link ?? ""),
       assigned_creative_id: r.assigned_creative_id ? String(r.assigned_creative_id) : null,
@@ -1176,6 +1240,7 @@ export async function listSlotScriptMetaForCreative(
         recreate_index: i + 1,
         recreate_total: total,
         video_type: s.video_type || "",
+        video_type_other: s.video_type_other || "",
         description: s.description || "",
         video_link: s.video_link || "",
       });

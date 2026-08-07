@@ -59,6 +59,8 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
   const [modelId, setModelId] = React.useState("");
   const [scriptType, setScriptType] = React.useState("");
   const [scriptText, setScriptText] = React.useState("");
+  const [textOnScreen, setTextOnScreen] = React.useState("");
+  const [textOnScreenOpen, setTextOnScreenOpen] = React.useState(false);
 
   React.useEffect(() => setScripts(initialScripts), [initialScripts]);
 
@@ -116,6 +118,8 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
     setModelId(resolveModelId(video, gunzoModels));
     setScriptType(video.script_video_type || "");
     setScriptText(video.script_text || "");
+    setTextOnScreen(video.text_on_screen_suggestion || "");
+    setTextOnScreenOpen(Boolean(video.text_on_screen_suggestion?.trim()));
     setExpandedId(video.id);
   }
 
@@ -138,6 +142,7 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
           assigned_creator_name: modelName,
           script_video_type: scriptType,
           script_text: scriptText,
+          text_on_screen_suggestion: textOnScreen,
         }),
       });
       const data = (await res.json()) as { video?: WinnerVideoRecord; error?: string };
@@ -226,14 +231,26 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
                 ) : null}
 
                 {expanded && resubmitId !== v.id ? (
-                  <pre
-                    className={cn(
-                      "mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-white/[0.06]",
-                      "bg-[#0D0B0D]/60 px-3 py-3 text-sm text-[#B8B4B8]/80",
-                    )}
-                  >
-                    {v.script_text?.trim() || "—"}
-                  </pre>
+                  <div className="mt-3 space-y-3">
+                    <pre
+                      className={cn(
+                        "max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border border-white/[0.06]",
+                        "bg-[#0D0B0D]/60 px-3 py-3 text-sm text-[#B8B4B8]/80",
+                      )}
+                    >
+                      {v.script_text?.trim() || "—"}
+                    </pre>
+                    {v.text_on_screen_suggestion?.trim() ? (
+                      <div className="rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04] px-3 py-2.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                          Text on Screen Suggestion
+                        </p>
+                        <p className="mt-1.5 whitespace-pre-wrap text-sm text-[#B8B4B8]/70">
+                          {v.text_on_screen_suggestion}
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
 
                 {resubmitId === v.id ? (
@@ -271,6 +288,38 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
                           rows={10}
                           required
                         />
+                      </div>
+                      <div className="overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                          onClick={() => setTextOnScreenOpen((o) => !o)}
+                          aria-expanded={textOnScreenOpen}
+                        >
+                          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                            Text on Screen Suggestion
+                            <span className="ml-1.5 font-normal normal-case tracking-normal text-[#B8B4B8]/45">
+                              (optional)
+                            </span>
+                          </span>
+                          <ChevronDown
+                            className={cn(
+                              "h-4 w-4 text-[#D4AF8C]/70 transition-transform",
+                              textOnScreenOpen && "rotate-180",
+                            )}
+                            aria-hidden
+                          />
+                        </button>
+                        {textOnScreenOpen ? (
+                          <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
+                            <ManagerReviewTextarea
+                              value={textOnScreen}
+                              onChange={(e) => setTextOnScreen(e.target.value)}
+                              rows={4}
+                              placeholder="e.g. captions, titles, callouts…"
+                            />
+                          </div>
+                        ) : null}
                       </div>
                       <div className="flex justify-end gap-2">
                         <button type="button" className={VA_BTN_SECONDARY} onClick={() => setResubmitId(null)}>

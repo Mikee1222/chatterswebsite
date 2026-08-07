@@ -53,6 +53,7 @@ export interface WinnerVideoRecord {
   script_status: ScriptStatus;
   script_video_type: ScriptVideoType | "";
   script_text: string;
+  text_on_screen_suggestion: string;
   script_submitted_by_name: string;
   script_submitted_by_id: string;
   script_submitted_at: string | null;
@@ -60,6 +61,8 @@ export interface WinnerVideoRecord {
   script_reviewed_at: string | null;
   script_rejection_reason: string;
   content_type: WinnerVideoContentType | "";
+  sourcing_video_type: string;
+  video_type_other: string;
   assigned_creative_name: string;
   assigned_creative_id: string;
   bunch_id: string;
@@ -103,6 +106,7 @@ type Row = SbRow & {
   script_status?: string | null;
   script_video_type?: string | null;
   script_text?: string | null;
+  text_on_screen_suggestion?: string | null;
   script_submitted_by_name?: string | null;
   script_submitted_by_id?: string | null;
   script_submitted_at?: string | null;
@@ -110,6 +114,8 @@ type Row = SbRow & {
   script_reviewed_at?: string | null;
   script_rejection_reason?: string | null;
   content_type?: string | null;
+  sourcing_video_type?: string | null;
+  video_type_other?: string | null;
   assigned_creative_name?: string | null;
   assigned_creative_id?: string | null;
   bunch_id?: string | null;
@@ -153,6 +159,7 @@ async function mapRow(row: Row): Promise<WinnerVideoRecord> {
     script_status: coerceScriptStatus(row.script_status),
     script_video_type: coerceScriptVideoType(row.script_video_type),
     script_text: String(row.script_text ?? ""),
+    text_on_screen_suggestion: String(row.text_on_screen_suggestion ?? ""),
     script_submitted_by_name: String(row.script_submitted_by_name ?? ""),
     script_submitted_by_id: String(row.script_submitted_by_id ?? ""),
     script_submitted_at: row.script_submitted_at?.trim() ? String(row.script_submitted_at) : null,
@@ -160,6 +167,8 @@ async function mapRow(row: Row): Promise<WinnerVideoRecord> {
     script_reviewed_at: row.script_reviewed_at?.trim() ? String(row.script_reviewed_at) : null,
     script_rejection_reason: String(row.script_rejection_reason ?? ""),
     content_type: coerceWinnerVideoContentType(row.content_type),
+    sourcing_video_type: String(row.sourcing_video_type ?? ""),
+    video_type_other: String(row.video_type_other ?? ""),
     assigned_creative_name: String(row.assigned_creative_name ?? ""),
     assigned_creative_id: String(row.assigned_creative_id ?? ""),
     bunch_id: row.bunch_id ? String(row.bunch_id) : "",

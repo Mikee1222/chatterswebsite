@@ -77,7 +77,16 @@ export async function POST(
   const body = (await req.json()) as Record<string, unknown>;
   const video_type = coerceSlotVideoType(body.video_type);
   if (!video_type) {
-    return NextResponse.json({ error: "video_type required (skit/ugc/other)" }, { status: 400 });
+    return NextResponse.json(
+      { error: "video_type required (skit/ugc/text_on_screen/interview/clips/other)" },
+      { status: 400 },
+    );
+  }
+  if (video_type === "other" && !String(body.video_type_other ?? "").trim()) {
+    return NextResponse.json(
+      { error: "video_type_other required when type is Other" },
+      { status: 400 },
+    );
   }
   try {
     const video = await submitResearcherBunchFind({
@@ -85,6 +94,7 @@ export async function POST(
       description: String(body.description ?? ""),
       video_link: String(body.video_link ?? ""),
       video_type,
+      video_type_other: String(body.video_type_other ?? ""),
       submitted_by_id: session.airtableUserId ?? session.id,
       submitted_by_name: (session.fullName || session.email || "").trim(),
     });

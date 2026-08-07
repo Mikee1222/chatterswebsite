@@ -22,6 +22,8 @@ export async function PATCH(
       video_link: body.video_link !== undefined ? String(body.video_link) : undefined,
       video_type:
         body.video_type !== undefined ? coerceSlotVideoType(body.video_type) : undefined,
+      video_type_other:
+        body.video_type_other !== undefined ? String(body.video_type_other) : undefined,
     });
     return NextResponse.json({ slot });
   } catch (e) {
