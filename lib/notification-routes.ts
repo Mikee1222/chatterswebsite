@@ -70,7 +70,7 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       if (isVa) return ROUTES.winnerRecreates;
       return ROUTES.dashboard;
     case "creative_script":
-      return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
+      return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.creativeScripts;
     case "filming_assignment":
       return isAdmin ? ROUTES.admin.winnerVideosHub : ROUTES.shootAssignments;
     case "filming_schedule":
@@ -167,7 +167,7 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       if (isVa) return ROUTES.winnerRecreates;
       return ROUTES.dashboard;
     case "creative_script":
-      return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
+      return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.creativeScripts;
     case "filming_assignment":
       return isAdmin ? ROUTES.admin.winnerVideosHub : ROUTES.shootAssignments;
     case "filming_schedule":

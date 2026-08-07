@@ -1,22 +1,26 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ExternalLink, FileText, History, Loader2 } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
-  FindingCard,
+  AlertCircle,
+  ChevronDown,
+  ExternalLink,
+  FileText,
+  History,
+  Info,
+  Loader2,
+  PenLine,
+} from "lucide-react";
+import {
   ManagerReviewSelect,
   ManagerReviewTextarea,
-  ReviewEmptyState,
   ReviewFieldLabel,
-  ReviewFormSection,
-  ReviewLoadingState,
-  ReviewPageEyebrow,
-  ReviewSectionHeader,
-  VA_BTN_PRIMARY,
-  VA_BTN_SECONDARY,
+  ScriptStatusBadge,
   displayOrDash,
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
+import { StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { useToast } from "@/contexts/toast-context";
 import { SCRIPT_VIDEO_TYPES } from "@/lib/creative-scripts-helpers";
 import { truncateNote } from "@/lib/winner-videos-copy";
@@ -30,6 +34,13 @@ import type { ModelRecord } from "@/types";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { slotVideoTypeLabel } from "@/lib/winner-sourcing-helpers";
+import {
+  VA_BTN_PRIMARY,
+  VA_BTN_SECONDARY,
+  VA_CARD,
+  VA_CARD_GLOW,
+  VA_STATUS_BADGE,
+} from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import { CreativeScriptsHistory } from "@/components/creative-scripts-history";
 
@@ -53,12 +64,26 @@ function modelNameFromSelection(modelId: string, models: ModelRecord[]): string 
   return models.find((m) => m.id === modelId)?.model_name ?? "";
 }
 
+function statusSortRank(status: string): number {
+  if (status === "Rejected") return 0;
+  if (status === "Needs Script") return 1;
+  if (status === "Pending Review") return 2;
+  if (status === "Approved") return 3;
+  return 4;
+}
+
 type QueueGroup = {
   key: string;
   title: string;
+  modelName: string;
   progress?: BunchScriptProgress;
   videos: WinnerVideoRecord[];
 };
+
+const BRIEF_TIP =
+  "Filming brief for the shoot: tone, framing, wardrobe, lighting, or shot notes the filmer should follow.";
+const TOS_TIP =
+  "Suggested on-screen text overlays (captions, titles, callouts). Secondary to the spoken/main script.";
 
 export function CreativeScriptsQueueClient({
   initialQueue,
@@ -68,6 +93,7 @@ export function CreativeScriptsQueueClient({
   gunzoModels,
 }: Props) {
   const { addToast } = useToast();
+  const reduceMotion = useReducedMotion();
   const isSupabaseBackend = useIsSupabaseBackend();
   const [queue, setQueue] = React.useState(initialQueue);
   const [history, setHistory] = React.useState(initialHistory);
@@ -75,6 +101,7 @@ export function CreativeScriptsQueueClient({
   const [slotMeta, setSlotMeta] = React.useState(initialSlotMeta);
   const [loading, setLoading] = React.useState(false);
   const [tab, setTab] = React.useState<"write" | "history">("write");
+  const [expandedBunch, setExpandedBunch] = React.useState<string | null>(null);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [modelId, setModelId] = React.useState("");
@@ -123,19 +150,54 @@ export function CreativeScriptsQueueClient({
         videos[0]?.bunch_name?.trim() ||
         metaByVideoId.get(videos[0]?.id ?? "")?.bunch_name ||
         "Bunch";
-      out.push({
-        key: bunchId,
-        title,
-        progress,
-        videos,
+      const modelName =
+        progress?.model_name?.trim() ||
+        videos.find((v) => v.assigned_creator_name?.trim())?.assigned_creator_name?.trim() ||
+        videos[0]?.reference_model_name?.trim() ||
+        "";
+      const sorted = [...videos].sort((a, b) => {
+        const rank = statusSortRank(a.script_status) - statusSortRank(b.script_status);
+        if (rank !== 0) return rank;
+        const seqA = metaByVideoId.get(a.id)?.sequence_number ?? 0;
+        const seqB = metaByVideoId.get(b.id)?.sequence_number ?? 0;
+        return seqA - seqB;
       });
+      out.push({ key: bunchId, title, modelName, progress, videos: sorted });
     }
-    out.sort((a, b) => a.title.localeCompare(b.title));
+    out.sort((a, b) => {
+      const aNeeds = a.videos.some(
+        (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
+      );
+      const bNeeds = b.videos.some(
+        (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
+      );
+      if (aNeeds !== bNeeds) return aNeeds ? -1 : 1;
+      return a.title.localeCompare(b.title);
+    });
     if (other.length > 0) {
-      out.push({ key: "__other__", title: "Other scripts", videos: other });
+      out.push({
+        key: "__other__",
+        title: "Other scripts",
+        modelName: "",
+        videos: [...other].sort(
+          (a, b) => statusSortRank(a.script_status) - statusSortRank(b.script_status),
+        ),
+      });
     }
     return out;
   }, [queue, progressByBunchId, metaByVideoId]);
+
+  const didAutoExpand = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoExpand.current || groups.length === 0) return;
+    const firstActionable = groups.find((g) =>
+      g.videos.some(
+        (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
+      ),
+    );
+    setExpandedBunch(firstActionable?.key ?? groups[0]?.key ?? null);
+    didAutoExpand.current = true;
+  }, [groups]);
 
   const modelOptions = React.useMemo<CustomSelectOption[]>(() => {
     const base = gunzoModels.map((m) => ({ value: m.id, label: m.model_name }));
@@ -154,6 +216,12 @@ export function CreativeScriptsQueueClient({
     ],
     [],
   );
+
+  const needsCount = queue.filter(
+    (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
+  ).length;
+  const pendingCount = queue.filter((v) => v.script_status === "Pending Review").length;
+  const approvedCount = queue.filter((v) => v.script_status === "Approved").length;
 
   async function reload() {
     setLoading(true);
@@ -209,50 +277,84 @@ export function CreativeScriptsQueueClient({
   useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
 
   function openForm(video: WinnerVideoRecord) {
+    const isRejected = video.script_status === "Rejected";
+    const isNeeds = video.script_status === "Needs Script";
+    if (!isRejected && !isNeeds) return;
+
     if (activeId === video.id) {
       setActiveId(null);
       return;
     }
     setActiveId(video.id);
     setModelId(resolveModelId(video, gunzoModels));
-    setScriptType("");
-    setScriptText("");
+    if (isRejected) {
+      setScriptType(video.script_video_type || "");
+      setScriptText(video.script_text || "");
+    } else {
+      setScriptType("");
+      setScriptText("");
+    }
     setTextOnScreen(video.text_on_screen_suggestion ?? "");
     setTextOnScreenOpen(Boolean(video.text_on_screen_suggestion?.trim()));
     setScriptBrief(video.script_brief ?? "");
-    setScriptBriefOpen(Boolean(video.script_brief?.trim()));
+    setScriptBriefOpen(Boolean(video.script_brief?.trim()) || isRejected);
   }
 
-  async function handleSubmit(videoId: string) {
+  async function handleSubmit(video: WinnerVideoRecord) {
     const modelName = modelNameFromSelection(modelId, gunzoModels).trim();
     if (!modelName || !scriptType || !scriptText.trim()) {
       addToast(
-        winnerVideoLocalToast(`cs-val-${Date.now()}`, "Missing fields", "Model, type, and script are required.", "high"),
+        winnerVideoLocalToast(
+          `cs-val-${Date.now()}`,
+          "Missing fields",
+          "Model, type, and script are required.",
+          "high",
+        ),
       );
       return;
     }
 
-    setSavingId(videoId);
+    const isResubmit = video.script_status === "Rejected";
+    setSavingId(video.id);
     try {
-      const res = await fetch("/api/creative-scripts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          id: videoId,
-          assigned_creator_name: modelName,
-          script_video_type: scriptType,
-          script_text: scriptText,
-          text_on_screen_suggestion: textOnScreen,
-          script_brief: scriptBrief,
-        }),
-      });
+      const res = await fetch(
+        isResubmit
+          ? `/api/creative-scripts/${encodeURIComponent(video.id)}`
+          : "/api/creative-scripts",
+        {
+          method: isResubmit ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            id: video.id,
+            assigned_creator_name: modelName,
+            script_video_type: scriptType,
+            script_text: scriptText,
+            text_on_screen_suggestion: textOnScreen,
+            script_brief: scriptBrief,
+          }),
+        },
+      );
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
-        addToast(winnerVideoLocalToast(`cs-err-${Date.now()}`, "Submit failed", data.error ?? "Could not submit", "high"));
+        addToast(
+          winnerVideoLocalToast(
+            `cs-err-${Date.now()}`,
+            isResubmit ? "Resubmit failed" : "Submit failed",
+            data.error ?? "Could not save script",
+            "high",
+          ),
+        );
         return;
       }
-      addToast(winnerVideoLocalToast(`cs-ok-${Date.now()}`, "Script submitted", "Sent for review.", "normal"));
+      addToast(
+        winnerVideoLocalToast(
+          `cs-ok-${Date.now()}`,
+          isResubmit ? "Script resubmitted" : "Script submitted",
+          isResubmit ? "Sent back for review." : "Sent for review.",
+          "normal",
+        ),
+      );
       setActiveId(null);
       await reload();
     } finally {
@@ -262,269 +364,434 @@ export function CreativeScriptsQueueClient({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
-          <h1 className="mt-1 text-2xl font-bold text-white">Scripts to Write</h1>
-          <p className="mt-1 text-sm text-[#B8B4B8]/60">
-            Winner Video bunches and research finds assigned to you. Each slot has its own script — submit them independently.
-          </p>
+      <div className="relative overflow-hidden rounded-3xl border border-[#D4AF8C]/15 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#FF1493]/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 left-10 h-40 w-40 rounded-full bg-[#D4AF8C]/8 blur-3xl" />
+        <div className="relative flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/70">
+              Creative
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+              Scripts to Write
+            </h1>
+            <p className="mt-2 max-w-xl text-sm text-[#B8B4B8]/70">
+              Bunches assigned to you — write each slot, revise rejected scripts, and track progress
+              in one place.
+            </p>
+          </div>
+          <div className="flex rounded-xl border border-white/10 bg-black/30 p-1">
+            <button
+              type="button"
+              onClick={() => setTab("write")}
+              className={cn(
+                "rounded-lg px-3.5 py-1.5 text-xs font-semibold transition duration-200 motion-reduce:transition-none",
+                tab === "write"
+                  ? "bg-[#FF1493]/20 text-[#FF1493]"
+                  : "text-white/45 hover:text-white/80",
+              )}
+            >
+              Write
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("history")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition duration-200 motion-reduce:transition-none",
+                tab === "history"
+                  ? "bg-[#FF1493]/20 text-[#FF1493]"
+                  : "text-white/45 hover:text-white/80",
+              )}
+            >
+              <History className="h-3.5 w-3.5" aria-hidden />
+              History
+            </button>
+          </div>
         </div>
-        <div className="flex rounded-xl border border-white/10 bg-black/30 p-1">
-          <button
-            type="button"
-            onClick={() => setTab("write")}
-            className={cn(
-              "rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
-              tab === "write"
-                ? "bg-[#FF1493]/20 text-[#FF1493]"
-                : "text-white/45 hover:text-white/80",
-            )}
-          >
-            Write
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("history")}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
-              tab === "history"
-                ? "bg-[#FF1493]/20 text-[#FF1493]"
-                : "text-white/45 hover:text-white/80",
-            )}
-          >
-            <History className="h-3.5 w-3.5" aria-hidden />
-            History
-          </button>
-        </div>
+        {tab === "write" ? (
+          <div className="relative mt-5 flex flex-wrap items-center gap-2">
+            <span className={cn(VA_STATUS_BADGE, "bg-amber-500/15 text-amber-200")}>
+              {needsCount} to write
+            </span>
+            <span className={cn(VA_STATUS_BADGE, "bg-sky-500/15 text-sky-200")}>
+              {pendingCount} submitted
+            </span>
+            <span className={cn(VA_STATUS_BADGE, "bg-emerald-500/15 text-emerald-300")}>
+              {approvedCount} approved
+            </span>
+            <button
+              type="button"
+              className={cn(VA_BTN_SECONDARY, "ml-auto !px-4 !py-2 text-xs")}
+              onClick={() => void reload()}
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Refresh"}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {tab === "history" ? (
         <CreativeScriptsHistory scripts={history} slotMeta={slotMeta} />
-      ) : loading ? (
-        <ReviewLoadingState />
-      ) : queue.length === 0 ? (
-        <ReviewEmptyState
-          icon={FileText}
-          title="No scripts to write"
-          description="When a manager assigns you a bunch (or an approved research find), scripts appear here grouped by bunch."
-        />
+      ) : loading && queue.length === 0 ? (
+        <div className={cn(VA_CARD, "flex items-center justify-center gap-3 px-6 py-16")}>
+          <Loader2 className="h-5 w-5 animate-spin text-[#D4AF8C]/70" />
+          <p className="text-sm text-[#B8B4B8]/55">Loading assignments…</p>
+        </div>
+      ) : groups.length === 0 ? (
+        <div className={cn(VA_CARD, "flex flex-col items-center gap-3 px-6 py-16 text-center")}>
+          <FileText className="h-10 w-10 text-[#D4AF8C]/40" />
+          <p className="text-base font-medium text-white/90">No bunches assigned yet</p>
+          <p className="max-w-sm text-sm text-[#B8B4B8]/55">
+            When a manager assigns you a bunch (or an approved research find), scripts appear here
+            grouped by bunch.
+          </p>
+        </div>
       ) : (
-        <div className="space-y-6">
-          <ReviewSectionHeader
-            action={
-              <button type="button" className={VA_BTN_SECONDARY} onClick={() => void reload()} disabled={loading}>
-                Refresh
-              </button>
-            }
-          >
-            Queue ({queue.length})
-          </ReviewSectionHeader>
+        <div className="space-y-4">
+          {groups.map((group) => {
+            const open = expandedBunch === group.key;
+            const written = group.progress?.written ?? group.videos.filter((v) => v.script_status !== "Needs Script").length;
+            const total = group.progress?.total ?? group.videos.length;
+            const pct = total > 0 ? Math.round((written / total) * 100) : 0;
+            const rejectedInGroup = group.videos.filter((v) => v.script_status === "Rejected").length;
 
-          {groups.map((group) => (
-            <section key={group.key} className="space-y-3">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-sm font-semibold text-white">
-                  {group.key === "__other__" ? group.title : `Bunch: ${group.title}`}
-                </h2>
-                {group.progress ? (
-                  <p className="text-xs tabular-nums text-[#D4AF8C]/85">
-                    {group.progress.written} of {group.progress.total} scripts written
-                  </p>
-                ) : null}
-              </div>
-
-              {group.videos.map((v) => {
-                const meta = metaByVideoId.get(v.id);
-                const typeLabel =
-                  slotVideoTypeLabel(meta?.video_type, meta?.video_type_other) ||
-                  meta?.video_type?.trim() ||
-                  v.script_video_type?.trim() ||
-                  v.content_type?.trim() ||
-                  "";
-                const description =
-                  meta?.description?.trim() ||
-                  (v.note?.trim() ? truncateNote(v.note, 200) || v.note : "");
-                const videoLink = meta?.video_link?.trim() || v.video_link?.trim() || "";
-                return (
-                  <FindingCard key={v.id} pending={savingId === v.id}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="text-lg font-semibold text-white">
-                          {displayOrDash(v.assigned_creator_name || v.reference_model_name)}
-                        </p>
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[#B8B4B8]/55">
-                          {typeLabel ? <span>Type: {typeLabel}</span> : null}
-                          {meta && meta.recreate_total > 1 ? (
-                            <span className="text-[#D4AF8C]/80">
-                              Recreate {meta.recreate_index} of {meta.recreate_total}
-                            </span>
-                          ) : meta ? (
-                            <span>Slot #{meta.sequence_number}</span>
-                          ) : null}
-                          {v.reference_model_name?.trim() &&
-                          v.reference_model_name.trim() !== (v.assigned_creator_name || "").trim() ? (
-                            <span>Ref: {v.reference_model_name}</span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className={activeId === v.id ? VA_BTN_SECONDARY : VA_BTN_PRIMARY}
-                        onClick={() => openForm(v)}
-                        disabled={savingId === v.id}
-                      >
-                        {activeId === v.id ? "Close" : "Write script"}
-                      </button>
+            return (
+              <motion.div
+                key={group.key}
+                layout={!reduceMotion}
+                className={cn(VA_CARD, VA_CARD_GLOW, "overflow-hidden")}
+              >
+                <button
+                  type="button"
+                  className="flex w-full items-start justify-between gap-3 px-5 py-4 text-left transition hover:bg-white/[0.02] motion-reduce:transition-none"
+                  onClick={() => setExpandedBunch(open ? null : group.key)}
+                  aria-expanded={open}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-lg font-semibold text-white">{group.title}</h2>
+                      {rejectedInGroup > 0 ? (
+                        <span className={cn(VA_STATUS_BADGE, "border-red-500/35 bg-red-500/12 text-red-200")}>
+                          {rejectedInGroup} rejected
+                        </span>
+                      ) : null}
                     </div>
-
-                    {videoLink ? (
-                      <a
-                        href={videoLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-3 inline-flex items-center gap-1 text-sm text-[#FF1493] hover:underline"
-                      >
-                        Reference video <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                      </a>
+                    {group.modelName ? (
+                      <p className="mt-1 text-sm text-[#D4AF8C]/85">{group.modelName}</p>
                     ) : null}
+                    <p className="mt-1.5 text-xs tabular-nums text-[#B8B4B8]/55">
+                      {written} of {total} scripts written
+                    </p>
+                    <div className="mt-2 h-1.5 w-44 max-w-full overflow-hidden rounded-full bg-white/10">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#FF1493] to-[#D4AF8C] transition-all duration-500 motion-reduce:transition-none"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                  <ChevronDown
+                    className={cn(
+                      "mt-1 h-5 w-5 shrink-0 text-[#D4AF8C]/70 transition-transform duration-200 motion-reduce:transition-none",
+                      open && "rotate-180",
+                    )}
+                    aria-hidden
+                  />
+                </button>
 
-                    {description ? (
-                      <p className="mt-2 text-sm text-[#B8B4B8]/70">{description}</p>
-                    ) : null}
+                <AnimatePresence initial={false}>
+                  {open ? (
+                    <motion.div
+                      key="slots"
+                      initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="overflow-hidden border-t border-white/[0.06]"
+                    >
+                      <div className="space-y-3 px-4 py-4 sm:px-5">
+                        {group.videos.map((v) => {
+                          const meta = metaByVideoId.get(v.id);
+                          const typeLabel =
+                            slotVideoTypeLabel(meta?.video_type, meta?.video_type_other) ||
+                            meta?.video_type?.trim() ||
+                            v.script_video_type?.trim() ||
+                            v.content_type?.trim() ||
+                            "";
+                          const description =
+                            meta?.description?.trim() ||
+                            (v.note?.trim() ? truncateNote(v.note, 200) || v.note : "");
+                          const videoLink = meta?.video_link?.trim() || v.video_link?.trim() || "";
+                          const isRejected = v.script_status === "Rejected";
+                          const isNeeds = v.script_status === "Needs Script";
+                          const canWrite = isNeeds || isRejected;
+                          const formOpen = activeId === v.id;
+                          const rejection = v.script_rejection_reason?.trim() || "";
 
-                    {activeId === v.id ? (
-                      <ReviewFormSection
-                        title="Write script"
-                        description="Assign the Gunzo model, pick a type, and paste the full script."
-                        className="mt-4 border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]"
-                      >
-                        <div className="space-y-4">
-                          <div>
-                            <ReviewFieldLabel>Model</ReviewFieldLabel>
-                            <ManagerReviewSelect
-                              value={modelId}
-                              onChange={setModelId}
-                              options={modelOptions}
-                              placeholder="Select Gunzo-team model…"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <ReviewFieldLabel>Type</ReviewFieldLabel>
-                            <ManagerReviewSelect
-                              value={scriptType}
-                              onChange={setScriptType}
-                              options={typeOptions}
-                              placeholder="Select type…"
-                              required
-                            />
-                          </div>
-                          <div>
-                            <ReviewFieldLabel>Script</ReviewFieldLabel>
-                            <ManagerReviewTextarea
-                              value={scriptText}
-                              onChange={(e) => setScriptText(e.target.value)}
-                              rows={10}
-                              placeholder="Write the full script here…"
-                              required
-                            />
-                          </div>
-                          <div className="overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
-                            <button
-                              type="button"
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
-                              onClick={() => setTextOnScreenOpen((o) => !o)}
-                              aria-expanded={textOnScreenOpen}
-                            >
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
-                                Text on Screen Suggestion
-                                <span className="ml-1.5 font-normal normal-case tracking-normal text-[#B8B4B8]/45">
-                                  (optional)
-                                </span>
-                              </span>
-                              <ChevronDown
-                                className={cn(
-                                  "h-4 w-4 text-[#D4AF8C]/70 transition-transform",
-                                  textOnScreenOpen && "rotate-180",
-                                )}
-                                aria-hidden
-                              />
-                            </button>
-                            {textOnScreenOpen ? (
-                              <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
-                                <p className="mb-2 text-xs text-[#B8B4B8]/50">
-                                  Suggested on-screen text overlays — secondary to the main script.
-                                </p>
-                                <ManagerReviewTextarea
-                                  value={textOnScreen}
-                                  onChange={(e) => setTextOnScreen(e.target.value)}
-                                  rows={4}
-                                  placeholder="e.g. captions, titles, callouts…"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
-                            <button
-                              type="button"
-                              className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
-                              onClick={() => setScriptBriefOpen((o) => !o)}
-                              aria-expanded={scriptBriefOpen}
-                            >
-                              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
-                                Brief
-                                <span className="ml-1.5 font-normal normal-case tracking-normal text-[#B8B4B8]/45">
-                                  (optional)
-                                </span>
-                              </span>
-                              <ChevronDown
-                                className={cn(
-                                  "h-4 w-4 text-[#D4AF8C]/70 transition-transform",
-                                  scriptBriefOpen && "rotate-180",
-                                )}
-                                aria-hidden
-                              />
-                            </button>
-                            {scriptBriefOpen ? (
-                              <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
-                                <p className="mb-2 text-xs text-[#B8B4B8]/50">
-                                  Filming brief — tone, framing, wardrobe, or shot notes for the filmer.
-                                </p>
-                                <ManagerReviewTextarea
-                                  value={scriptBrief}
-                                  onChange={(e) => setScriptBrief(e.target.value)}
-                                  rows={4}
-                                  placeholder="e.g. handheld selfie angle, soft lighting, playful energy…"
-                                />
-                              </div>
-                            ) : null}
-                          </div>
-                          <div className="flex justify-end gap-2">
-                            <button type="button" className={VA_BTN_SECONDARY} onClick={() => setActiveId(null)}>
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              className={VA_BTN_PRIMARY}
-                              disabled={savingId === v.id}
-                              onClick={() => void handleSubmit(v.id)}
-                            >
-                              {savingId === v.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                "Submit script"
+                          return (
+                            <article
+                              key={v.id}
+                              className={cn(
+                                "rounded-2xl border bg-[#0D0B0D]/55 px-4 py-4 transition duration-200 motion-reduce:transition-none",
+                                isRejected
+                                  ? "border-red-500/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.08)]"
+                                  : isNeeds
+                                    ? "border-[#D4AF8C]/20 hover:border-[#D4AF8C]/35"
+                                    : "border-white/[0.06]",
+                                savingId === v.id && "opacity-80",
                               )}
-                            </button>
-                          </div>
-                        </div>
-                      </ReviewFormSection>
-                    ) : null}
-                  </FindingCard>
-                );
-              })}
-            </section>
-          ))}
+                            >
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="min-w-0 space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <ScriptStatusBadge status={v.script_status} />
+                                    {meta && meta.recreate_total > 1 ? (
+                                      <span className="text-xs font-medium text-[#D4AF8C]/80">
+                                        Recreate {meta.recreate_index} of {meta.recreate_total}
+                                      </span>
+                                    ) : meta ? (
+                                      <span className="text-xs text-[#B8B4B8]/45">
+                                        Slot #{meta.sequence_number}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  {typeLabel ? (
+                                    <p className="text-xs text-[#B8B4B8]/55">
+                                      Video type:{" "}
+                                      <span className="text-[#B8B4B8]/80">{typeLabel}</span>
+                                    </p>
+                                  ) : null}
+                                </div>
+                                {canWrite ? (
+                                  <button
+                                    type="button"
+                                    className={cn(
+                                      formOpen ? VA_BTN_SECONDARY : VA_BTN_PRIMARY,
+                                      "!px-4 !py-2 text-xs inline-flex items-center gap-1.5",
+                                    )}
+                                    onClick={() => openForm(v)}
+                                    disabled={savingId === v.id}
+                                  >
+                                    <PenLine className="h-3.5 w-3.5" aria-hidden />
+                                    {formOpen
+                                      ? "Close"
+                                      : isRejected
+                                        ? "Revise & resubmit"
+                                        : "Write script"}
+                                  </button>
+                                ) : null}
+                              </div>
+
+                              {videoLink ? (
+                                <a
+                                  href={videoLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="mt-3 inline-flex items-center gap-1 text-sm text-[#FF1493] transition hover:underline motion-reduce:transition-none"
+                                >
+                                  Reference video{" "}
+                                  <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                                </a>
+                              ) : null}
+
+                              {description ? (
+                                <p className="mt-2 text-sm leading-relaxed text-[#B8B4B8]/70">
+                                  {description}
+                                </p>
+                              ) : null}
+
+                              {isRejected && rejection ? (
+                                <div className="mt-3 flex gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3">
+                                  <AlertCircle
+                                    className="mt-0.5 h-4 w-4 shrink-0 text-red-300"
+                                    aria-hidden
+                                  />
+                                  <div>
+                                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-red-200/90">
+                                      Rejection reason
+                                    </p>
+                                    <p className="mt-1 text-sm leading-relaxed text-red-100/90">
+                                      {rejection}
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : null}
+
+                              <AnimatePresence initial={false}>
+                                {formOpen ? (
+                                  <motion.div
+                                    key="form"
+                                    initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                                    animate={{ height: "auto", opacity: 1 }}
+                                    exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+                                    className="overflow-hidden"
+                                  >
+                                    <div className="mt-4 space-y-4 rounded-2xl border border-white/[0.06] bg-black/25 p-4 shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
+                                      <div>
+                                        <p className="text-sm font-semibold text-white">
+                                          {isRejected ? "Revise script" : "Write script"}
+                                        </p>
+                                        <p className="mt-0.5 text-xs text-[#B8B4B8]/50">
+                                          Assign the Gunzo model, pick a type, and paste the full
+                                          script. Brief and text-on-screen help the filmer.
+                                        </p>
+                                      </div>
+
+                                      <div>
+                                        <ReviewFieldLabel>Model</ReviewFieldLabel>
+                                        <ManagerReviewSelect
+                                          value={modelId}
+                                          onChange={setModelId}
+                                          options={modelOptions}
+                                          placeholder="Select Gunzo-team model…"
+                                          required
+                                        />
+                                      </div>
+                                      <div>
+                                        <ReviewFieldLabel>Type</ReviewFieldLabel>
+                                        <ManagerReviewSelect
+                                          value={scriptType}
+                                          onChange={setScriptType}
+                                          options={typeOptions}
+                                          placeholder="Select type…"
+                                          required
+                                        />
+                                      </div>
+                                      <div>
+                                        <ReviewFieldLabel>Script</ReviewFieldLabel>
+                                        <ManagerReviewTextarea
+                                          value={scriptText}
+                                          onChange={(e) => setScriptText(e.target.value)}
+                                          rows={10}
+                                          placeholder="Write the full script here…"
+                                          required
+                                        />
+                                      </div>
+
+                                      <div className="overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                                          onClick={() => setTextOnScreenOpen((o) => !o)}
+                                          aria-expanded={textOnScreenOpen}
+                                        >
+                                          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                                            Text on Screen Suggestion
+                                            <StatInfoTooltip text={TOS_TIP} />
+                                            <span className="ml-0.5 font-normal normal-case tracking-normal text-[#B8B4B8]/45">
+                                              (optional)
+                                            </span>
+                                          </span>
+                                          <ChevronDown
+                                            className={cn(
+                                              "h-4 w-4 text-[#D4AF8C]/70 transition-transform duration-200 motion-reduce:transition-none",
+                                              textOnScreenOpen && "rotate-180",
+                                            )}
+                                            aria-hidden
+                                          />
+                                        </button>
+                                        {textOnScreenOpen ? (
+                                          <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
+                                            <ManagerReviewTextarea
+                                              value={textOnScreen}
+                                              onChange={(e) => setTextOnScreen(e.target.value)}
+                                              rows={4}
+                                              placeholder="e.g. captions, titles, callouts…"
+                                            />
+                                          </div>
+                                        ) : null}
+                                      </div>
+
+                                      <div className="overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">
+                                        <button
+                                          type="button"
+                                          className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left"
+                                          onClick={() => setScriptBriefOpen((o) => !o)}
+                                          aria-expanded={scriptBriefOpen}
+                                        >
+                                          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                                            Brief
+                                            <StatInfoTooltip text={BRIEF_TIP} />
+                                            <span className="ml-0.5 font-normal normal-case tracking-normal text-[#B8B4B8]/45">
+                                              (optional)
+                                            </span>
+                                          </span>
+                                          <ChevronDown
+                                            className={cn(
+                                              "h-4 w-4 text-[#D4AF8C]/70 transition-transform duration-200 motion-reduce:transition-none",
+                                              scriptBriefOpen && "rotate-180",
+                                            )}
+                                            aria-hidden
+                                          />
+                                        </button>
+                                        {scriptBriefOpen ? (
+                                          <div className="border-t border-[#D4AF8C]/10 px-3 pb-3 pt-2">
+                                            <p className="mb-2 inline-flex items-start gap-1.5 text-xs text-[#B8B4B8]/50">
+                                              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+                                              Visible to the filmer on Shoot Assignments.
+                                            </p>
+                                            <ManagerReviewTextarea
+                                              value={scriptBrief}
+                                              onChange={(e) => setScriptBrief(e.target.value)}
+                                              rows={4}
+                                              placeholder="e.g. handheld selfie angle, soft lighting, playful energy…"
+                                            />
+                                          </div>
+                                        ) : null}
+                                      </div>
+
+                                      <div className="flex flex-wrap justify-end gap-2">
+                                        <button
+                                          type="button"
+                                          className={cn(VA_BTN_SECONDARY, "!px-4 !py-2 text-xs")}
+                                          onClick={() => setActiveId(null)}
+                                        >
+                                          Cancel
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className={cn(
+                                            VA_BTN_PRIMARY,
+                                            "!px-4 !py-2 text-xs inline-flex items-center gap-2",
+                                          )}
+                                          disabled={savingId === v.id}
+                                          onClick={() => void handleSubmit(v)}
+                                        >
+                                          {savingId === v.id ? (
+                                            <>
+                                              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                              {isRejected ? "Resubmitting…" : "Submitting…"}
+                                            </>
+                                          ) : isRejected ? (
+                                            "Resubmit for review"
+                                          ) : (
+                                            "Submit script"
+                                          )}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                ) : null}
+                              </AnimatePresence>
+
+                              {!formOpen &&
+                              !canWrite &&
+                              v.script_text?.trim() ? (
+                                <p className="mt-3 line-clamp-2 text-xs text-[#B8B4B8]/40">
+                                  {displayOrDash(v.script_text)}
+                                </p>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </motion.div>
+            );
+          })}
         </div>
       )}
     </div>

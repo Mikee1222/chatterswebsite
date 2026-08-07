@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { getMyScripts, resubmitCreativeScript } from "@/services/winner-videos";
+import { getWinnerVideoById, resubmitCreativeScript } from "@/services/winner-videos";
 import { SCRIPT_VIDEO_TYPES, type ScriptVideoType } from "@/lib/creative-scripts-helpers";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -14,8 +14,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const { id } = await ctx.params;
   const submitterId = (session.airtableUserId ?? session.id).trim();
-  const owned = await getMyScripts(submitterId);
-  if (!owned.some((v) => v.id === id)) {
+  const existing = await getWinnerVideoById(id);
+  if (
+    !existing ||
+    (existing.script_submitted_by_id !== submitterId &&
+      existing.assigned_creative_id !== submitterId)
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

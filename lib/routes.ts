@@ -192,9 +192,9 @@ export const ROUTES = {
   winners: "/winners",
   /** Researcher: submit recreate finds into open bunches (reviewed in Research Manage). */
   winnerRecreates: "/winner-recreates",
-  /** Creative script queue — write scripts for approved winner videos. */
+  /** Creative script queue — write scripts for approved winner videos (History tab for past work). */
   creativeScripts: "/creative-scripts",
-  /** Submitter view of own creative scripts. */
+  /** @deprecated Redirects to creativeScripts. Resubmit lives in Scripts to Write. */
   myScripts: "/my-scripts",
   /** Filmer: bunches assigned for shooting (permission-gated). */
   shootAssignments: "/shoot-assignments",

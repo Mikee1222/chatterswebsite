@@ -1047,6 +1047,7 @@ export async function assignCreativeToBunch(input: {
 export type BunchScriptProgress = {
   bunch_id: string;
   bunch_name: string;
+  model_name: string;
   total: number;
   written: number;
 };
@@ -1064,15 +1065,18 @@ export async function listBunchScriptProgressForCreative(
 
   const { data: bunches, error: bErr } = await sb
     .from("video_bunches")
-    .select("id, name")
+    .select("id, name, model_name")
     .eq("assigned_creative_id", id);
   if (bErr) throw new Error(bErr.message);
 
   const bunchOwnedIds = new Set((bunches ?? []).map((b) => String((b as { id: string }).id)));
-  const nameById = new Map(
+  const metaById = new Map(
     (bunches ?? []).map((b) => [
       String((b as { id: string }).id),
-      String((b as { name?: string }).name ?? ""),
+      {
+        name: String((b as { name?: string }).name ?? ""),
+        model_name: String((b as { model_name?: string }).model_name ?? ""),
+      },
     ]),
   );
 
@@ -1087,20 +1091,26 @@ export async function listBunchScriptProgressForCreative(
     ...new Set(
       (slotHintRows ?? [])
         .map((r) => String((r as { bunch_id: string }).bunch_id))
-        .filter((bid) => bid && !nameById.has(bid)),
+        .filter((bid) => bid && !metaById.has(bid)),
     ),
   ];
   if (extraBunchIds.length > 0) {
-    const { data: extra } = await sb.from("video_bunches").select("id, name").in("id", extraBunchIds);
+    const { data: extra } = await sb
+      .from("video_bunches")
+      .select("id, name, model_name")
+      .in("id", extraBunchIds);
     for (const b of extra ?? []) {
       const bid = String((b as { id: string }).id);
-      nameById.set(bid, String((b as { name?: string }).name ?? ""));
+      metaById.set(bid, {
+        name: String((b as { name?: string }).name ?? ""),
+        model_name: String((b as { model_name?: string }).model_name ?? ""),
+      });
     }
   }
 
-  if (nameById.size === 0) return [];
+  if (metaById.size === 0) return [];
 
-  const ids = [...nameById.keys()];
+  const ids = [...metaById.keys()];
   const { data: allSlots, error: allErr } = await sb
     .from("recreate_video_slots")
     .select("bunch_id, status, assigned_creative_id, winner_video_id")
@@ -1137,9 +1147,11 @@ export async function listBunchScriptProgressForCreative(
   return ids
     .map((bid) => {
       const p = progress.get(bid) ?? { total: 0, written: 0 };
+      const meta = metaById.get(bid);
       return {
         bunch_id: bid,
-        bunch_name: nameById.get(bid) || "Bunch",
+        bunch_name: meta?.name || "Bunch",
+        model_name: meta?.model_name || "",
         total: p.total,
         written: p.written,
       };

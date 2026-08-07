@@ -522,7 +522,7 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
       event_type: NOTIFICATION_EVENT.RESEARCH_ASSIGNED_TO_CREATIVE,
       priority: NOTIFICATION_PRIORITY.HIGH,
       title: "📋 New script assignment",
-      body: `You've been assigned to write a script for ${existing.reference_model_name || "an approved winner video"}. Open My Scripts to get started.`,
+      body: `You've been assigned to write a script for ${existing.reference_model_name || "an approved winner video"}. Open Scripts to Write to get started.`,
       entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
       entity_id: id,
       actor_user_id: data.reviewed_by_id,
@@ -662,16 +662,25 @@ export async function transcribeVideoUrl(
   }
 }
 
+const SCRIPTS_QUEUE_STATUSES = new Set([
+  "Needs Script",
+  "Pending Review",
+  "Approved",
+  "Rejected",
+]);
+
 /**
  * Scripts-to-write queue. When `assignedCreativeId` is provided, only finds assigned to
  * that Creative are returned (the queue is per-Creative, not a shared pool).
+ * Includes Needs Script + Rejected (actionable) and Pending Review / Approved (status in bunch view).
  */
 export async function getScriptsQueue(assignedCreativeId?: string): Promise<WinnerVideoRecord[]> {
   const creativeId = assignedCreativeId?.trim();
-  return getAllWinnerVideos({
-    script_status: "Needs Script",
-    ...(creativeId ? { assigned_creative_id: creativeId } : {}),
-  });
+  if (!creativeId) {
+    return getAllWinnerVideos({ script_status: "Needs Script" });
+  }
+  const all = await getAllWinnerVideos({ assigned_creative_id: creativeId });
+  return all.filter((v) => SCRIPTS_QUEUE_STATUSES.has(v.script_status));
 }
 
 export async function getMyScripts(submitterId: string): Promise<WinnerVideoRecord[]> {

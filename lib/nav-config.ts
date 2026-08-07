@@ -819,15 +819,6 @@ const sharedPermissionNavItems: NavItem[] = [
     excludeFromMobileMainTabs: true,
   },
   {
-    href: ROUTES.myScripts,
-    label: "My Scripts",
-    iconKey: "FileText",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
-    hiddenIfPermission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
-    excludeFromMobileMainTabs: true,
-  },
-  {
     href: ROUTES.shootAssignments,
     label: "Shoot Assignments",
     iconKey: "PlayCircle",
