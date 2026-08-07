@@ -48,7 +48,7 @@ import {
 } from "@/components/winner-videos-shared";
 import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
 import { useToast } from "@/contexts/toast-context";
-import { formatDateTimeAthens } from "@/lib/format";
+import { formatDateOnlyEuropean, formatDateTimeAthens } from "@/lib/format";
 import {
   RESEARCH_DISPLAY_VIDEO_TYPE_OPTIONS,
   RESEARCH_SOURCE_FILTER_OPTIONS,
@@ -1022,6 +1022,16 @@ function ResearchSubmissionCard({
   const age = pendingAgeLabel(video);
   const stale = isStalePending(video);
   const busy = pendingId === video.id;
+  const submitterName = video.submitted_by_name?.trim() || "";
+  const creativeName = video.assigned_creative_name?.trim() || "";
+  const recreateModelName = video.assigned_creator_name?.trim() || "";
+  const deadlineLabel = formatRecreationDeadline(video.recreation_deadline);
+  const sameSubmitterAndCreative =
+    Boolean(submitterName) &&
+    Boolean(creativeName) &&
+    submitterName.toLowerCase() === creativeName.toLowerCase();
+  const showScriptAssignee = Boolean(creativeName) && !sameSubmitterAndCreative;
+  const hasAssignmentMeta = Boolean(recreateModelName || deadlineLabel || showScriptAssignee);
 
   return (
     <FindingCard
@@ -1056,11 +1066,15 @@ function ResearchSubmissionCard({
             <WinnerVideoRefreshButton onClick={onRefresh} refreshing={loading} />
           </div>
 
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <div className="space-y-1">
             <p className="text-lg font-semibold text-white">{displayOrDash(video.reference_model_name)}</p>
-            <p className="text-xs text-[#B8B4B8]/55">
-              By {displayOrDash(video.submitted_by_name)}
-            </p>
+            {submitterName ? (
+              <p className="text-xs text-[#B8B4B8]/55">
+                {sameSubmitterAndCreative
+                  ? `Submitted by ${submitterName} · writing script`
+                  : `Submitted by ${submitterName}`}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1129,14 +1143,16 @@ function ResearchSubmissionCard({
         </p>
       ) : null}
 
-      {video.assigned_creator_name ? (
-        <p className="mt-2 text-xs text-[#D4AF8C]/80">
-          Creator: {video.assigned_creator_name}
-          {video.recreation_deadline ? ` · deadline ${video.recreation_deadline}` : ""}
-        </p>
-      ) : null}
-      {video.assigned_creative_name ? (
-        <p className="mt-1 text-xs text-[#D4AF8C]/80">Assigned to: {video.assigned_creative_name}</p>
+      {hasAssignmentMeta ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {recreateModelName ? (
+            <ResearchMetaChip label="Recreate for" value={recreateModelName} accent />
+          ) : null}
+          {deadlineLabel ? <ResearchMetaChip label="Deadline" value={deadlineLabel} /> : null}
+          {showScriptAssignee ? (
+            <ResearchMetaChip label="Script assigned to" value={creativeName} />
+          ) : null}
+        </div>
       ) : null}
       {video.recreation_link?.trim() ? (
         <a
@@ -1160,10 +1176,44 @@ function ResearchSubmissionCard({
       ) : null}
       {video.status === "Approved" || video.status === "Recreated" || video.status === "Published" ? (
         <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-emerald-400/70">
-          <Check className="h-3 w-3" aria-hidden /> Reviewed
-          {video.reviewed_by_name ? ` by ${video.reviewed_by_name}` : ""}
+          <Check className="h-3 w-3" aria-hidden /> Research approved
+          {video.reviewed_by_name?.trim() ? ` by ${video.reviewed_by_name.trim()}` : ""}
         </p>
       ) : null}
     </FindingCard>
+  );
+}
+
+function formatRecreationDeadline(raw: string | null | undefined): string {
+  const trimmed = raw?.trim();
+  if (!trimmed) return "";
+  const ymd = trimmed.slice(0, 10);
+  const formatted = formatDateOnlyEuropean(ymd);
+  return formatted === "—" ? "" : formatted;
+}
+
+function ResearchMetaChip({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-[11px]",
+        accent
+          ? "border-[#D4AF8C]/30 bg-[#D4AF8C]/10 text-[#D4AF8C]"
+          : "border-white/10 bg-white/5 text-[#B8B4B8]/75",
+      )}
+    >
+      <span className={cn("shrink-0", accent ? "text-[#D4AF8C]/60" : "text-[#B8B4B8]/45")}>{label}</span>
+      <span className={cn("truncate font-medium", accent ? "text-[#D4AF8C]" : "text-[#B8B4B8]/85")}>
+        {value}
+      </span>
+    </span>
   );
 }
