@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { ROUTES } from "@/lib/routes";
 import {
   createFilmingScheduleEntry,
   listFilmingSchedule,
@@ -52,6 +54,9 @@ export async function POST(req: Request) {
       created_by_id: session.airtableUserId ?? session.id,
       created_by_name: (session.fullName || session.email || "").trim(),
     });
+    revalidatePath(ROUTES.model.contentCalendar);
+    revalidatePath(ROUTES.model.schedule);
+    revalidatePath(ROUTES.filmingCalendar);
     return NextResponse.json({ entry });
   } catch (e) {
     return NextResponse.json(

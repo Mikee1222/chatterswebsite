@@ -1,11 +1,19 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { ROUTES } from "@/lib/routes";
 import {
   deleteFilmingScheduleEntry,
   updateFilmingScheduleEntry,
 } from "@/services/filming";
+
+function revalidateFilmingSchedulePaths() {
+  revalidatePath(ROUTES.model.contentCalendar);
+  revalidatePath(ROUTES.model.schedule);
+  revalidatePath(ROUTES.filmingCalendar);
+}
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -30,6 +38,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       },
       session.airtableUserId ?? session.id,
     );
+    revalidateFilmingSchedulePaths();
     return NextResponse.json({ entry });
   } catch (e) {
     return NextResponse.json(
@@ -49,6 +58,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   const { id } = await ctx.params;
   try {
     await deleteFilmingScheduleEntry(id);
+    revalidateFilmingSchedulePaths();
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json(

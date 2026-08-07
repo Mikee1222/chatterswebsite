@@ -67,6 +67,8 @@ export default async function ModelContentCalendarPage({
   let allCustoms: Awaited<ReturnType<typeof listCustomRequestsByModel>> = [];
   let tasks: Awaited<ReturnType<typeof listModelTasks>> = [];
   let personalEvents: Awaited<ReturnType<typeof listModelPersonalEventsForModel>> = [];
+  // Filming shoots sync into model_schedule (content_shoot). Without this fetch they never
+  // appear on /model/content-calendar (Availability keeps showProgramGrid=false).
   let scheduleItems: Awaited<ReturnType<typeof listModelScheduleItems>> = [];
   [
     assignments,
