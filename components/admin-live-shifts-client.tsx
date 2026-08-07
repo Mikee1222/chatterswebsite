@@ -92,7 +92,7 @@ function BreakSummaryBadge({
       return (
         <span
           className="inline-flex shrink-0 items-center rounded-full border border-slate-400/30 bg-slate-500/15 px-2 py-0.5 text-xs font-medium text-slate-300"
-          title="VA task shift paused"
+          title="Task shift paused"
         >
           ⏸ Paused · {sessionMins} min so far
         </span>
@@ -428,7 +428,7 @@ export function AdminLiveShiftsClient({
                 <ShiftCard
                   key={s.id}
                   shift={s}
-                  subtitle={isVaTaskShift(s) ? "VA tasks" : "Mistake check"}
+                  subtitle={isVaTaskShift(s) ? "Tasks" : "Mistake check"}
                   index={i}
                   telegramByUserId={telegramByUserId}
                   adminForceEnd={{

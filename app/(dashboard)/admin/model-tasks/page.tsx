@@ -11,9 +11,9 @@ export default async function AdminModelTasksPage() {
   return (
     <AdminModelOpsPlaceholder
       title="Model tasks"
-      description="Dedicated admin task views for every model are not wired yet. Use VA tasks for operational tasks; model roster lives under Models."
+      description="Dedicated admin task views for every model are not wired yet. Use Tasks for operational tasks; model roster lives under Models."
       links={[
-        { href: ROUTES.admin.vaTasks, label: "VA tasks" },
+        { href: ROUTES.admin.vaTasks, label: "Tasks" },
         { href: ROUTES.admin.models, label: "Models" },
         { href: ROUTES.admin.home, label: "Admin home" },
       ]}

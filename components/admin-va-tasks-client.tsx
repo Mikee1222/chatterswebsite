@@ -1327,7 +1327,7 @@ export function AdminVaTasksClient({
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#D4AF8C]/65">Administration</p>
           <h1 className="mt-2 text-[36px] font-semibold leading-tight tracking-tight text-white">
-            VA Tasks
+            Tasks
           </h1>
           <p className="mt-2 text-sm text-[#B8B4B8]/55">Assign and manage tasks for your virtual assistants</p>
           <TaskDateNavigator value={selectedYmd} onChange={setSelectedYmd} className="mt-4" />
@@ -1523,7 +1523,7 @@ export function AdminVaTasksClient({
           <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[20px] border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D] shadow-2xl md:max-w-2xl md:rounded-[20px]">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/95 px-6 py-5 backdrop-blur-sm">
               <div>
-                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">VA tasks</p>
+                <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">Tasks</p>
                 <h2 className="text-xl font-semibold text-white">
                   {editingId ? "Edit task" : "New task"}
                 </h2>

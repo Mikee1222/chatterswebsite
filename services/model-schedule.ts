@@ -220,7 +220,7 @@ export async function createModelScheduleItemsForVaTask(input: VaTaskScheduleSyn
     try {
       const payload: Record<string, unknown> = {
         model: [modelId],
-        title: input.title.trim() || "VA task",
+        title: input.title.trim() || "Task",
         item_type: "va_content",
         date,
         start_time,

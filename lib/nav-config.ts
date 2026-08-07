@@ -342,7 +342,7 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck", navSection: "OVERVIEW" },
 
   // ── TASKS ──
-  { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo", navSection: "TASKS" },
+  { href: ROUTES.va.tasks, label: "Tasks", iconKey: "ListTodo", navSection: "TASKS" },
   { href: ROUTES.va.whales, label: "Whales", iconKey: "Users", navSection: "TASKS" },
   { href: ROUTES.va.contentAssignments, label: "Chatting Content", iconKey: "FileText", navSection: "TASKS" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package", navSection: "TASKS" },
@@ -396,7 +396,7 @@ const adminNav: NavItem[] = [
   // just admin — surfaces the link, matching each page's bare hasPermission guard.
   {
     href: ROUTES.admin.vaTasks,
-    label: "VA tasks",
+    label: "Tasks",
     iconKey: "ListTodo",
     navSection: "TEAM",
     requiresAnyPermission: [PERMISSIONS.VA_TASKS_MANAGE, PERMISSIONS.TASK_PROGRESS_VIEW],
@@ -404,7 +404,7 @@ const adminNav: NavItem[] = [
   {
     href: ROUTES.admin.taskTemplates,
     label: "Task Templates",
-    // D3: distinct icon from "VA tasks" (ListTodo) so the two are not confused in the sidebar.
+    // D3: distinct icon from "Tasks" (ListTodo) so the two are not confused in the sidebar.
     iconKey: "LayoutDashboard",
     navSection: "TEAM",
     requiresPermission: PERMISSIONS.TASK_TEMPLATES_MANAGE,
@@ -789,11 +789,11 @@ const sharedPermissionNavItems: NavItem[] = [
   },
   {
     href: ROUTES.va.tasks,
-    label: "VA tasks",
+    label: "Tasks",
     iconKey: "ListTodo",
     navSection: "TEAM",
     requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
-    // Users who can manage VA tasks or view Progress Overview see the admin item instead.
+    // Users who can manage tasks or view Progress Overview see the admin item instead.
     hiddenIfAnyPermission: [PERMISSIONS.VA_TASKS_MANAGE, PERMISSIONS.TASK_PROGRESS_VIEW],
     excludeFromMobileMainTabs: true,
   },

@@ -323,7 +323,7 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.TASK_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: `⚠️ VA task overdue: ${task.title}`,
+        title: `⚠️ Task overdue: ${task.title}`,
         body: `${vaName}'s task "${task.title}" is ${daysOverdue} days overdue.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue_admin:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,

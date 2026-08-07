@@ -166,14 +166,14 @@ export const TaskPhaseRibbon = React.memo(function TaskPhaseRibbon({
           return (
             <div key={phase.id} className={cn("relative", !isLast && (isMini ? "pb-4" : "pb-6"))}>
               <div
-                className={cn("absolute z-10 rounded-full", nodeClass(phase.status, variant))}
+                className={cn("pointer-events-none absolute z-10 rounded-full", nodeClass(phase.status, variant))}
                 style={{ left: isMini ? 0 : 1, top: isMini ? 6 : 8 }}
                 aria-hidden
               />
 
               <div
                 className={cn(
-                  "absolute w-px",
+                  "pointer-events-none absolute w-px",
                   railLeft,
                   isMini ? "top-4" : "top-5",
                   segmentClass(phase.status, isLast),
@@ -185,7 +185,8 @@ export const TaskPhaseRibbon = React.memo(function TaskPhaseRibbon({
               <div className={contentPl}>
                 <div
                   className={cn(
-                    "overflow-hidden rounded-xl",
+                    // overflow-visible so checklist 44px hit targets are not clipped on mobile
+                    "rounded-xl",
                     VA_CARD_INNER,
                     !isMini && "p-4",
                     isMini && "px-3 py-2.5",
@@ -230,7 +231,7 @@ export const TaskPhaseRibbon = React.memo(function TaskPhaseRibbon({
                         <div
                           key={item.id}
                           className={cn(
-                            "rounded-lg px-2 py-1.5",
+                            "rounded-lg px-1 py-0.5",
                             item.status === "completed" && "bg-[#D4AF8C]/[0.04]",
                           )}
                         >

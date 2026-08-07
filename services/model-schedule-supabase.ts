@@ -278,7 +278,7 @@ export async function createModelScheduleItemsForVaTask(input: VaTaskScheduleSyn
       const modelUuids = await requireSbUuids("modelss", [modelId], "model");
       const payload: Record<string, unknown> = {
         model: modelUuids,
-        title: input.title.trim() || "VA task",
+        title: input.title.trim() || "Task",
         item_type: "va_content",
         date,
         start_time: start_time || null,

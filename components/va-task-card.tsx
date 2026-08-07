@@ -265,64 +265,79 @@ export const VaTaskCard = React.memo(function VaTaskCard({
       const isVirtual = Boolean(task.is_virtual_occurrence || task.id.startsWith("virt_"));
       const itemDisabled =
         isVirtual || !onShift || item.status === "completed" || phase.status === "overdue";
+      const hintTitle = isVirtual
+        ? "Projected day — checklist unlocks when this day’s real task exists"
+        : !onShift
+          ? "Start or resume your shift to complete items"
+          : undefined;
+      const complete = () => {
+        if (itemDisabled) return;
+        const fullItem = phases.flatMap((p) => p.items ?? []).find((i) => i.id === item.id);
+        if (!fullItem) return;
+        onCompleteItem(fullItem, task.id);
+      };
+      const hasProofLinks = Boolean(item.screenshot?.some((s) => s.url));
       return (
-        <div className="flex items-start gap-3">
-          <ChampagneCheckbox
-            checked={item.status === "completed"}
-            disabled={itemDisabled}
-            title={
-              isVirtual
-                ? "Projected day — checklist unlocks when this day’s real task exists"
-                : !onShift
-                  ? "Start or resume your shift to complete items"
-                  : undefined
-            }
-            onClick={() => {
-              if (itemDisabled) return;
-              const fullItem = phases.flatMap((p) => p.items ?? []).find((i) => i.id === item.id);
-              if (!fullItem) return;
-              onCompleteItem(fullItem, task.id);
-            }}
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start gap-2">
-              <p
-                className={cn(
-                  "flex-1 text-sm leading-snug",
-                  item.status === "completed" ? "text-[#B8B4B8]/30 line-through" : "text-[#B8B4B8]",
-                )}
-              >
-                {item.title || "—"}
-              </p>
-              {item.requires_screenshot && item.status !== "completed" ? (
-                <Camera className="mt-0.5 h-4 w-4 shrink-0 text-[#D4AF8C]/80" aria-label="Screenshot required" />
-              ) : null}
-            </div>
-            {item.status === "completed" && (item.completed_by_va_name || item.completed_at) ? (
-              <p className="mt-0.5 text-xs text-[#B8B4B8]/35">
-                {item.completed_by_va_name?.trim() || "VA"}
-                {item.completed_at ? ` · ${timeAgoShort(item.completed_at)}` : ""}
-              </p>
-            ) : null}
-            {item.screenshot && item.screenshot.length > 0 ? (
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                {item.screenshot.map((shot, idx) =>
-                  shot.url ? (
-                    <a
-                      key={`${shot.url}-${idx}`}
-                      href={shot.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1 text-[10px] text-[#D4AF8C]/75 hover:text-[#D4AF8C]"
-                    >
-                      <ImageIcon className="h-3 w-3" />
-                      {item.screenshot!.length > 1 ? `Proof ${idx + 1}` : "View proof"}
-                    </a>
-                  ) : null,
-                )}
+        <div className="space-y-1">
+          <div className="flex items-start gap-1">
+            <ChampagneCheckbox
+              checked={item.status === "completed"}
+              disabled={itemDisabled}
+              title={hintTitle}
+              aria-label={item.title ? `Complete: ${item.title}` : undefined}
+              onClick={complete}
+            />
+            {/* Whole label row toggles — tapping the title (not only the box) completes the item. */}
+            <button
+              type="button"
+              disabled={itemDisabled}
+              title={hintTitle}
+              onClick={complete}
+              className={cn(
+                "min-w-0 flex-1 rounded-md px-1 py-2 text-left touch-manipulation",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/35",
+                itemDisabled ? "cursor-not-allowed" : "cursor-pointer",
+              )}
+            >
+              <div className="flex items-start gap-2">
+                <p
+                  className={cn(
+                    "flex-1 text-sm leading-snug",
+                    item.status === "completed" ? "text-[#B8B4B8]/30 line-through" : "text-[#B8B4B8]",
+                  )}
+                >
+                  {item.title || "—"}
+                </p>
+                {item.requires_screenshot && item.status !== "completed" ? (
+                  <Camera className="mt-0.5 h-4 w-4 shrink-0 text-[#D4AF8C]/80" aria-label="Screenshot required" />
+                ) : null}
               </div>
-            ) : null}
+              {item.status === "completed" && (item.completed_by_va_name || item.completed_at) ? (
+                <p className="mt-0.5 text-xs text-[#B8B4B8]/35">
+                  {item.completed_by_va_name?.trim() || "VA"}
+                  {item.completed_at ? ` · ${timeAgoShort(item.completed_at)}` : ""}
+                </p>
+              ) : null}
+            </button>
           </div>
+          {hasProofLinks ? (
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-12">
+              {item.screenshot!.map((shot, idx) =>
+                shot.url ? (
+                  <a
+                    key={`${shot.url}-${idx}`}
+                    href={shot.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-1 text-[10px] text-[#D4AF8C]/75 hover:text-[#D4AF8C]"
+                  >
+                    <ImageIcon className="h-3 w-3" />
+                    {item.screenshot!.length > 1 ? `Proof ${idx + 1}` : "View proof"}
+                  </a>
+                ) : null,
+              )}
+            </div>
+          ) : null}
         </div>
       );
     },

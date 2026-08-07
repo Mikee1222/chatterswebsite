@@ -148,9 +148,9 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.admin.weeklyProgram || pathname.startsWith(ROUTES.admin.weeklyProgram)) return "Weekly program";
   if (pathname === ROUTES.admin.weeklyProgramVa || pathname.startsWith(ROUTES.admin.weeklyProgramVa)) return "VA weekly program";
   if (pathname === ROUTES.chatter.shift) return "Start shift";
-  if (pathname === ROUTES.va.tasks) return "VA tasks";
+  if (pathname === ROUTES.va.tasks) return "Tasks";
   if (pathname === ROUTES.va.schedule) return "My schedule";
-  if (pathname === ROUTES.admin.vaTasks) return "VA tasks";
+  if (pathname === ROUTES.admin.vaTasks) return "Tasks";
   if (pathname === ROUTES.va.shift) return "Start mistake shift";
   if (pathname === ROUTES.va.liveShifts || pathname === ROUTES.admin.liveShifts) return "Live shifts";
   if (pathname === ROUTES.va.models || pathname === ROUTES.admin.models) return "Models";

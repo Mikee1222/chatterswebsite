@@ -989,7 +989,7 @@ export function AdminHomeClient(props: Props) {
           <div className={cn(VA_CARD, "border border-white/[0.07] bg-white/[0.03] p-5")}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className={sectionTitleClass}>VA task progress</h3>
+                <h3 className={sectionTitleClass}>Task progress</h3>
                 <p className="mt-1 text-xs text-white/35">Today · Athens</p>
               </div>
               <Link
@@ -1053,7 +1053,7 @@ export function AdminHomeClient(props: Props) {
               "flex flex-col justify-center border border-white/[0.07] bg-white/[0.03] p-5"
             )}
           >
-            <h3 className={sectionTitleClass}>VA task progress</h3>
+            <h3 className={sectionTitleClass}>Task progress</h3>
             <p className="mt-2 text-sm text-white/40">
               Progress Overview access is required to view today&apos;s completion.
             </p>

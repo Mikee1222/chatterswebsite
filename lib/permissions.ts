@@ -223,7 +223,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   clients: "Clients",
   whales: "Whales",
   marketing: "Marketing",
-  "va-tasks": "VA tasks",
+  "va-tasks": "Tasks",
   task_progress: "Task progress",
   task_templates: "Task templates",
   va_statistics: "VA statistics",

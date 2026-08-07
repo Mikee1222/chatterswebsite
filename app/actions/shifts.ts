@@ -254,7 +254,7 @@ export async function startVaTaskShiftAction() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
   if (!(await canManagePersonalVaTaskShift(user))) {
-    return { error: "You do not have permission to start VA task shifts" };
+    return { error: "You do not have permission to start task shifts" };
   }
 
   const vaId = user.airtableUserId ?? user.id;
@@ -264,7 +264,7 @@ export async function startVaTaskShiftAction() {
   ]);
   if (existing) {
     return {
-      error: "You already have an active VA tasks shift",
+      error: "You already have an active task shift",
       shift: {
         id: existing.id,
         start_time: existing.start_time ?? "",
@@ -322,7 +322,7 @@ export async function startVaTaskShiftAction() {
     action_type: "task_shift_started",
     entity_type: "shift",
     entity_id: preferred.id,
-    summary: `${user.fullName ?? user.email} started a VA tasks shift`,
+    summary: `${user.fullName ?? user.email} started a task shift`,
   }).catch((err) => console.error("[task-shift/start] activity log failed", err));
 
   void (async () => {
@@ -380,12 +380,12 @@ export async function pauseVaTaskShiftAction() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
   if (!(await canManagePersonalVaTaskShift(user))) {
-    return { error: "You do not have permission to pause VA task shifts" };
+    return { error: "You do not have permission to pause task shifts" };
   }
 
   const vaId = user.airtableUserId ?? user.id;
   const myActive = await getActiveVaTaskShift(vaId);
-  if (!myActive) return { error: "No active VA tasks shift found" };
+  if (!myActive) return { error: "No active task shift found" };
   if (myActive.status === "on_break" || Boolean(myActive.break_started_at?.trim())) {
     return { success: true, shift: serializeVaTaskShift(myActive) };
   }
@@ -414,7 +414,7 @@ export async function resumeVaTaskShiftAction() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
   if (!(await canManagePersonalVaTaskShift(user))) {
-    return { error: "You do not have permission to resume VA task shifts" };
+    return { error: "You do not have permission to resume task shifts" };
   }
 
   const vaId = user.airtableUserId ?? user.id;
@@ -445,7 +445,7 @@ export async function resumeVaTaskShiftAction() {
       .sort((a, b) => (b.start_time || "").localeCompare(a.start_time || ""))[0] ??
     preferredOpen ??
     (await getActiveVaTaskShift(vaId));
-  if (!myActive) return { error: "No active VA tasks shift found" };
+  if (!myActive) return { error: "No active task shift found" };
   if (myActive.status !== "on_break" && !myActive.break_started_at?.trim()) {
     return { success: true, shift: serializeVaTaskShift(myActive) };
   }
@@ -495,12 +495,12 @@ export async function endVaTaskShiftAction() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
   if (!(await canManagePersonalVaTaskShift(user))) {
-    return { error: "You do not have permission to end VA task shifts" };
+    return { error: "You do not have permission to end task shifts" };
   }
 
   const vaId = user.airtableUserId ?? user.id;
   const myActive = await getActiveVaTaskShift(vaId);
-  if (!myActive) return { error: "No active VA tasks shift found" };
+  if (!myActive) return { error: "No active task shift found" };
 
   const endTime = new Date();
   const endIso = endTime.toISOString();
@@ -541,7 +541,7 @@ export async function endVaTaskShiftAction() {
     action_type: "task_shift_ended",
     entity_type: "shift",
     entity_id: myActive.id,
-    summary: `${user.fullName ?? user.email} ended a VA tasks shift`,
+    summary: `${user.fullName ?? user.email} ended a task shift`,
   }).catch((err) => console.error("[task-shift/end] activity log failed", err));
 
   return { success: true };

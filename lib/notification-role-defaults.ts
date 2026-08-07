@@ -418,15 +418,15 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     ),
     ...pairedEvents(
       "task_shift_started",
-      "VA task shift session started",
-      "VA task shift session started (admin)",
+      "Task shift session started",
+      "Task shift session started (admin)",
       "Αποστέλλεται στον VA όταν ξεκινάει συνεδρία task shift",
       "Ενημερώνει τον admin όταν VA ξεκινάει συνεδρία task shift"
     ),
     ...pairedEvents(
       "task_shift_ended",
-      "VA task shift session ended",
-      "VA task shift session ended (admin)",
+      "Task shift session ended",
+      "Task shift session ended (admin)",
       "Αποστέλλεται στον VA όταν τελειώνει συνεδρία task shift",
       "Ενημερώνει τον admin όταν VA τελειώνει συνεδρία task shift"
     ),
@@ -439,8 +439,8 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     ),
     ...pairedEvents(
       "task_overdue",
-      "VA task past due date",
-      "VA task past due date (admin)",
+      "Task past due date",
+      "Task past due date (admin)",
       "Αποστέλλεται στον VA όταν task ξεπερνά την προθεσμία",
       "Ενημερώνει τον admin για task που έχει ξεπεράσει την προθεσμία"
     ),
@@ -451,8 +451,8 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Αποστέλλεται στον VA όταν tasks δεν έχουν ξεκινήσει εγκαίρως",
       "Ενημερώνει τον admin για tasks που δεν έχουν ξεκινήσει"
     ),
-    eventEntry("va_task_reminder", "Reminder before VA task due", "Υπενθύμιση στον VA για επερχόμενο task"),
-    eventEntry("va_task_assigned", "New VA task assigned", "Αποστέλλεται στον VA όταν του ανατίθεται νέο task"),
+    eventEntry("va_task_reminder", "Reminder before task due", "Υπενθύμιση στον VA για επερχόμενο task"),
+    eventEntry("va_task_assigned", "New task assigned", "Αποστέλλεται στον VA όταν του ανατίθεται νέο task"),
     ...pairedEvents(
       "model_content_scheduled",
       "Model schedules chatting assignment",
@@ -520,8 +520,8 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     ),
     ...pairedEvents(
       "all_phases_completed",
-      "All phases done for a VA task",
-      "All VA phases completed (admin)",
+      "All phases done for a task",
+      "All phases completed (admin)",
       "Αποστέλλεται στον VA όταν ολοκληρώνονται όλες οι φάσεις task",
       "Ενημερώνει τον admin για ολοκλήρωση όλων των φάσεων"
     ),

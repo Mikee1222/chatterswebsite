@@ -426,7 +426,7 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
         <div className="space-y-3">
           {report.by_va.length === 0 ? (
             <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center text-white/40">
-              No VA task or shift data for this range.
+              No task or shift data for this range.
             </p>
           ) : (
             report.by_va.map((row) => <VaDetailCard key={row.va_id} row={row} />)

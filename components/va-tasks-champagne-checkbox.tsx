@@ -11,10 +11,25 @@ type Props = {
   onClick?: () => void;
   title?: string;
   className?: string;
+  /** Accessible name; falls back to title. */
+  "aria-label"?: string;
 };
 
-/** Champagne-outline checkbox for VA task checklist items. */
-export function ChampagneCheckbox({ checked, disabled, onClick, title, className }: Props) {
+/**
+ * Champagne-outline checkbox for VA task checklist items.
+ *
+ * Hit target is a real 44×44 layout box (not a ::before expansion). Pseudo-element
+ * hit pads are clipped by overflow-hidden ancestors (va-card / phase inner), which
+ * left a 20×20 target that felt completely dead on mobile.
+ */
+export function ChampagneCheckbox({
+  checked,
+  disabled,
+  onClick,
+  title,
+  className,
+  "aria-label": ariaLabel,
+}: Props) {
   const reduceMotion = useReducedMotion();
   const [pulse, setPulse] = React.useState(false);
   const prevChecked = React.useRef(checked);
@@ -30,46 +45,59 @@ export function ChampagneCheckbox({ checked, disabled, onClick, title, className
   }, [checked, reduceMotion]);
 
   return (
-    <motion.button
+    <button
       type="button"
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (disabled) return;
+        onClick?.();
+      }}
       disabled={disabled}
       title={title}
-      animate={
-        reduceMotion
-          ? undefined
-          : pulse
-            ? { scale: [1, 1.18, 1] }
-            : { scale: 1 }
-      }
-      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      aria-label={ariaLabel ?? title ?? (checked ? "Completed" : "Mark complete")}
+      aria-pressed={checked}
       className={cn(
-        "relative mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2 transition-colors duration-150 motion-reduce:transition-none",
-        // ~44px touch target on mobile without changing the visual 20px box
-        "before:absolute before:-inset-3 before:content-[''] md:before:hidden",
-        "touch-manipulation",
-        checked
-          ? "border-[#D4AF8C] bg-[#D4AF8C]/15"
-          : disabled
-            ? "cursor-not-allowed border-white/8 bg-white/[0.03] opacity-40"
-            : "border-[#D4AF8C]/45 bg-transparent hover:border-[#D4AF8C] hover:bg-[#D4AF8C]/8",
+        // Real min 44px touch target in document flow (survives overflow:hidden parents)
+        "relative inline-flex h-11 w-11 shrink-0 items-center justify-center touch-manipulation",
+        "rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/45",
+        disabled ? "cursor-not-allowed" : "cursor-pointer",
         className,
       )}
     >
-      <AnimatePresence mode="wait">
-        {checked ? (
-          <motion.span
-            key="check"
-            initial={reduceMotion ? false : { scale: 0.4, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={reduceMotion ? undefined : { scale: 0.4, opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-            className="flex items-center justify-center"
-          >
-            <Check className="h-3 w-3 text-[#D4AF8C]" strokeWidth={3} aria-hidden />
-          </motion.span>
-        ) : null}
-      </AnimatePresence>
-    </motion.button>
+      <motion.span
+        aria-hidden
+        animate={
+          reduceMotion
+            ? undefined
+            : pulse
+              ? { scale: [1, 1.18, 1] }
+              : { scale: 1 }
+        }
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        className={cn(
+          "relative flex h-5 w-5 items-center justify-center rounded-[4px] border-2 transition-colors duration-150 motion-reduce:transition-none",
+          checked
+            ? "border-[#D4AF8C] bg-[#D4AF8C]/15"
+            : disabled
+              ? "border-white/8 bg-white/[0.03] opacity-40"
+              : "border-[#D4AF8C]/45 bg-transparent",
+        )}
+      >
+        <AnimatePresence mode="wait">
+          {checked ? (
+            <motion.span
+              key="check"
+              initial={reduceMotion ? false : { scale: 0.4, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={reduceMotion ? undefined : { scale: 0.4, opacity: 0 }}
+              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+              className="flex items-center justify-center"
+            >
+              <Check className="h-3 w-3 text-[#D4AF8C]" strokeWidth={3} aria-hidden />
+            </motion.span>
+          ) : null}
+        </AnimatePresence>
+      </motion.span>
+    </button>
   );
 }

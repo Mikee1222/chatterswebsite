@@ -596,7 +596,7 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-pink-400">Administration</p>
           <h1 className="mt-2 text-[36px] font-bold leading-tight tracking-tight text-white">Task Templates</h1>
-          <p className="mt-2 text-sm text-white/40">Reusable VA task structures with phases and checklist items</p>
+          <p className="mt-2 text-sm text-white/40">Reusable task structures with phases and checklist items</p>
         </div>
         <button
           type="button"
@@ -636,7 +636,7 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
             <ClipboardList className="h-7 w-7" aria-hidden />
           </div>
           <p className="mt-5 text-base font-semibold text-white/90">No templates yet</p>
-          <p className="mt-2 max-w-sm text-sm text-white/50">Create a template to speed up VA task assignment.</p>
+          <p className="mt-2 max-w-sm text-sm text-white/50">Create a template to speed up task assignment.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">

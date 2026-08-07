@@ -106,14 +106,14 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
   },
   {
     permission: "va-tasks:view",
-    title: "VA Tasks",
+    title: "Tasks",
     href: ROUTES.admin.vaTasks,
     icon: CheckSquare,
     description: PERMISSION_DESCRIPTIONS["va-tasks:view"],
   },
   {
     permission: "task_progress:view",
-    title: "VA Tasks",
+    title: "Tasks",
     href: ROUTES.admin.vaTasks,
     icon: CheckSquare,
     description: PERMISSION_DESCRIPTIONS["task_progress:view"],
