@@ -496,8 +496,8 @@ const adminNav: NavItem[] = [
   },
   {
     href: ROUTES.admin.winnerVideos,
-    label: "Research",
-    iconKey: "Trophy",
+    label: "Content Q/A",
+    iconKey: "ListTodo",
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
   },

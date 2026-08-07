@@ -450,10 +450,10 @@ export function AdminWinnerVideosClient({
         <div className="relative flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/70">
-              Content · Research
+              Content · Q/A
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white md:text-4xl">
-              Research Manage
+              Content Q/A
             </h1>
             <p className="mt-2 max-w-xl text-sm text-[#B8B4B8]/70">
               Approve or reject Fill Bunches finds and research submissions. Approving a bunch fill
