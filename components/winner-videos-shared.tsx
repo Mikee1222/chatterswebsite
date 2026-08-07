@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, LayoutGrid, List, RefreshCw } from "lucide-react";
+import { Check, Copy, ExternalLink, FolderOpen, LayoutGrid, List, RefreshCw, User } from "lucide-react";
+import Link from "next/link";
 import {
   FilterBar,
   FilterChip,
@@ -20,8 +21,14 @@ import {
 } from "@/lib/winner-videos-copy";
 import {
   WINNER_VIDEO_DATE_RANGE_OPTIONS,
+  isStalePending,
+  pendingAgeLabel,
+  researchDisplayVideoType,
+  researchSourceLabel,
+  researchSubmissionSource,
   winnerVideoContentTypeLabel,
   winnerVideoDateRangeLabel,
+  type ResearchDisplayVideoType,
   type WinnerVideoDateRange,
   type WinnerVideoViewMode,
 } from "@/lib/winner-videos-filters";
@@ -32,6 +39,8 @@ import {
   type WinnerVideoContentType,
   type WinnerVideoStatus,
 } from "@/lib/winner-videos-helpers";
+import { ROUTES } from "@/lib/routes";
+import { VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { formatDateTimeAthens } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
@@ -84,6 +93,65 @@ export function WinnerVideoContentTypeBadge({ contentType }: { contentType: Winn
     >
       {style.label}
     </span>
+  );
+}
+
+const DISPLAY_VIDEO_TYPE_STYLES: Record<ResearchDisplayVideoType, string> = {
+  Skit: "border-violet-500/35 bg-violet-500/12 text-violet-200",
+  UGC: "border-teal-500/35 bg-teal-500/12 text-teal-200",
+  Other: "border-sky-500/35 bg-sky-500/12 text-sky-200",
+};
+
+export function ResearchDisplayVideoTypeBadge({
+  video,
+  videoType,
+}: {
+  video?: WinnerVideoRecord;
+  videoType?: ResearchDisplayVideoType;
+}) {
+  const type = videoType ?? (video ? researchDisplayVideoType(video) : "Skit");
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-md border px-2 py-0.5 text-xs font-medium backdrop-blur-sm",
+        DISPLAY_VIDEO_TYPE_STYLES[type],
+      )}
+    >
+      {type}
+    </span>
+  );
+}
+
+export function ResearchSourceBadge({ video }: { video: WinnerVideoRecord }) {
+  const source = researchSubmissionSource(video);
+  const styles =
+    source === "bunch_fill"
+      ? "border-[#D4AF8C]/35 bg-[#D4AF8C]/12 text-[#D4AF8C]"
+      : source === "super_winner"
+        ? "border-amber-500/35 bg-amber-500/12 text-amber-200"
+        : source === "winner"
+          ? "border-emerald-500/35 bg-emerald-500/12 text-emerald-200"
+          : "border-white/15 bg-white/5 text-[#B8B4B8]/80";
+  return (
+    <span className={cn(VA_STATUS_BADGE, styles)}>{researchSourceLabel(source)}</span>
+  );
+}
+
+export function ResearchBunchLink({ video, className }: { video: WinnerVideoRecord; className?: string }) {
+  if (!video.bunch_id?.trim()) return null;
+  const name = video.bunch_name?.trim() || "Linked bunch";
+  return (
+    <Link
+      href={ROUTES.admin.winnerVideosHub}
+      title={`Open Winner Videos Hub · ${name}`}
+      className={cn(
+        "inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 px-2 py-1 text-[11px] font-medium text-[#D4AF8C] transition hover:border-[#D4AF8C]/50 hover:bg-[#D4AF8C]/15",
+        className,
+      )}
+    >
+      <FolderOpen className="h-3 w-3 shrink-0" aria-hidden />
+      <span className="truncate">{name}</span>
+    </Link>
   );
 }
 
@@ -394,24 +462,34 @@ export function WinnerVideoKanbanCard({
   busy?: boolean;
 }) {
   const notePreview = truncateNote(video.note);
+  const age = pendingAgeLabel(video);
+  const stale = isStalePending(video);
   const hasActions =
     (video.status === "Pending" && (onApprove || onReject)) ||
     (video.status === "Approved" && onMarkRecreated) ||
     (video.status === "Recreated" && onMarkPublished);
 
   return (
-    <FindingCard className="p-3">
+    <FindingCard
+      className={cn(
+        "p-3",
+        stale && "ring-1 ring-amber-500/30 shadow-[0_0_20px_-8px_rgba(245,158,11,0.35)]",
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1 space-y-1">
+        <div className="min-w-0 flex-1 space-y-1.5">
           <p className="text-sm font-semibold leading-snug text-white">
             {video.reference_model_name?.trim() || "—"}
           </p>
-          {video.content_type ? <WinnerVideoContentTypeBadge contentType={video.content_type} /> : null}
-          {video.bunch_id ? (
-            <span className="inline-flex items-center rounded-md border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#D4AF8C]">
-              Bunch: {video.bunch_name?.trim() || "linked"}
-            </span>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ResearchSourceBadge video={video} />
+            <ResearchDisplayVideoTypeBadge video={video} />
+          </div>
+          <ResearchBunchLink video={video} />
+          <p className="inline-flex items-center gap-1 text-[11px] text-[#B8B4B8]/50">
+            <User className="h-3 w-3 shrink-0" aria-hidden />
+            <span className="truncate">{video.submitted_by_name?.trim() || "—"}</span>
+          </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {onRefresh ? <WinnerVideoRefreshButton onClick={onRefresh} refreshing={refreshing} /> : null}
@@ -419,9 +497,31 @@ export function WinnerVideoKanbanCard({
         </div>
       </div>
       {notePreview ? <p className="mt-1.5 text-xs leading-relaxed text-[#B8B4B8]/60">{notePreview}</p> : null}
-      <p className="mt-2 text-[11px] text-[#B8B4B8]/45">
-        {video.submitted_at ? formatDateTimeAthens(video.submitted_at) : "—"}
-      </p>
+      {video.video_link ? (
+        <a
+          href={video.video_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-[11px] font-medium text-[#FF1493] hover:underline"
+        >
+          Open video <ExternalLink className="h-3 w-3" aria-hidden />
+        </a>
+      ) : null}
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[#B8B4B8]/45">
+        <span>{video.submitted_at ? formatDateTimeAthens(video.submitted_at) : "—"}</span>
+        {age ? (
+          <span
+            className={cn(
+              "rounded-md border px-1.5 py-0.5 tabular-nums",
+              stale
+                ? "border-amber-500/35 bg-amber-500/10 text-amber-200"
+                : "border-white/10 bg-white/5 text-[#B8B4B8]/55",
+            )}
+          >
+            {age}
+          </span>
+        ) : null}
+      </div>
       {hasActions ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {video.status === "Pending" && onApprove ? (
@@ -504,6 +604,14 @@ export function WinnerVideoKanbanBoard({
       Published: [],
     };
     for (const video of videos) map[video.status].push(video);
+    for (const status of WINNER_VIDEO_STATUSES) {
+      map[status].sort((a, b) => {
+        const am = a.submitted_at ? new Date(a.submitted_at).getTime() : 0;
+        const bm = b.submitted_at ? new Date(b.submitted_at).getTime() : 0;
+        if (status === "Pending") return am - bm;
+        return bm - am;
+      });
+    }
     return map;
   }, [videos]);
 

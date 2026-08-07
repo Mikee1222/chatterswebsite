@@ -1,10 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, Loader2, Trophy, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+  Check,
+  ExternalLink,
+  FolderOpen,
+  Loader2,
+  RefreshCw,
+  Search,
+  Trophy,
+  X,
+} from "lucide-react";
+import Link from "next/link";
 import {
   AttachmentLinks,
   DashPlaceholder,
+  FilterBar,
+  FilterChip,
   FindingCard,
   ManagerReviewSelect,
   ManagerReviewTextarea,
@@ -15,8 +28,6 @@ import {
   ReviewFormSection,
   ReviewLoadingState,
   ReviewModalShell,
-  ReviewPageEyebrow,
-  ReviewSectionHeader,
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
   VA_FILTER_INPUT,
@@ -25,19 +36,39 @@ import {
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
 import {
+  ResearchBunchLink,
+  ResearchDisplayVideoTypeBadge,
+  ResearchSourceBadge,
   WinnerVideoCopyButton,
-  WinnerVideoContentTypeBadge,
-  WinnerVideoFilters,
   WinnerVideoKanbanBoard,
   WinnerVideoRefreshButton,
   WinnerVideoSubmissionsToolbar,
   useWinnerVideoCopy,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
+import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
-import { appendWinnerVideoContentTypeParam, appendWinnerVideoDateParams, WINNER_VIDEO_CONTENT_TYPE_FILTER_OPTIONS, type WinnerVideoDateRange, type WinnerVideoViewMode } from "@/lib/winner-videos-filters";
-import { WINNER_VIDEO_STATUSES, type WinnerVideoContentType, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import {
+  RESEARCH_DISPLAY_VIDEO_TYPE_OPTIONS,
+  RESEARCH_SOURCE_FILTER_OPTIONS,
+  WINNER_VIDEO_DATE_RANGE_OPTIONS,
+  filterWinnerVideosClient,
+  groupWinnerVideosBySource,
+  groupWinnerVideosByStatus,
+  isStalePending,
+  pendingAgeLabel,
+  researchManageStats,
+  researchSourceLabel,
+  sortResearchManageVideos,
+  type ResearchDisplayVideoType,
+  type ResearchSubmissionSource,
+  type WinnerVideoDateRange,
+  type WinnerVideoViewMode,
+} from "@/lib/winner-videos-filters";
+import { WINNER_VIDEO_STATUSES, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import { ROUTES } from "@/lib/routes";
+import { VA_BTN_SECONDARY as VA_SECONDARY, VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
@@ -46,8 +77,35 @@ import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type AdminTab = "submissions" | "scripts";
+type StatusTab = WinnerVideoStatus | "all";
 
 export type CreativeOption = { id: string; name: string };
+
+type FilterDraft = {
+  statusTab: StatusTab;
+  videoType: ResearchDisplayVideoType | "";
+  source: ResearchSubmissionSource | "";
+  modelId: string;
+  bunchId: string;
+  submitterId: string;
+  search: string;
+  dateRange: WinnerVideoDateRange;
+  dateFrom: string;
+  dateTo: string;
+};
+
+const EMPTY_FILTERS: FilterDraft = {
+  statusTab: "Pending",
+  videoType: "",
+  source: "",
+  modelId: "",
+  bunchId: "",
+  submitterId: "",
+  search: "",
+  dateRange: "all",
+  dateFrom: "",
+  dateTo: "",
+};
 
 type Props = {
   initialVideos: WinnerVideoRecord[];
@@ -73,11 +131,8 @@ export function AdminWinnerVideosClient({
   const [viewMode, setViewMode] = React.useState<WinnerVideoViewMode>("list");
   const [adminTab, setAdminTab] = React.useState<AdminTab>("submissions");
 
-  const [filterStatus, setFilterStatus] = React.useState<WinnerVideoStatus | "">("");
-  const [filterContentType, setFilterContentType] = React.useState<WinnerVideoContentType | "">("");
-  const [filterDateRange, setFilterDateRange] = React.useState<WinnerVideoDateRange>("all");
-  const [filterDateFrom, setFilterDateFrom] = React.useState("");
-  const [filterDateTo, setFilterDateTo] = React.useState("");
+  const [draft, setDraft] = React.useState<FilterDraft>(EMPTY_FILTERS);
+  const [applied, setApplied] = React.useState<FilterDraft>(EMPTY_FILTERS);
 
   const [approveId, setApproveId] = React.useState<string | null>(null);
   const [rejectId, setRejectId] = React.useState<string | null>(null);
@@ -116,30 +171,63 @@ export function AdminWinnerVideosClient({
     [creatives, creativeId],
   );
 
-  const statusOptions = React.useMemo<CustomSelectOption[]>(
-    () => [{ value: "", label: "All statuses" }, ...WINNER_VIDEO_STATUSES.map((s) => ({ value: s, label: s }))],
-    [],
-  );
+  const filterModelOptions = React.useMemo<CustomSelectOption[]>(() => {
+    const fromVideos = new Map<string, string>();
+    for (const v of videos) {
+      const id = v.reference_model_id?.trim();
+      const name = v.reference_model_name?.trim();
+      if (id && name) fromVideos.set(id, name);
+      else if (name) fromVideos.set(`name:${name.toLowerCase()}`, name);
+    }
+    for (const m of gunzoModels) {
+      if (m.id && m.model_name) fromVideos.set(m.id, m.model_name);
+    }
+    return [
+      { value: "", label: "All models" },
+      ...[...fromVideos.entries()]
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+  }, [videos, gunzoModels]);
+
+  const filterBunchOptions = React.useMemo<CustomSelectOption[]>(() => {
+    const map = new Map<string, string>();
+    for (const v of videos) {
+      if (v.bunch_id?.trim()) map.set(v.bunch_id, v.bunch_name?.trim() || "Unnamed bunch");
+    }
+    return [
+      { value: "", label: "All bunches" },
+      ...[...map.entries()]
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+  }, [videos]);
+
+  const filterSubmitterOptions = React.useMemo<CustomSelectOption[]>(() => {
+    const map = new Map<string, string>();
+    for (const v of videos) {
+      if (v.submitted_by_id?.trim()) {
+        map.set(v.submitted_by_id, v.submitted_by_name?.trim() || "Unknown");
+      }
+    }
+    return [
+      { value: "", label: "All submitters" },
+      ...[...map.entries()]
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+  }, [videos]);
 
   async function reload() {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      if (filterStatus) params.set("status", filterStatus);
-      appendWinnerVideoContentTypeParam(params, filterContentType);
-      appendWinnerVideoDateParams(params, filterDateRange, filterDateFrom, filterDateTo);
-      const res = await fetch(`/api/admin/winner-videos?${params}`, { credentials: "include" });
+      const res = await fetch(`/api/admin/winner-videos`, { credentials: "include" });
       const data = (await res.json()) as { videos?: WinnerVideoRecord[] };
       if (res.ok) setVideos(data.videos ?? []);
     } finally {
       setLoading(false);
     }
   }
-
-  React.useEffect(() => {
-    void reload();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
 
   const reloadRef = React.useRef(reload);
   reloadRef.current = reload;
@@ -150,10 +238,64 @@ export function AdminWinnerVideosClient({
       void reloadRef.current();
     }, 60_000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSupabaseBackend, filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
+  }, [isSupabaseBackend]);
 
   useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
+
+  const stats = React.useMemo(() => researchManageStats(videos), [videos]);
+  const statusCounts = React.useMemo(() => groupWinnerVideosByStatus(videos), [videos]);
+
+  const filtered = React.useMemo(() => {
+    const modelOpt = filterModelOptions.find((o) => o.value === applied.modelId);
+    const modelId =
+      applied.modelId.startsWith("name:") ? "" : applied.modelId;
+    const modelName = applied.modelId.startsWith("name:")
+      ? (modelOpt?.label ?? "")
+      : "";
+
+    return sortResearchManageVideos(
+      filterWinnerVideosClient(videos, {
+        status: applied.statusTab === "all" ? "" : applied.statusTab,
+        videoType: applied.videoType,
+        source: applied.source,
+        modelId,
+        modelName,
+        bunchId: applied.bunchId,
+        submitterId: applied.submitterId,
+        search: applied.search,
+        dateRange: applied.dateRange,
+        dateFrom: applied.dateFrom,
+        dateTo: applied.dateTo,
+      }),
+    );
+  }, [videos, applied, filterModelOptions]);
+
+  const groupedBySource = React.useMemo(() => groupWinnerVideosBySource(filtered), [filtered]);
+
+  const hasActiveFilters = React.useMemo(() => {
+    return Boolean(
+      applied.videoType ||
+        applied.source ||
+        applied.modelId ||
+        applied.bunchId ||
+        applied.submitterId ||
+        applied.search.trim() ||
+        applied.dateRange !== "all",
+    );
+  }, [applied]);
+
+  function applyFilters() {
+    setApplied({ ...draft });
+  }
+
+  function clearFilters() {
+    setDraft(EMPTY_FILTERS);
+    setApplied(EMPTY_FILTERS);
+  }
+
+  function patchDraft<K extends keyof FilterDraft>(key: K, value: FilterDraft[K]) {
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
 
   async function patchVideo(id: string, body: Record<string, unknown>) {
     setPendingId(id);
@@ -176,25 +318,92 @@ export function AdminWinnerVideosClient({
     }
   }
 
+  function openApprove(video: WinnerVideoRecord) {
+    setApproveId(video.id);
+    const match = gunzoModels.find(
+      (m) => m.id === video.reference_model_id || m.model_name === video.reference_model_name,
+    );
+    setCreatorId(match?.id ?? "");
+    setCreativeId("");
+    setDeadline("");
+  }
+
+  const approveTarget = videos.find((v) => v.id === approveId) ?? null;
+
   return (
-    <div className="space-y-8">
-      <div>
-        <ReviewPageEyebrow>Content</ReviewPageEyebrow>
-        <h1 className="mt-1 text-2xl font-bold text-white">Research</h1>
-        <p className="mt-1 text-sm text-[#B8B4B8]/60">
-          Review VA research submissions. Step-type analytics dashboards are planned as a future task.
-        </p>
+    <div className="space-y-6">
+      {/* Hero */}
+      <div className="relative overflow-hidden rounded-3xl border border-[#D4AF8C]/15 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8 md:px-8">
+        <div
+          className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-40 blur-3xl"
+          style={{ background: "radial-gradient(circle, rgba(255,20,147,0.35), transparent 70%)" }}
+        />
+        <div
+          className="pointer-events-none absolute -bottom-16 left-1/3 h-48 w-48 rounded-full opacity-30 blur-3xl"
+          style={{ background: "radial-gradient(circle, rgba(212,175,140,0.25), transparent 70%)" }}
+        />
+        <div className="relative flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/70">
+              Content · Research
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white md:text-4xl">
+              Research Manage
+            </h1>
+            <p className="mt-2 max-w-xl text-sm text-[#B8B4B8]/70">
+              Approve or reject Fill Bunches finds and research submissions. Approving a bunch fill
+              spawns a recreate slot into that bunch.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void reload()}
+            disabled={loading}
+            className={cn(VA_SECONDARY, "inline-flex items-center gap-2 px-4 py-2.5 text-sm")}
+          >
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            Refresh
+          </button>
+        </div>
+
+        <div className="relative mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <LuxuryStatCard
+            label="Pending"
+            value={<CountUp value={stats.pending} format={(n) => String(Math.round(n))} />}
+            accent="amber"
+            glow
+            tooltip="Submissions awaiting approve or reject. Oldest pending appear first."
+          />
+          <LuxuryStatCard
+            label="Bunch fills pending"
+            value={<CountUp value={stats.pendingBunch} format={(n) => String(Math.round(n))} />}
+            accent="champagne"
+            tooltip="Fill Bunches researcher finds linked to a video bunch."
+          />
+          <LuxuryStatCard
+            label="Approved today"
+            value={<CountUp value={stats.approvedToday} format={(n) => String(Math.round(n))} />}
+            accent="emerald"
+            tooltip="Approved (or further) reviews completed today (Athens day)."
+          />
+          <LuxuryStatCard
+            label="Rejected today"
+            value={<CountUp value={stats.rejectedToday} format={(n) => String(Math.round(n))} />}
+            accent="pink"
+            tooltip="Rejected reviews completed today."
+          />
+        </div>
       </div>
 
       {canManageScripts ? (
         <div
-          className="inline-flex rounded-lg border border-white/[0.08] bg-[#0D0B0D]/70 p-0.5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]"
+          className="inline-flex rounded-2xl border border-white/[0.08] bg-[#0D0B0D]/70 p-1 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]"
           role="tablist"
           aria-label="Research views"
         >
           {(
             [
-              { id: "submissions" as const, label: "All submissions" },
+              { id: "submissions" as const, label: "Submissions" },
               { id: "scripts" as const, label: "Scripts pending review" },
             ] as const
           ).map(({ id, label }) => {
@@ -207,13 +416,18 @@ export function AdminWinnerVideosClient({
                 aria-selected={active}
                 onClick={() => setAdminTab(id)}
                 className={cn(
-                  "rounded-md px-4 py-2 text-sm font-medium transition duration-200 motion-reduce:transition-none",
-                  active
-                    ? "border border-[#FF1493]/35 bg-[#FF1493]/12 text-[#FFB3D9] shadow-[0_0_14px_-4px_rgba(255,20,147,0.35)]"
-                    : "border border-transparent text-[#B8B4B8]/60 hover:text-[#B8B4B8]/85",
+                  "relative rounded-xl px-4 py-2.5 text-sm font-medium transition",
+                  active ? "text-white" : "text-[#B8B4B8]/55 hover:text-[#B8B4B8]",
                 )}
               >
-                {label}
+                {active ? (
+                  <motion.span
+                    layoutId="research-manage-tab"
+                    className="absolute inset-0 rounded-xl border border-[#FF1493]/25 bg-gradient-to-br from-[#FF1493]/25 to-[#D4AF8C]/10"
+                    transition={{ type: "spring", damping: 28, stiffness: 380 }}
+                  />
+                ) : null}
+                <span className="relative">{label}</span>
               </button>
             );
           })}
@@ -224,53 +438,285 @@ export function AdminWinnerVideosClient({
         <AdminCreativeScriptsReview initialScripts={initialPendingScripts} />
       ) : (
         <>
-      <WinnerVideoFilters
-        filterStatus={filterStatus}
-        onFilterStatusChange={setFilterStatus}
-        statusOptions={statusOptions}
-        filterContentType={filterContentType}
-        onFilterContentTypeChange={setFilterContentType}
-        contentTypeOptions={WINNER_VIDEO_CONTENT_TYPE_FILTER_OPTIONS}
-        filterDateRange={filterDateRange}
-        onFilterDateRangeChange={setFilterDateRange}
-        filterDateFrom={filterDateFrom}
-        onFilterDateFromChange={setFilterDateFrom}
-        filterDateTo={filterDateTo}
-        onFilterDateToChange={setFilterDateTo}
-      />
+          {/* Filters */}
+          <FilterBar className={cn(VA_CARD, VA_CARD_GLOW)}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/70">
+                  Filters
+                </p>
+                <p className="mt-0.5 text-xs text-[#B8B4B8]/45">
+                  Narrow by model, bunch, submitter, tier, type, or date — then Apply.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={clearFilters} className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-xs")}>
+                  Clear
+                </button>
+                <button type="button" onClick={applyFilters} className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-xs")}>
+                  Apply filters
+                </button>
+              </div>
+            </div>
 
-      {loading ? (
-        <ReviewLoadingState />
-      ) : videos.length === 0 ? (
-        <ReviewEmptyState icon={Trophy} title="No research finds" description="Submissions from VAs will appear here." />
-      ) : (
-        <div className="space-y-4">
-          <ReviewSectionHeader
-            action={
-              <WinnerVideoSubmissionsToolbar
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                videos={videos}
-                addToast={addToast}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1">
+                <ReviewFieldLabel>Search</ReviewFieldLabel>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B8B4B8]/40" />
+                  <input
+                    value={draft.search}
+                    onChange={(e) => patchDraft("search", e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") applyFilters();
+                    }}
+                    placeholder="Description or submitter…"
+                    className={cn(VA_FILTER_INPUT, "w-full pl-9")}
+                    aria-label="Search description or submitter"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <ReviewFieldLabel>Model / creator</ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={draft.modelId}
+                  onChange={(v) => patchDraft("modelId", v)}
+                  options={filterModelOptions}
+                  searchable
+                  searchPlaceholder="Search models…"
+                  aria-label="Filter by model"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <ReviewFieldLabel>Bunch</ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={draft.bunchId}
+                  onChange={(v) => patchDraft("bunchId", v)}
+                  options={filterBunchOptions}
+                  searchable
+                  searchPlaceholder="Search bunches…"
+                  aria-label="Filter by bunch"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <ReviewFieldLabel>Submitter</ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={draft.submitterId}
+                  onChange={(v) => patchDraft("submitterId", v)}
+                  options={filterSubmitterOptions}
+                  searchable
+                  searchPlaceholder="Search submitters…"
+                  aria-label="Filter by submitter"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <ReviewFieldLabel>Tier / source</ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={draft.source}
+                  onChange={(v) => patchDraft("source", v as ResearchSubmissionSource | "")}
+                  options={RESEARCH_SOURCE_FILTER_OPTIONS}
+                  aria-label="Filter by tier"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <ReviewFieldLabel>Video type</ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={draft.videoType}
+                  onChange={(v) => patchDraft("videoType", v as ResearchDisplayVideoType | "")}
+                  options={RESEARCH_DISPLAY_VIDEO_TYPE_OPTIONS}
+                  aria-label="Filter by video type"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <ReviewFieldLabel>Date range</ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={draft.dateRange}
+                  onChange={(v) => patchDraft("dateRange", v as WinnerVideoDateRange)}
+                  options={WINNER_VIDEO_DATE_RANGE_OPTIONS}
+                  aria-label="Date range"
+                />
+              </div>
+            </div>
+
+            {draft.dateRange === "custom" ? (
+              <InflowwCustomDateRange
+                startYmd={draft.dateFrom}
+                endYmd={draft.dateTo}
+                loading={loading}
+                onChange={(start, end) => {
+                  setDraft((prev) => ({ ...prev, dateFrom: start, dateTo: end }));
+                }}
+                onApply={(start, end) => {
+                  setDraft((prev) => ({ ...prev, dateFrom: start, dateTo: end, dateRange: "custom" }));
+                  setApplied((prev) => ({ ...prev, dateFrom: start, dateTo: end, dateRange: "custom" }));
+                }}
               />
-            }
-          >
-            Submissions
-          </ReviewSectionHeader>
-          {viewMode === "board" ? (
+            ) : null}
+
+            {hasActiveFilters ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {applied.search.trim() ? (
+                  <FilterChip
+                    label={`Search: ${applied.search.trim()}`}
+                    onRemove={() => {
+                      patchDraft("search", "");
+                      setApplied((p) => ({ ...p, search: "" }));
+                    }}
+                  />
+                ) : null}
+                {applied.modelId ? (
+                  <FilterChip
+                    label={`Model: ${filterModelOptions.find((o) => o.value === applied.modelId)?.label ?? applied.modelId}`}
+                    onRemove={() => {
+                      patchDraft("modelId", "");
+                      setApplied((p) => ({ ...p, modelId: "" }));
+                    }}
+                  />
+                ) : null}
+                {applied.bunchId ? (
+                  <FilterChip
+                    label={`Bunch: ${filterBunchOptions.find((o) => o.value === applied.bunchId)?.label ?? applied.bunchId}`}
+                    onRemove={() => {
+                      patchDraft("bunchId", "");
+                      setApplied((p) => ({ ...p, bunchId: "" }));
+                    }}
+                  />
+                ) : null}
+                {applied.submitterId ? (
+                  <FilterChip
+                    label={`Submitter: ${filterSubmitterOptions.find((o) => o.value === applied.submitterId)?.label ?? applied.submitterId}`}
+                    onRemove={() => {
+                      patchDraft("submitterId", "");
+                      setApplied((p) => ({ ...p, submitterId: "" }));
+                    }}
+                  />
+                ) : null}
+                {applied.source ? (
+                  <FilterChip
+                    label={`Tier: ${researchSourceLabel(applied.source)}`}
+                    onRemove={() => {
+                      patchDraft("source", "");
+                      setApplied((p) => ({ ...p, source: "" }));
+                    }}
+                  />
+                ) : null}
+                {applied.videoType ? (
+                  <FilterChip
+                    label={`Type: ${applied.videoType}`}
+                    onRemove={() => {
+                      patchDraft("videoType", "");
+                      setApplied((p) => ({ ...p, videoType: "" }));
+                    }}
+                  />
+                ) : null}
+                {applied.dateRange !== "all" ? (
+                  <FilterChip
+                    label={
+                      applied.dateRange === "custom" && (applied.dateFrom || applied.dateTo)
+                        ? `${applied.dateFrom || "…"} → ${applied.dateTo || "…"}`
+                        : applied.dateRange === "7d"
+                          ? "Last 7 days"
+                          : "Last 30 days"
+                    }
+                    onRemove={() => {
+                      setDraft((p) => ({ ...p, dateRange: "all", dateFrom: "", dateTo: "" }));
+                      setApplied((p) => ({ ...p, dateRange: "all", dateFrom: "", dateTo: "" }));
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+          </FilterBar>
+
+          {/* Status tabs + toolbar */}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div
+              className="flex flex-wrap gap-1 rounded-2xl border border-white/[0.06] bg-[#0D0B0D]/80 p-1.5"
+              role="tablist"
+              aria-label="Status"
+            >
+              {(
+                [
+                  { id: "all" as const, label: "All", count: videos.length },
+                  ...WINNER_VIDEO_STATUSES.map((s) => ({
+                    id: s as StatusTab,
+                    label: s,
+                    count: statusCounts[s].length,
+                  })),
+                ] as const
+              ).map((tab) => {
+                const active = applied.statusTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      patchDraft("statusTab", tab.id);
+                      setApplied((p) => ({ ...p, statusTab: tab.id }));
+                    }}
+                    className={cn(
+                      "relative inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium transition sm:text-sm",
+                      active ? "text-white" : "text-[#B8B4B8]/55 hover:text-[#B8B4B8]",
+                    )}
+                  >
+                    {active ? (
+                      <motion.span
+                        layoutId="research-status-tab"
+                        className="absolute inset-0 rounded-xl border border-[#FF1493]/25 bg-gradient-to-br from-[#FF1493]/20 to-[#D4AF8C]/8"
+                        transition={{ type: "spring", damping: 28, stiffness: 380 }}
+                      />
+                    ) : null}
+                    <span className="relative">{tab.label}</span>
+                    <span
+                      className={cn(
+                        "relative rounded-md px-1.5 py-0.5 text-[10px] tabular-nums",
+                        active ? "bg-white/10 text-white/80" : "bg-white/5 text-[#B8B4B8]/45",
+                      )}
+                    >
+                      {tab.count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <WinnerVideoSubmissionsToolbar
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              videos={filtered}
+              addToast={addToast}
+            />
+          </div>
+
+          {loading && videos.length === 0 ? (
+            <ReviewLoadingState />
+          ) : filtered.length === 0 ? (
+            <ReviewEmptyState
+              icon={Trophy}
+              title="No matching submissions"
+              description={
+                hasActiveFilters || applied.statusTab !== "all"
+                  ? "Try clearing filters or switching status tabs."
+                  : "Fill Bunches and research submissions will appear here."
+              }
+            />
+          ) : viewMode === "board" ? (
             <WinnerVideoKanbanBoard
-              videos={videos}
+              videos={filtered}
               onCopy={copySubmission}
               addToast={addToast}
               onRefresh={() => void reload()}
               refreshing={loading}
               busyId={pendingId}
-              onApprove={(video) => {
-                setApproveId(video.id);
-                setCreatorId("");
-                setCreativeId("");
-                setDeadline("");
-              }}
+              onApprove={openApprove}
               onReject={(video) => {
                 setRejectId(video.id);
                 setRejectReason("");
@@ -282,304 +728,442 @@ export function AdminWinnerVideosClient({
               onMarkPublished={(video) => void patchVideo(video.id, { action: "status", status: "Published" })}
             />
           ) : (
-            <div className="space-y-3">
-            {videos.map((v) => (
-              <FindingCard key={v.id} pending={v.status === "Pending" && pendingId === v.id}>
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <WinnerVideoStatusBadge status={v.status} />
-                      {v.content_type ? <WinnerVideoContentTypeBadge contentType={v.content_type} /> : null}
-                      {v.bunch_id ? (
-                        <span className="inline-flex items-center rounded-md border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 px-2 py-0.5 text-[10px] font-medium text-[#D4AF8C]">
-                          Bunch: {v.bunch_name?.trim() || "linked"}
-                        </span>
-                      ) : null}
-                      <span className="text-xs text-[#B8B4B8]/45">
-                        {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : <DashPlaceholder />}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`${applied.statusTab}-${applied.source}-${filtered.length}`}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-8"
+              >
+                {groupedBySource.bunchFills.length > 0 ? (
+                  <section className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">
+                        Researcher bunch-fills
+                      </h2>
+                      <span className="rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-2 py-0.5 text-[10px] tabular-nums text-[#D4AF8C]">
+                        {groupedBySource.bunchFills.length}
                       </span>
-                      <WinnerVideoCopyButton onClick={() => void copySubmission(v)} />
-                      <WinnerVideoRefreshButton onClick={() => void reload()} refreshing={loading} />
+                      <div className="h-px flex-1 bg-gradient-to-r from-[#D4AF8C]/25 to-transparent" />
                     </div>
-                    <p className="text-lg font-semibold text-white">{displayOrDash(v.reference_model_name)}</p>
-                    <p className="text-xs text-[#B8B4B8]/55">By {displayOrDash(v.submitted_by_name)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {v.status === "Pending" ? (
-                      <>
-                        <QuickActionMarkFixed
-                          disabled={pendingId === v.id}
-                          onClick={() => {
-                            setApproveId(v.id);
-                            setCreatorId("");
-                            setCreativeId("");
-                            setDeadline("");
-                          }}
-                        >
-                          Approve
-                        </QuickActionMarkFixed>
-                        <QuickActionEscalate
-                          disabled={pendingId === v.id}
-                          onClick={() => {
+                    <div className="space-y-3">
+                      {groupedBySource.bunchFills.map((v) => (
+                        <ResearchSubmissionCard
+                          key={v.id}
+                          video={v}
+                          pendingId={pendingId}
+                          loading={loading}
+                          onCopy={() => void copySubmission(v)}
+                          onRefresh={() => void reload()}
+                          onApprove={() => openApprove(v)}
+                          onReject={() => {
                             setRejectId(v.id);
                             setRejectReason("");
                           }}
-                        >
-                          <X className="h-3.5 w-3.5" aria-hidden />
-                          Reject
-                        </QuickActionEscalate>
-                      </>
-                    ) : null}
-                    {v.status === "Approved" ? (
-                      <button
-                        type="button"
-                        disabled={pendingId === v.id}
-                        onClick={() => {
-                          setRecreatedId(v.id);
-                          setRecreationLink(v.recreation_link ?? "");
-                        }}
-                        className={VA_BTN_SECONDARY}
-                      >
-                        Mark recreated
-                      </button>
-                    ) : null}
-                    {v.status === "Recreated" ? (
-                      <button
-                        type="button"
-                        disabled={pendingId === v.id}
-                        onClick={() => void patchVideo(v.id, { action: "status", status: "Published" })}
-                        className={VA_BTN_PRIMARY}
-                      >
-                        Mark published
-                      </button>
-                    ) : null}
+                          onMarkRecreated={() => {
+                            setRecreatedId(v.id);
+                            setRecreationLink(v.recreation_link ?? "");
+                          }}
+                          onMarkPublished={() => void patchVideo(v.id, { action: "status", status: "Published" })}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+
+                {groupedBySource.other.length > 0 ? (
+                  <section className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-emerald-300/80">
+                        Winner / research finds
+                      </h2>
+                      <span className="rounded-md border border-emerald-500/25 bg-emerald-500/10 px-2 py-0.5 text-[10px] tabular-nums text-emerald-200">
+                        {groupedBySource.other.length}
+                      </span>
+                      <div className="h-px flex-1 bg-gradient-to-r from-emerald-500/25 to-transparent" />
+                    </div>
+                    <div className="space-y-3">
+                      {groupedBySource.other.map((v) => (
+                        <ResearchSubmissionCard
+                          key={v.id}
+                          video={v}
+                          pendingId={pendingId}
+                          loading={loading}
+                          onCopy={() => void copySubmission(v)}
+                          onRefresh={() => void reload()}
+                          onApprove={() => openApprove(v)}
+                          onReject={() => {
+                            setRejectId(v.id);
+                            setRejectReason("");
+                          }}
+                          onMarkRecreated={() => {
+                            setRecreatedId(v.id);
+                            setRecreationLink(v.recreation_link ?? "");
+                          }}
+                          onMarkPublished={() => void patchVideo(v.id, { action: "status", status: "Published" })}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+              </motion.div>
+            </AnimatePresence>
+          )}
+
+          {approveId ? (
+            <ReviewModalShell title="Approve research find" onClose={() => setApproveId(null)}>
+              <p className="mb-4 text-sm text-[#B8B4B8]/60">
+                {approveTarget?.bunch_id
+                  ? `Approving spawns a recreate slot into “${approveTarget.bunch_name || "the linked bunch"}” and assigns a Creative for the script.`
+                  : "Pick the Gunzo-team creator who will recreate this video and assign a Creative to write the script."}
+              </p>
+              {approveTarget?.bunch_id ? (
+                <div className="mb-4 flex flex-wrap items-center gap-2">
+                  <ResearchBunchLink video={approveTarget} />
+                  <Link
+                    href={ROUTES.admin.winnerVideosHub}
+                    className="inline-flex items-center gap-1 text-xs text-[#FF1493] hover:underline"
+                  >
+                    Open Winner Videos Hub <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
+              ) : null}
+              <ReviewFormSection title="Assignment" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
+                <div className="space-y-4">
+                  <div>
+                    <ReviewFieldLabel>Assigned creator</ReviewFieldLabel>
+                    <ManagerReviewSelect
+                      value={creatorId}
+                      onChange={setCreatorId}
+                      options={modelOptions}
+                      placeholder="Select Gunzo-team creator…"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <ReviewFieldLabel>Assign to Creative</ReviewFieldLabel>
+                    {creatives.length === 0 ? (
+                      <p className="mt-1 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                        No Creatives available — grant creative_scripts:submit to a user first.
+                      </p>
+                    ) : (
+                      <ManagerReviewSelect
+                        value={creativeId}
+                        onChange={setCreativeId}
+                        options={creativeOptions}
+                        placeholder="Select Creative…"
+                        searchable
+                        searchPlaceholder="Search Creatives…"
+                        required
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
+                    <input
+                      type="date"
+                      value={deadline}
+                      onChange={(e) => setDeadline(e.target.value)}
+                      className={VA_FILTER_INPUT}
+                      required
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button type="button" className={VA_BTN_SECONDARY} onClick={() => setApproveId(null)}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        !creatorId ||
+                        !selectedCreatorName.trim() ||
+                        !creativeId ||
+                        !selectedCreativeName.trim() ||
+                        !deadline
+                      }
+                      className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
+                      onClick={() => {
+                        if (
+                          !approveId ||
+                          !creatorId ||
+                          !selectedCreatorName.trim() ||
+                          !creativeId ||
+                          !selectedCreativeName.trim() ||
+                          !deadline
+                        ) {
+                          return;
+                        }
+                        void (async () => {
+                          const ok = await patchVideo(approveId, {
+                            action: "approve",
+                            assigned_creator_name: selectedCreatorName.trim(),
+                            assigned_creative_id: creativeId,
+                            assigned_creative_name: selectedCreativeName.trim(),
+                            recreation_deadline: deadline,
+                          });
+                          if (ok) setApproveId(null);
+                        })();
+                      }}
+                    >
+                      Approve
+                    </button>
                   </div>
                 </div>
+              </ReviewFormSection>
+            </ReviewModalShell>
+          ) : null}
 
-                {v.video_link ? (
-                  <a
-                    href={v.video_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-3 inline-flex items-center gap-1 text-sm text-[#FF1493] hover:underline"
-                  >
-                    Reference video <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                  </a>
-                ) : null}
-                {v.note?.trim() ? <p className="mt-2 text-sm text-[#B8B4B8]/70">{v.note}</p> : null}
-                {v.views_at_submission != null ? (
-                  <p className="mt-1 text-xs text-[#B8B4B8]/50">Views: {v.views_at_submission.toLocaleString()}</p>
-                ) : null}
-                {v.rejection_reason?.trim() ? (
-                  <p className="mt-3 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-sm text-red-200">
-                    {v.rejection_reason}
-                  </p>
-                ) : null}
-                {v.assigned_creator_name ? (
-                  <p className="mt-2 text-xs text-[#D4AF8C]/80">
-                    Creator: {v.assigned_creator_name}
-                    {v.recreation_deadline ? ` · deadline ${v.recreation_deadline}` : ""}
-                  </p>
-                ) : null}
-                {v.assigned_creative_name ? (
-                  <p className="mt-1 text-xs text-[#D4AF8C]/80">Assigned to: {v.assigned_creative_name}</p>
-                ) : null}
-                {v.recreation_link?.trim() ? (
-                  <a
-                    href={v.recreation_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-xs text-[#D4AF8C] hover:text-[#FF1493] hover:underline"
-                  >
-                    Recreation link <ExternalLink className="h-3 w-3" aria-hidden />
-                  </a>
-                ) : null}
-                {v.screenshot.length > 0 ? (
-                  <div className="mt-3">
-                    <AttachmentLinks attachments={v.screenshot} />
-                  </div>
-                ) : null}
-                {pendingId === v.id ? (
-                  <p className="mt-2 flex items-center gap-2 text-xs text-[#B8B4B8]/50">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Saving…
-                  </p>
-                ) : null}
-              </FindingCard>
-            ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {approveId ? (
-        <ReviewModalShell title="Approve research find" onClose={() => setApproveId(null)}>
-          <p className="mb-4 text-sm text-[#B8B4B8]/60">
-            Pick the Gunzo-team creator who will recreate this video and assign a Creative to write the script.
-          </p>
-          <ReviewFormSection title="Assignment" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
-            <div className="space-y-4">
-              <div>
-                <ReviewFieldLabel>Assigned creator</ReviewFieldLabel>
-                <ManagerReviewSelect
-                  value={creatorId}
-                  onChange={setCreatorId}
-                  options={modelOptions}
-                  placeholder="Select Gunzo-team creator…"
-                  required
-                />
-              </div>
-              <div>
-                <ReviewFieldLabel>Assign to Creative</ReviewFieldLabel>
-                {creatives.length === 0 ? (
-                  <p className="mt-1 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
-                    No Creatives available — grant creative_scripts:submit to a user first.
-                  </p>
-                ) : (
-                  <ManagerReviewSelect
-                    value={creativeId}
-                    onChange={setCreativeId}
-                    options={creativeOptions}
-                    placeholder="Select Creative…"
-                    searchable
-                    searchPlaceholder="Search Creatives…"
-                    required
+          {rejectId ? (
+            <ReviewModalShell title="Reject research find" onClose={() => setRejectId(null)}>
+              <p className="mb-4 text-sm text-[#B8B4B8]/60">A rejection reason is required — the submitter will be notified.</p>
+              <div className="space-y-4">
+                <div>
+                  <ReviewFieldLabel>Rejection reason</ReviewFieldLabel>
+                  <ManagerReviewTextarea
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    rows={4}
+                    placeholder="Explain what needs to change…"
+                    className="focus:border-red-500/55 focus:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35),0_0_0_1px_rgba(239,68,68,0.25),0_0_20px_-6px_rgba(239,68,68,0.35)]"
                   />
-                )}
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" className={VA_BTN_SECONDARY} onClick={() => setRejectId(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(VA_BTN_PRIMARY, "border-red-500/40 bg-red-500/20 text-red-100")}
+                    onClick={() => {
+                      if (!rejectId) return;
+                      void (async () => {
+                        const ok = await patchVideo(rejectId, {
+                          action: "reject",
+                          rejection_reason: rejectReason,
+                        });
+                        if (ok) setRejectId(null);
+                      })();
+                    }}
+                  >
+                    Reject
+                  </button>
+                </div>
               </div>
-              <div>
-                <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
-                <input
-                  type="date"
-                  value={deadline}
-                  onChange={(e) => setDeadline(e.target.value)}
-                  className={VA_FILTER_INPUT}
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" className={VA_BTN_SECONDARY} onClick={() => setApproveId(null)}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={
-                    !creatorId ||
-                    !selectedCreatorName.trim() ||
-                    !creativeId ||
-                    !selectedCreativeName.trim() ||
-                    !deadline
-                  }
-                  className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
-                  onClick={() => {
-                    if (
-                      !approveId ||
-                      !creatorId ||
-                      !selectedCreatorName.trim() ||
-                      !creativeId ||
-                      !selectedCreativeName.trim() ||
-                      !deadline
-                    ) {
-                      return;
-                    }
-                    void (async () => {
-                      const ok = await patchVideo(approveId, {
-                        action: "approve",
-                        assigned_creator_name: selectedCreatorName.trim(),
-                        assigned_creative_id: creativeId,
-                        assigned_creative_name: selectedCreativeName.trim(),
-                        recreation_deadline: deadline,
-                      });
-                      if (ok) setApproveId(null);
-                    })();
-                  }}
-                >
-                  Approve
-                </button>
-              </div>
-            </div>
-          </ReviewFormSection>
-        </ReviewModalShell>
-      ) : null}
+            </ReviewModalShell>
+          ) : null}
 
-      {rejectId ? (
-        <ReviewModalShell title="Reject research find" onClose={() => setRejectId(null)}>
-          <p className="mb-4 text-sm text-[#B8B4B8]/60">A rejection reason is required — the submitter will be notified.</p>
-          <div className="space-y-4">
-            <div>
-              <ReviewFieldLabel>Rejection reason</ReviewFieldLabel>
-              <ManagerReviewTextarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                rows={4}
-                placeholder="Explain what needs to change…"
-                className="focus:border-red-500/55 focus:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35),0_0_0_1px_rgba(239,68,68,0.25),0_0_20px_-6px_rgba(239,68,68,0.35)]"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className={VA_BTN_SECONDARY} onClick={() => setRejectId(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={cn(VA_BTN_PRIMARY, "border-red-500/40 bg-red-500/20 text-red-100")}
-                onClick={() => {
-                  if (!rejectId) return;
-                  void (async () => {
-                    const ok = await patchVideo(rejectId, {
-                      action: "reject",
-                      rejection_reason: rejectReason,
-                    });
-                    if (ok) setRejectId(null);
-                  })();
-                }}
-              >
-                Reject
-              </button>
-            </div>
-          </div>
-        </ReviewModalShell>
-      ) : null}
-
-      {recreatedId ? (
-        <ReviewModalShell title="Mark as recreated" onClose={() => setRecreatedId(null)}>
-          <p className="mb-4 text-sm text-[#B8B4B8]/60">Optional link to the recreated video.</p>
-          <div className="space-y-4">
-            <div>
-              <ReviewFieldLabel>Recreation link (optional)</ReviewFieldLabel>
-              <input
-                value={recreationLink}
-                onChange={(e) => setRecreationLink(e.target.value)}
-                className={VA_FILTER_INPUT}
-                placeholder="https://…"
-              />
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" className={VA_BTN_SECONDARY} onClick={() => setRecreatedId(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className={VA_BTN_PRIMARY}
-                onClick={() => {
-                  if (!recreatedId) return;
-                  void (async () => {
-                    const ok = await patchVideo(recreatedId, {
-                      action: "status",
-                      status: "Recreated",
-                      recreation_link: recreationLink,
-                    });
-                    if (ok) setRecreatedId(null);
-                  })();
-                }}
-              >
-                Mark recreated
-              </button>
-            </div>
-          </div>
-        </ReviewModalShell>
-      ) : null}
+          {recreatedId ? (
+            <ReviewModalShell title="Mark as recreated" onClose={() => setRecreatedId(null)}>
+              <p className="mb-4 text-sm text-[#B8B4B8]/60">Optional link to the recreated video.</p>
+              <div className="space-y-4">
+                <div>
+                  <ReviewFieldLabel>Recreation link (optional)</ReviewFieldLabel>
+                  <input
+                    value={recreationLink}
+                    onChange={(e) => setRecreationLink(e.target.value)}
+                    className={VA_FILTER_INPUT}
+                    placeholder="https://…"
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <button type="button" className={VA_BTN_SECONDARY} onClick={() => setRecreatedId(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className={VA_BTN_PRIMARY}
+                    onClick={() => {
+                      if (!recreatedId) return;
+                      void (async () => {
+                        const ok = await patchVideo(recreatedId, {
+                          action: "status",
+                          status: "Recreated",
+                          recreation_link: recreationLink,
+                        });
+                        if (ok) setRecreatedId(null);
+                      })();
+                    }}
+                  >
+                    Mark recreated
+                  </button>
+                </div>
+              </div>
+            </ReviewModalShell>
+          ) : null}
         </>
       )}
     </div>
+  );
+}
+
+function ResearchSubmissionCard({
+  video,
+  pendingId,
+  loading,
+  onCopy,
+  onRefresh,
+  onApprove,
+  onReject,
+  onMarkRecreated,
+  onMarkPublished,
+}: {
+  video: WinnerVideoRecord;
+  pendingId: string | null;
+  loading: boolean;
+  onCopy: () => void;
+  onRefresh: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onMarkRecreated: () => void;
+  onMarkPublished: () => void;
+}) {
+  const age = pendingAgeLabel(video);
+  const stale = isStalePending(video);
+  const busy = pendingId === video.id;
+
+  return (
+    <FindingCard
+      pending={video.status === "Pending" && busy}
+      className={cn(
+        stale && "ring-1 ring-amber-500/35 shadow-[0_0_28px_-10px_rgba(245,158,11,0.4)]",
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <WinnerVideoStatusBadge status={video.status} />
+            <ResearchSourceBadge video={video} />
+            <ResearchDisplayVideoTypeBadge video={video} />
+            {age ? (
+              <span
+                className={cn(
+                  "rounded-md border px-2 py-0.5 text-[10px] font-medium tabular-nums",
+                  stale
+                    ? "border-amber-500/40 bg-amber-500/12 text-amber-200"
+                    : "border-white/10 bg-white/5 text-[#B8B4B8]/55",
+                )}
+                title="Time waiting in pending queue"
+              >
+                {age}
+              </span>
+            ) : null}
+            <span className="text-xs text-[#B8B4B8]/45">
+              {video.submitted_at ? formatDateTimeAthens(video.submitted_at) : <DashPlaceholder />}
+            </span>
+            <WinnerVideoCopyButton onClick={onCopy} />
+            <WinnerVideoRefreshButton onClick={onRefresh} refreshing={loading} />
+          </div>
+
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <p className="text-lg font-semibold text-white">{displayOrDash(video.reference_model_name)}</p>
+            <p className="text-xs text-[#B8B4B8]/55">
+              By {displayOrDash(video.submitted_by_name)}
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <ResearchBunchLink video={video} />
+            {video.bunch_id ? (
+              <Link
+                href={ROUTES.admin.winnerVideosHub}
+                className="inline-flex items-center gap-1 text-[11px] text-[#B8B4B8]/50 hover:text-[#D4AF8C]"
+              >
+                <FolderOpen className="h-3 w-3" />
+                Hub
+              </Link>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {video.status === "Pending" ? (
+            <>
+              <QuickActionMarkFixed disabled={busy} onClick={onApprove}>
+                Approve
+              </QuickActionMarkFixed>
+              <QuickActionEscalate disabled={busy} onClick={onReject}>
+                <X className="h-3.5 w-3.5" aria-hidden />
+                Reject
+              </QuickActionEscalate>
+            </>
+          ) : null}
+          {video.status === "Approved" ? (
+            <button type="button" disabled={busy} onClick={onMarkRecreated} className={VA_BTN_SECONDARY}>
+              Mark recreated
+            </button>
+          ) : null}
+          {video.status === "Recreated" ? (
+            <button type="button" disabled={busy} onClick={onMarkPublished} className={VA_BTN_PRIMARY}>
+              Mark published
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      {video.video_link ? (
+        <a
+          href={video.video_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-[#FF1493] hover:underline"
+        >
+          Reference video <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+        </a>
+      ) : null}
+
+      {video.note?.trim() ? (
+        <p className="mt-2 text-sm leading-relaxed text-[#B8B4B8]/75">{video.note}</p>
+      ) : null}
+
+      {video.views_at_submission != null ? (
+        <p className="mt-1 text-xs text-[#B8B4B8]/50">
+          Views: {video.views_at_submission.toLocaleString()}
+        </p>
+      ) : null}
+
+      {video.rejection_reason?.trim() ? (
+        <p className="mt-3 rounded-lg border border-red-500/20 bg-red-500/8 px-3 py-2 text-sm text-red-200">
+          {video.rejection_reason}
+        </p>
+      ) : null}
+
+      {video.assigned_creator_name ? (
+        <p className="mt-2 text-xs text-[#D4AF8C]/80">
+          Creator: {video.assigned_creator_name}
+          {video.recreation_deadline ? ` · deadline ${video.recreation_deadline}` : ""}
+        </p>
+      ) : null}
+      {video.assigned_creative_name ? (
+        <p className="mt-1 text-xs text-[#D4AF8C]/80">Assigned to: {video.assigned_creative_name}</p>
+      ) : null}
+      {video.recreation_link?.trim() ? (
+        <a
+          href={video.recreation_link}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-xs text-[#D4AF8C] hover:text-[#FF1493] hover:underline"
+        >
+          Recreation link <ExternalLink className="h-3 w-3" aria-hidden />
+        </a>
+      ) : null}
+      {video.screenshot.length > 0 ? (
+        <div className="mt-3">
+          <AttachmentLinks attachments={video.screenshot} />
+        </div>
+      ) : null}
+      {busy ? (
+        <p className="mt-2 flex items-center gap-2 text-xs text-[#B8B4B8]/50">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Saving…
+        </p>
+      ) : null}
+      {video.status === "Approved" || video.status === "Recreated" || video.status === "Published" ? (
+        <p className="mt-2 inline-flex items-center gap-1 text-[11px] text-emerald-400/70">
+          <Check className="h-3 w-3" aria-hidden /> Reviewed
+          {video.reviewed_by_name ? ` by ${video.reviewed_by_name}` : ""}
+        </p>
+      ) : null}
+    </FindingCard>
   );
 }
