@@ -8,8 +8,10 @@ import {
   bunchReadyForIcloud,
   coerceIcloudStatus,
   daysUntilMaterialDate,
-  materialRunwayAlert,
+  MATERIAL_RUNWAY_SORT,
+  materialRunwayTier,
   type IcloudStatus,
+  type MaterialRunwayTier,
 } from "@/lib/icloud-helpers";
 import { getVideoBunch, listVideoBunches, type VideoBunch } from "@/services/winner-sourcing";
 import { listFilmingSchedule, type FilmingScheduleEntry } from "@/services/filming";
@@ -294,9 +296,29 @@ export type ModelMaterialRunway = {
   model_name: string;
   furthest_material_until: string | null;
   days_remaining: number | null;
-  alert: ReturnType<typeof materialRunwayAlert>;
+  alert: MaterialRunwayTier;
   next_shoot: FilmingScheduleEntry | null;
   last_shoot: FilmingScheduleEntry | null;
+};
+
+export type IcloudFolderWithBunch = IcloudFolderEntry & {
+  bunch_name: string;
+};
+
+export type IcloudModelCoverage = {
+  model_id: string;
+  model_name: string;
+  folders: IcloudFolderWithBunch[];
+  furthest_material_until: string | null;
+  days_remaining: number | null;
+  runway: MaterialRunwayTier;
+  needs_organization_count: number;
+};
+
+export type IcloudManagementOverview = {
+  work: IcloudBunchWork[];
+  models: IcloudModelCoverage[];
+  needsOrganization: IcloudBunchWork[];
 };
 
 /** Per-model material runway + filming schedule context for Admin Pipeline Overview. */
@@ -342,20 +364,117 @@ export async function getPipelineOverviewContext(): Promise<{
       model_name: info.model_name || model_id,
       furthest_material_until: info.furthest,
       days_remaining: days,
-      alert: materialRunwayAlert(days),
+      alert: materialRunwayTier(days),
       next_shoot,
       last_shoot,
     });
   }
   modelRunways.sort((a, b) => {
-    const order = { past: 0, soon: 1, ok: 2 };
-    const ao = order[a.alert];
-    const bo = order[b.alert];
+    const ao = MATERIAL_RUNWAY_SORT[a.alert];
+    const bo = MATERIAL_RUNWAY_SORT[b.alert];
     if (ao !== bo) return ao - bo;
+    const da = a.days_remaining ?? 9999;
+    const db = b.days_remaining ?? 9999;
+    if (da !== db) return da - db;
     return a.model_name.localeCompare(b.model_name);
   });
 
   return { bunches, foldersByBunch, modelRunways };
+}
+
+/** Admin / manager overview: model-first coverage + needs-organization queue + by-bunch work. */
+export async function getIcloudManagementOverview(): Promise<IcloudManagementOverview> {
+  const work = await listIcloudOrganizationWork();
+  const needsOrganization = work.filter((w) => w.bunch.icloud_status !== "organized");
+
+  const sb = getSupabaseServiceClient();
+  const { data: folderRows, error } = await sb.from("icloud_folder_entries").select("*");
+  if (error) throw new Error(`getIcloudManagementOverview: ${error.message}`);
+  const folders = (folderRows ?? []).map((r) => mapFolder(r as Record<string, unknown>));
+
+  const bunchNameById = new Map<string, string>();
+  const modelNameById = new Map<string, string>();
+  for (const w of work) {
+    bunchNameById.set(w.bunch.id, w.bunch.name);
+    if (w.bunch.model_id) {
+      modelNameById.set(w.bunch.model_id, w.bunch.model_name || w.bunch.model_id);
+    }
+  }
+
+  const missingBunchIds = [
+    ...new Set(folders.map((f) => f.bunch_id).filter((id) => id && !bunchNameById.has(id))),
+  ];
+  if (missingBunchIds.length > 0) {
+    const { data: bunches } = await sb
+      .from("video_bunches")
+      .select("id, name, model_id, model_name")
+      .in("id", missingBunchIds);
+    for (const row of bunches ?? []) {
+      const id = String((row as { id: string }).id);
+      const name = String((row as { name?: string }).name ?? "");
+      const modelId = String((row as { model_id?: string }).model_id ?? "");
+      const modelName = String((row as { model_name?: string }).model_name ?? "");
+      bunchNameById.set(id, name || id);
+      if (modelId) modelNameById.set(modelId, modelName || modelId);
+    }
+  }
+
+  const byModel = new Map<string, IcloudFolderWithBunch[]>();
+  for (const f of folders) {
+    const mid = f.model_id || "unknown";
+    if (!byModel.has(mid)) byModel.set(mid, []);
+    byModel.get(mid)!.push({
+      ...f,
+      bunch_name: bunchNameById.get(f.bunch_id) ?? "—",
+    });
+  }
+
+  for (const w of work) {
+    const mid = w.bunch.model_id;
+    if (!mid) continue;
+    if (!byModel.has(mid)) byModel.set(mid, []);
+    modelNameById.set(mid, w.bunch.model_name || mid);
+  }
+
+  const needsCountByModel = new Map<string, number>();
+  for (const w of needsOrganization) {
+    const mid = w.bunch.model_id;
+    if (!mid) continue;
+    needsCountByModel.set(mid, (needsCountByModel.get(mid) ?? 0) + 1);
+  }
+
+  const models: IcloudModelCoverage[] = [];
+  for (const [model_id, modelFolders] of byModel) {
+    modelFolders.sort((a, b) => {
+      if (!a.material_until_date && !b.material_until_date) return 0;
+      if (!a.material_until_date) return 1;
+      if (!b.material_until_date) return -1;
+      return a.material_until_date.localeCompare(b.material_until_date);
+    });
+    const furthest = furthestMaterialUntil(modelFolders);
+    const days = daysUntilMaterialDate(furthest);
+    models.push({
+      model_id,
+      model_name: modelNameById.get(model_id) || model_id,
+      folders: modelFolders,
+      furthest_material_until: furthest,
+      days_remaining: days,
+      runway: materialRunwayTier(days),
+      needs_organization_count: needsCountByModel.get(model_id) ?? 0,
+    });
+  }
+
+  models.sort((a, b) => {
+    const ao = MATERIAL_RUNWAY_SORT[a.runway];
+    const bo = MATERIAL_RUNWAY_SORT[b.runway];
+    if (ao !== bo) return ao - bo;
+    const da = a.days_remaining ?? 9999;
+    const db = b.days_remaining ?? 9999;
+    if (da !== db) return da - db;
+    return a.model_name.localeCompare(b.model_name);
+  });
+
+  return { work, models, needsOrganization };
 }
 
 /**

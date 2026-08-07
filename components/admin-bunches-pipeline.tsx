@@ -24,7 +24,11 @@ import {
 } from "@/lib/va-tasks-tokens";
 import { EDITING_STATUS_STYLES } from "@/lib/editing-helpers";
 import { FILMING_STATUS_STYLES } from "@/lib/filming-helpers";
-import { ICLOUD_STATUS_STYLES, materialRunwayAlert, daysUntilMaterialDate } from "@/lib/icloud-helpers";
+import {
+  ICLOUD_STATUS_STYLES,
+  materialRunwayTier,
+  daysUntilMaterialDate,
+} from "@/lib/icloud-helpers";
 import type { ModelMaterialRunway } from "@/services/icloud";
 import type { VideoBunch } from "@/services/winner-sourcing";
 import { FolderKanban } from "lucide-react";
@@ -159,7 +163,7 @@ export function AdminBunchesPipeline({
     reset();
   }, [search, modelFilter, stageFilter, creativeFilter, filmerFilter, editorFilter, dateApplied, reset]);
 
-  const alerts = modelRunways.filter((m) => m.alert !== "ok");
+  const alerts = modelRunways.filter((m) => m.alert === "urgent" || m.alert === "low" || m.alert === "none");
   const stageCounts = React.useMemo(() => {
     const counts = [0, 0, 0, 0, 0];
     for (const b of bunches) counts[stageIndex(b)] += 1;
@@ -300,7 +304,7 @@ export function AdminBunchesPipeline({
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {modelRunways.map((m) => {
               const days = m.days_remaining ?? daysUntilMaterialDate(m.furthest_material_until);
-              const alert = m.alert ?? materialRunwayAlert(days);
+              const alert = m.alert ?? materialRunwayTier(days);
               return (
                 <MaterialRunwayUrgencyCard
                   key={m.model_id}

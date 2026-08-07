@@ -193,57 +193,81 @@ export function MaterialRunwayUrgencyCard({
   modelName: string;
   furthestMaterialUntil?: string | null;
   daysRemaining?: number | null;
-  alert: "ok" | "soon" | "past";
+  /** healthy | low | urgent | none — same tiers as iCloud Management. */
+  alert: "healthy" | "low" | "urgent" | "none" | "ok" | "soon" | "past";
   nextShoot?: { schedule_date: string; start_time?: string | null; location?: string | null } | null;
   lastShoot?: { schedule_date: string } | null;
   className?: string;
 }) {
-  const urgent = alert !== "ok";
+  // Normalize legacy ok/soon/past aliases from older call sites.
+  const tier =
+    alert === "ok"
+      ? "healthy"
+      : alert === "soon"
+        ? "low"
+        : alert === "past"
+          ? "urgent"
+          : alert;
+  const attention = tier === "urgent" || tier === "low" || tier === "none";
+  const label =
+    tier === "urgent"
+      ? "Urgent"
+      : tier === "low"
+        ? "Low"
+        : tier === "none"
+          ? "No coverage"
+          : "Healthy";
   return (
     <div
       className={cn(
         VA_CARD,
         VA_CARD_GLOW,
         "relative overflow-hidden p-4",
-        alert === "past"
+        tier === "urgent"
           ? "border-red-500/30 ring-1 ring-red-500/15"
-          : alert === "soon"
+          : tier === "low"
             ? "border-amber-500/30 ring-1 ring-amber-500/15"
-            : "border-white/[0.08]",
+            : tier === "none"
+              ? "border-white/[0.12]"
+              : "border-white/[0.08]",
         className,
       )}
     >
-      {urgent ? (
+      {attention ? (
         <div
           className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full opacity-50 blur-2xl"
           style={{
             background:
-              alert === "past"
+              tier === "urgent"
                 ? "radial-gradient(circle, rgba(239,68,68,0.35), transparent 70%)"
-                : "radial-gradient(circle, rgba(251,191,36,0.3), transparent 70%)",
+                : tier === "low"
+                  ? "radial-gradient(circle, rgba(251,191,36,0.3), transparent 70%)"
+                  : "radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%)",
           }}
         />
       ) : null}
       <div className="relative flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            {urgent ? (
+            {tier === "urgent" || tier === "low" ? (
               <AlertTriangle
-                className={cn("h-4 w-4", alert === "past" ? "text-red-300" : "text-amber-300")}
+                className={cn("h-4 w-4", tier === "urgent" ? "text-red-300" : "text-amber-300")}
               />
             ) : null}
             <p className="text-base font-semibold text-white">{modelName}</p>
             <span
               className={cn(
                 VA_STATUS_BADGE,
-                alert === "past"
+                tier === "urgent"
                   ? "bg-red-500/20 text-red-300"
-                  : alert === "soon"
+                  : tier === "low"
                     ? "bg-amber-500/20 text-amber-300"
-                    : "bg-emerald-500/15 text-emerald-300",
+                    : tier === "none"
+                      ? "bg-white/10 text-white/50"
+                      : "bg-emerald-500/15 text-emerald-300",
               )}
             >
-              {alert === "past" ? "Past" : alert === "soon" ? "Soon" : "Healthy"}
+              {label}
             </span>
           </div>
           <p className="mt-1.5 text-xs text-[#B8B4B8]/60">
@@ -252,7 +276,9 @@ export function MaterialRunwayUrgencyCard({
               ? daysRemaining < 0
                 ? ` · ${Math.abs(daysRemaining)}d past`
                 : ` · ${daysRemaining}d left`
-              : ""}
+              : tier === "none"
+                ? " · no coverage date"
+                : ""}
           </p>
         </div>
         <div className="text-right text-[11px] text-[#B8B4B8]/55">

@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
-import { listIcloudOrganizationWork } from "@/services/icloud";
+import { getIcloudManagementOverview } from "@/services/icloud";
 import { IcloudOrganizationClient } from "@/components/icloud-organization-client";
 
 export default async function IcloudOrganizationPage() {
@@ -15,11 +15,20 @@ export default async function IcloudOrganizationPage() {
     redirect(ROUTES.dashboard);
   }
 
-  const work = await listIcloudOrganizationWork().catch(() => []);
+  const overview = await getIcloudManagementOverview().catch(() => ({
+    work: [],
+    models: [],
+    needsOrganization: [],
+  }));
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <IcloudOrganizationClient initialWork={work} />
+      <IcloudOrganizationClient
+        initialWork={overview.work}
+        initialModels={overview.models}
+        initialNeedsOrganization={overview.needsOrganization}
+        canOrganize={canView || canManage}
+      />
     </div>
   );
 }

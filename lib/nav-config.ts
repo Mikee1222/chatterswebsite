@@ -853,7 +853,7 @@ const sharedPermissionNavItems: NavItem[] = [
   },
   {
     href: ROUTES.icloudOrganization,
-    label: "iCloud Organization",
+    label: "iCloud Management",
     iconKey: "FolderOpen",
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.ICLOUD_MANAGEMENT_VIEW,
