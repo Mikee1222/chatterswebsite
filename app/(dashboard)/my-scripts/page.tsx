@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getMyScripts } from "@/services/winner-videos";
+import { listSlotScriptMetaForCreative } from "@/services/winner-sourcing";
 import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { MyScriptsClient } from "@/components/my-scripts-client";
 
@@ -15,14 +16,19 @@ export default async function MyScriptsPage() {
   }
 
   const submitterId = (user.airtableUserId ?? user.id).trim();
-  const [scripts, gunzoModels] = await Promise.all([
+  const [scripts, gunzoModels, slotMeta] = await Promise.all([
     getMyScripts(submitterId).catch(() => []),
     listActiveGunzoTeamModelss().catch(() => []),
+    listSlotScriptMetaForCreative(submitterId).catch(() => []),
   ]);
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <MyScriptsClient initialScripts={scripts} gunzoModels={gunzoModels} />
+      <MyScriptsClient
+        initialScripts={scripts}
+        initialSlotMeta={slotMeta}
+        gunzoModels={gunzoModels}
+      />
     </div>
   );
 }

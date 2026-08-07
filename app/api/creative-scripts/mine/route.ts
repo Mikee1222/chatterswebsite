@@ -3,6 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getMyScripts } from "@/services/winner-videos";
+import { listSlotScriptMetaForCreative } from "@/services/winner-sourcing";
 
 export async function GET() {
   const session = await getSessionFromCookies();
@@ -12,6 +13,9 @@ export async function GET() {
   }
 
   const submitterId = (session.airtableUserId ?? session.id).trim();
-  const videos = await getMyScripts(submitterId);
-  return NextResponse.json({ videos });
+  const [videos, slotMeta] = await Promise.all([
+    getMyScripts(submitterId),
+    listSlotScriptMetaForCreative(submitterId).catch(() => []),
+  ]);
+  return NextResponse.json({ videos, slotMeta });
 }

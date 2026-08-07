@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
-import { getScriptsQueue } from "@/services/winner-videos";
+import { getMyScripts, getScriptsQueue } from "@/services/winner-videos";
 import {
   listBunchScriptProgressForCreative,
   listSlotScriptMetaForCreative,
@@ -19,8 +19,9 @@ export default async function CreativeScriptsPage() {
   }
 
   const creativeId = user.airtableUserId ?? user.id;
-  const [queue, gunzoModels, bunchProgress, slotMeta] = await Promise.all([
+  const [queue, history, gunzoModels, bunchProgress, slotMeta] = await Promise.all([
     getScriptsQueue(creativeId).catch(() => []),
+    getMyScripts(creativeId).catch(() => []),
     listActiveGunzoTeamModelss().catch(() => []),
     listBunchScriptProgressForCreative(creativeId).catch(() => []),
     listSlotScriptMetaForCreative(creativeId).catch(() => []),
@@ -30,6 +31,7 @@ export default async function CreativeScriptsPage() {
     <div className="w-full max-w-full px-4 py-6 md:px-6">
       <CreativeScriptsQueueClient
         initialQueue={queue}
+        initialHistory={history}
         initialBunchProgress={bunchProgress}
         initialSlotMeta={slotMeta}
         gunzoModels={gunzoModels}

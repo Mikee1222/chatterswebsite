@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, ChevronDown, FileText, Loader2 } from "lucide-react";
+import { ChevronDown, ExternalLink, FileText, History, Loader2 } from "lucide-react";
 import {
   FindingCard,
   ManagerReviewSelect,
@@ -31,9 +31,11 @@ import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { slotVideoTypeLabel } from "@/lib/winner-sourcing-helpers";
 import { cn } from "@/lib/utils";
+import { CreativeScriptsHistory } from "@/components/creative-scripts-history";
 
 type Props = {
   initialQueue: WinnerVideoRecord[];
+  initialHistory?: WinnerVideoRecord[];
   initialBunchProgress?: BunchScriptProgress[];
   initialSlotMeta?: SlotScriptMeta[];
   gunzoModels: ModelRecord[];
@@ -60,6 +62,7 @@ type QueueGroup = {
 
 export function CreativeScriptsQueueClient({
   initialQueue,
+  initialHistory = [],
   initialBunchProgress = [],
   initialSlotMeta = [],
   gunzoModels,
@@ -67,9 +70,11 @@ export function CreativeScriptsQueueClient({
   const { addToast } = useToast();
   const isSupabaseBackend = useIsSupabaseBackend();
   const [queue, setQueue] = React.useState(initialQueue);
+  const [history, setHistory] = React.useState(initialHistory);
   const [bunchProgress, setBunchProgress] = React.useState(initialBunchProgress);
   const [slotMeta, setSlotMeta] = React.useState(initialSlotMeta);
   const [loading, setLoading] = React.useState(false);
+  const [tab, setTab] = React.useState<"write" | "history">("write");
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [modelId, setModelId] = React.useState("");
@@ -79,6 +84,7 @@ export function CreativeScriptsQueueClient({
   const [textOnScreenOpen, setTextOnScreenOpen] = React.useState(false);
 
   React.useEffect(() => setQueue(initialQueue), [initialQueue]);
+  React.useEffect(() => setHistory(initialHistory), [initialHistory]);
   React.useEffect(() => setBunchProgress(initialBunchProgress), [initialBunchProgress]);
   React.useEffect(() => setSlotMeta(initialSlotMeta), [initialSlotMeta]);
 
@@ -150,16 +156,37 @@ export function CreativeScriptsQueueClient({
   async function reload() {
     setLoading(true);
     try {
-      const res = await fetch("/api/creative-scripts/queue", { credentials: "include" });
-      const data = (await res.json()) as {
+      const [queueRes, mineRes] = await Promise.all([
+        fetch("/api/creative-scripts/queue", { credentials: "include" }),
+        fetch("/api/creative-scripts/mine", { credentials: "include" }),
+      ]);
+      const queueData = (await queueRes.json()) as {
         videos?: WinnerVideoRecord[];
         bunchProgress?: BunchScriptProgress[];
         slotMeta?: SlotScriptMeta[];
       };
-      if (res.ok) {
-        setQueue(data.videos ?? []);
-        setBunchProgress(data.bunchProgress ?? []);
-        setSlotMeta(data.slotMeta ?? []);
+      const mineData = (await mineRes.json()) as {
+        videos?: WinnerVideoRecord[];
+        slotMeta?: SlotScriptMeta[];
+      };
+      if (queueRes.ok) {
+        setQueue(queueData.videos ?? []);
+        setBunchProgress(queueData.bunchProgress ?? []);
+        setSlotMeta((prev) => {
+          const fromQueue = queueData.slotMeta ?? [];
+          if (fromQueue.length > 0) return fromQueue;
+          return prev;
+        });
+      }
+      if (mineRes.ok) {
+        setHistory(mineData.videos ?? []);
+        if (mineData.slotMeta?.length) {
+          setSlotMeta((prev) => {
+            const map = new Map(prev.map((m) => [m.winner_video_id, m]));
+            for (const m of mineData.slotMeta!) map.set(m.winner_video_id, m);
+            return [...map.values()];
+          });
+        }
       }
     } finally {
       setLoading(false);
@@ -230,15 +257,46 @@ export function CreativeScriptsQueueClient({
 
   return (
     <div className="space-y-8">
-      <div>
-        <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
-        <h1 className="mt-1 text-2xl font-bold text-white">Scripts to Write</h1>
-        <p className="mt-1 text-sm text-[#B8B4B8]/60">
-          Winner Video bunches and research finds assigned to you. Each slot has its own script — submit them independently.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
+          <h1 className="mt-1 text-2xl font-bold text-white">Scripts to Write</h1>
+          <p className="mt-1 text-sm text-[#B8B4B8]/60">
+            Winner Video bunches and research finds assigned to you. Each slot has its own script — submit them independently.
+          </p>
+        </div>
+        <div className="flex rounded-xl border border-white/10 bg-black/30 p-1">
+          <button
+            type="button"
+            onClick={() => setTab("write")}
+            className={cn(
+              "rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
+              tab === "write"
+                ? "bg-[#FF1493]/20 text-[#FF1493]"
+                : "text-white/45 hover:text-white/80",
+            )}
+          >
+            Write
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("history")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
+              tab === "history"
+                ? "bg-[#FF1493]/20 text-[#FF1493]"
+                : "text-white/45 hover:text-white/80",
+            )}
+          >
+            <History className="h-3.5 w-3.5" aria-hidden />
+            History
+          </button>
+        </div>
       </div>
 
-      {loading ? (
+      {tab === "history" ? (
+        <CreativeScriptsHistory scripts={history} slotMeta={slotMeta} />
+      ) : loading ? (
         <ReviewLoadingState />
       ) : queue.length === 0 ? (
         <ReviewEmptyState

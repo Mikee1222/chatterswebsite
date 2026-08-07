@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, FileText, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, History, Loader2 } from "lucide-react";
 import {
   FindingCard,
   ManagerReviewSelect,
@@ -26,13 +26,16 @@ import { formatDateTimeAthens } from "@/lib/format";
 import { copyTextToClipboard } from "@/lib/winner-videos-copy";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
+import type { SlotScriptMeta } from "@/services/winner-sourcing";
 import type { ModelRecord } from "@/types";
 import { cn } from "@/lib/utils";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
+import { CreativeScriptsHistory } from "@/components/creative-scripts-history";
 
 type Props = {
   initialScripts: WinnerVideoRecord[];
+  initialSlotMeta?: SlotScriptMeta[];
   gunzoModels: ModelRecord[];
 };
 
@@ -48,11 +51,17 @@ function modelNameFromSelection(modelId: string, models: ModelRecord[]): string 
   return models.find((m) => m.id === modelId)?.model_name ?? "";
 }
 
-export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
+export function MyScriptsClient({
+  initialScripts,
+  initialSlotMeta = [],
+  gunzoModels,
+}: Props) {
   const { addToast } = useToast();
   const isSupabaseBackend = useIsSupabaseBackend();
   const [scripts, setScripts] = React.useState(initialScripts);
+  const [slotMeta, setSlotMeta] = React.useState(initialSlotMeta);
   const [loading, setLoading] = React.useState(false);
+  const [tab, setTab] = React.useState<"list" | "history">("list");
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
   const [resubmitId, setResubmitId] = React.useState<string | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
@@ -63,6 +72,7 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
   const [textOnScreenOpen, setTextOnScreenOpen] = React.useState(false);
 
   React.useEffect(() => setScripts(initialScripts), [initialScripts]);
+  React.useEffect(() => setSlotMeta(initialSlotMeta), [initialSlotMeta]);
 
   const modelOptions = React.useMemo<CustomSelectOption[]>(() => {
     const base = gunzoModels.map((m) => ({ value: m.id, label: m.model_name }));
@@ -81,8 +91,14 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
     setLoading(true);
     try {
       const res = await fetch("/api/creative-scripts/mine", { credentials: "include" });
-      const data = (await res.json()) as { videos?: WinnerVideoRecord[] };
-      if (res.ok) setScripts(data.videos ?? []);
+      const data = (await res.json()) as {
+        videos?: WinnerVideoRecord[];
+        slotMeta?: SlotScriptMeta[];
+      };
+      if (res.ok) {
+        setScripts(data.videos ?? []);
+        if (data.slotMeta) setSlotMeta(data.slotMeta);
+      }
     } finally {
       setLoading(false);
     }
@@ -160,13 +176,44 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
 
   return (
     <div className="space-y-8">
-      <div>
-        <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
-        <h1 className="mt-1 text-2xl font-bold text-white">My Scripts</h1>
-        <p className="mt-1 text-sm text-[#B8B4B8]/60">Scripts you have submitted for research find recreations.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
+          <h1 className="mt-1 text-2xl font-bold text-white">My Scripts</h1>
+          <p className="mt-1 text-sm text-[#B8B4B8]/60">Scripts you have submitted for research find recreations.</p>
+        </div>
+        <div className="flex rounded-xl border border-white/10 bg-black/30 p-1">
+          <button
+            type="button"
+            onClick={() => setTab("list")}
+            className={cn(
+              "rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
+              tab === "list"
+                ? "bg-[#FF1493]/20 text-[#FF1493]"
+                : "text-white/45 hover:text-white/80",
+            )}
+          >
+            Submissions
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("history")}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
+              tab === "history"
+                ? "bg-[#FF1493]/20 text-[#FF1493]"
+                : "text-white/45 hover:text-white/80",
+            )}
+          >
+            <History className="h-3.5 w-3.5" aria-hidden />
+            History
+          </button>
+        </div>
       </div>
 
-      {loading ? (
+      {tab === "history" ? (
+        <CreativeScriptsHistory scripts={scripts} slotMeta={slotMeta} />
+      ) : loading ? (
         <ReviewLoadingState />
       ) : scripts.length === 0 ? (
         <ReviewEmptyState

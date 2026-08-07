@@ -2,15 +2,9 @@
 
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ExternalLink, Loader2, Send, Trophy } from "lucide-react";
+import { History, Loader2, Send, Trophy } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
-import {
-  QualityRatingAggregate,
-  QualityRatingBadge,
-  winnerVideoLocalToast,
-} from "@/components/winner-videos-shared";
-import { WinnerVideoStatusBadge } from "@/components/manager-review-ui";
-import { formatDateTimeAthens } from "@/lib/format";
+import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import {
   bunchUrgencyTone,
@@ -19,6 +13,7 @@ import {
 import type { VideoBunch } from "@/services/winner-sourcing";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import { cn } from "@/lib/utils";
+import { ResearcherSubmissionsHistory } from "@/components/researcher-submissions-history";
 
 function sortByUrgency(list: VideoBunch[]): VideoBunch[] {
   return [...list].sort((a, b) => {
@@ -253,10 +248,9 @@ export function WinnerRecreatesClient({
   const [videoTypeOther, setVideoTypeOther] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [tab, setTab] = React.useState<"submit" | "history">("submit");
 
   React.useEffect(() => setSubmissions(initialSubmissions), [initialSubmissions]);
-
-  const ratingAggregate = submissions.map((v) => v.quality_rating);
 
   const selected = bunches.find((b) => b.id === bunchId);
   const selectedFulfillment = selected ? getBunchFulfillment(selected) : null;
@@ -361,20 +355,56 @@ export function WinnerRecreatesClient({
           className="pointer-events-none absolute -left-8 bottom-0 h-28 w-28 rounded-full opacity-30 blur-3xl"
           style={{ background: "radial-gradient(circle, rgba(212,175,140,0.25), transparent 70%)" }}
         />
-        <div className="relative flex items-center gap-3">
-          <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FF1493]/15 text-[#FF1493]">
-            <Trophy className="h-6 w-6" />
-          </span>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">Fill Bunches</h1>
-            <p className="mt-1 max-w-xl text-sm text-[#B8B4B8]/65">
-              Scan open bunches by urgency, then submit finds. Admins approve in Research Manage before a
-              slot is created.
-            </p>
+        <div className="relative flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FF1493]/15 text-[#FF1493]">
+              <Trophy className="h-6 w-6" />
+            </span>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">Fill Bunches</h1>
+              <p className="mt-1 max-w-xl text-sm text-[#B8B4B8]/65">
+                Scan open bunches by urgency, then submit finds. Admins approve in Research Manage before a
+                slot is created.
+              </p>
+            </div>
+          </div>
+          <div className="flex rounded-xl border border-white/10 bg-black/30 p-1">
+            <button
+              type="button"
+              onClick={() => setTab("submit")}
+              className={cn(
+                "rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
+                tab === "submit"
+                  ? "bg-[#FF1493]/20 text-[#FF1493]"
+                  : "text-white/45 hover:text-white/80",
+              )}
+            >
+              Submit
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab("history")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition",
+                tab === "history"
+                  ? "bg-[#FF1493]/20 text-[#FF1493]"
+                  : "text-white/45 hover:text-white/80",
+              )}
+            >
+              <History className="h-3.5 w-3.5" aria-hidden />
+              History
+              {submissions.length > 0 ? (
+                <span className="tabular-nums text-[10px] opacity-70">({submissions.length})</span>
+              ) : null}
+            </button>
           </div>
         </div>
       </div>
 
+      {tab === "history" ? (
+        <ResearcherSubmissionsHistory submissions={submissions} />
+      ) : (
+        <>
       <section className="space-y-4" aria-labelledby="bunch-overview-heading">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
@@ -547,61 +577,8 @@ export function WinnerRecreatesClient({
           {submitting ? "Submitting…" : "Submit for review"}
         </button>
       </motion.form>
-
-      {submissions.length > 0 ? (
-        <section className="space-y-4" aria-labelledby="my-submissions-heading">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/70">
-                History
-              </p>
-              <h2 id="my-submissions-heading" className="mt-1 text-lg font-semibold tracking-tight text-white">
-                Your submissions
-              </h2>
-              <p className="mt-0.5 text-xs text-[#B8B4B8]/45">
-                Approved finds show the quality rating from Research Manage.
-              </p>
-            </div>
-            <QualityRatingAggregate ratings={ratingAggregate} />
-          </div>
-
-          <ul className="space-y-2">
-            {submissions.slice(0, 20).map((v) => (
-              <li
-                key={v.id}
-                className={cn(
-                  VA_CARD,
-                  "flex flex-wrap items-center justify-between gap-3 border border-white/[0.06] bg-white/[0.03] px-4 py-3",
-                )}
-              >
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <WinnerVideoStatusBadge status={v.status} />
-                    <QualityRatingBadge rating={v.quality_rating} />
-                    <span className="truncate text-sm font-medium text-white">
-                      {v.reference_model_name?.trim() || "—"}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-[#B8B4B8]/45">
-                    {v.bunch_name?.trim() ? `${v.bunch_name} · ` : ""}
-                    {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : "—"}
-                  </p>
-                </div>
-                {v.video_link ? (
-                  <a
-                    href={v.video_link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-xs font-medium text-[#FF1493] hover:underline"
-                  >
-                    Video <ExternalLink className="h-3 w-3" aria-hidden />
-                  </a>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+        </>
+      )}
     </div>
   );
 }
