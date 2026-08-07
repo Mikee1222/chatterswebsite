@@ -5,6 +5,8 @@ import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { listUsersWithPermission } from "@/services/users";
 import { listVideoBunches } from "@/services/winner-sourcing";
 import { getFilmingProgressForBunches } from "@/services/filming";
+import { getEditingProgressForBunches } from "@/services/editing";
+import { getPipelineOverviewContext } from "@/services/icloud";
 import {
   AdminBunchesClient,
   type BunchModelOption,
@@ -25,18 +27,33 @@ export default async function AdminBunchesPage({
   const canManageFilming = user
     ? await hasPermission(user, PERMISSIONS.FILMING_MANAGE)
     : false;
+  const canManageEditing = user
+    ? await hasPermission(user, PERMISSIONS.EDITING_MANAGE)
+    : false;
 
-  const [bunches, gunzoModels, creativeUsers, filmerUsers] = await Promise.all([
-    listVideoBunches().catch(() => []),
-    listActiveGunzoTeamModelss().catch(() => []),
-    listUsersWithPermission(PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT).catch(() => []),
-    canManageFilming
-      ? listUsersWithPermission(PERMISSIONS.FILMING_VIEW_ASSIGNMENTS).catch(() => [])
-      : Promise.resolve([]),
-  ]);
+  const [bunches, gunzoModels, creativeUsers, filmerUsers, editorUsers, pipeline] =
+    await Promise.all([
+      listVideoBunches().catch(() => []),
+      listActiveGunzoTeamModelss().catch(() => []),
+      listUsersWithPermission(PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT).catch(() => []),
+      canManageFilming
+        ? listUsersWithPermission(PERMISSIONS.FILMING_VIEW_ASSIGNMENTS).catch(() => [])
+        : Promise.resolve([]),
+      canManageEditing
+        ? listUsersWithPermission(PERMISSIONS.EDITING_VIEW_ASSIGNMENTS).catch(() => [])
+        : Promise.resolve([]),
+      getPipelineOverviewContext().catch(() => ({
+        bunches: [] as Awaited<ReturnType<typeof listVideoBunches>>,
+        foldersByBunch: {},
+        modelRunways: [],
+      })),
+    ]);
 
   const filmingProgress = canManageFilming
     ? await getFilmingProgressForBunches(bunches.map((b) => b.id)).catch(() => ({}))
+    : {};
+  const editingProgress = canManageEditing
+    ? await getEditingProgressForBunches(bunches.map((b) => b.id)).catch(() => ({}))
     : {};
 
   const models: BunchModelOption[] = gunzoModels.map((m) => ({
@@ -64,6 +81,16 @@ export default async function AdminBunchesPage({
     .filter((c) => c.id && c.name)
     .sort((a, b) => a.name.localeCompare(b.name));
 
+  const editors: BunchStaffOption[] = editorUsers
+    .map((u) => ({
+      id: u.id,
+      name: (u.full_name || u.email || "").trim(),
+      email: u.email || "",
+      role: u.role || "other",
+    }))
+    .filter((c) => c.id && c.name)
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
       <AdminBunchesClient
@@ -71,8 +98,12 @@ export default async function AdminBunchesPage({
         models={models}
         creatives={creatives}
         filmers={filmers}
+        editors={editors}
         canManageFilming={canManageFilming}
+        canManageEditing={canManageEditing}
         initialFilmingProgress={filmingProgress}
+        initialEditingProgress={editingProgress}
+        initialModelRunways={pipeline.modelRunways}
         initialSelectedId={initialSelectedId}
       />
     </div>

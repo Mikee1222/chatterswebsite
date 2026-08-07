@@ -436,6 +436,22 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "The model when a filming shoot is added to the calendar (synced into model schedule).",
   },
+  bunch_assigned_to_editor: {
+    rule: "assigned_party_only",
+    description: "The editor assigned when a filmed bunch is ready for editing.",
+  },
+  bunch_editing_uploaded: {
+    rule: "admin_only",
+    description: "editing:manage holders when an editor submits Edited & Uploaded with folder link.",
+  },
+  bunch_icloud_organized: {
+    rule: "admin_only",
+    description: "icloud_management:manage holders when iCloud organization is marked complete.",
+  },
+  material_until_approaching: {
+    rule: "admin_only",
+    description: "icloud_management:manage holders when material_until_date is within 7 days or past.",
+  },
   spot_check_logged: {
     rule: "admin_only",
     description: "spotcheck:manage holders when a new spot check is logged.",

@@ -4,6 +4,7 @@ import { getModelContext } from "@/lib/model-context-server";
 import { listCustomRequestsByModel } from "@/services/custom-requests";
 import { listModelTasks } from "@/services/model-tasks";
 import { listVAContentAssignmentsForModel } from "@/services/va-content-assignments";
+import { listModelScheduleItems } from "@/services/model-schedule";
 import { ModelContentCalendarClient } from "@/components/model-content-calendar-client";
 import { Suspense } from "react";
 import { listModelPersonalEventsForModel } from "@/services/model-personal-events";
@@ -66,11 +67,13 @@ export default async function ModelContentCalendarPage({
   let allCustoms: Awaited<ReturnType<typeof listCustomRequestsByModel>> = [];
   let tasks: Awaited<ReturnType<typeof listModelTasks>> = [];
   let personalEvents: Awaited<ReturnType<typeof listModelPersonalEventsForModel>> = [];
+  let scheduleItems: Awaited<ReturnType<typeof listModelScheduleItems>> = [];
   [
     assignments,
     allCustoms,
     tasks,
     personalEvents,
+    scheduleItems,
   ] = await Promise.all([
     listVAContentAssignmentsForModel(linkedModelId, modelRecord.model_id).catch((error) => {
       console.error("[model/content-calendar] listVAContentAssignmentsForModel failed; using [] fallback", error);
@@ -86,6 +89,10 @@ export default async function ModelContentCalendarPage({
     }),
     listModelPersonalEventsForModel(linkedModelId).catch((error) => {
       console.error("[model/content-calendar] listModelPersonalEventsForModel failed; using [] fallback", error);
+      return [];
+    }),
+    listModelScheduleItems(linkedModelId).catch((error) => {
+      console.error("[model/content-calendar] listModelScheduleItems failed; using [] fallback", error);
       return [];
     }),
   ]);
@@ -139,6 +146,7 @@ export default async function ModelContentCalendarPage({
           customs={customs}
           tasks={tasks}
           personalEvents={personalEvents}
+          scheduleItems={scheduleItems}
           modelName={modelName}
           openAddEventInitially={searchParams?.action === "add-personal-event"}
           periodBannerProps={periodBannerProps}

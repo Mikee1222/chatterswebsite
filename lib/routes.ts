@@ -202,6 +202,10 @@ export const ROUTES = {
   shootAssignments: "/shoot-assignments",
   /** Filming calendar — filmer read-only; admin manage via filming:manage. */
   filmingCalendar: "/filming-calendar",
+  /** Editor: bunches assigned for editing after filming upload (permission-gated). */
+  editAssignments: "/edit-assignments",
+  /** iCloud manager: organize folders after editing upload (permission-gated). */
+  icloudOrganization: "/icloud-organization",
   /** Standalone video transcription tool (permission-gated). */
   transcriptVideos: "/transcript-videos",
   /** VA assigned models, social accounts, and phones. */

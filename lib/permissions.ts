@@ -84,6 +84,14 @@ export const PERMISSIONS = {
   FILMING_VIEW_ASSIGNMENTS: "filming:view_assignments",
   FILMING_MANAGE: "filming:manage",
 
+  /** Editor assignments after filming upload (opt-in via Roles UI — no hardcoded editor role). */
+  EDITING_VIEW_ASSIGNMENTS: "editing:view_assignments",
+  EDITING_MANAGE: "editing:manage",
+
+  /** iCloud folder organization after editing upload (opt-in via Roles UI — no hardcoded icloud role). */
+  ICLOUD_MANAGEMENT_VIEW: "icloud_management:view",
+  ICLOUD_MANAGEMENT_MANAGE: "icloud_management:manage",
+
   DAILY_REVIEW_SUBMIT: "daily_review:submit",
   DAILY_REVIEW_MANAGE: "daily_review:manage",
 
@@ -226,6 +234,8 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   winner_sourcing: "Winner sourcing",
   creative_scripts: "Creative scripts",
   filming: "Filming",
+  editing: "Editing",
+  icloud_management: "iCloud management",
   daily_review: "Daily review",
   content: "Content",
   "spin-wheel": "Spin wheel",
@@ -347,6 +357,12 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "filming:view_assignments": "Προβολή ανατεθειμένων bunches/scripts προς γύρισμα (Shoot Assignments)",
   "filming:manage": "Ανάθεση bunches σε filmers και διαχείριση ημερολογίου γυρισμάτων",
+
+  "editing:view_assignments": "Προβολή ανατεθειμένων bunches προς επεξεργασία (Edit Assignments)",
+  "editing:manage": "Ανάθεση bunches σε editors μετά το upload γυρίσματος",
+
+  "icloud_management:view": "Οργάνωση iCloud φακέλων για bunches μετά το editing upload",
+  "icloud_management:manage": "Διαχείριση iCloud οργάνωσης και material runway alerts",
 
   "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
   "daily_review:manage": "Διαχείριση ημερήσιων αξιολογήσεων και exec audits marketing",

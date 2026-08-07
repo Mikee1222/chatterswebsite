@@ -354,6 +354,8 @@ export async function setSlotFilmed(input: {
     winner_video_id: updated.winner_video_id ? String(updated.winner_video_id) : null,
     filmed: Boolean(updated.filmed),
     filmed_at: updated.filmed_at ? String(updated.filmed_at) : null,
+    edited: Boolean(updated.edited),
+    edited_at: updated.edited_at ? String(updated.edited_at) : null,
     created_at: String(updated.created_at ?? ""),
     updated_at: String(updated.updated_at ?? ""),
   };

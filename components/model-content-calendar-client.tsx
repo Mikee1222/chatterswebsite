@@ -2,7 +2,8 @@
 
 /**
  * Model content calendar — week grid (default) + optional month grid.
- * Events: personal (model_personal_events), VA assignments, accepted customs, model_tasks.
+ * Events: personal (model_personal_events), VA assignments, accepted customs, model_tasks,
+ * and model_schedule rows (filming shoots / content_shoot, live, scripts, etc.).
  */
 
 import * as React from "react";
@@ -11,16 +12,26 @@ import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { Calendar, CalendarClock, ChevronLeft, ChevronRight, Clock, Plus, X, Droplet } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
-import { formatDateEuropean } from "@/lib/format";
+import { formatDateEuropean, formatScheduleItemTypeForDisplay, formatTimeRange } from "@/lib/format";
 import { addDays, addWeeks, getMondayOfWeek } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
-import type { CustomRequest, ModelPersonalEvent, ModelPersonalEventType, ModelTaskRecord, VaContentAssignmentRecord } from "@/types";
+import type {
+  CustomRequest,
+  ModelPersonalEvent,
+  ModelPersonalEventType,
+  ModelScheduleItem,
+  ModelTaskRecord,
+  VaContentAssignmentRecord,
+} from "@/types";
 import { personalEventEmoji, personalEventLabel } from "@/services/model-personal-events";
 import { PeriodStatusBanner, type PeriodStatusBannerProps } from "@/components/period-status-banner";
 
+/** Schedule types already represented by other calendar sources (avoid double pills). */
+const SCHEDULE_TYPES_SHOWN_ELSEWHERE = new Set(["custom"]);
+
 export type ContentCalendarEvent = {
   id: string;
-  kind: "va" | "custom" | "task";
+  kind: "va" | "custom" | "task" | "schedule";
   title: string;
   dateYmd: string;
   status: string;
@@ -28,6 +39,7 @@ export type ContentCalendarEvent = {
   va?: VaContentAssignmentRecord;
   custom?: CustomRequest;
   task?: ModelTaskRecord;
+  schedule?: ModelScheduleItem;
 };
 
 type CalendarDaySlot =
@@ -120,6 +132,11 @@ function getContentEventStyle(ev: ContentCalendarEvent, todayYmdStr: string): st
     if (st === "declined" || st === "rejected") return "bg-red-500/20 border-red-500/30 text-red-400";
     return "bg-orange-500/20 border-orange-500/30 text-orange-400";
   }
+  if (ev.kind === "schedule") {
+    if (st === "completed" || st === "done") return "bg-green-500/20 border-green-500/30 text-green-400";
+    if (st === "cancelled" || st === "canceled") return "bg-red-500/20 border-red-500/30 text-red-400";
+    return "bg-emerald-500/20 border-emerald-500/30 text-emerald-400";
+  }
   const dueYmd = ev.task?.due_date ? toYmd(ev.task.due_date) : null;
   const open = st !== "done" && st !== "skipped" && st !== "completed";
   const overdueByDue = Boolean(dueYmd && dueYmd < todayYmdStr && open);
@@ -157,7 +174,8 @@ function getStatusDot(statusRaw: string | undefined | null): string {
 function buildEvents(
   assignments: VaContentAssignmentRecord[],
   customs: CustomRequest[],
-  tasks: ModelTaskRecord[]
+  tasks: ModelTaskRecord[],
+  scheduleItems: ModelScheduleItem[] = []
 ): ContentCalendarEvent[] {
   const out: ContentCalendarEvent[] = [];
   for (const a of assignments) {
@@ -197,6 +215,20 @@ function buildEvents(
       status: t.status,
       sublabel: t.type || "Task",
       task: t,
+    });
+  }
+  for (const s of scheduleItems) {
+    if (SCHEDULE_TYPES_SHOWN_ELSEWHERE.has(s.item_type)) continue;
+    const dateYmd = toYmd(s.date);
+    if (!dateYmd) continue;
+    out.push({
+      id: `schedule-${s.id}`,
+      kind: "schedule",
+      title: s.title?.trim() || formatScheduleItemTypeForDisplay(s.item_type),
+      dateYmd,
+      status: s.status || "scheduled",
+      sublabel: formatScheduleItemTypeForDisplay(s.item_type),
+      schedule: s,
     });
   }
   return out;
@@ -258,6 +290,10 @@ function contentTimeSnippet(ev: ContentCalendarEvent): string | null {
   if (ev.kind === "va" && ev.va?.scheduled_date) {
     const s = ev.va.scheduled_date;
     return /\d{1,2}:\d{2}/.test(s) ? formatDateEuropean(s) : null;
+  }
+  if (ev.kind === "schedule") {
+    const range = formatTimeRange(ev.schedule?.start_time, ev.schedule?.end_time);
+    return range === "—" ? null : range;
   }
   return null;
 }
@@ -380,6 +416,23 @@ function CalendarEventPopover(props: {
         null;
       deadlineRaw = ev.custom?.deadline_requested ?? null;
       descriptionText = ev.custom?.request_details?.trim() || null;
+    } else if (ev.kind === "schedule") {
+      typeBadge =
+        ev.schedule?.item_type === "content_shoot"
+          ? "FILMING SHOOT"
+          : formatScheduleItemTypeForDisplay(ev.schedule?.item_type).toUpperCase() || "SCHEDULE";
+      scheduledRaw = ev.schedule?.start_time ?? ev.schedule?.date ?? null;
+      deadlineRaw = null;
+      const details = ev.schedule?.details?.trim() || null;
+      // Strip internal filming_schedule:id marker from details shown to models
+      descriptionText = details
+        ? details
+            .split("\n")
+            .filter((line) => !/^filming_schedule:/i.test(line.trim()))
+            .join("\n")
+            .trim() || null
+        : null;
+      contentTypeChip = formatScheduleItemTypeForDisplay(ev.schedule?.item_type);
     } else {
       typeBadge = "TASK";
       scheduledRaw = null;
@@ -578,6 +631,13 @@ function CalendarEventPopover(props: {
                     Open tasks →
                   </Link>
                 ) : null}
+                {ev.kind === "schedule" ? (
+                  <p className="text-center text-[11px] text-white/35">
+                    {ev.schedule?.item_type === "content_shoot"
+                      ? "Filming shoot from your schedule"
+                      : "From your model schedule"}
+                  </p>
+                ) : null}
               </div>
             </>
           );
@@ -616,6 +676,8 @@ export type ModelContentCalendarClientProps = {
   customs: CustomRequest[];
   tasks: ModelTaskRecord[];
   personalEvents: ModelPersonalEvent[];
+  /** model_schedule rows (content_shoot / filming, lives, scripts, …). Customs excluded client-side. */
+  scheduleItems?: ModelScheduleItem[];
   modelName?: string;
   openAddEventInitially?: boolean;
   /** When non-null (server only sends when tracking is enabled), renders the period strip below the calendar header. */
@@ -632,6 +694,7 @@ export function ModelContentCalendarClient({
   customs,
   tasks,
   personalEvents: initialPersonalEvents,
+  scheduleItems = [],
   modelName,
   openAddEventInitially = false,
   periodBannerProps = null,
@@ -643,7 +706,7 @@ export function ModelContentCalendarClient({
   const [view, setView] = React.useState<"week" | "month">("week");
   const [weekStartYmd, setWeekStartYmd] = React.useState(() => getMondayOfWeek(todayLocalYmd()));
   const [cursor, setCursor] = React.useState(() => new Date());
-  const [typeFilter, setTypeFilter] = React.useState<"all" | "va" | "custom" | "task">("all");
+  const [typeFilter, setTypeFilter] = React.useState<"all" | "va" | "custom" | "task" | "schedule">("all");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [notice, setNotice] = React.useState<string | null>(null);
   const [personalEvents, setPersonalEvents] = React.useState<ModelPersonalEvent[]>(initialPersonalEvents);
@@ -669,8 +732,8 @@ export function ModelContentCalendarClient({
   }, []);
 
   const allEvents = React.useMemo(
-    () => buildEvents(assignments, customs, tasks),
-    [assignments, customs, tasks]
+    () => buildEvents(assignments, customs, tasks, scheduleItems),
+    [assignments, customs, tasks, scheduleItems]
   );
 
   const statusOptions = React.useMemo(() => {
@@ -904,7 +967,7 @@ export function ModelContentCalendarClient({
         {periodBannerProps ? <PeriodStatusBanner {...periodBannerProps} /> : null}
 
         <div className="flex flex-wrap items-center gap-2">
-          {(["all", "va", "custom", "task"] as const).map((k) => (
+          {(["all", "va", "custom", "task", "schedule"] as const).map((k) => (
             <button
               key={k}
               type="button"
@@ -916,7 +979,15 @@ export function ModelContentCalendarClient({
                   : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white/85"
               )}
             >
-              {k === "all" ? "All types" : k === "va" ? "VA" : k === "custom" ? "Customs" : "Tasks"}
+              {k === "all"
+                ? "All types"
+                : k === "va"
+                  ? "VA"
+                  : k === "custom"
+                    ? "Customs"
+                    : k === "task"
+                      ? "Tasks"
+                      : "Schedule"}
             </button>
           ))}
           <label className="flex items-center gap-2 text-xs text-white/50">

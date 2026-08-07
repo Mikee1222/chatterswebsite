@@ -842,6 +842,24 @@ const sharedPermissionNavItems: NavItem[] = [
     requiresAnyPermission: [PERMISSIONS.FILMING_VIEW_ASSIGNMENTS, PERMISSIONS.FILMING_MANAGE],
     excludeFromMobileMainTabs: true,
   },
+  {
+    href: ROUTES.editAssignments,
+    label: "Edit Assignments",
+    iconKey: "FileText",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.EDITING_VIEW_ASSIGNMENTS,
+    hiddenIfPermission: PERMISSIONS.EDITING_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.icloudOrganization,
+    label: "iCloud Organization",
+    iconKey: "FolderOpen",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.ICLOUD_MANAGEMENT_VIEW,
+    // Manage holders still use this page (no per-bunch assign) — do not hide on manage.
+    excludeFromMobileMainTabs: true,
+  },
 
   // ── REVIEW & QA ──
   {

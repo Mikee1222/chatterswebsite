@@ -60,6 +60,28 @@ export async function PATCH(
       return NextResponse.json({ bunch });
     }
 
+    if (body.assigned_editor_id !== undefined || body.action === "assign_editor") {
+      if (!(await hasPermission(session, PERMISSIONS.EDITING_MANAGE))) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+      let editorId = String(body.assigned_editor_id ?? "").trim();
+      let editorName = String(body.assigned_editor_name ?? "").trim();
+      if (editorId && !editorName) {
+        const editors = await listUsersWithPermission(PERMISSIONS.EDITING_VIEW_ASSIGNMENTS);
+        const match = editors.find((u) => u.id === editorId);
+        editorName = (match?.full_name || match?.email || "").trim();
+      }
+      const { assignEditorToBunch } = await import("@/services/editing");
+      const bunch = await assignEditorToBunch({
+        bunch_id: id,
+        assigned_editor_id: editorId,
+        assigned_editor_name: editorName,
+        actor_user_id: session.airtableUserId ?? session.id,
+        actor_user_name: (session.fullName || session.email || "").trim(),
+      });
+      return NextResponse.json({ bunch });
+    }
+
     if (!(await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

@@ -201,6 +201,10 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   bunch_assigned_to_filmer: ["admin", "manager", "virtual_assistant", "chatter"],
   bunch_filming_uploaded: ["admin", "manager"],
   filming_schedule_created: ["model", "chatter", "virtual_assistant"],
+  bunch_assigned_to_editor: ["admin", "manager", "virtual_assistant", "chatter"],
+  bunch_editing_uploaded: ["admin", "manager"],
+  bunch_icloud_organized: ["admin", "manager"],
+  material_until_approaching: ["admin", "manager"],
   spot_check_logged: ["admin", "manager"],
   spot_check_status_changed: ["admin", "manager"],
   billing_cycle_announced: ["client"],
@@ -859,6 +863,26 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "bunch_filming_uploaded",
       "Bunch footage uploaded",
       "Ενημερώνει filming:manage όταν ο filmer υποβάλλει τον φάκελο upload"
+    ),
+    eventEntry(
+      "bunch_assigned_to_editor",
+      "Bunch assigned to editor",
+      "Αποστέλλεται στον editor όταν του ανατίθεται bunch μετά το filming upload"
+    ),
+    eventEntry(
+      "bunch_editing_uploaded",
+      "Bunch edited & uploaded",
+      "Ενημερώνει editing:manage όταν ο editor υποβάλλει Edited & Uploaded"
+    ),
+    eventEntry(
+      "bunch_icloud_organized",
+      "iCloud organization complete",
+      "Ενημερώνει icloud_management:manage όταν ολοκληρώνεται η οργάνωση iCloud"
+    ),
+    eventEntry(
+      "material_until_approaching",
+      "Material runway approaching",
+      "Ενημερώνει icloud_management:manage όταν το material_until πλησιάζει ή έχει περάσει"
     ),
     eventEntry(
       "spot_check_logged",

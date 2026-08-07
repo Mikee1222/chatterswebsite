@@ -6,6 +6,9 @@
 
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { coerceScriptStatus, type ScriptStatus } from "@/lib/creative-scripts-helpers";
+import { coerceEditingStatus } from "@/lib/editing-helpers";
+import { coerceFilmingStatus } from "@/lib/filming-helpers";
+import { coerceIcloudStatus } from "@/lib/icloud-helpers";
 import {
   SUPER_WINNER_RECREATE_COUNT_SETTING_KEY,
   TIER_RECREATE_COUNTS,
@@ -34,7 +37,6 @@ import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "
 import { listUsersWithPermission } from "@/services/users";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
-import { coerceFilmingStatus } from "@/lib/filming-helpers";
 
 export type { WinnerSourcingRecreateConfig };
 
@@ -58,6 +60,15 @@ export type VideoBunch = {
   filming_status: import("@/lib/filming-helpers").FilmingStatus;
   upload_folder_link: string;
   uploaded_at: string | null;
+  /** Editor assigned after filming upload. */
+  assigned_editor_id: string;
+  assigned_editor_name: string;
+  editing_status: import("@/lib/editing-helpers").EditingStatus;
+  edited_upload_folder_link: string;
+  edited_uploaded_at: string | null;
+  /** iCloud org after editing upload (no per-bunch assignee). */
+  icloud_status: import("@/lib/icloud-helpers").IcloudStatus;
+  icloud_organized_at: string | null;
   created_at: string;
   updated_at: string;
   /** Computed: recreate_video_slots currently in this bunch (approved/filled). */
@@ -69,6 +80,9 @@ export type VideoBunch = {
   /** Computed filming progress when slots are loaded. */
   filmed_count?: number;
   filmable_count?: number;
+  /** Computed editing progress when slots are loaded. */
+  edited_count?: number;
+  editable_count?: number;
 };
 
 export type WinnerSubmission = {
@@ -110,6 +124,8 @@ export type RecreateVideoSlot = {
   winner_video_id: string | null;
   filmed: boolean;
   filmed_at: string | null;
+  edited: boolean;
+  edited_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -133,6 +149,13 @@ function mapBunch(row: Record<string, unknown>): VideoBunch {
     filming_status: coerceFilmingStatus(row.filming_status),
     upload_folder_link: String(row.upload_folder_link ?? ""),
     uploaded_at: row.uploaded_at ? String(row.uploaded_at) : null,
+    assigned_editor_id: String(row.assigned_editor_id ?? ""),
+    assigned_editor_name: String(row.assigned_editor_name ?? ""),
+    editing_status: coerceEditingStatus(row.editing_status),
+    edited_upload_folder_link: String(row.edited_upload_folder_link ?? ""),
+    edited_uploaded_at: row.edited_uploaded_at ? String(row.edited_uploaded_at) : null,
+    icloud_status: coerceIcloudStatus(row.icloud_status),
+    icloud_organized_at: row.icloud_organized_at ? String(row.icloud_organized_at) : null,
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
   };
@@ -186,6 +209,8 @@ function mapSlot(row: Record<string, unknown>): RecreateVideoSlot {
     winner_video_id: row.winner_video_id ? String(row.winner_video_id) : null,
     filmed: Boolean(row.filmed),
     filmed_at: row.filmed_at ? String(row.filmed_at) : null,
+    edited: Boolean(row.edited),
+    edited_at: row.edited_at ? String(row.edited_at) : null,
     created_at: String(row.created_at ?? ""),
     updated_at: String(row.updated_at ?? ""),
   };

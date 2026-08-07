@@ -72,11 +72,15 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
     case "creative_script":
       return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.creativeScripts;
     case "filming_assignment":
-      return isAdmin ? ROUTES.admin.winnerVideosHub : ROUTES.shootAssignments;
+      return isAdmin ? ROUTES.admin.bunches : ROUTES.shootAssignments;
     case "filming_schedule":
       if (isAdmin) return ROUTES.filmingCalendar;
       if (isModel) return ROUTES.model.schedule;
       return ROUTES.filmingCalendar;
+    case "editing_assignment":
+      return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
+    case "icloud_organization":
+      return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "model_schedule":
@@ -169,11 +173,15 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
     case "creative_script":
       return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.creativeScripts;
     case "filming_assignment":
-      return isAdmin ? ROUTES.admin.winnerVideosHub : ROUTES.shootAssignments;
+      return isAdmin ? ROUTES.admin.bunches : ROUTES.shootAssignments;
     case "filming_schedule":
       if (isAdmin) return ROUTES.filmingCalendar;
       if (isModel) return ROUTES.model.schedule;
       return ROUTES.filmingCalendar;
+    case "editing_assignment":
+      return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
+    case "icloud_organization":
+      return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "tip":
@@ -286,6 +294,10 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "bunch_assigned_to_filmer":
     case "bunch_filming_uploaded":
     case "filming_schedule_created":
+    case "bunch_assigned_to_editor":
+    case "bunch_editing_uploaded":
+    case "bunch_icloud_organized":
+    case "material_until_approaching":
     case "spot_check_logged":
     case "spot_check_status_changed":
       return "Marketing";

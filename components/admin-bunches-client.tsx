@@ -15,6 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
+import { AdminBunchesPipeline } from "@/components/admin-bunches-pipeline";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -29,6 +30,7 @@ import {
 } from "@/lib/va-tasks-tokens";
 import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
 import { bunchScriptsReadyForFilming, FILMING_STATUS_STYLES, type FilmingStatus } from "@/lib/filming-helpers";
+import { bunchReadyForEditing } from "@/lib/editing-helpers";
 import {
   SLOT_VIDEO_TYPES,
   SLOT_VIDEO_TYPE_LABELS,
@@ -36,6 +38,7 @@ import {
 } from "@/lib/winner-sourcing-helpers";
 import { ROUTES } from "@/lib/routes";
 import type { RecreateVideoSlot, VideoBunch } from "@/services/winner-sourcing";
+import type { ModelMaterialRunway } from "@/services/icloud";
 import { cn } from "@/lib/utils";
 
 export type BunchStaffOption = {
@@ -68,21 +71,33 @@ export function AdminBunchesClient({
   models,
   creatives,
   filmers = [],
+  editors = [],
   canManageFilming = false,
+  canManageEditing = false,
   initialFilmingProgress = {},
+  initialEditingProgress = {},
+  initialModelRunways = [],
   initialSelectedId = null,
 }: {
   initialBunches: VideoBunch[];
   models: BunchModelOption[];
   creatives: BunchStaffOption[];
   filmers?: BunchStaffOption[];
+  editors?: BunchStaffOption[];
   canManageFilming?: boolean;
+  canManageEditing?: boolean;
   initialFilmingProgress?: Record<string, { filmed_count: number; filmable_count: number }>;
+  initialEditingProgress?: Record<string, { edited_count: number; editable_count: number }>;
+  initialModelRunways?: ModelMaterialRunway[];
   initialSelectedId?: string | null;
 }) {
   const { addToast } = useToast();
   const [bunches, setBunches] = React.useState(initialBunches);
   const [filmingProgress, setFilmingProgress] = React.useState(initialFilmingProgress);
+  const [editingProgress, setEditingProgress] = React.useState(initialEditingProgress);
+  const [modelRunways, setModelRunways] = React.useState(initialModelRunways);
+  const [viewMode, setViewMode] = React.useState<"bunches" | "pipeline">("bunches");
+  const [pipelineLoading, setPipelineLoading] = React.useState(false);
   const [refreshing, setRefreshing] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
@@ -97,6 +112,7 @@ export function AdminBunchesClient({
 
   const [showAssignPicker, setShowAssignPicker] = React.useState(false);
   const [showFilmerPicker, setShowFilmerPicker] = React.useState(false);
+  const [showEditorPicker, setShowEditorPicker] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
   const [modelFilter, setModelFilter] = React.useState("all");
@@ -127,6 +143,17 @@ export function AdminBunchesClient({
     [filmers],
   );
 
+  const staffEditors = React.useMemo<StaffUserOption[]>(
+    () =>
+      editors.map((e) => ({
+        id: e.id,
+        full_name: e.name,
+        email: e.email ?? "",
+        role: e.role ?? "other",
+      })),
+    [editors],
+  );
+
   async function refreshFilmingProgress(ids: string[]) {
     if (!canManageFilming || ids.length === 0) return;
     try {
@@ -145,6 +172,41 @@ export function AdminBunchesClient({
     }
   }
 
+  async function refreshEditingProgress(ids: string[]) {
+    if (!canManageEditing || ids.length === 0) return;
+    try {
+      const res = await fetch(
+        `/api/editing/progress?ids=${encodeURIComponent(ids.join(","))}`,
+        { credentials: "include" },
+      );
+      if (res.ok) {
+        const d = (await res.json()) as {
+          progress?: Record<string, { edited_count: number; editable_count: number }>;
+        };
+        if (d.progress) setEditingProgress((prev) => ({ ...prev, ...d.progress }));
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
+  async function refreshPipeline() {
+    setPipelineLoading(true);
+    try {
+      const res = await fetch("/api/icloud/pipeline-overview", { credentials: "include" });
+      if (res.ok) {
+        const d = (await res.json()) as {
+          bunches?: VideoBunch[];
+          modelRunways?: ModelMaterialRunway[];
+        };
+        if (d.bunches) setBunches(d.bunches);
+        if (d.modelRunways) setModelRunways(d.modelRunways);
+      }
+    } finally {
+      setPipelineLoading(false);
+    }
+  }
+
   async function refreshAll() {
     setRefreshing(true);
     try {
@@ -154,6 +216,8 @@ export function AdminBunchesClient({
         const next = (d.bunches ?? []) as VideoBunch[];
         setBunches(next);
         void refreshFilmingProgress(next.map((b) => b.id));
+        void refreshEditingProgress(next.map((b) => b.id));
+        if (viewMode === "pipeline") void refreshPipeline();
       }
     } finally {
       setRefreshing(false);
@@ -324,6 +388,56 @@ export function AdminBunchesClient({
     }
   }
 
+  async function assignEditorToBunch(bunchId: string, editorId: string) {
+    const editor = editors.find((e) => e.id === editorId);
+    if (!editor) {
+      addToast(
+        winnerVideoLocalToast(`ws-edit-err-${Date.now()}`, "Editor assign failed", "Editor not found", "high"),
+      );
+      return;
+    }
+    setBusyId(`editor-${bunchId}`);
+    try {
+      const res = await fetch(`/api/winner-sourcing/bunches/${encodeURIComponent(bunchId)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assign_editor",
+          assigned_editor_id: editor.id,
+          assigned_editor_name: editor.name,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-edit-err-${Date.now()}`,
+            "Editor assign failed",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        return;
+      }
+      addToast(
+        winnerVideoLocalToast(
+          `ws-edit-ok-${Date.now()}`,
+          "Bunch assigned to editor",
+          `${editor.name} — visible in Edit Assignments`,
+          "normal",
+        ),
+      );
+      if (data.bunch) {
+        setBunches((prev) => prev.map((b) => (b.id === bunchId ? { ...b, ...data.bunch } : b)));
+      }
+      void refreshEditingProgress([bunchId]);
+      if (selectedBunchId === bunchId) await loadBunchSlots(bunchId);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function updateSlotType(
     slotId: string,
     video_type: SlotVideoType | "",
@@ -402,6 +516,7 @@ export function AdminBunchesClient({
         b.model_name,
         b.assigned_creative_name,
         b.assigned_filmer_name,
+        b.assigned_editor_name,
         b.status,
         b.filming_status,
       ]
@@ -455,11 +570,77 @@ export function AdminBunchesClient({
       return;
     }
     setShowAssignPicker(false);
+    setShowEditorPicker(false);
     setShowFilmerPicker((v) => !v);
+  }
+
+  function handleAssignEditorClick() {
+    if (!selectedBunch) return;
+    if (editors.length === 0) {
+      addToast(
+        winnerVideoLocalToast(
+          `ws-edit-${Date.now()}`,
+          "No editors available",
+          "Grant editing:view_assignments to a user in Roles first.",
+          "high",
+        ),
+      );
+      return;
+    }
+    if (!bunchReadyForEditing(selectedBunch) && !selectedBunch.assigned_editor_id) {
+      addToast(
+        winnerVideoLocalToast(
+          `ws-edit-${Date.now()}`,
+          "Filming not uploaded",
+          "Filming must be uploaded before assigning an editor.",
+          "high",
+        ),
+      );
+      return;
+    }
+    setShowAssignPicker(false);
+    setShowFilmerPicker(false);
+    setShowEditorPicker((v) => !v);
   }
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={cn(
+            viewMode === "bunches" ? VA_BTN_PRIMARY : VA_BTN_SECONDARY,
+            "px-4 py-2 text-sm",
+          )}
+          onClick={() => setViewMode("bunches")}
+        >
+          Bunches
+        </button>
+        <button
+          type="button"
+          className={cn(
+            viewMode === "pipeline" ? VA_BTN_PRIMARY : VA_BTN_SECONDARY,
+            "px-4 py-2 text-sm",
+          )}
+          onClick={() => {
+            setViewMode("pipeline");
+            void refreshPipeline();
+          }}
+        >
+          Pipeline Overview
+        </button>
+      </div>
+
+      {viewMode === "pipeline" ? (
+        <AdminBunchesPipeline
+          bunches={bunches}
+          modelRunways={modelRunways}
+          loading={pipelineLoading}
+        />
+      ) : null}
+
+      {viewMode === "bunches" ? (
+      <>
       <div className="relative overflow-hidden rounded-3xl border border-[#D4AF8C]/15 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8 md:px-8">
         <div
           className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-40 blur-3xl"
@@ -774,6 +955,9 @@ export function AdminBunchesClient({
                     {selectedBunch.assigned_filmer_name?.trim()
                       ? ` · Filmer: ${selectedBunch.assigned_filmer_name}`
                       : ""}
+                    {selectedBunch.assigned_editor_name?.trim()
+                      ? ` · Editor: ${selectedBunch.assigned_editor_name}`
+                      : ""}
                   </p>
                   {selectedProgress && selectedProgress.filmable_count > 0 ? (
                     <p className="mt-1 text-[11px] text-[#D4AF8C]/75">
@@ -793,6 +977,28 @@ export function AdminBunchesClient({
                       ) : null}
                     </p>
                   ) : null}
+                  {canManageEditing &&
+                  editingProgress[selectedBunch.id] &&
+                  editingProgress[selectedBunch.id]!.editable_count > 0 ? (
+                    <p className="mt-1 text-[11px] text-[#D4AF8C]/75">
+                      Editing {editingProgress[selectedBunch.id]!.edited_count} of{" "}
+                      {editingProgress[selectedBunch.id]!.editable_count}
+                      {selectedBunch.editing_status === "uploaded" &&
+                      selectedBunch.edited_upload_folder_link ? (
+                        <>
+                          {" · "}
+                          <a
+                            href={selectedBunch.edited_upload_folder_link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[#FF1493] hover:underline"
+                          >
+                            Edited folder
+                          </a>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -803,6 +1009,7 @@ export function AdminBunchesClient({
                     )}
                     onClick={() => {
                       setShowFilmerPicker(false);
+                      setShowEditorPicker(false);
                       setShowAssignPicker((v) => !v);
                     }}
                     disabled={busyId === selectedBunch.id || creatives.length === 0}
@@ -843,6 +1050,35 @@ export function AdminBunchesClient({
                       {selectedBunch.assigned_filmer_id ? "Re-assign filmer" : "Assign filmer"}
                     </button>
                   ) : null}
+                  {canManageEditing ? (
+                    <button
+                      type="button"
+                      className={cn(
+                        VA_BTN_SECONDARY,
+                        "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs",
+                        (busyId === `editor-${selectedBunch.id}` ||
+                          (!bunchReadyForEditing(selectedBunch) && !selectedBunch.assigned_editor_id) ||
+                          editors.length === 0) &&
+                          "opacity-50",
+                      )}
+                      onClick={handleAssignEditorClick}
+                      disabled={busyId === `editor-${selectedBunch.id}`}
+                      title={
+                        !bunchReadyForEditing(selectedBunch) && !selectedBunch.assigned_editor_id
+                          ? "Filming must be uploaded first"
+                          : editors.length === 0
+                            ? "No editors with editing:view_assignments"
+                            : undefined
+                      }
+                    >
+                      {busyId === `editor-${selectedBunch.id}` ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5" />
+                      )}
+                      {selectedBunch.assigned_editor_id ? "Re-assign editor" : "Assign editor"}
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="rounded-xl px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-[#B8B4B8]/50 hover:text-[#D4AF8C]"
@@ -870,9 +1106,23 @@ export function AdminBunchesClient({
                 </p>
               ) : null}
 
+              {canManageEditing && editors.length === 0 ? (
+                <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                  No Editors available — grant editing:view_assignments to a user first.
+                </p>
+              ) : null}
+
               {canManageFilming && !scriptsReady && !selectedBunch.assigned_filmer_id && slots.length > 0 ? (
                 <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-[#B8B4B8]/65">
                   Assign filmer unlocks when every filled slot has an approved script.
+                </p>
+              ) : null}
+
+              {canManageEditing &&
+              !bunchReadyForEditing(selectedBunch) &&
+              !selectedBunch.assigned_editor_id ? (
+                <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-[#B8B4B8]/65">
+                  Assign editor unlocks after filming status is Uploaded.
                 </p>
               ) : null}
 
@@ -923,6 +1173,29 @@ export function AdminBunchesClient({
                 </div>
               ) : null}
 
+              {showEditorPicker && canManageEditing && editors.length > 0 ? (
+                <div className="rounded-xl border border-white/[0.08] bg-[#0A0A0A]/70 p-3">
+                  <p className="mb-2 text-[11px] text-[#B8B4B8]/55">
+                    Editor sees this bunch under Edit Assignments after assignment.
+                  </p>
+                  <StaffAssigneePicker
+                    users={staffEditors}
+                    roleLabels={{}}
+                    name="bunch-assign-editor"
+                    singleSelect
+                    selectedIds={
+                      selectedBunch.assigned_editor_id ? [selectedBunch.assigned_editor_id] : []
+                    }
+                    onChange={(ids) => {
+                      const next = ids[0];
+                      if (!next || next === selectedBunch.assigned_editor_id) return;
+                      setShowEditorPicker(false);
+                      void assignEditorToBunch(selectedBunch.id, next);
+                    }}
+                  />
+                </div>
+              ) : null}
+
               {slots.length === 0 ? (
                 <p className="text-sm text-[#B8B4B8]/50">
                   No slots yet — assign queue items from{" "}
@@ -950,6 +1223,11 @@ export function AdminBunchesClient({
                           {slot.filmed ? (
                             <span className={cn(VA_STATUS_BADGE, "bg-emerald-500/15 text-emerald-300")}>
                               Filmed
+                            </span>
+                          ) : null}
+                          {slot.edited ? (
+                            <span className={cn(VA_STATUS_BADGE, "bg-sky-500/15 text-sky-300")}>
+                              Edited
                             </span>
                           ) : null}
                           <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">
@@ -1002,6 +1280,8 @@ export function AdminBunchesClient({
           )}
         </div>
       </div>
+      </>
+      ) : null}
     </div>
   );
 }

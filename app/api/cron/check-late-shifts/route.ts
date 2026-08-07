@@ -14,6 +14,7 @@ import {
   runPersonalEventReminders,
   runPhaseOverdueCheck,
 } from "@/services/cron-notification-jobs";
+import { runMaterialUntilApproachingAlerts } from "@/services/icloud";
 
 /**
  * Auth: when CRON_SECRET is set, require Authorization: Bearer <CRON_SECRET> or x-cron-secret header.
@@ -57,6 +58,7 @@ export async function GET(request: Request) {
       personalEventReminders,
       modelLiveScheduledReminders,
       phaseOverdue,
+      materialUntilApproaching,
     ] = await Promise.all([
       runCheckLateShifts(),
       runSundayAvailabilityReminders(),
@@ -71,6 +73,10 @@ export async function GET(request: Request) {
       runPersonalEventReminders(),
       runModelLiveScheduledReminders(),
       runPhaseOverdueCheck(),
+      runMaterialUntilApproachingAlerts().catch((err) => {
+        console.error("[cron] material_until_approaching", err);
+        return { ok: true as const, folders_scanned: 0, notifications_sent: 0 };
+      }),
     ]);
     return NextResponse.json({
       ...lateShifts,
@@ -86,6 +92,7 @@ export async function GET(request: Request) {
       personal_event_reminders: personalEventReminders,
       model_live_scheduled_reminders: modelLiveScheduledReminders,
       phase_overdue: phaseOverdue,
+      material_until_approaching: materialUntilApproaching,
     });
   } catch (err) {
     console.error("[cron/check-late-shifts]", err);
