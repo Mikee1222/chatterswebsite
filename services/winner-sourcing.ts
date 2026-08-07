@@ -7,7 +7,9 @@
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { coerceScriptStatus, type ScriptStatus } from "@/lib/creative-scripts-helpers";
 import {
+  SUPER_WINNER_RECREATE_COUNT_SETTING_KEY,
   TIER_RECREATE_COUNTS,
+  WINNER_RECREATE_COUNT_SETTING_KEY,
   coerceBunchStatus,
   coerceSlotSource,
   coerceSlotVideoType,
@@ -15,11 +17,13 @@ import {
   coerceWinnerTier,
   mapSlotTypeToScriptFields,
   mapScriptFieldsToSlotType,
+  parsePositiveInt,
   slotFilled,
   tierFromViewCount,
   type BunchStatus,
   type SlotSource,
   type SlotVideoType,
+  type WinnerSourcingRecreateConfig,
   type WinnerSubmissionStatus,
   type WinnerTier,
 } from "@/lib/winner-sourcing-helpers";
@@ -29,6 +33,9 @@ import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { listUsersWithPermission } from "@/services/users";
 import { PERMISSIONS } from "@/lib/permissions";
+import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
+
+export type { WinnerSourcingRecreateConfig };
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -231,6 +238,62 @@ export async function getWinnerSubmission(id: string): Promise<WinnerSubmission 
   return data ? mapSubmission(data as Record<string, unknown>) : null;
 }
 
+// ── Recreate count settings (system_settings) ────────────────────────────────
+
+export async function getWinnerSourcingRecreateConfig(): Promise<WinnerSourcingRecreateConfig> {
+  const [winnerRaw, superRaw] = await Promise.all([
+    getSystemSetting(WINNER_RECREATE_COUNT_SETTING_KEY).catch(() => null),
+    getSystemSetting(SUPER_WINNER_RECREATE_COUNT_SETTING_KEY).catch(() => null),
+  ]);
+  return {
+    winner_recreate_count: parsePositiveInt(
+      winnerRaw,
+      TIER_RECREATE_COUNTS.winner,
+    ),
+    super_winner_recreate_count: parsePositiveInt(
+      superRaw,
+      TIER_RECREATE_COUNTS.super_winner,
+    ),
+  };
+}
+
+export async function setWinnerSourcingRecreateConfig(input: {
+  winner_recreate_count: number;
+  super_winner_recreate_count: number;
+}): Promise<WinnerSourcingRecreateConfig> {
+  const winner = parsePositiveInt(input.winner_recreate_count, 0);
+  const superWinner = parsePositiveInt(input.super_winner_recreate_count, 0);
+  if (winner < 1) throw new Error("Winner recreate count must be at least 1");
+  if (superWinner < 1) throw new Error("Super Winner recreate count must be at least 1");
+
+  await Promise.all([
+    setSystemSetting(
+      WINNER_RECREATE_COUNT_SETTING_KEY,
+      String(winner),
+      "Recreate videos required when a Winner is added to the recreation queue",
+    ),
+    setSystemSetting(
+      SUPER_WINNER_RECREATE_COUNT_SETTING_KEY,
+      String(superWinner),
+      "Recreate videos required when a Super Winner is added to the recreation queue",
+    ),
+  ]);
+
+  return {
+    winner_recreate_count: winner,
+    super_winner_recreate_count: superWinner,
+  };
+}
+
+function recreateCountForTier(
+  tier: WinnerTier,
+  config: WinnerSourcingRecreateConfig,
+): number {
+  return tier === "super_winner"
+    ? config.super_winner_recreate_count
+    : config.winner_recreate_count;
+}
+
 // ── Recreation queue ─────────────────────────────────────────────────────────
 
 export async function addSubmissionToRecreationQueue(
@@ -242,7 +305,9 @@ export async function addSubmissionToRecreationQueue(
     throw new Error("Already in recreation queue");
   }
 
-  const count = TIER_RECREATE_COUNTS[submission.tier];
+  // Lock current settings into the queue item — later setting changes must not alter this.
+  const config = await getWinnerSourcingRecreateConfig();
+  const count = recreateCountForTier(submission.tier, config);
   const sb = getSupabaseServiceClient();
 
   const { data: item, error } = await sb

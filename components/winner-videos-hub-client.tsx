@@ -8,6 +8,7 @@ import {
   Loader2,
   Plus,
   RefreshCw,
+  Settings2,
   Sparkles,
   Trophy,
   Users,
@@ -27,6 +28,7 @@ import {
   TIER_RECREATE_COUNTS,
   tierLabel,
   type SlotVideoType,
+  type WinnerSourcingRecreateConfig,
 } from "@/lib/winner-sourcing-helpers";
 import type {
   RecreationQueueItem,
@@ -39,13 +41,14 @@ import { cn } from "@/lib/utils";
 export type HubModelOption = { model_id: string; model_name: string };
 export type HubCreativeOption = { id: string; name: string };
 
-type TabId = "winners" | "super" | "queue" | "bunches";
+type TabId = "winners" | "super" | "queue" | "bunches" | "settings";
 
 const TABS: { id: TabId; label: string }[] = [
   { id: "winners", label: "Winners" },
   { id: "super", label: "Super Winners" },
   { id: "queue", label: "Recreation Queue" },
   { id: "bunches", label: "Bunches" },
+  { id: "settings", label: "Settings" },
 ];
 
 export function WinnerVideosHubClient({
@@ -53,6 +56,7 @@ export function WinnerVideosHubClient({
   initialSuperWinners,
   initialQueue,
   initialBunches,
+  initialRecreateConfig,
   models,
   creatives,
 }: {
@@ -60,6 +64,7 @@ export function WinnerVideosHubClient({
   initialSuperWinners: WinnerSubmission[];
   initialQueue: RecreationQueueItem[];
   initialBunches: VideoBunch[];
+  initialRecreateConfig: WinnerSourcingRecreateConfig;
   models: HubModelOption[];
   creatives: HubCreativeOption[];
 }) {
@@ -69,6 +74,7 @@ export function WinnerVideosHubClient({
   const [supers, setSupers] = React.useState(initialSuperWinners);
   const [queue, setQueue] = React.useState(initialQueue);
   const [bunches, setBunches] = React.useState(initialBunches);
+  const [recreateConfig, setRecreateConfig] = React.useState(initialRecreateConfig);
   const [refreshing, setRefreshing] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
@@ -86,11 +92,12 @@ export function WinnerVideosHubClient({
   async function refreshAll() {
     setRefreshing(true);
     try {
-      const [wRes, sRes, qRes, bRes] = await Promise.all([
+      const [wRes, sRes, qRes, bRes, cfgRes] = await Promise.all([
         fetch("/api/winner-sourcing/submissions?tier=winner", { credentials: "include" }),
         fetch("/api/winner-sourcing/submissions?tier=super_winner", { credentials: "include" }),
         fetch("/api/winner-sourcing/queue", { credentials: "include" }),
         fetch("/api/winner-sourcing/bunches", { credentials: "include" }),
+        fetch("/api/winner-sourcing/settings", { credentials: "include" }),
       ]);
       if (wRes.ok) {
         const d = await wRes.json();
@@ -108,8 +115,47 @@ export function WinnerVideosHubClient({
         const d = await bRes.json();
         setBunches(d.bunches ?? []);
       }
+      if (cfgRes.ok) {
+        const d = await cfgRes.json();
+        if (d.settings) setRecreateConfig(d.settings);
+      }
     } finally {
       setRefreshing(false);
+    }
+  }
+
+  async function saveRecreateConfig(next: WinnerSourcingRecreateConfig) {
+    setBusyId("save-settings");
+    try {
+      const res = await fetch("/api/winner-sourcing/settings", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-err-${Date.now()}`,
+            "Save failed",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        return;
+      }
+      setRecreateConfig(data.settings ?? next);
+      addToast(
+        winnerVideoLocalToast(
+          `ws-cfg-${Date.now()}`,
+          "Settings saved",
+          `Winner ${data.settings?.winner_recreate_count ?? next.winner_recreate_count}× · Super ${data.settings?.super_winner_recreate_count ?? next.super_winner_recreate_count}×`,
+          "normal",
+        ),
+      );
+    } finally {
+      setBusyId(null);
     }
   }
 
@@ -385,6 +431,7 @@ export function WinnerVideosHubClient({
               empty="No Winner submissions yet (100k–299,999 views)."
               busyId={busyId}
               onAddToQueue={addToQueue}
+              recreateCount={recreateConfig.winner_recreate_count}
             />
           ) : null}
           {tab === "super" ? (
@@ -393,6 +440,7 @@ export function WinnerVideosHubClient({
               empty="No Super Winner submissions yet (300k+ views)."
               busyId={busyId}
               onAddToQueue={addToQueue}
+              recreateCount={recreateConfig.super_winner_recreate_count}
               superTier
             />
           ) : null}
@@ -426,6 +474,13 @@ export function WinnerVideosHubClient({
               onAssignCreative={assignCreative}
               onUpdateSlotType={updateSlotType}
               onToggleBunchStatus={toggleBunchStatus}
+            />
+          ) : null}
+          {tab === "settings" ? (
+            <SettingsPanel
+              config={recreateConfig}
+              busyId={busyId}
+              onSave={(next) => void saveRecreateConfig(next)}
             />
           ) : null}
         </motion.div>
@@ -462,12 +517,14 @@ function SubmissionList({
   empty,
   busyId,
   onAddToQueue,
+  recreateCount,
   superTier,
 }: {
   items: WinnerSubmission[];
   empty: string;
   busyId: string | null;
   onAddToQueue: (id: string) => void;
+  recreateCount: number;
   superTier?: boolean;
 }) {
   if (!items.length) {
@@ -530,13 +587,109 @@ function SubmissionList({
                 ) : (
                   <Sparkles className="h-3.5 w-3.5" />
                 )}
-                Add to queue ({TIER_RECREATE_COUNTS[s.tier]}×)
+                Add to queue ({recreateCount}×)
               </button>
             ) : null}
           </div>
         </li>
       ))}
     </ul>
+  );
+}
+
+function SettingsPanel({
+  config,
+  busyId,
+  onSave,
+}: {
+  config: WinnerSourcingRecreateConfig;
+  busyId: string | null;
+  onSave: (next: WinnerSourcingRecreateConfig) => void;
+}) {
+  const [winnerCount, setWinnerCount] = React.useState(String(config.winner_recreate_count));
+  const [superCount, setSuperCount] = React.useState(String(config.super_winner_recreate_count));
+
+  React.useEffect(() => {
+    setWinnerCount(String(config.winner_recreate_count));
+    setSuperCount(String(config.super_winner_recreate_count));
+  }, [config.winner_recreate_count, config.super_winner_recreate_count]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSave({
+      winner_recreate_count: Number(winnerCount),
+      super_winner_recreate_count: Number(superCount),
+    });
+  }
+
+  const saving = busyId === "save-settings";
+
+  return (
+    <div className={cn(VA_CARD, "p-5 md:p-6")}>
+      <div className="mb-5 flex items-start gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#D4AF8C]/25 bg-[#D4AF8C]/10">
+          <Settings2 className="h-5 w-5 text-[#D4AF8C]" />
+        </div>
+        <div>
+          <h2 className="text-lg font-semibold text-white">Recreate counts</h2>
+          <p className="mt-1 max-w-2xl text-sm text-[#B8B4B8]/65">
+            This determines how many recreate videos are required when a Winner or Super Winner is
+            added to a bunch. Changes only affect NEWLY queued items — existing recreation_queue_items
+            keep their originally-assigned count.
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#B8B4B8]/55">
+              Winner recreate count
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              step={1}
+              required
+              value={winnerCount}
+              onChange={(e) => setWinnerCount(e.target.value)}
+              className={cn(VA_FILTER_INPUT, "w-full")}
+            />
+            <span className="text-[11px] text-[#B8B4B8]/40">
+              Default {TIER_RECREATE_COUNTS.winner}
+            </span>
+          </label>
+          <label className="block space-y-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.12em] text-[#B8B4B8]/55">
+              Super Winner recreate count
+            </span>
+            <input
+              type="number"
+              min={1}
+              max={500}
+              step={1}
+              required
+              value={superCount}
+              onChange={(e) => setSuperCount(e.target.value)}
+              className={cn(VA_FILTER_INPUT, "w-full")}
+            />
+            <span className="text-[11px] text-[#B8B4B8]/40">
+              Default {TIER_RECREATE_COUNTS.super_winner}
+            </span>
+          </label>
+        </div>
+
+        <button
+          type="submit"
+          disabled={saving}
+          className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 px-5 py-2.5 text-sm")}
+        >
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          Save
+        </button>
+      </form>
+    </div>
   );
 }
 

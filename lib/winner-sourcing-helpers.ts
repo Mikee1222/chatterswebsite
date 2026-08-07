@@ -18,11 +18,27 @@ export type SlotSource = (typeof SLOT_SOURCES)[number];
 export const SLOT_VIDEO_TYPES = ["skit", "ugc", "other"] as const;
 export type SlotVideoType = (typeof SLOT_VIDEO_TYPES)[number];
 
-/** Recreate counts when a submission is added to the recreation queue. */
+/** Default recreate counts when a submission is added to the recreation queue. */
 export const TIER_RECREATE_COUNTS: Record<WinnerTier, number> = {
   winner: 3,
   super_winner: 10,
 };
+
+/** system_settings keys for admin-configurable recreate counts. */
+export const WINNER_RECREATE_COUNT_SETTING_KEY = "winner_sourcing.winner_recreate_count";
+export const SUPER_WINNER_RECREATE_COUNT_SETTING_KEY =
+  "winner_sourcing.super_winner_recreate_count";
+
+export type WinnerSourcingRecreateConfig = {
+  winner_recreate_count: number;
+  super_winner_recreate_count: number;
+};
+
+export function parsePositiveInt(raw: unknown, fallback: number): number {
+  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? "").trim(), 10);
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(Math.round(n), 500);
+}
 
 export function tierFromViewCount(viewCount: number): WinnerTier | null {
   if (!Number.isFinite(viewCount) || viewCount < WINNER_VIEW_THRESHOLD) return null;

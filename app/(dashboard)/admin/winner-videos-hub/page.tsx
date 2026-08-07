@@ -4,6 +4,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { listUsersWithPermission } from "@/services/users";
 import {
+  getWinnerSourcingRecreateConfig,
   listRecreationQueue,
   listVideoBunches,
   listWinnerSubmissions,
@@ -18,14 +19,19 @@ export default async function AdminWinnerVideosHubPage() {
   const user = await getSessionFromCookies();
   await requireAdminRoute(user, PERMISSIONS.WINNER_SOURCING_MANAGE);
 
-  const [winners, superWinners, queue, bunches, gunzoModels, creativeUsers] = await Promise.all([
-    listWinnerSubmissions({ tier: "winner" }).catch(() => []),
-    listWinnerSubmissions({ tier: "super_winner" }).catch(() => []),
-    listRecreationQueue().catch(() => []),
-    listVideoBunches().catch(() => []),
-    listActiveGunzoTeamModelss().catch(() => []),
-    listUsersWithPermission(PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT).catch(() => []),
-  ]);
+  const [winners, superWinners, queue, bunches, gunzoModels, creativeUsers, recreateConfig] =
+    await Promise.all([
+      listWinnerSubmissions({ tier: "winner" }).catch(() => []),
+      listWinnerSubmissions({ tier: "super_winner" }).catch(() => []),
+      listRecreationQueue().catch(() => []),
+      listVideoBunches().catch(() => []),
+      listActiveGunzoTeamModelss().catch(() => []),
+      listUsersWithPermission(PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT).catch(() => []),
+      getWinnerSourcingRecreateConfig().catch(() => ({
+        winner_recreate_count: 3,
+        super_winner_recreate_count: 10,
+      })),
+    ]);
 
   const models: HubModelOption[] = gunzoModels.map((m) => ({
     model_id: m.id || m.model_id,
@@ -44,6 +50,7 @@ export default async function AdminWinnerVideosHubPage() {
         initialSuperWinners={superWinners}
         initialQueue={queue}
         initialBunches={bunches}
+        initialRecreateConfig={recreateConfig}
         models={models}
         creatives={creatives}
       />
