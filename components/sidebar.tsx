@@ -207,6 +207,7 @@ export function Sidebar({
   const role = getNavRoleForSession(user);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const searchContainerRef = React.useRef<HTMLDivElement>(null);
+  const sidebarRootRef = React.useRef<HTMLElement>(null);
 
   const [collapsedSections, setCollapsedSections] = React.useState<string[]>([]);
   const [pinnedHrefs, setPinnedHrefs] = React.useState<string[]>([]);
@@ -219,6 +220,11 @@ export function Sidebar({
     setPinnedHrefs(readJsonArray(PINNED_ITEMS_KEY).slice(0, MAX_PINNED));
     setSectionsHydrated(true);
   }, []);
+
+  // Close search after navigation so result Links can receive click before dismiss.
+  React.useEffect(() => {
+    setSearchOpen(false);
+  }, [pathname]);
 
   React.useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -248,10 +254,15 @@ export function Sidebar({
 
   React.useEffect(() => {
     if (!searchOpen) return;
+    // Results render in <nav>, outside the search input container. Dismiss only when
+    // clicking outside the whole sidebar — otherwise mousedown unmounts the Link
+    // before click can navigate (classic overlay-dismiss race).
     const onPointerDown = (e: MouseEvent) => {
-      if (!searchContainerRef.current?.contains(e.target as Node)) {
-        setSearchOpen(false);
-      }
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (sidebarRootRef.current?.contains(target)) return;
+      if (searchContainerRef.current?.contains(target)) return;
+      setSearchOpen(false);
     };
     document.addEventListener("mousedown", onPointerDown);
     return () => document.removeEventListener("mousedown", onPointerDown);
@@ -492,6 +503,7 @@ export function Sidebar({
 
   return (
     <aside
+      ref={sidebarRootRef}
       className={cn(
         "glass-panel fixed left-0 top-0 z-40 hidden h-screen border-r border-white/[0.08] bg-black/50 shadow-[4px_0_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-[width] duration-200 md:block",
         collapsed ? "w-14" : "w-64"
