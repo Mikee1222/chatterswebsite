@@ -27,6 +27,20 @@ import type { RoleRecord, UserRole } from "@/types";
 
 const TABLE = "roles";
 
+/** Built-in role slugs that must always remain system roles (cannot be deleted). */
+const SYSTEM_ROLE_SLUGS = new Set<string>([
+  "admin",
+  "manager",
+  "chatter",
+  "virtual_assistant",
+  "model",
+  "client",
+]);
+
+function isKnownSystemRoleSlug(roleId: string): boolean {
+  return SYSTEM_ROLE_SLUGS.has(roleId.trim().toLowerCase());
+}
+
 async function invalidateRbacCache(roleName?: string): Promise<void> {
   const { clearRbacCache } = await import("@/lib/rbac");
   clearRbacCache(roleName);
@@ -69,7 +83,7 @@ function mapRecord(rec: AirtableRecord<Fields>): RoleRecord {
     notification_defaults: parsedDefaults
       ? normalizeNotificationDefaults(parsedDefaults)
       : getFallbackNotificationDefaults(roleId),
-    is_system_role: f.is_system_role ?? false,
+    is_system_role: isKnownSystemRoleSlug(roleId) || (f.is_system_role ?? false),
     color: f.color ?? "",
     created_at: f.created_at ?? "",
     updated_at: f.updated_at ?? "",
@@ -209,7 +223,7 @@ export async function upsertRole(
     description: input.description?.trim() ?? "",
     permissions: JSON.stringify(sanitizePermissions(input.permissions)),
     notification_defaults: JSON.stringify(notificationDefaults),
-    is_system_role: input.is_system_role ?? false,
+    is_system_role: isKnownSystemRoleSlug(roleId) ? true : (input.is_system_role ?? false),
     color: input.color?.trim() ?? "",
     updated_at: now,
   };

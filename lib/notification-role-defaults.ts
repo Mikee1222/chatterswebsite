@@ -1245,26 +1245,44 @@ export function normalizeNotificationDefaults(
 }
 
 export function parseNotificationDefaultsJson(raw: unknown): NotificationRoleDefaults | null {
-  if (typeof raw !== "string" || !raw.trim()) return null;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    const obj = parsed as Record<string, unknown>;
-    const result = {} as NotificationRoleDefaults;
-    for (const key of NOTIFICATION_ROLE_DEFAULT_KEYS) {
-      if (typeof obj[key] !== "boolean") return null;
-      result[key] = obj[key];
+  // Accept string JSON (Airtable / text columns) or already-parsed objects (jsonb).
+  let obj: Record<string, unknown>;
+  if (typeof raw === "string") {
+    if (!raw.trim()) return null;
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (typeof parsed !== "object" || parsed === null) return null;
+      obj = parsed as Record<string, unknown>;
+    } catch {
+      return null;
     }
-    for (const [key, value] of Object.entries(obj)) {
-      if (isNotificationRoleCategoryKey(key)) continue;
-      if (typeof value === "boolean") {
-        (result as Record<string, boolean>)[key] = value;
-      }
-    }
-    return normalizeNotificationDefaults(result);
-  } catch {
+  } else if (typeof raw === "object" && raw !== null && !Array.isArray(raw)) {
+    obj = raw as Record<string, unknown>;
+  } else {
     return null;
   }
+
+  const result = {} as NotificationRoleDefaults;
+  let sawCategory = false;
+  for (const key of NOTIFICATION_ROLE_DEFAULT_KEYS) {
+    if (typeof obj[key] === "boolean") {
+      result[key] = obj[key];
+      sawCategory = true;
+    } else {
+      // Missing keys (e.g. new category shipped after role row was last saved) —
+      // default false instead of rejecting the whole payload (which forced
+      // built-in defaults and made admin customizations look fixed).
+      result[key] = false;
+    }
+  }
+  if (!sawCategory) return null;
+  for (const [key, value] of Object.entries(obj)) {
+    if (isNotificationRoleCategoryKey(key)) continue;
+    if (typeof value === "boolean") {
+      (result as Record<string, boolean>)[key] = value;
+    }
+  }
+  return normalizeNotificationDefaults(result);
 }
 
 export function getEventDefaultValue(

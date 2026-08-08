@@ -179,7 +179,7 @@ function getScopeTooltip(scope: NotificationRoleScope, roleLabel: string): strin
     case "broadcast":
       return `Sent to all ${roleLabel}s when this happens to anyone`;
     case "none":
-      return "Αυτό το event δεν αφορά συνήθως το role αυτό";
+      return `Not in the default matrix for ${roleLabel} — enable the toggle to still send when this user is involved`;
   }
 }
 
@@ -836,7 +836,7 @@ export function AdminRolesClient({
                       </h3>
                       <p className="mt-1 text-sm text-white/45">
                         {isSystemRole
-                          ? "Control exactly who receives each notification. Personal events (blue) go to the specific user involved. Broadcast events (amber) go to all users with this role. Dimmed events usually do not apply to this role but can still be enabled."
+                          ? "Control exactly who receives each notification. Personal events (blue) go to the specific user involved. Broadcast events (amber) go to all users with this role. Dimmed events are outside the default matrix for this role — turn the category on, then enable individual events to include them."
                           : "Enable or disable each notification type for this custom role."}
                       </p>
                     </div>

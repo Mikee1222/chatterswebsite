@@ -23,6 +23,20 @@ import type { RoleRecord, UserRole } from "@/types";
 
 const TABLE = "roles";
 
+/** Built-in role slugs that must always remain system roles (cannot be deleted). */
+const SYSTEM_ROLE_SLUGS = new Set<string>([
+  "admin",
+  "manager",
+  "chatter",
+  "virtual_assistant",
+  "model",
+  "client",
+]);
+
+function isKnownSystemRoleSlug(roleId: string): boolean {
+  return SYSTEM_ROLE_SLUGS.has(roleId.trim().toLowerCase());
+}
+
 type Row = SbRow & {
   role_id?: string | null;
   label?: string | null;
@@ -96,7 +110,8 @@ function mapRow(row: Row): RoleRecord {
     notification_defaults: parsedDefaults
       ? normalizeNotificationDefaults(parsedDefaults)
       : getFallbackNotificationDefaults(roleId),
-    is_system_role: row.is_system_role ?? false,
+    // Model (and other built-ins) must stay system roles even if a bad write flipped the flag.
+    is_system_role: isKnownSystemRoleSlug(roleId) || (row.is_system_role ?? false),
     color: row.color ?? "",
     created_at: row.created_at ?? "",
     updated_at: row.updated_at ?? "",
@@ -200,7 +215,7 @@ export async function upsertRole(
     description: input.description?.trim() ?? "",
     permissions: JSON.stringify(sanitizePermissions(input.permissions)),
     notification_defaults: JSON.stringify(notificationDefaults),
-    is_system_role: input.is_system_role ?? false,
+    is_system_role: isKnownSystemRoleSlug(roleId) ? true : (input.is_system_role ?? false),
     color: input.color?.trim() ?? "",
     updated_at: now,
   };

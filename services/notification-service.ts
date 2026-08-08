@@ -759,6 +759,33 @@ export async function notify(options: NotifyOptions) {
     }
   }
 
+  // Role-level toggles from /admin/roles must gate in-app as well as push (direct
+  // notify() paths previously only enforced role defaults in shouldSendPush).
+  if (roleDefaults) {
+    const roleCategoryKey = EVENT_TO_ROLE_CATEGORY[options.event_type];
+    if (roleCategoryKey) {
+      const roleEventAllowed = getEventDefaultValue(
+        roleDefaults,
+        roleCategoryKey,
+        options.event_type
+      );
+      if (!roleEventAllowed) {
+        devLog(NOTIF, "skip", JSON.stringify({
+          reason: `role default for ${options.event_type} is false`,
+          recipient_user_id: options.user_id,
+          role: recipientRole ?? null,
+          role_category: roleCategoryKey,
+        }));
+        logNotifyPushOutcome(options, {
+          push_sent: false,
+          outcome_stage: "skipped_role_default_false",
+          detail: `role default for ${options.event_type} is false; notification and push skipped`,
+        });
+        return { notification: null, pushSent: false };
+      }
+    }
+  }
+
   const notification = await createNotification({
     user_id: options.user_id,
     category: airtableCategory,
@@ -1130,8 +1157,13 @@ async function fireNotifyByRoleConfig(
     const roleSlug = role.role_id.trim().toLowerCase();
     if (!roleSlug) continue;
 
-    const roleScope = eventEntry ? getScopeForRole(eventEntry, roleSlug) : "none";
-    if (roleScope === "none") continue;
+    // Built-in scope matrix marks most events "none" for model/client (and all events
+    // for custom roles). Roles UI still lets admins enable those toggles — honor an
+    // explicit ON as personal delivery (or broadcast when the event is an _admin variant).
+    let roleScope = eventEntry ? getScopeForRole(eventEntry, roleSlug) : "none";
+    if (roleScope === "none") {
+      roleScope = eventType.endsWith("_admin") ? "broadcast" : "personal";
+    }
 
     if (roleScope === "broadcast") {
       if (mode === "personal_only") continue;
