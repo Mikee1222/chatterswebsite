@@ -335,7 +335,9 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                     "flex-1 text-sm leading-snug transition-colors duration-200 motion-reduce:transition-none",
                     item.status === "completed"
                       ? "text-[#B8B4B8]/28 line-through decoration-[#B8B4B8]/35 decoration-[1.5px]"
-                      : "text-[#B8B4B8]",
+                      : item.step_type === "Warm-up"
+                        ? "text-[#FF1493]"
+                        : "text-[#B8B4B8]",
                   )}
                 >
                   {item.title || "—"}
