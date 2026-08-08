@@ -39,7 +39,7 @@ export function ChampagneCheckbox({
     prevChecked.current = checked;
     if (checked && !wasChecked && !reduceMotion) {
       setPulse(true);
-      const t = window.setTimeout(() => setPulse(false), 220);
+      const t = window.setTimeout(() => setPulse(false), 320);
       return () => window.clearTimeout(t);
     }
   }, [checked, reduceMotion]);
@@ -60,7 +60,8 @@ export function ChampagneCheckbox({
         // Real min 44px touch target in document flow (survives overflow:hidden parents)
         "relative inline-flex h-11 w-11 shrink-0 items-center justify-center touch-manipulation",
         "rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/45",
-        disabled ? "cursor-not-allowed" : "cursor-pointer",
+        "transition-transform duration-150 ease-out active:scale-[0.92] motion-reduce:transition-none motion-reduce:active:scale-100",
+        disabled ? "cursor-not-allowed active:scale-100" : "cursor-pointer",
         className,
       )}
     >
@@ -70,30 +71,41 @@ export function ChampagneCheckbox({
           reduceMotion
             ? undefined
             : pulse
-              ? { scale: [1, 1.18, 1] }
+              ? { scale: [1, 1.22, 0.94, 1.06, 1] }
               : { scale: 1 }
         }
-        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
         className={cn(
-          "relative flex h-5 w-5 items-center justify-center rounded-[4px] border-2 transition-colors duration-150 motion-reduce:transition-none",
+          "relative flex h-5 w-5 items-center justify-center overflow-hidden rounded-[5px] border-2",
+          "transition-[border-color,box-shadow,background-color] duration-200 ease-out motion-reduce:transition-none",
           checked
-            ? "border-[#D4AF8C] bg-[#D4AF8C]/15"
+            ? "border-[#FF1493]/80 bg-gradient-to-br from-[#FF1493] via-[#E91E8C] to-[#D4AF8C] shadow-[0_0_14px_-3px_rgba(255,20,147,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]"
             : disabled
               ? "border-white/8 bg-white/[0.03] opacity-40"
-              : "border-[#D4AF8C]/45 bg-transparent",
+              : "border-[#D4AF8C]/50 bg-[#D4AF8C]/[0.04] shadow-[inset_0_1px_0_rgba(212,175,140,0.08)] hover:border-[#D4AF8C]/75 hover:bg-[#D4AF8C]/[0.08]",
         )}
       >
+        {/* Soft fill wash on check — skipped when reduced motion */}
+        {!reduceMotion && checked ? (
+          <motion.span
+            key="wash"
+            initial={{ opacity: 0.85, scale: 0.35 }}
+            animate={{ opacity: 0, scale: 1.65 }}
+            transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+            className="pointer-events-none absolute inset-0 rounded-[3px] bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.55)_0%,transparent_70%)]"
+          />
+        ) : null}
         <AnimatePresence mode="wait">
           {checked ? (
             <motion.span
               key="check"
-              initial={reduceMotion ? false : { scale: 0.4, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              initial={reduceMotion ? false : { scale: 0.35, opacity: 0, y: 2 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={reduceMotion ? undefined : { scale: 0.4, opacity: 0 }}
-              transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-              className="flex items-center justify-center"
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="relative z-[1] flex items-center justify-center"
             >
-              <Check className="h-3 w-3 text-[#D4AF8C]" strokeWidth={3} aria-hidden />
+              <Check className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]" strokeWidth={3.25} aria-hidden />
             </motion.span>
           ) : null}
         </AnimatePresence>

@@ -30,6 +30,7 @@ import {
 import { AssignmentProgressBar } from "@/components/content-pipeline-ui";
 import { TaskPhaseRibbon, type PhaseRibbonItem, type PhaseRibbonPhase } from "@/components/task-phase-ribbon";
 import { ChampagneCheckbox } from "@/components/va-tasks-champagne-checkbox";
+import { VaTaskActionButton } from "@/components/va-task-action-button";
 import { ManagerReviewTextarea, ReviewSectionHeader } from "@/components/manager-review-ui";
 
 /** Stable empty array so React.memo is not busted by `?? []` on every parent render. */
@@ -331,8 +332,10 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               <div className="flex items-start gap-2">
                 <p
                   className={cn(
-                    "flex-1 text-sm leading-snug",
-                    item.status === "completed" ? "text-[#B8B4B8]/30 line-through" : "text-[#B8B4B8]",
+                    "flex-1 text-sm leading-snug transition-colors duration-200 motion-reduce:transition-none",
+                    item.status === "completed"
+                      ? "text-[#B8B4B8]/28 line-through decoration-[#B8B4B8]/35 decoration-[1.5px]"
+                      : "text-[#B8B4B8]",
                   )}
                 >
                   {item.title || "—"}
@@ -465,32 +468,32 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-[#B8B4B8]/55">{assigneeLabel(task, userName)}</p>
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {canManage && onEdit ? (
-              <button
-                type="button"
+              <VaTaskActionButton
+                tone="edit"
+                title="Edit task"
                 onClick={(e) => {
                   e.stopPropagation();
                   onEdit(task);
                 }}
-                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
               >
-                <Pencil className="h-3 w-3" aria-hidden />
+                <Pencil className="h-3.5 w-3.5" aria-hidden />
                 Edit
-              </button>
+              </VaTaskActionButton>
             ) : null}
             {canManage && onDelete ? (
-              <button
-                type="button"
+              <VaTaskActionButton
+                tone="delete"
+                title="Delete task"
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(task);
                 }}
-                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10"
               >
-                <Trash2 className="h-3 w-3" aria-hidden />
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
                 Delete
-              </button>
+              </VaTaskActionButton>
             ) : null}
             {showDone ? (
               <button

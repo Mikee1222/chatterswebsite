@@ -22,6 +22,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { useReducedMotion } from "framer-motion";
 import { ClipboardList, Copy, GripVertical, ImageIcon, Plus, Trash2, X, Zap } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { VaTaskActionButton } from "@/components/va-task-action-button";
 import { useToast } from "@/contexts/toast-context";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
@@ -654,36 +655,37 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
                 >
                   {t.category}
                 </span>
-                <div className="flex items-center gap-0.5">
-                  <button
-                    type="button"
+                <div className="flex items-center gap-1.5">
+                  <VaTaskActionButton
+                    tone="duplicate"
+                    iconOnly
                     onClick={() => void handleDuplicate(t)}
                     disabled={duplicatingId === t.id}
-                    className="rounded-lg p-1.5 text-white/25 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
                     aria-label="Duplicate template"
                     title="Duplicate"
                   >
-                    <Copy className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
+                    <Copy className="h-3.5 w-3.5" aria-hidden />
+                  </VaTaskActionButton>
+                  <VaTaskActionButton
+                    tone="delete"
+                    iconOnly
                     onClick={() => setPendingDelete(t)}
-                    className="rounded-lg p-1.5 text-white/25 transition hover:bg-red-500/10 hover:text-red-400"
                     aria-label="Delete template"
+                    title="Delete"
                   >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                  </VaTaskActionButton>
                 </div>
               </div>
               <h2 className="text-lg font-bold text-white">{t.name}</h2>
               {t.description ? <p className="mt-2 line-clamp-3 text-sm text-white/45">{t.description}</p> : null}
-              <button
-                type="button"
+              <VaTaskActionButton
+                tone="edit"
                 onClick={() => void openEdit(t)}
-                className="mt-5 w-full rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+                className="mt-5 w-full min-h-[44px] py-2.5 text-sm"
               >
                 Edit template
-              </button>
+              </VaTaskActionButton>
             </article>
           ))}
         </div>

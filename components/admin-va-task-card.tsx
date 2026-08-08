@@ -15,6 +15,7 @@ import {
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
 import { TaskPhaseRibbon, type PhaseRibbonItem, type PhaseRibbonPhase } from "@/components/task-phase-ribbon";
+import { VaTaskActionButton } from "@/components/va-task-action-button";
 
 function isPastDue(isoLike: string | null | undefined): boolean {
   if (!isoLike?.trim()) return false;
@@ -183,8 +184,9 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
               <button
                 type="button"
                 onClick={() => void onDeletePhase(phase.id, task.id)}
-                className="rounded-lg p-1.5 text-[#B8B4B8]/20 transition hover:bg-red-500/10 hover:text-red-400"
+                className="inline-flex min-h-[36px] min-w-[36px] [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px] items-center justify-center rounded-lg border border-transparent text-[#B8B4B8]/30 transition-[color,background-color,border-color,transform] duration-200 hover:border-red-500/35 hover:bg-red-500/10 hover:text-red-400 active:scale-[0.97] motion-reduce:active:scale-100"
                 aria-label="Delete phase"
+                title="Delete phase"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -231,13 +233,15 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
         <div className="group flex items-start gap-3">
           <div
             className={cn(
-              "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2",
+              "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border-2",
               item.status === "completed"
-                ? "border-[#D4AF8C] bg-[#D4AF8C]/15"
-                : "border-[#D4AF8C]/35 bg-transparent",
+                ? "border-[#FF1493]/80 bg-gradient-to-br from-[#FF1493] via-[#E91E8C] to-[#D4AF8C] shadow-[0_0_10px_-3px_rgba(255,20,147,0.45)]"
+                : "border-[#D4AF8C]/45 bg-[#D4AF8C]/[0.04]",
             )}
           >
-            {item.status === "completed" ? <Check className="h-3 w-3 text-[#D4AF8C]" aria-hidden /> : null}
+            {item.status === "completed" ? (
+              <Check className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]" strokeWidth={3.25} aria-hidden />
+            ) : null}
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -263,8 +267,10 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
                 onBlur={() => void onUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })}
                 placeholder={`Item ${idx + 1}…`}
                 className={cn(
-                  "min-w-0 flex-1 bg-transparent text-sm focus:outline-none",
-                  item.status === "completed" ? "text-[#B8B4B8]/30 line-through" : "text-[#B8B4B8]",
+                  "min-w-0 flex-1 bg-transparent text-sm focus:outline-none transition-colors duration-200 motion-reduce:transition-none",
+                  item.status === "completed"
+                    ? "text-[#B8B4B8]/28 line-through decoration-[#B8B4B8]/35 decoration-[1.5px]"
+                    : "text-[#B8B4B8]",
                 )}
               />
             </div>
@@ -345,37 +351,33 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
               {task.title}
             </h3>
           </div>
-          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             {canManage ? (
               <>
                 {!isVirtual && task.status !== "done" && task.status !== "skipped" ? (
-                  <button
-                    type="button"
+                  <VaTaskActionButton
+                    tone="remind"
+                    title="Send reminder"
                     onClick={() => void onRemind(task)}
                     disabled={isReminding}
-                    className="inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/10 disabled:opacity-40"
                   >
-                    <Bell className="h-3 w-3" aria-hidden />
+                    <Bell className="h-3.5 w-3.5" aria-hidden />
                     {isReminding ? "Sending…" : remindSuccess ? "Sent!" : "Remind"}
-                  </button>
+                  </VaTaskActionButton>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => onEdit(task)}
-                  className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
-                >
-                  <Pencil className="h-3 w-3" aria-hidden />
+                <VaTaskActionButton tone="edit" title="Edit task" onClick={() => onEdit(task)}>
+                  <Pencil className="h-3.5 w-3.5" aria-hidden />
                   Edit
-                </button>
-                <button
-                  type="button"
+                </VaTaskActionButton>
+                <VaTaskActionButton
+                  tone="delete"
+                  title="Delete task"
                   disabled={isConfirmingDelete}
                   onClick={() => onDelete(task)}
-                  className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
                 >
-                  <Trash2 className="h-3 w-3" aria-hidden />
+                  <Trash2 className="h-3.5 w-3.5" aria-hidden />
                   Delete
-                </button>
+                </VaTaskActionButton>
               </>
             ) : null}
           </div>
