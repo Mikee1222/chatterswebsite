@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ClipboardList, Flag, ImageIcon, RotateCcw } from "lucide-react";
+import { Check, ChevronDown, ClipboardList, Flag, ImageIcon, RotateCcw } from "lucide-react";
 import {
   ReviewEmptyState,
   ReviewSectionHeader,
@@ -15,6 +15,7 @@ import { formatVaBreakdownLine } from "@/lib/daily-review-checklist-format";
 import type {
   DailyReviewChecklistItem,
   DailyReviewChecklistPayload,
+  DailyReviewChecklistTask,
   DailyReviewChecklistVa,
   DailyReviewChecklistVaShared,
 } from "@/services/daily-review-checklist";
@@ -34,6 +35,41 @@ type Props = {
   onClear?: (item: DailyReviewChecklistItem) => void;
   readOnly?: boolean;
 };
+
+type ChecklistTaskLike = DailyReviewChecklistTask | DailyReviewChecklistVaShared["tasks"][number];
+type ChecklistItemLike = ChecklistTaskLike["items"][number];
+
+type TaskReviewStats = {
+  total: number;
+  verified: number;
+  flagged: number;
+  unverified: number;
+};
+
+function computeTaskReviewStats(items: ChecklistItemLike[]): TaskReviewStats {
+  let verified = 0;
+  let flagged = 0;
+  for (const item of items) {
+    const list =
+      "verifications" in item && Array.isArray(item.verifications)
+        ? item.verifications
+        : "verification" in item && item.verification
+          ? [item.verification]
+          : [];
+    if (list.some((v) => v.verified_status === "flagged_not_done")) flagged += 1;
+    else if (list.some((v) => v.verified_status === "verified")) verified += 1;
+  }
+  const total = items.length;
+  return { total, verified, flagged, unverified: Math.max(0, total - verified - flagged) };
+}
+
+function formatTaskReviewSummary(stats: TaskReviewStats): string {
+  if (stats.total === 0) return "No items";
+  if (stats.flagged > 0) {
+    return `${stats.verified}/${stats.total} verified, ${stats.flagged} flagged`;
+  }
+  return `${stats.verified}/${stats.total} verified`;
+}
 
 function VaStatusPill({ status }: { status: "pending" | "completed" }) {
   return status === "completed" ? (
@@ -190,6 +226,113 @@ function ItemRow({
   );
 }
 
+function TaskGroup({
+  task,
+  va,
+  mode,
+  busyItemId,
+  readOnly,
+  onVerify,
+  onFlag,
+  onClear,
+}: {
+  task: ChecklistTaskLike;
+  va: { va_id: string; va_name: string };
+  mode: Mode;
+  busyItemId?: string | null;
+  readOnly?: boolean;
+  onVerify?: Props["onVerify"];
+  onFlag?: Props["onFlag"];
+  onClear?: Props["onClear"];
+}) {
+  const stats = computeTaskReviewStats(task.items);
+  // Default: expand tasks still needing review; collapse fully reviewed ones.
+  // Manual toggles only after mount — finishing the last item does not auto-collapse mid-session.
+  const [expanded, setExpanded] = React.useState(() => stats.unverified > 0 || stats.total === 0);
+  const panelId = React.useId();
+  const summary = formatTaskReviewSummary(stats);
+  const fullyReviewed = stats.total > 0 && stats.unverified === 0;
+
+  return (
+    <div
+      className={cn(
+        "overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.015]",
+        fullyReviewed && stats.flagged === 0 && "border-emerald-500/15",
+        stats.flagged > 0 && "border-red-500/20",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
+        aria-expanded={expanded}
+        aria-controls={panelId}
+      >
+        <div className="min-w-0 flex-1 space-y-0.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-[#D4AF8C]">{task.task_title}</p>
+            {task.is_virtual ? (
+              <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[#B8B4B8]/45">
+                Projected
+              </span>
+            ) : null}
+            <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">{task.task_status}</span>
+          </div>
+          <p
+            className={cn(
+              "text-[11px] tabular-nums",
+              stats.flagged > 0
+                ? "text-red-300/80"
+                : fullyReviewed
+                  ? "text-emerald-300/75"
+                  : "text-[#B8B4B8]/45",
+            )}
+          >
+            {summary}
+          </p>
+        </div>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 shrink-0 text-[#B8B4B8]/40 transition-transform duration-300 ease-out motion-reduce:transition-none",
+            expanded && "rotate-180",
+          )}
+          aria-hidden
+        />
+      </button>
+      <div
+        id={panelId}
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none",
+          expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-2 border-t border-white/[0.05] px-3 pb-3 pt-2">
+            {task.items.length === 0 ? (
+              <p className="py-2 text-xs text-[#B8B4B8]/35">No checklist items</p>
+            ) : (
+              task.items.map((item) => (
+                <ItemRow
+                  key={item.item_id}
+                  item={item as DailyReviewChecklistItem & { verifications?: DailyReviewItemVerification[] }}
+                  va={va}
+                  mode={mode}
+                  busy={busyItemId === item.item_id}
+                  readOnly={readOnly}
+                  verifications={"verifications" in item ? item.verifications : undefined}
+                  onVerify={onVerify}
+                  onFlag={onFlag}
+                  onClear={onClear}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function VaBlock({
   va,
   mode,
@@ -226,35 +369,19 @@ function VaBlock({
         </span>
       </div>
       <div className={VA_CHAMPAGNE_DIVIDER} />
-      <div className="space-y-4">
+      <div className="space-y-3">
         {va.tasks.map((task) => (
-          <div key={task.task_id} className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium text-[#D4AF8C]">{task.task_title}</p>
-              {task.is_virtual ? (
-                <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-[#B8B4B8]/45">
-                  Projected
-                </span>
-              ) : null}
-              <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">{task.task_status}</span>
-            </div>
-            <div className="space-y-2">
-              {task.items.map((item) => (
-                <ItemRow
-                  key={item.item_id}
-                  item={item as DailyReviewChecklistItem & { verifications?: DailyReviewItemVerification[] }}
-                  va={{ va_id: va.va_id, va_name: va.va_name }}
-                  mode={mode}
-                  busy={busyItemId === item.item_id}
-                  readOnly={readOnly}
-                  verifications={"verifications" in item ? item.verifications : undefined}
-                  onVerify={onVerify}
-                  onFlag={onFlag}
-                  onClear={onClear}
-                />
-              ))}
-            </div>
-          </div>
+          <TaskGroup
+            key={task.task_id}
+            task={task}
+            va={{ va_id: va.va_id, va_name: va.va_name }}
+            mode={mode}
+            busyItemId={busyItemId}
+            readOnly={readOnly}
+            onVerify={onVerify}
+            onFlag={onFlag}
+            onClear={onClear}
+          />
         ))}
       </div>
     </section>
