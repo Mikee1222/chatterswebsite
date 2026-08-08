@@ -3,10 +3,9 @@
 import * as React from "react";
 import { flushSync, useFormStatus } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import { AlertCircle, Lock, Mail } from "lucide-react";
+import { AlertCircle, Check, Lock, Mail } from "lucide-react";
 import { login } from "@/app/actions/auth";
 import { LoginPasswordField } from "@/components/login-password-field";
-import { Checkbox } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
 import { cn } from "@/lib/utils";
@@ -126,6 +125,64 @@ function LoginErrorBanner({ message }: { message: string }) {
   );
 }
 
+/**
+ * Champagne-style Remember me — native input kept for form/session logic;
+ * custom box because the shared Checkbox chrome is nearly invisible on the
+ * dark login redesign (border/bg on native checkbox without appearance-none).
+ */
+function RememberMeField({ disabled }: { disabled?: boolean }) {
+  return (
+    <div className="rounded-xl border border-white/[0.08] bg-[#0D0B0D]/55 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:px-4 md:py-3">
+      <label
+        htmlFor="remember_me"
+        className={cn(
+          "group flex min-h-11 cursor-pointer items-center gap-3 touch-manipulation",
+          disabled && "cursor-not-allowed opacity-60"
+        )}
+      >
+        <span className="relative inline-flex h-11 w-11 shrink-0 items-center justify-center">
+          <input
+            id="remember_me"
+            name="remember_me"
+            type="checkbox"
+            value="on"
+            disabled={disabled}
+            className="peer sr-only"
+          />
+          <span
+            aria-hidden
+            className={cn(
+              "flex h-5 w-5 items-center justify-center rounded-[5px] border-2",
+              "border-[#D4AF8C]/55 bg-[#D4AF8C]/[0.06]",
+              "shadow-[inset_0_1px_0_rgba(212,175,140,0.1)]",
+              "transition-[border-color,box-shadow,background-color,transform] duration-200 ease-out",
+              "group-hover:border-[#D4AF8C]/8 group-hover:bg-[#D4AF8C]/[0.1]",
+              "peer-focus-visible:ring-2 peer-focus-visible:ring-[#D4AF8C]/45 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-[#0D0B0D]",
+              "peer-checked:border-[#FF1493]/80 peer-checked:bg-gradient-to-br peer-checked:from-[#FF1493] peer-checked:via-[#E91E8C] peer-checked:to-[#D4AF8C]",
+              "peer-checked:shadow-[0_0_14px_-3px_rgba(255,20,147,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]",
+              "peer-checked:[&_svg]:scale-100 peer-checked:[&_svg]:opacity-100",
+              "peer-disabled:opacity-40"
+            )}
+          >
+            <Check
+              className="h-3.5 w-3.5 scale-75 text-white opacity-0 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)] transition-[opacity,transform] duration-150"
+              strokeWidth={3.25}
+            />
+          </span>
+        </span>
+        <span className="min-w-0 flex-1 py-1">
+          <span className="block text-[15px] font-medium leading-snug tracking-[-0.01em] text-[#F5F0EB]">
+            Remember me for 30 days
+          </span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-[#B8B4B8]/75">
+            Stay signed in across browser restarts. Unchecked lasts until you close the browser or after 24 hours.
+          </span>
+        </span>
+      </label>
+    </div>
+  );
+}
+
 function LoginFormBody({
   error,
   isSubmitting,
@@ -192,26 +249,7 @@ function LoginFormBody({
             disabled={fieldsLocked}
           />
         </FormField>
-        <div
-          className={cn(
-            "space-y-2 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none",
-            "md:rounded-xl md:border md:border-white/10 md:bg-[#0D0B0D]/80 md:px-4 md:py-3.5",
-            "md:shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-          )}
-        >
-          <Checkbox
-            id="remember_me"
-            name="remember_me"
-            value="on"
-            label="Remember me for 30 days"
-            className="items-center gap-3"
-            disabled={fieldsLocked}
-          />
-          <p className="text-xs leading-relaxed text-[#B8B4B8]/55 max-md:pl-0 max-md:pt-0.5 md:pl-8">
-            If unchecked, you stay signed in until you close the browser or after 24 hours of use.
-            Checked keeps you signed in for up to 30 days.
-          </p>
-        </div>
+        <RememberMeField disabled={fieldsLocked} />
       </fieldset>
 
       <LoginSubmitButton isSubmitting={isSubmitting} />
