@@ -351,9 +351,11 @@ export async function reorderDepartments(orderedIds: string[]): Promise<void> {
 
 /** Active users assigned to a role (explicit links or matching auth role). */
 export function getSopRoleMemberUserIds(role: SopRole, users: UserRecord[]): string[] {
+  const knownUsers = new Set(users.map((u) => u.id));
   const ids = new Set<string>();
+  // Only keep assigned ids that resolve to a real user (exclude orphaned / unresolved UUIDs).
   for (const uid of role.assigned_user_ids) {
-    if (uid) ids.add(uid);
+    if (uid && knownUsers.has(uid)) ids.add(uid);
   }
   for (const u of users) {
     if ((u.status ?? "").toLowerCase() === "inactive") continue;

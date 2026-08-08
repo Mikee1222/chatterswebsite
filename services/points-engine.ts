@@ -7,6 +7,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { shouldExcludeUserFromAdminStats } from "@/lib/admin-stats-user-filters";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { getTimesForShiftType } from "@/lib/weekly-program";
@@ -632,15 +633,7 @@ function shouldExcludeChatterFromLeaderboard(f: {
   email?: string;
   status?: string;
 }): boolean {
-  const status = String(f.status ?? "")
-    .toLowerCase()
-    .trim();
-  if (status === "test" || status === "testing") return true;
-  const name = String(f.full_name ?? "").toLowerCase();
-  if (/\btest\s+account\b|\[test\]|\(test\)/.test(name)) return true;
-  const email = String(f.email ?? "").toLowerCase();
-  if (email.includes("@example.") || email.includes("+test")) return true;
-  return false;
+  return shouldExcludeUserFromAdminStats(f);
 }
 
 export type LeaderboardRow = {

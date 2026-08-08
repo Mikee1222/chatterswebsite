@@ -1,5 +1,6 @@
 "use server";
 
+import { shouldExcludeUserFromAdminStats } from "@/lib/admin-stats-user-filters";
 import { buildProgressUserSummaries, getProgressByRole } from "@/services/sop-progress";
 import { getSignoffsByRole } from "@/services/sop-signoff";
 import {
@@ -12,6 +13,8 @@ import type {
   SopAcademyBehindMember,
   SopAcademyOverview,
   SopAcademyOverviewRoleStats,
+  SopFunction,
+  SopRole,
 } from "@/types";
 
 export type { SopAcademyOverview, SopAcademyOverviewRoleStats, SopAcademyBehindMember };
@@ -34,13 +37,64 @@ function resolveLastActivityAt(
   return fallbackIso ?? null;
 }
 
+function roleGroupKey(role: SopRole): string {
+  const slug = (role.slug ?? "").trim().toLowerCase();
+  if (slug) return `slug:${slug}`;
+  return `name:${(role.name ?? "").trim().toLowerCase()}`;
+}
+
+/**
+ * Collapse duplicate academy roles that share the same slug/name (e.g. two
+ * "Marketing Executive" rows from migration) into the curriculum with the most
+ * active functions. Empty shells otherwise inflate per-role breakdown and
+ * produce meaningless 0/0 "Members behind" rows via auth_roles matching.
+ */
+function dedupeAcademyRolesBySlug(
+  roles: SopRole[],
+  activeFunctionCountByRoleId: Map<string, number>
+): SopRole[] {
+  const best = new Map<string, SopRole>();
+  for (const role of roles) {
+    const key = roleGroupKey(role);
+    const existing = best.get(key);
+    if (!existing) {
+      best.set(key, role);
+      continue;
+    }
+    const existingCount = activeFunctionCountByRoleId.get(existing.id) ?? 0;
+    const nextCount = activeFunctionCountByRoleId.get(role.id) ?? 0;
+    if (nextCount > existingCount) best.set(key, role);
+  }
+  return [...best.values()];
+}
+
 export async function getAcademyOverview(): Promise<SopAcademyOverview> {
   const [roles, users] = await Promise.all([getAllSopRolesAdmin(), listAllUsers()]);
-  const academyRoles = roles.filter((r) => r.is_active && r.academy_mode);
 
+  // Production stats only — same idea as points-engine leaderboard exclusions + E2E/smoke accounts.
+  const statsUsers = users.filter((u) => !shouldExcludeUserFromAdminStats(u));
+  const userById = new Map(statsUsers.map((u) => [u.id, u]));
   const userNames = new Map(
-    users.map((u) => [u.id, (u.full_name ?? "").trim() || u.email || u.id])
+    statsUsers.map((u) => [u.id, (u.full_name ?? "").trim() || u.email || u.id])
   );
+
+  const academyRolesRaw = roles.filter((r) => r.is_active && r.academy_mode);
+
+  const functionsByRoleId = new Map<string, SopFunction[]>();
+  await Promise.all(
+    academyRolesRaw.map(async (role) => {
+      const functions = await getFunctionsByRoleAdmin(role.id);
+      functionsByRoleId.set(
+        role.id,
+        functions.filter((f) => f.is_active)
+      );
+    })
+  );
+
+  const activeCountByRoleId = new Map(
+    [...functionsByRoleId.entries()].map(([id, fns]) => [id, fns.length] as const)
+  );
+  const academyRoles = dedupeAcademyRolesBySlug(academyRolesRaw, activeCountByRoleId);
 
   const roleStats: SopAcademyOverviewRoleStats[] = [];
   const behind: SopAcademyBehindMember[] = [];
@@ -50,17 +104,19 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
   let total_members = 0;
 
   for (const role of academyRoles) {
-    const memberIds = getSopRoleMemberUserIds(role, users);
+    const activeFunctions = functionsByRoleId.get(role.id) ?? [];
+    const totalFunctions = activeFunctions.length;
+    // No curriculum → skip (avoids empty duplicate roles and 0/0 behind rows).
+    if (totalFunctions === 0) continue;
+
+    const memberIds = getSopRoleMemberUserIds(role, statsUsers).filter((id) => userById.has(id));
     if (memberIds.length === 0) continue;
 
-    const [functions, progress, signoffs] = await Promise.all([
-      getFunctionsByRoleAdmin(role.id),
+    const [progress, signoffs] = await Promise.all([
       getProgressByRole(role.id),
       getSignoffsByRole(role.id),
     ]);
 
-    const activeFunctions = functions.filter((f) => f.is_active);
-    const totalFunctions = activeFunctions.length;
     const signoffByUser = new Map(
       signoffs
         .filter((s) => Boolean(s.user_id))
@@ -81,11 +137,14 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
     let rateSum = 0;
 
     for (const userId of memberIds) {
+      // Intentional multi-track: the same person may appear once per academy SOP role
+      // (e.g. assigned to both "Va Chatting" and "Chatters Training"). Behind rows are
+      // (user, role) pairs — not a name-resolution duplication artifact.
       const summary = summaryByUser.get(userId);
       const signedOff = signoffByUser.has(userId);
       const completedCount = summary?.completed_count ?? 0;
       const percent = summary?.percent ?? 0;
-      const fullyComplete = totalFunctions > 0 && completedCount >= totalFunctions;
+      const fullyComplete = completedCount >= totalFunctions;
 
       if (fullyComplete) {
         roleCompleted += 1;

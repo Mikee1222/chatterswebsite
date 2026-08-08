@@ -4,6 +4,7 @@
 import { normalizeAuthRoleSlugs } from "@/lib/sop-auth-roles";
 import {
   firstMappedLinkedId,
+  mapLinkedIds,
   publicId,
   sbDeleteByPublicId,
   sbFirstLinkedAirtableId,
@@ -203,7 +204,18 @@ type RoleRow = SbRow & {
 
 async function mapRoles(rows: RoleRow[]): Promise<SopRole[]> {
   if (!rows.length) return [];
-  const deptAt = await sbResolveUuidToAirtableMap(DEPTS, rows.map((r) => r.department));
+  // assigned_users is stored as Postgres UUIDs; public member ids are airtable_id (rec…).
+  // Resolve both so overview/name maps keyed by publicId match (otherwise raw UUIDs leak).
+  const [deptAt, userAt] = await Promise.all([
+    sbResolveUuidToAirtableMap(
+      DEPTS,
+      rows.map((r) => r.department)
+    ),
+    sbResolveUuidToAirtableMap(
+      "users",
+      rows.map((r) => r.assigned_users)
+    ),
+  ]);
   return rows.map((row) => ({
     id: publicId(row),
     role_id: String(row.role_id ?? ""),
@@ -214,7 +226,7 @@ async function mapRoles(rows: RoleRow[]): Promise<SopRole[]> {
     color: coerceSopColor(row.color),
     department_id: firstMappedLinkedId(row.department, deptAt),
     auth_roles: coerceAuthRoles(row.auth_roles),
-    assigned_user_ids: Array.isArray(row.assigned_users) ? row.assigned_users.map(String) : [],
+    assigned_user_ids: mapLinkedIds(row.assigned_users, userAt),
     academy_mode: row.academy_mode === true,
     sort_order: coerceSortOrder(row.sort_order),
     is_active: row.is_active !== false,
@@ -258,8 +270,12 @@ export async function createSopRole(
   data: Omit<SopRole, "id" | "role_id" | "created_at">
 ): Promise<SopRole> {
   const auth_roles = normalizeAuthRoleSlugs(data.auth_roles);
-  const deptUuids =
-    data.department_id ? await sbUuidsForAirtableIds(DEPTS, [data.department_id]) : [];
+  const [deptUuids, assignedUuids] = await Promise.all([
+    data.department_id ? sbUuidsForAirtableIds(DEPTS, [data.department_id]) : Promise.resolve([]),
+    data.assigned_user_ids?.length
+      ? sbUuidsForAirtableIds("users", data.assigned_user_ids)
+      : Promise.resolve([]),
+  ]);
   const row = await sbInsert<RoleRow>(ROLES, {
     role_id: genStableId("sop_role"),
     name: data.name,
@@ -270,7 +286,7 @@ export async function createSopRole(
     department: deptUuids,
     auth_roles,
     academy_mode: data.academy_mode,
-    assigned_users: data.assigned_user_ids ?? [],
+    assigned_users: assignedUuids,
     sort_order: data.sort_order,
     is_active: data.is_active,
     created_at: new Date().toISOString(),
@@ -293,7 +309,11 @@ export async function updateSopRole(
   if (data.sort_order !== undefined) patch.sort_order = data.sort_order;
   if (data.is_active !== undefined) patch.is_active = data.is_active;
   if (data.created_at !== undefined) patch.created_at = data.created_at;
-  if (data.assigned_user_ids !== undefined) patch.assigned_users = data.assigned_user_ids;
+  if (data.assigned_user_ids !== undefined) {
+    patch.assigned_users = data.assigned_user_ids.length
+      ? await sbUuidsForAirtableIds("users", data.assigned_user_ids)
+      : [];
+  }
   if (data.department_id !== undefined) {
     patch.department = data.department_id
       ? await sbUuidsForAirtableIds(DEPTS, [data.department_id])
