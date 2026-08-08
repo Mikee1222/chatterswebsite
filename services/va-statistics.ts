@@ -6,11 +6,12 @@
 import { addDaysAthensYmd, getTodayYmdAthens, ymdInAthens } from "@/lib/airtable-datetime";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { isSupabaseBackend } from "@/lib/data-backend";
+import { shiftWorkedHours } from "@/lib/shift-active-duration";
 import { TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import { getAllVaTasks } from "@/services/va-tasks";
 import { listAllShifts } from "@/services/shifts";
 import { listAllUsers } from "@/services/users";
-import type { Shift, VaTaskRecord } from "@/types";
+import type { Shift, UserRecord, VaTaskRecord } from "@/types";
 
 export type VaStatisticsPreset = "this_week" | "last_week" | "this_month" | "last_month" | "custom";
 
@@ -185,17 +186,23 @@ function emptyShiftMetrics(): VaShiftMetrics {
 }
 
 function workedHours(s: Shift): number {
-  if (typeof s.worked_minutes === "number" && s.worked_minutes > 0) return s.worked_minutes / 60;
-  if (typeof (s as Shift & { total_minutes?: number }).total_minutes === "number") {
-    const t = (s as Shift & { total_minutes?: number }).total_minutes!;
-    if (t > 0) return t / 60;
-  }
-  if (s.start_time && s.end_time) {
-    const a = new Date(s.start_time).getTime();
-    const b = new Date(s.end_time).getTime();
-    if (Number.isFinite(a) && Number.isFinite(b) && b > a) return (b - a) / 3_600_000;
-  }
-  return 0;
+  return shiftWorkedHours(s);
+}
+
+/** Display name from any user row; never return a bare Airtable rec… id. */
+function resolveUserDisplayName(user: UserRecord | undefined, fallbackId: string, nameHint?: string): string {
+  const hint = (nameHint ?? "").trim();
+  if (hint && !/^rec[a-zA-Z0-9]{10,}$/.test(hint)) return hint;
+  const fromUser = (user?.full_name || user?.email || "").trim();
+  if (fromUser) return fromUser;
+  if (hint) return hint;
+  const id = fallbackId.trim();
+  if (/^rec[a-zA-Z0-9]{10,}$/.test(id)) return `Unknown (${id})`;
+  return id || "Unknown";
+}
+
+function isVaWorkerRole(u: UserRecord): boolean {
+  return u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant";
 }
 
 function taskBucketYmd(task: VaTaskRecord): string {
@@ -342,11 +349,10 @@ function emptyDailySeries(startYmd: string, endYmd: string): VaDailyTrendPoint[]
 export async function computeVaStatisticsReport(range: VaStatisticsRange): Promise<VaStatisticsReport> {
   const { startYmd, endYmd } = range;
   const users = await listAllUsers();
-  const vaUsers = users.filter(
-    (u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant",
-  );
+  const userById = new Map(users.map((u) => [u.id, u]));
+  const vaUsers = users.filter(isVaWorkerRole);
   const vaNameById = new Map(
-    vaUsers.map((u) => [u.id, (u.full_name || u.email || u.id).trim() || u.id]),
+    users.map((u) => [u.id, resolveUserDisplayName(u, u.id)]),
   );
   const vaIds = new Set(vaUsers.map((u) => u.id));
 
@@ -384,7 +390,7 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
   for (const va of vaUsers) {
     perVa.set(va.id, {
       va_id: va.id,
-      va_name: vaNameById.get(va.id) ?? va.id,
+      va_name: vaNameById.get(va.id) ?? resolveUserDisplayName(va, va.id),
       tasks: emptyTaskMetrics(),
       shifts: emptyShiftMetrics(),
       daily: emptyDailySeries(startYmd, endYmd),
@@ -395,11 +401,22 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
     if (!perVa.has(id)) {
       perVa.set(id, {
         va_id: id,
-        va_name: nameHint || vaNameById.get(id) || id,
+        va_name: resolveUserDisplayName(userById.get(id), id, nameHint),
         tasks: emptyTaskMetrics(),
         shifts: emptyShiftMetrics(),
         daily: emptyDailySeries(startYmd, endYmd),
       });
+    } else {
+      // Upgrade raw-id / Unknown labels when we later learn a real name.
+      const row = perVa.get(id)!;
+      const better = resolveUserDisplayName(userById.get(id), id, nameHint);
+      if (
+        row.va_name === id ||
+        row.va_name.startsWith("Unknown (") ||
+        /^rec[a-zA-Z0-9]{10,}$/.test(row.va_name)
+      ) {
+        row.va_name = better;
+      }
     }
     return perVa.get(id)!;
   };
@@ -424,10 +441,11 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
     }
   }
 
-  for (const task of tasksInRange) {
-    // Attribute to every assignee on a VA task (ensureVa), not only formal VA roles.
-    const targets = task.assigned_to_ids.map((id) => id.trim()).filter(Boolean);
-    const ymd = taskBucketYmd(task);
+  // Team-only / unassigned tasks + non-VA assignees (e.g. model wrongly on a VA task)
+  const teamTasks = emptyTaskMetrics();
+  const teamDaily = emptyDailySeries(startYmd, endYmd);
+
+  const applyTaskMetrics = (m: VaTaskMetrics, daily: VaDailyTrendPoint[], task: VaTaskRecord, ymd: string, taskItems: PhaseItemRow[]) => {
     const isDone = task.status === "done";
     const isOpen = task.status === "pending" || task.status === "in_progress";
     const overdue =
@@ -445,80 +463,56 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
       }
     }
 
-    const taskItems = itemsByTask.get(task.id) ?? [];
-
-    const applyTo = (m: VaTaskMetrics, daily: VaDailyTrendPoint[]) => {
-      m.assigned += 1;
-      if (isDone) m.completed += 1;
-      if (isOpen) m.pending_or_in_progress += 1;
-      if (overdue || task.status === "skipped") m.overdue_or_missed += 1;
-      if (completionHours != null) {
-        const prevSum = (m.avg_completion_hours ?? 0) * m.avg_completion_sample_size;
-        m.avg_completion_sample_size += 1;
-        m.avg_completion_hours =
-          Math.round(((prevSum + completionHours) / m.avg_completion_sample_size) * 10) / 10;
-      }
-      for (const item of taskItems) {
-        const step = m.by_step_type.find((s) => s.step_type === item.step_type);
-        if (step) {
-          step.total += 1;
-          if (item.status === "completed") step.completed += 1;
-        }
-        if (item.requires_screenshot) {
-          m.screenshot_required += 1;
-          if (item.screenshot_count > 0) m.screenshot_provided += 1;
-        }
-      }
-      const di = dailyIndex(daily, ymd);
-      if (di >= 0) {
-        daily[di]!.assigned_tasks += 1;
-        if (isDone) daily[di]!.completed_tasks += 1;
-      }
-    };
-
-    if (targets.length === 0) {
-      // Still track in a team-only bucket via a placeholder applied later
-      (task as VaTaskRecord & { __teamOnly?: boolean }).__teamOnly = true;
-    } else {
-      for (const uid of targets) {
-        const row = ensureVa(uid);
-        applyTo(row.tasks, row.daily);
-      }
+    m.assigned += 1;
+    if (isDone) m.completed += 1;
+    if (isOpen) m.pending_or_in_progress += 1;
+    if (overdue || task.status === "skipped") m.overdue_or_missed += 1;
+    if (completionHours != null) {
+      const prevSum = (m.avg_completion_hours ?? 0) * m.avg_completion_sample_size;
+      m.avg_completion_sample_size += 1;
+      m.avg_completion_hours =
+        Math.round(((prevSum + completionHours) / m.avg_completion_sample_size) * 10) / 10;
     }
-  }
-
-  // Team-only / unassigned tasks (no assignee ids at all)
-  const teamTasks = emptyTaskMetrics();
-  const teamDaily = emptyDailySeries(startYmd, endYmd);
-  for (const task of tasksInRange) {
-    const assignees = task.assigned_to_ids.map((id) => id.trim()).filter(Boolean);
-    if (assignees.length > 0) continue;
-    const ymd = taskBucketYmd(task);
-    const isDone = task.status === "done";
-    const isOpen = task.status === "pending" || task.status === "in_progress";
-    const overdue =
-      !isDone &&
-      task.status !== "skipped" &&
-      Boolean(task.due_date) &&
-      new Date(task.due_date!).getTime() < Date.now();
-    teamTasks.assigned += 1;
-    if (isDone) teamTasks.completed += 1;
-    if (isOpen) teamTasks.pending_or_in_progress += 1;
-    if (overdue || task.status === "skipped") teamTasks.overdue_or_missed += 1;
-    const di = dailyIndex(teamDaily, ymd);
-    if (di >= 0) {
-      teamDaily[di]!.assigned_tasks += 1;
-      if (isDone) teamDaily[di]!.completed_tasks += 1;
-    }
-    for (const item of itemsByTask.get(task.id) ?? []) {
-      const step = teamTasks.by_step_type.find((s) => s.step_type === item.step_type);
+    for (const item of taskItems) {
+      const step = m.by_step_type.find((s) => s.step_type === item.step_type);
       if (step) {
         step.total += 1;
         if (item.status === "completed") step.completed += 1;
       }
       if (item.requires_screenshot) {
-        teamTasks.screenshot_required += 1;
-        if (item.screenshot_count > 0) teamTasks.screenshot_provided += 1;
+        m.screenshot_required += 1;
+        if (item.screenshot_count > 0) m.screenshot_provided += 1;
+      }
+    }
+    const di = dailyIndex(daily, ymd);
+    if (di >= 0) {
+      daily[di]!.assigned_tasks += 1;
+      if (isDone) daily[di]!.completed_tasks += 1;
+    }
+  };
+
+  for (const task of tasksInRange) {
+    const targets = task.assigned_to_ids.map((id) => id.trim()).filter(Boolean);
+    const ymd = taskBucketYmd(task);
+    const taskItems = itemsByTask.get(task.id) ?? [];
+
+    if (targets.length === 0) {
+      applyTaskMetrics(teamTasks, teamDaily, task, ymd, taskItems);
+      continue;
+    }
+
+    for (const uid of targets) {
+      // Model/client assignees on VA tasks (e.g. Frost recFgcUqK7lSokf7i) are not
+      // VA workers — fold into the team bucket so the per-VA list never shows a
+      // bare Airtable id. Everyone else (formal VAs, marketing execs, orphans)
+      // gets a named per-VA row via ensureVa + full user map.
+      const user = userById.get(uid);
+      const isModelOrClient = user?.role === "model" || user?.role === "client";
+      if (isModelOrClient && !perVa.has(uid)) {
+        applyTaskMetrics(teamTasks, teamDaily, task, ymd, taskItems);
+      } else {
+        const row = ensureVa(uid);
+        applyTaskMetrics(row.tasks, row.daily, task, ymd, taskItems);
       }
     }
   }

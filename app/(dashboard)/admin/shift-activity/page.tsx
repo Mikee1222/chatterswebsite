@@ -8,6 +8,7 @@ import { AdminShiftActivityClient } from "@/components/admin-shift-activity-clie
 import type { Shift } from "@/types";
 import { devLog } from "@/lib/dev-log";
 import { formatDateEuropean } from "@/lib/format";
+import { shiftWorkedMinutesFromActive } from "@/lib/shift-active-duration";
 
 /** Week starts Monday; returns Monday 00:00 and Sunday 23:59:59 for the week containing d. */
 function weekBounds(d: Date): { start: Date; end: Date } {
@@ -74,10 +75,7 @@ function parseRange(range: "daily" | "weekly" | "monthly" | "custom", from?: str
 }
 
 function shiftMinutes(shift: Shift): number {
-  const start = shift.start_time ? new Date(shift.start_time).getTime() : 0;
-  const end = shift.end_time ? new Date(shift.end_time).getTime() : 0;
-  if (!start || !end) return 0;
-  return Math.max(0, Math.floor((end - start) / 60000)) - (shift.break_minutes ?? 0);
+  return shiftWorkedMinutesFromActive(shift);
 }
 
 export default async function AdminShiftActivityPage({
