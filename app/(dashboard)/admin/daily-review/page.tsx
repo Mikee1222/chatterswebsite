@@ -1,37 +1,39 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { spotCheckManagerId, spotCheckManagerName, todayReviewIso } from "@/lib/marketing-reviews-helpers";
-import { buildRoleLabels, toStaffUserOptions } from "@/lib/staff-assignee-data";
-import { getDailyReviewByDate, getDailyReviewDetail, getDailyReviews } from "@/services/marketing-reviews";
-import { getRoles } from "@/services/roles";
-import { listActiveUsers } from "@/services/users";
+import { todayReviewIso } from "@/lib/marketing-reviews-helpers";
+import { getAdminDailyReviewChecklistForDate } from "@/services/daily-review-checklist";
+import { getDailyReviews } from "@/services/marketing-reviews";
 import { AdminDailyReviewClient } from "@/components/admin-daily-review-client";
 
 export default async function AdminDailyReviewPage() {
   const user = await getSessionFromCookies();
   await requireAdminRoute(user, PERMISSIONS.DAILY_REVIEW_MANAGE);
 
-  const managerName = spotCheckManagerName(user!);
-  const managerId = spotCheckManagerId(user!);
   const today = todayReviewIso();
-  const [reviews, todayRow, activeUsers, roles] = await Promise.all([
+  const [reviews, checklist] = await Promise.all([
     getDailyReviews().catch(() => []),
-    getDailyReviewByDate(today, managerName, managerId).catch(() => null),
-    listActiveUsers().catch(() => []),
-    getRoles().catch(() => []),
+    getAdminDailyReviewChecklistForDate({ date: today }).catch(() => ({
+      date: today,
+      reviews: [],
+      shared_vas: [],
+      team_summary: {
+        total_items: 0,
+        va_completed: 0,
+        verified: 0,
+        flagged: 0,
+        unverified: 0,
+        vas_reviewed: 0,
+        tasks: 0,
+        supervisors: 0,
+      },
+      leaderboard: { vas_by_flags: [], supervisors_by_activity: [] },
+    })),
   ]);
-
-  const todayReview = todayRow ? await getDailyReviewDetail(todayRow.id).catch(() => null) : null;
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <AdminDailyReviewClient
-        initialReviews={reviews}
-        todayReview={todayReview}
-        staffUsers={toStaffUserOptions(activeUsers)}
-        roleLabels={buildRoleLabels(roles)}
-      />
+      <AdminDailyReviewClient initialReviews={reviews} initialChecklist={checklist} />
     </div>
   );
 }
