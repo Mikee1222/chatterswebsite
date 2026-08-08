@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Clock3,
   RefreshCw,
+  Smartphone,
   Sparkles,
   Trophy,
   Wifi,
@@ -28,6 +29,7 @@ import {
   RankedBarList,
   TopPostsLeaderboard,
 } from "@/components/instagram-insights-shared";
+import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
@@ -100,6 +102,7 @@ type InsightsPayload = {
     media_id: string;
     permalink: string | null;
     media_type: string | null;
+    media_product_type?: string | null;
     caption: string | null;
     image_url: string | null;
     engagement_score: number | null;
@@ -109,6 +112,7 @@ type InsightsPayload = {
     shares?: number;
     saved?: number;
     views?: number;
+    posted_at?: string | null;
     rank: number;
   }>;
   comparison: Array<{
@@ -154,6 +158,7 @@ export function AdminInstagramInsightsClient() {
   const [data, setData] = React.useState<InsightsPayload | null>(null);
   const [health, setHealth] = React.useState<HealthPayload | null>(null);
   const [compareSort, setCompareSort] = React.useState<"reach" | "engagement" | "growth">("reach");
+  const [viewAsProfile, setViewAsProfile] = React.useState(false);
 
   const loadHealth = React.useCallback(async () => {
     try {
@@ -310,6 +315,20 @@ export function AdminInstagramInsightsClient() {
             ) : null}
             <button
               type="button"
+              disabled={!data?.selectedModelId}
+              onClick={() => setViewAsProfile((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50",
+                viewAsProfile
+                  ? "border-[#D4AF8C]/50 bg-[#D4AF8C]/15 text-[#E8D0B0]"
+                  : "border-white/15 bg-white/[0.04] text-white/70 hover:bg-white/[0.07]"
+              )}
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              {viewAsProfile ? "Hide profile" : "View as Profile"}
+            </button>
+            <button
+              type="button"
               disabled={syncing || loading}
               onClick={() => void runSync()}
               className="inline-flex items-center gap-1.5 rounded-xl border border-[#FF1493]/40 bg-[#FF1493]/10 px-3 py-1.5 text-xs font-semibold text-[#FFB6DE] transition hover:bg-[#FF1493]/15 disabled:opacity-50"
@@ -329,6 +348,7 @@ export function AdminInstagramInsightsClient() {
               onChange={(e) => {
                 const next = e.target.value;
                 setModelId(next);
+                setViewAsProfile(false);
                 void load({ modelId: next });
               }}
               className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-[#FF1493]/50"
@@ -726,13 +746,66 @@ export function AdminInstagramInsightsClient() {
         </div>
       </div>
 
+      {/* Profile simulator */}
+      {viewAsProfile && data?.selectedModelId ? (
+        <div
+          className={cn(
+            VA_CARD,
+            VA_CARD_GLOW,
+            "relative overflow-hidden p-5 md:p-8"
+          )}
+        >
+          <div
+            className="pointer-events-none absolute inset-0 opacity-70"
+            style={{
+              background:
+                "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(255,20,147,0.14), transparent 55%), radial-gradient(ellipse 50% 40% at 80% 80%, rgba(212,175,140,0.1), transparent 50%)",
+            }}
+          />
+          <div className="relative mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <SectionLabel>Instagram Profile Simulator</SectionLabel>
+              <p className="mt-1 max-w-md text-xs text-white/45">
+                Realistic iPhone mockup with live ClarioSuite profile data — tap a post for detailed
+                stats.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewAsProfile(false)}
+              className="rounded-xl border border-white/10 px-3 py-1.5 text-xs text-white/55 hover:bg-white/[0.05]"
+            >
+              Back to analytics
+            </button>
+          </div>
+          <div className="relative flex justify-center py-2">
+            <InstagramProfileSimulator
+              key={data.selectedModelId}
+              profileUrl={`/api/admin/instagram-insights/profile?modelId=${encodeURIComponent(data.selectedModelId)}`}
+              detailUrlFor={(mediaId) =>
+                `/api/admin/instagram-insights/media/${encodeURIComponent(mediaId)}?modelId=${encodeURIComponent(data.selectedModelId!)}`
+              }
+            />
+          </div>
+        </div>
+      ) : null}
+
       {/* Top posts */}
       <div className={cn(VA_CARD, "p-4 md:p-5")}>
         <div className="mb-4 flex flex-wrap items-center gap-2">
           <SectionLabel>Top posts leaderboard</SectionLabel>
           <StatInfoTooltip text={IG_STAT_INFO.top_posts} />
         </div>
-        <TopPostsLeaderboard posts={data?.topPosts ?? []} loading={loading} />
+        <TopPostsLeaderboard
+          posts={data?.topPosts ?? []}
+          loading={loading}
+          detailUrlFor={
+            data?.selectedModelId
+              ? (mediaId) =>
+                  `/api/admin/instagram-insights/media/${encodeURIComponent(mediaId)}?modelId=${encodeURIComponent(data.selectedModelId!)}`
+              : undefined
+          }
+        />
       </div>
 
       {/* Cross-platform: IG × Infloww */}

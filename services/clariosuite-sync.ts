@@ -19,7 +19,7 @@ import { listAllModelss } from "@/services/modelss";
 import type { ClarioSuiteTimeSeriesPoint } from "@/types/clariosuite";
 import type { ModelRecord } from "@/types";
 
-const TOP_POSTS_PER_MODEL = 10;
+const TOP_POSTS_PER_MODEL = 25;
 const MEDIA_FETCH_LIMIT = 25;
 /** Trailing days to refresh on each daily sync (late Meta updates). */
 const DEFAULT_INSIGHTS_RANGE = 14;
@@ -424,6 +424,7 @@ export async function queryClarioSuiteTopPosts(params: {
     media_id: string;
     permalink: string | null;
     media_type: string | null;
+    media_product_type: string | null;
     caption: string | null;
     image_url: string | null;
     engagement_score: number | null;
@@ -441,7 +442,7 @@ export async function queryClarioSuiteTopPosts(params: {
   let q = sb
     .from("clariosuite_top_posts")
     .select(
-      "media_id,permalink,media_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,posted_at,rank"
+      "media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,posted_at,rank"
     )
     .order("rank", { ascending: true })
     .limit(params.limit ?? TOP_POSTS_PER_MODEL);
@@ -453,6 +454,7 @@ export async function queryClarioSuiteTopPosts(params: {
     media_id: String(row.media_id),
     permalink: row.permalink != null ? String(row.permalink) : null,
     media_type: row.media_type != null ? String(row.media_type) : null,
+    media_product_type: row.media_product_type != null ? String(row.media_product_type) : null,
     caption: row.caption != null ? String(row.caption) : null,
     image_url: row.image_url != null ? String(row.image_url) : null,
     engagement_score: row.engagement_score == null ? null : n(row.engagement_score),
@@ -465,6 +467,25 @@ export async function queryClarioSuiteTopPosts(params: {
     posted_at: row.posted_at != null ? String(row.posted_at) : null,
     rank: n(row.rank),
   }));
+}
+
+/** Look up a cached top-post row (for detail enrichment / auth scoping). */
+export async function getClarioSuiteTopPostByMediaId(params: {
+  mediaId: string;
+  igUserId?: string;
+  modelRecordId?: string;
+}): Promise<Record<string, unknown> | null> {
+  const sb = getSupabaseServiceClient();
+  let q = sb
+    .from("clariosuite_top_posts")
+    .select("*")
+    .eq("media_id", params.mediaId.trim())
+    .limit(1);
+  if (params.igUserId) q = q.eq("ig_user_id", params.igUserId);
+  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+  const { data, error } = await q.maybeSingle();
+  if (error) throw new Error(`query clariosuite_top_posts by media: ${error.message}`);
+  return data;
 }
 
 /** Resolve linked IG id for a model record (public id). */

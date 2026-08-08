@@ -2,17 +2,21 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { ExternalLink, ImageIcon, Sparkles } from "lucide-react";
+import { Clapperboard, ExternalLink, ImageIcon, Layers, Sparkles } from "lucide-react";
 import { VA_CARD } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import {
   CHART_TOOLTIP_STYLE,
+  classifyIgPost,
   fmtNum,
   fmtPct,
   genderLabel,
   GENDER_COLORS,
+  igPostGroupLabel,
   rankMedal,
+  type IgPostGroup,
 } from "@/lib/instagram-insights-ui";
+import { InstagramPostDetailModal } from "@/components/instagram-post-detail-modal";
 
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
@@ -40,6 +44,7 @@ export type IgTopPost = {
   media_id: string;
   permalink: string | null;
   media_type?: string | null;
+  media_product_type?: string | null;
   caption: string | null;
   image_url?: string | null;
   engagement_score: number | null;
@@ -49,26 +54,69 @@ export type IgTopPost = {
   shares?: number;
   saved?: number;
   views?: number;
+  posted_at?: string | null;
   rank: number;
 };
+
+function MediaTypeBadge({ group }: { group: IgPostGroup }) {
+  if (group === "reels") {
+    return (
+      <span className="absolute bottom-1 right-1 inline-flex items-center gap-0.5 rounded bg-black/70 px-1 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm">
+        <Clapperboard className="h-2.5 w-2.5" /> Reel
+      </span>
+    );
+  }
+  if (group === "carousels") {
+    return (
+      <span className="absolute bottom-1 right-1 inline-flex items-center gap-0.5 rounded bg-black/70 px-1 py-0.5 text-[9px] font-semibold text-white/90 backdrop-blur-sm">
+        <Layers className="h-2.5 w-2.5" /> Album
+      </span>
+    );
+  }
+  return null;
+}
 
 export function TopPostCard({
   post,
   compact,
+  onSelect,
 }: {
   post: IgTopPost;
   compact?: boolean;
+  onSelect?: (post: IgTopPost) => void;
 }) {
   const medal = rankMedal(post.rank);
+  const group = classifyIgPost({
+    mediaType: post.media_type,
+    mediaProductType: post.media_product_type,
+  });
+  const interactive = Boolean(onSelect);
+
   return (
     <article
       className={cn(
-        "group relative overflow-hidden rounded-2xl border bg-black/25 transition hover:bg-black/35",
+        "group relative overflow-hidden rounded-2xl border bg-black/25 transition",
         medal ? medal.className : "border-white/8",
-        compact ? "p-3" : "p-3.5"
+        compact ? "p-3" : "p-3.5",
+        interactive && "cursor-pointer hover:bg-black/40 focus-within:ring-1 focus-within:ring-[#FF1493]/40"
       )}
     >
-      <div className="flex gap-3">
+      <div
+        className="flex gap-3 text-left"
+        role={interactive ? "button" : undefined}
+        tabIndex={interactive ? 0 : undefined}
+        onClick={interactive ? () => onSelect?.(post) : undefined}
+        onKeyDown={
+          interactive
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect?.(post);
+                }
+              }
+            : undefined
+        }
+      >
         <div
           className={cn(
             "relative shrink-0 overflow-hidden rounded-xl border border-white/10 bg-white/[0.04]",
@@ -96,10 +144,11 @@ export function TopPostCard({
           >
             {medal ? medal.badge : `#${post.rank}`}
           </span>
+          <MediaTypeBadge group={group} />
         </div>
         <div className="min-w-0 flex-1">
           <p className={cn("line-clamp-2 text-sm text-white/90", compact && "line-clamp-1")}>
-            {post.caption?.trim() || post.media_type || "Instagram post"}
+            {post.caption?.trim() || igPostGroupLabel(group)}
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/45">
             <span className="font-semibold text-[#D4AF8C]">
@@ -109,12 +158,17 @@ export function TopPostCard({
             <span>{fmtNum(post.likes)} likes</span>
             <span>{fmtNum(post.comments)} comments</span>
           </div>
-          {post.permalink ? (
+          {interactive ? (
+            <p className="mt-2 text-[11px] font-medium text-[#FFB6DE]/80 group-hover:text-[#FFB6DE]">
+              View detailed stats →
+            </p>
+          ) : post.permalink ? (
             <a
               href={post.permalink}
               target="_blank"
               rel="noreferrer"
               className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#FFB6DE] hover:underline"
+              onClick={(e) => e.stopPropagation()}
             >
               Open on Instagram <ExternalLink className="h-3 w-3" />
             </a>
@@ -125,17 +179,47 @@ export function TopPostCard({
   );
 }
 
+const GROUP_TABS: IgPostGroup[] = ["reels", "carousels", "posts"];
+
 export function TopPostsLeaderboard({
   posts,
   loading,
   emptyDetail,
   compact,
+  detailUrlFor,
 }: {
   posts: IgTopPost[];
   loading?: boolean;
   emptyDetail?: string;
   compact?: boolean;
+  /** Build lazy detail fetch URL for a media id. Enables click → detail modal. */
+  detailUrlFor?: (mediaId: string) => string;
 }) {
+  const grouped = React.useMemo(() => {
+    const buckets: Record<IgPostGroup, IgTopPost[]> = {
+      reels: [],
+      carousels: [],
+      posts: [],
+    };
+    for (const p of posts) {
+      buckets[
+        classifyIgPost({
+          mediaType: p.media_type,
+          mediaProductType: p.media_product_type,
+        })
+      ].push(p);
+    }
+    return buckets;
+  }, [posts]);
+
+  const availableTabs = GROUP_TABS.filter((g) => grouped[g].length > 0);
+  const [tab, setTab] = React.useState<IgPostGroup | "all">("all");
+  const [selected, setSelected] = React.useState<IgTopPost | null>(null);
+
+  React.useEffect(() => {
+    if (tab !== "all" && !grouped[tab].length) setTab("all");
+  }, [tab, grouped]);
+
   if (!posts.length) {
     return (
       <IgEmptyState
@@ -149,22 +233,80 @@ export function TopPostsLeaderboard({
       />
     );
   }
-  const podium = posts.filter((p) => p.rank <= 3);
-  const rest = posts.filter((p) => p.rank > 3);
+
+  const visible =
+    tab === "all" ? posts : grouped[tab];
+  const podium = visible.filter((p) => p.rank <= 3);
+  const rest = visible.filter((p) => p.rank > 3);
+  const onSelect = detailUrlFor ? (p: IgTopPost) => setSelected(p) : undefined;
+
   return (
     <div className="space-y-3">
-      <div className={cn("grid gap-3", podium.length > 1 ? "md:grid-cols-3" : "grid-cols-1")}>
-        {podium.map((p) => (
-          <TopPostCard key={p.media_id} post={p} compact={compact} />
-        ))}
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => setTab("all")}
+          className={cn(
+            "rounded-full border px-3 py-1 text-[11px] font-semibold transition",
+            tab === "all"
+              ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FFB6DE]"
+              : "border-white/10 bg-white/[0.03] text-white/55 hover:bg-white/[0.06]"
+          )}
+        >
+          All ({posts.length})
+        </button>
+        {GROUP_TABS.map((g) => {
+          const count = grouped[g].length;
+          if (!count && !availableTabs.includes(g)) return null;
+          return (
+            <button
+              key={g}
+              type="button"
+              disabled={!count}
+              onClick={() => setTab(g)}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[11px] font-semibold transition disabled:opacity-35",
+                tab === g
+                  ? "border-[#D4AF8C]/50 bg-[#D4AF8C]/15 text-[#E8D0B0]"
+                  : "border-white/10 bg-white/[0.03] text-white/55 hover:bg-white/[0.06]"
+              )}
+            >
+              {g === "reels" ? <Clapperboard className="h-3 w-3" /> : null}
+              {g === "carousels" ? <Layers className="h-3 w-3" /> : null}
+              {igPostGroupLabel(g)} ({count})
+            </button>
+          );
+        })}
       </div>
-      {rest.length ? (
-        <div className={cn("grid gap-3", compact ? "sm:grid-cols-1" : "sm:grid-cols-2")}>
-          {rest.map((p) => (
-            <TopPostCard key={p.media_id} post={p} compact />
-          ))}
-        </div>
-      ) : null}
+
+      {!visible.length ? (
+        <p className="py-8 text-center text-sm text-white/35">
+          No {tab === "all" ? "posts" : igPostGroupLabel(tab as IgPostGroup).toLowerCase()} in this
+          sync set.
+        </p>
+      ) : (
+        <>
+          <div className={cn("grid gap-3", podium.length > 1 ? "md:grid-cols-3" : "grid-cols-1")}>
+            {podium.map((p) => (
+              <TopPostCard key={p.media_id} post={p} compact={compact} onSelect={onSelect} />
+            ))}
+          </div>
+          {rest.length ? (
+            <div className={cn("grid gap-3", compact ? "sm:grid-cols-1" : "sm:grid-cols-2")}>
+              {rest.map((p) => (
+                <TopPostCard key={p.media_id} post={p} compact onSelect={onSelect} />
+              ))}
+            </div>
+          ) : null}
+        </>
+      )}
+
+      <InstagramPostDetailModal
+        open={Boolean(selected && detailUrlFor)}
+        onClose={() => setSelected(null)}
+        detailUrl={selected && detailUrlFor ? detailUrlFor(selected.media_id) : null}
+        seed={selected}
+      />
     </div>
   );
 }

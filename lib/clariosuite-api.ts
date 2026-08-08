@@ -10,6 +10,7 @@ import type {
   ClarioSuiteAudience,
   ClarioSuiteIgProfile,
   ClarioSuiteMe,
+  ClarioSuiteCarouselChild,
   ClarioSuiteMediaInsight,
   ClarioSuiteMediaItem,
 } from "@/types/clariosuite";
@@ -367,6 +368,33 @@ export async function listClarioSuiteMedia(
 export async function getClarioSuiteMediaInsights(mediaId: string): Promise<ClarioSuiteMediaInsight> {
   const id = encodeURIComponent(mediaId.trim());
   return clariosuiteFetchJson<ClarioSuiteMediaInsight>(`/media/${id}/insights`);
+}
+
+/**
+ * GET /accounts/:igUserId/media/:mediaId/children
+ * Carousel slides (id / mediaType / mediaUrl / permalink). No per-slide insights.
+ */
+export async function listClarioSuiteCarouselChildren(
+  igUserId: string,
+  mediaId: string
+): Promise<{ data: ClarioSuiteCarouselChild[]; count: number }> {
+  const accountId = encodeURIComponent(igUserId.trim());
+  const mid = encodeURIComponent(mediaId.trim());
+  const payload = await clariosuiteFetchJson<{ data?: ClarioSuiteCarouselChild[]; count?: number }>(
+    `/accounts/${accountId}/media/${mid}/children`
+  );
+  const data = Array.isArray(payload?.data) ? payload.data : [];
+  return { data, count: typeof payload?.count === "number" ? payload.count : data.length };
+}
+
+/** Resolve one IG profile from GET /accounts (no dedicated account-detail endpoint). */
+export async function getClarioSuiteAccount(
+  igUserId: string
+): Promise<ClarioSuiteIgProfile | null> {
+  const target = igUserId.trim();
+  if (!target) return null;
+  const accounts = await listClarioSuiteAccounts();
+  return accounts.find((a) => a.igUserId === target) ?? null;
 }
 
 /** GET /accounts/:igUserId/stories */

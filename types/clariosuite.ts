@@ -78,6 +78,13 @@ export type ClarioSuiteMediaItem = {
   commentsCount: number | null;
 };
 
+export type ClarioSuiteCarouselChild = {
+  id: string;
+  mediaType: string | null;
+  mediaUrl: string | null;
+  permalink: string | null;
+};
+
 export type ClarioSuiteMediaInsight = {
   reach: number | null;
   views: number | null;
@@ -92,6 +99,8 @@ export type ClarioSuiteMediaInsight = {
   carouselAlbumImpressions: number | null;
   carouselAlbumReach: number | null;
   carouselAlbumSaved: number | null;
+  /** Present on some media-insight responses for CAROUSEL_ALBUM. */
+  children?: ClarioSuiteCarouselChild[];
 };
 
 export type ClarioSuiteMe = {

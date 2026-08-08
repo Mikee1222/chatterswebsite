@@ -17,7 +17,7 @@ export const IG_STAT_INFO = {
   best_time:
     "When the most followers are typically online (onlineFollowers by UTC hour). Peak window is the best time to post.",
   top_posts:
-    "Posts ranked by engagement score: (likes + comments + shares + saved) ÷ reach × 100.",
+    "Posts ranked by engagement score: (likes + comments + shares + saved) ÷ reach × 100. Split into Reels (mediaProductType=REELS), Carousels (CAROUSEL_ALBUM), and other Posts. Tap a post for live detailed stats.",
   comparison: "Linked models ranked by reach, engagement rate, and follower growth in this range.",
   connection:
     "ClarioSuite API key health (/me), linked model count, and when audience/insights were last synced.",
@@ -251,4 +251,45 @@ export function formatRelativeSync(iso: string | null | undefined): string | nul
   if (hrs < 48) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   return `${days}d ago`;
+}
+
+/** ClarioSuite mediaType: IMAGE | VIDEO | CAROUSEL_ALBUM; mediaProductType: FEED | REELS | STORY | AD */
+export type IgPostGroup = "reels" | "carousels" | "posts";
+
+export function classifyIgPost(params: {
+  mediaType?: string | null;
+  mediaProductType?: string | null;
+}): IgPostGroup {
+  const product = (params.mediaProductType ?? "").trim().toUpperCase();
+  const type = (params.mediaType ?? "").trim().toUpperCase();
+  if (product === "REELS") return "reels";
+  if (type === "CAROUSEL_ALBUM") return "carousels";
+  return "posts";
+}
+
+export function igPostGroupLabel(group: IgPostGroup): string {
+  if (group === "reels") return "Reels";
+  if (group === "carousels") return "Carousels";
+  return "Posts";
+}
+
+/** Compact count for IG-style UI (1.2K, 3.4M). */
+export function fmtCompact(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 10_000) return `${Math.round(n / 1000)}K`;
+  if (abs >= 1000) return `${(n / 1000).toFixed(1)}K`;
+  return Math.round(n).toLocaleString();
+}
+
+export function formatIgPostedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  return new Date(t).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }

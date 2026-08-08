@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { Heart, Sparkles, Users } from "lucide-react";
+import { Heart, Smartphone, Sparkles, Users } from "lucide-react";
 import {
   CountUp,
   DatePresetBar,
@@ -17,6 +17,7 @@ import {
   RankedBarList,
   TopPostsLeaderboard,
 } from "@/components/instagram-insights-shared";
+import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { ModelIgToOfCard } from "@/components/cross-platform-insights";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
@@ -75,12 +76,17 @@ type Payload = {
     media_id: string;
     permalink: string | null;
     media_type?: string | null;
+    media_product_type?: string | null;
     caption: string | null;
     image_url?: string | null;
     engagement_score: number | null;
     reach?: number;
     likes: number;
     comments: number;
+    shares?: number;
+    saved?: number;
+    views?: number;
+    posted_at?: string | null;
     rank: number;
   }>;
   crossPlatformCard?: ModelCrossPlatformCard | null;
@@ -99,6 +105,7 @@ export function ModelInstagramInsightsPanel() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<Payload | null>(null);
+  const [viewAsProfile, setViewAsProfile] = React.useState(false);
 
   const load = React.useCallback(
     async (opts?: { preset?: InflowwStatsPreset; from?: string; to?: string }) => {
@@ -455,11 +462,49 @@ export function ModelInstagramInsightsPanel() {
         </div>
       ) : null}
 
+      {data?.linked ? (
+        <div className={cn(VA_CARD, "p-4 md:p-5")}>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <SectionLabel>View as Profile</SectionLabel>
+              <p className="mt-1 text-xs text-white/40">
+                See your Instagram the way fans see it — live profile + post grid.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewAsProfile((v) => !v)}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition",
+                viewAsProfile
+                  ? "border-[#D4AF8C]/50 bg-[#D4AF8C]/15 text-[#E8D0B0]"
+                  : "border-white/15 bg-white/[0.04] text-white/70 hover:bg-white/[0.07]"
+              )}
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              {viewAsProfile ? "Hide" : "Show mockup"}
+            </button>
+          </div>
+          {viewAsProfile ? (
+            <div className="flex justify-center py-2">
+              <InstagramProfileSimulator
+                compact
+                profileUrl="/api/model/instagram-insights/profile"
+                detailUrlFor={(mediaId) =>
+                  `/api/model/instagram-insights/media/${encodeURIComponent(mediaId)}`
+                }
+              />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className={cn(VA_CARD, "p-4 md:p-5")}>
         <div className="mb-3">
           <SectionLabel>Your top posts</SectionLabel>
           <p className="mt-1 text-xs text-white/40">
-            What resonated most — gold, silver, bronze, and keep that energy going.
+            What resonated most — gold, silver, bronze, and keep that energy going. Tap for full
+            stats.
           </p>
         </div>
         <TopPostsLeaderboard
@@ -467,6 +512,9 @@ export function ModelInstagramInsightsPanel() {
           loading={loading}
           compact
           emptyDetail="Top posts will appear after the next Instagram sync."
+          detailUrlFor={(mediaId) =>
+            `/api/model/instagram-insights/media/${encodeURIComponent(mediaId)}`
+          }
         />
       </div>
     </div>

@@ -97,7 +97,7 @@ export async function GET(request: Request) {
       endYmd: range.endYmd,
     }),
     getClarioSuiteAudienceSnapshot({ modelRecordId: modelRecord.id }),
-    queryClarioSuiteTopPosts({ modelRecordId: modelRecord.id, limit: 8 }),
+    queryClarioSuiteTopPosts({ modelRecordId: modelRecord.id, limit: 25 }),
     getCrossPlatformAnalytics({
       modelRecordId: modelRecord.id,
       modelName: modelRecord.model_name,

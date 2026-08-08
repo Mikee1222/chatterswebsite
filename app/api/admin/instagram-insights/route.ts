@@ -144,7 +144,7 @@ export async function GET(request: Request) {
       endYmd: range.endYmd,
     }),
     getClarioSuiteAudienceSnapshot({ modelRecordId: selected.modelRecordId }),
-    queryClarioSuiteTopPosts({ modelRecordId: selected.modelRecordId, limit: 10 }),
+    queryClarioSuiteTopPosts({ modelRecordId: selected.modelRecordId, limit: 25 }),
     queryClarioSuiteDailyInsights({
       startYmd: range.startYmd,
       endYmd: range.endYmd,
