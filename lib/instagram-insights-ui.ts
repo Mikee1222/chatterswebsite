@@ -23,6 +23,22 @@ export const IG_STAT_INFO = {
     "ClarioSuite API key health (/me), linked model count, and when audience/insights were last synced.",
   cross_platform:
     "Joins Instagram Insights with Infloww OnlyFans stats for the same model and dates. Patterns describe alignment — not causation.",
+  overview:
+    "Agency-wide totals across all linked ClarioSuite Instagram accounts for the selected date range.",
+  growth_rate:
+    "Follower change as a percent of starting followers in this range. Acceleration compares the rate to the equal-length prior period.",
+  consistency:
+    "How steady daily reach is (0–100). Same coefficient-of-variation formula as Chatter Performance — higher means less day-to-day swing.",
+  posting_frequency:
+    "How often this account posted in the selected range (from synced top-media timestamps). Posts-per-week is annualized from the range length.",
+  posting_correlation:
+    "Observational: daily post count vs daily reach. Correlation does not mean posting caused the reach — other campaigns and timing matter.",
+  content_type:
+    "Average engagement score by format (Reels / Carousels / Posts) from the synced top-media set. Sample is the ranked cache, not every post ever published.",
+  stories:
+    "Currently active Instagram Stories from ClarioSuite. Performance metrics appear only when the API returns them — we never invent story stats.",
+  top_post_engagement:
+    "Highest engagement score among synced top posts for that model (likes+comments+shares+saved ÷ reach × 100).",
 } as const;
 
 export type IgStatMetricId = keyof typeof IG_STAT_INFO;
