@@ -13,8 +13,14 @@ const TABLE = "sop_feedback";
 const HELPFUL_VALUES: readonly SopFeedbackHelpful[] = ["yes", "no"];
 
 type Row = SbRow & {
-  feedback_id?: string | null; user?: string[] | null; sop_function?: string[] | null;
-  sop_role?: string[] | null; helpful?: string | null; comment?: string | null; created_at?: string | null;
+  feedback_id?: string | null;
+  /** Postgres column is user_ref (Airtable field "user" is reserved in PG). */
+  user_ref?: string[] | null;
+  sop_function?: string[] | null;
+  sop_role?: string[] | null;
+  helpful?: string | null;
+  comment?: string | null;
+  created_at?: string | null;
 };
 
 function genId() { return `sop_fb_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; }
@@ -32,7 +38,7 @@ function mapRowSync(
   return {
     id: publicId(row),
     feedback_id: String(row.feedback_id ?? ""),
-    user_id: firstMappedLinkedId(row.user, userAt),
+    user_id: firstMappedLinkedId(row.user_ref, userAt),
     sop_function_id: firstMappedLinkedId(row.sop_function, fnAt),
     sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     helpful: coerceHelpful(row.helpful),
@@ -44,7 +50,7 @@ function mapRowSync(
 async function mapRows(rows: Row[]): Promise<SopFeedback[]> {
   if (!rows.length) return [];
   const [userAt, fnAt, roleAt] = await Promise.all([
-    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user)),
+    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user_ref)),
     sbResolveUuidToAirtableMap("sop_functions", rows.map((r) => r.sop_function)),
     sbResolveUuidToAirtableMap("sop_roles", rows.map((r) => r.sop_role)),
   ]);
@@ -67,14 +73,14 @@ export async function createSopFeedback(input: CreateSopFeedbackInput): Promise<
   const existing = mapped.find((r) => r.user_id === userId && r.sop_function_id === functionId && r.sop_role_id === roleId);
   if (existing) return existing;
   const now = new Date().toISOString();
-  const [user, sop_function, sop_role] = await Promise.all([
+  const [user_ref, sop_function, sop_role] = await Promise.all([
     requireSbUuids("users", [userId], "user"),
     requireSbUuids("sop_functions", [functionId], "sop_function"),
     requireSbUuids("sop_roles", [roleId], "sop_role"),
   ]);
   const row = await sbInsert<Row>(TABLE, {
     feedback_id: genId(),
-    user,
+    user_ref,
     sop_function,
     sop_role,
     helpful: input.helpful,

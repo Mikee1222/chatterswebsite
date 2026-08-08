@@ -11,8 +11,13 @@ import { DEFAULT_SIGNOFF_STATEMENT } from "./sop-signoff";
 
 const TABLE = "sop_signoffs";
 type Row = SbRow & {
-  signoff_id?: string | null; user?: string[] | null; sop_role?: string[] | null;
-  signed_at?: string | null; statement?: string | null; created_at?: string | null;
+  signoff_id?: string | null;
+  /** Postgres column is user_ref (Airtable field "user" is reserved in PG). */
+  user_ref?: string[] | null;
+  sop_role?: string[] | null;
+  signed_at?: string | null;
+  statement?: string | null;
+  created_at?: string | null;
 };
 
 function genSignoffId(): string {
@@ -27,7 +32,7 @@ function mapRowSync(
   return {
     id: publicId(row),
     signoff_id: String(row.signoff_id ?? ""),
-    user_id: firstMappedLinkedId(row.user, userAt),
+    user_id: firstMappedLinkedId(row.user_ref, userAt),
     sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     signed_at: row.signed_at != null ? String(row.signed_at) : "",
     statement: String(row.statement ?? ""),
@@ -38,7 +43,7 @@ function mapRowSync(
 async function mapRows(rows: Row[]): Promise<SopSignoff[]> {
   if (!rows.length) return [];
   const [userAt, roleAt] = await Promise.all([
-    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user)),
+    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user_ref)),
     sbResolveUuidToAirtableMap("sop_roles", rows.map((r) => r.sop_role)),
   ]);
   return rows.map((r) => mapRowSync(r, userAt, roleAt));
@@ -78,7 +83,7 @@ export async function createSignoff(userRecordId: string, roleRecordId: string, 
   ]);
   const row = await sbInsert<Row>(TABLE, {
     signoff_id: genSignoffId(),
-    user: userUuids,
+    user_ref: userUuids,
     sop_role: roleUuids,
     signed_at: now,
     statement: (statement ?? DEFAULT_SIGNOFF_STATEMENT).trim() || DEFAULT_SIGNOFF_STATEMENT,

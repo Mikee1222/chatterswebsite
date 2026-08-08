@@ -10,9 +10,15 @@ import type { SopQuizAttempt } from "@/types";
 
 const TABLE = "sop_quiz_attempts";
 type Row = SbRow & {
-  attempt_id?: string | null; user?: string[] | null; sop_function?: string[] | null;
-  sop_role?: string[] | null; score?: number | null; passed?: boolean | null;
-  wrong_count?: number | null; created_at?: string | null;
+  attempt_id?: string | null;
+  /** Postgres column is user_ref (Airtable field "user" is reserved in PG). */
+  user_ref?: string[] | null;
+  sop_function?: string[] | null;
+  sop_role?: string[] | null;
+  score?: number | null;
+  passed?: boolean | null;
+  wrong_count?: number | null;
+  created_at?: string | null;
 };
 
 function genId() { return `sop_qatt_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`; }
@@ -31,7 +37,7 @@ function mapRowSync(
   return {
     id: publicId(row),
     attempt_id: String(row.attempt_id ?? ""),
-    user_id: firstMappedLinkedId(row.user, userAt),
+    user_id: firstMappedLinkedId(row.user_ref, userAt),
     sop_function_id: firstMappedLinkedId(row.sop_function, fnAt),
     sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     score: num(row.score),
@@ -44,7 +50,7 @@ function mapRowSync(
 async function mapRows(rows: Row[]): Promise<SopQuizAttempt[]> {
   if (!rows.length) return [];
   const [userAt, fnAt, roleAt] = await Promise.all([
-    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user)),
+    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user_ref)),
     sbResolveUuidToAirtableMap("sop_functions", rows.map((r) => r.sop_function)),
     sbResolveUuidToAirtableMap("sop_roles", rows.map((r) => r.sop_role)),
   ]);
@@ -69,7 +75,7 @@ export async function recordQuizAttempt(
   ]);
   const row = await sbInsert<Row>(TABLE, {
     attempt_id: genId(),
-    user: userUuids,
+    user_ref: userUuids,
     sop_function: fnUuids,
     sop_role: roleUuids,
     score: Math.max(0, Math.min(100, Math.round(score))),

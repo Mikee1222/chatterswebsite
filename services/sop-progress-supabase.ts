@@ -18,7 +18,8 @@ const TABLE = "sop_progress";
 
 type Row = SbRow & {
   progress_id?: string | null;
-  user?: string[] | null;
+  /** Postgres column is user_ref (Airtable field "user" is reserved in PG). */
+  user_ref?: string[] | null;
   sop_function?: string[] | null;
   sop_role?: string[] | null;
   completed_at?: string | null;
@@ -59,7 +60,7 @@ function mapRowSync(
   return {
     id: publicId(row),
     progress_id: String(row.progress_id ?? ""),
-    user_id: firstMappedLinkedId(row.user, userAt),
+    user_id: firstMappedLinkedId(row.user_ref, userAt),
     sop_function_id: firstMappedLinkedId(row.sop_function, fnAt),
     sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     completed_at: row.completed_at != null ? String(row.completed_at) : "",
@@ -74,7 +75,7 @@ async function mapRows(rows: Row[]): Promise<SopProgress[]> {
   const [userAt, fnAt, roleAt] = await Promise.all([
     sbResolveUuidToAirtableMap(
       "users",
-      rows.map((r) => r.user)
+      rows.map((r) => r.user_ref)
     ),
     sbResolveUuidToAirtableMap(
       "sop_functions",
@@ -180,7 +181,7 @@ export async function markFunctionComplete(
   ]);
   const row = await sbInsert<Row>(TABLE, {
     progress_id: genProgressId(),
-    user: userUuids,
+    user_ref: userUuids,
     sop_function: fnUuids,
     sop_role: roleUuids,
     created_at: now,
