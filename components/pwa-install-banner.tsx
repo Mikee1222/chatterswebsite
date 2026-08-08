@@ -13,7 +13,11 @@ import { X, Share } from "lucide-react";
 const DISABLE_PWA_BANNER = false;
 
 /** Install banner: fully defensive – all values derived from pwa with safe defaults, no bare refs. */
-export function PwaInstallBanner() {
+export function PwaInstallBanner({
+  onVisibleChange,
+}: {
+  onVisibleChange?: (visible: boolean) => void;
+} = {}) {
   const pwa = usePwa();
 
   const canInstallSafe = Boolean(pwa?.canInstall === true);
@@ -27,10 +31,12 @@ export function PwaInstallBanner() {
 
   const [visible, setVisible] = React.useState(false);
   const [isMobile, setIsMobile] = React.useState(false);
+  const [checked, setChecked] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     setIsMobile(window.matchMedia("(max-width: 767px)").matches);
+    setChecked(true);
   }, []);
 
   const showNativeInstall =
@@ -54,6 +60,11 @@ export function PwaInstallBanner() {
   }, [canInstallSafe, isInstallableSafe]);
 
   const shouldShow = !isStandaloneSafe && (showNativeInstall || showIosGuidance);
+
+  React.useEffect(() => {
+    if (!checked) return;
+    onVisibleChange?.(shouldShow && !DISABLE_PWA_BANNER);
+  }, [shouldShow, checked, onVisibleChange]);
 
   if (DISABLE_PWA_BANNER) return null;
 
@@ -82,16 +93,14 @@ export function PwaInstallBanner() {
               Install for app-style access and notifications. Tap the Share button below, then &quot;Add to Home Screen&quot;.
             </p>
           </div>
-          {installSheetOpenSafe && (
-            <button
-              type="button"
-              onClick={handleDismiss}
-              className="shrink-0 rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
-              aria-label="Close"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleDismiss}
+            className="shrink-0 rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
         <div className="mt-4 flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2.5 text-sm text-white/80">
           <Share className="h-5 w-5 shrink-0 text-[hsl(330,90%,65%)]" />
@@ -109,11 +118,11 @@ export function PwaInstallBanner() {
     if (isMobile) {
       return (
         <div
-          className="fixed left-0 right-0 z-[89] md:hidden"
+          className="pointer-events-none fixed left-0 right-0 z-[89] md:hidden"
           style={{ bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px))" }}
         >
           <div
-            className="mx-3 rounded-2xl border border-white/10 bg-black/95 shadow-2xl backdrop-blur-xl"
+            className="pointer-events-auto mx-3 rounded-2xl border border-white/10 bg-black/95 shadow-2xl backdrop-blur-xl"
             style={{
               boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 -4px 24px rgba(0,0,0,0.3), 0 0 40px -8px rgba(236,72,153,0.12)",
             }}
@@ -148,16 +157,14 @@ export function PwaInstallBanner() {
             Get faster access, app-style navigation, and real-time alerts.
           </p>
         </div>
-        {installSheetOpenSafe && (
-          <button
-            type="button"
-            onClick={handleDismiss}
-            className="shrink-0 rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
-            aria-label="Close"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handleDismiss}
+          className="shrink-0 rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
       <div className="mt-4 flex gap-3">
         <button
@@ -182,13 +189,13 @@ export function PwaInstallBanner() {
   if (isMobile) {
     return (
       <div
-        className="fixed left-0 right-0 z-[89] md:hidden"
+        className="pointer-events-none fixed left-0 right-0 z-[89] md:hidden"
         style={{
           bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px))",
         }}
       >
         <div
-          className="mx-3 rounded-2xl border border-white/10 bg-black/95 shadow-2xl backdrop-blur-xl"
+          className="pointer-events-auto mx-3 rounded-2xl border border-white/10 bg-black/95 shadow-2xl backdrop-blur-xl"
           style={{
             boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 -4px 24px rgba(0,0,0,0.3), 0 0 40px -8px rgba(236,72,153,0.12)",
           }}

@@ -230,6 +230,8 @@ summary,
   --mobile-tap-min-height: 48px;
   /* Mobile tab bar (taller to fit chatter center Shift CTA + captions). */
   --mobile-bottom-nav-height: 76px;
+  /* Extra scroll padding while PWA/push bottom banners are visible (set by DashboardPwaPrompts). */
+  --mobile-bottom-prompt-height: 0px;
 }
 
 /* Mobile: bottom tab bar must stay visible — .dashboard-bg overflow:hidden can clip fixed descendants; keep nav above scrolling content */
@@ -259,7 +261,8 @@ summary,
      the bar. !important guarantees this survives any Tailwind responsive utility ordering. */
   main[data-main-content].mobile-app-main {
     padding-bottom: calc(
-      var(--mobile-bottom-nav-height) + 3.75rem + env(safe-area-inset-bottom, 0px)
+      var(--mobile-bottom-nav-height) + 3.75rem + env(safe-area-inset-bottom, 0px) +
+        var(--mobile-bottom-prompt-height, 0px)
     ) !important;
   }
 }

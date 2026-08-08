@@ -247,11 +247,13 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 type Props = {
   role?: UserRole | (string & {}) | null;
   onSubscribed?: () => void;
+  /** Fires when the fixed mobile/desktop prompt mounts or unmounts (for padding / sequencing). */
+  onVisibilityChange?: (visible: boolean) => void;
 };
 
 type Step = "pre-prompt" | "loading" | "success" | "denied" | "unsupported" | "error";
 
-export function PushPermissionPrompt({ role, onSubscribed }: Props) {
+export function PushPermissionPrompt({ role, onSubscribed, onVisibilityChange }: Props) {
   const { isOpenFromSettings, closeNotificationPrompt } = useNotificationPrompt();
   const [show, setShow] = React.useState(false);
   const [step, setStep] = React.useState<Step>("pre-prompt");
@@ -319,6 +321,11 @@ export function PushPermissionPrompt({ role, onSubscribed }: Props) {
     setStep("pre-prompt");
     closeNotificationPrompt();
   };
+
+  React.useEffect(() => {
+    onVisibilityChange?.(show);
+    return () => onVisibilityChange?.(false);
+  }, [show, onVisibilityChange]);
 
   if (!show) return null;
 
@@ -457,13 +464,14 @@ function PromptCard({
   title,
   children,
   onClose,
-  showClose = false,
+  showClose: _showClose = false,
 }: {
   title: string;
   children: React.ReactNode;
   onClose: () => void;
   showClose?: boolean;
 }) {
+  void _showClose;
   const [isMobile, setIsMobile] = React.useState(false);
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -472,37 +480,36 @@ function PromptCard({
 
   const card = (
     <div
-      className="rounded-2xl border border-white/10 bg-black/95 p-4 shadow-2xl backdrop-blur-xl"
+      className="pointer-events-auto rounded-2xl border border-white/10 bg-black/95 p-4 shadow-2xl backdrop-blur-xl"
       style={{
         boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 48px -12px rgba(0,0,0,0.5), 0 0 60px -16px rgba(236,72,153,0.08)",
       }}
       role="dialog"
       aria-label={title}
     >
-      {(showClose || !isMobile) && (
-        <div className="mb-2 flex justify-end">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
-            aria-label="Close"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
+      {/* Always allow dismiss — fixed mobile banners otherwise cover checklist taps until Not now. */}
+      <div className="mb-2 flex justify-end">
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg p-1.5 text-white/50 hover:bg-white/10 hover:text-white"
+          aria-label="Close"
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
       <h3 className="text-base font-semibold text-white">{title}</h3>
       {children}
     </div>
   );
 
-  /* Mobile: bottom sheet above nav */
+  /* Mobile: bottom sheet above nav — wrapper is pointer-events-none so only the card steals taps. */
   if (isMobile) {
     return (
       <div
-        className="fixed left-0 right-0 z-[90] px-3 md:hidden"
+        className="pointer-events-none fixed left-0 right-0 z-[90] px-3 md:hidden"
         style={{ bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px))" }}
       >
         {card}
