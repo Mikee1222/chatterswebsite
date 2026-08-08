@@ -72,11 +72,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id: paramId } = await ctx.params;
   const itemRowId = await resolvePhaseItemRowId(paramId);
   if (!itemRowId) {
-    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+    return jsonNoStore({ error: "Item not found" }, { status: 404 });
   }
 
   const formDataOrErr = await readRequestFormData(req);
-  if (formDataOrErr instanceof NextResponse) return formDataOrErr;
+  if (formDataOrErr instanceof NextResponse) {
+    // Ensure auth JSON is never publicly cacheable (same class as shift-active GETs).
+    const status = formDataOrErr.status;
+    const body = await formDataOrErr.json().catch(() => ({ error: "Invalid upload body" }));
+    return jsonNoStore(body, { status });
+  }
   const formData = formDataOrErr;
 
   const screenshotUrlEntries = [
@@ -93,7 +98,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       isAllowedDirectScreenshotToken(token, "va-phase-item", { itemId: itemRowId }) ||
       isAllowedDirectScreenshotToken(token, "va-phase-item", { itemId: paramId });
     if (!ok) {
-      return NextResponse.json({ error: "Invalid screenshot reference" }, { status: 400 });
+      return jsonNoStore({ error: "Invalid screenshot reference" }, { status: 400 });
     }
     screenshotAttachments.push(attachmentFromSbToken(token));
   }
@@ -113,7 +118,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         msg.includes("under") ||
         msg.includes("image") ||
         msg.includes("empty");
-      return NextResponse.json(
+      return jsonNoStore(
         { error: clientError ? msg : `Screenshot upload failed: ${msg || "unknown error"}` },
         { status: clientError ? 400 : 502 },
       );
@@ -137,7 +142,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("[phase-items/complete] completePhaseItem failed:", e);
-    return NextResponse.json({ error: msg || "Could not complete item" }, { status: 500 });
+    return jsonNoStore({ error: msg || "Could not complete item" }, { status: 500 });
   }
 
   await notifyByRoleConfig(NOTIFICATION_EVENT.PHASE_TASK_COMPLETED, {
@@ -177,5 +182,5 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   revalidatePath(ROUTES.va.tasks);
   revalidatePath(ROUTES.va.home);
 
-  return NextResponse.json({ success: true, phaseCompleted, allPhasesCompleted });
+  return jsonNoStore({ success: true, phaseCompleted, allPhasesCompleted });
 }

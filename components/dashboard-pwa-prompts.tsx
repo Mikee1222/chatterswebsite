@@ -1,11 +1,25 @@
 "use client";
 
 import * as React from "react";
+import { usePathname } from "next/navigation";
 import { PushPermissionPrompt } from "@/components/push-permission-prompt";
 import { PwaInstallBanner } from "@/components/pwa-install-banner";
+import { ROUTES } from "@/lib/routes";
 import type { SessionUser } from "@/types";
 
 const PROMPT_HEIGHT_VAR = "--mobile-bottom-prompt-height";
+
+/** Checklist completion is blocked when fixed prompts cover rows — never show on task pages. */
+function isVaTasksChecklistPath(pathname: string | null): boolean {
+  if (!pathname) return false;
+  const p = pathname.replace(/\/$/, "") || "/";
+  return (
+    p === ROUTES.va.tasks ||
+    p.startsWith(`${ROUTES.va.tasks}/`) ||
+    p === ROUTES.admin.vaTasks ||
+    p.startsWith(`${ROUTES.admin.vaTasks}/`)
+  );
+}
 
 function measureBottomPromptHeight(): number {
   if (typeof document === "undefined") return 0;
@@ -40,11 +54,13 @@ function measureBottomPromptHeight(): number {
  * ChampagneCheckbox). Sequence like ClientHomePrompts: install first, then push.
  */
 export function DashboardPwaPrompts({ user }: { user: SessionUser }) {
+  const pathname = usePathname();
+  const suppressForChecklist = isVaTasksChecklistPath(pathname);
   const [pwaBannerVisible, setPwaBannerVisible] = React.useState(false);
   const [pwaReady, setPwaReady] = React.useState(false);
   const [pushVisible, setPushVisible] = React.useState(false);
 
-  const anyPromptVisible = pwaBannerVisible || pushVisible;
+  const anyPromptVisible = !suppressForChecklist && (pwaBannerVisible || pushVisible);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -68,6 +84,8 @@ export function DashboardPwaPrompts({ user }: { user: SessionUser }) {
       root.style.setProperty(PROMPT_HEIGHT_VAR, "0px");
     };
   }, [anyPromptVisible, pwaBannerVisible, pushVisible]);
+
+  if (suppressForChecklist) return null;
 
   return (
     <>

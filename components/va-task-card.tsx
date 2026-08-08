@@ -272,9 +272,10 @@ export const VaTaskCard = React.memo(function VaTaskCard({
           : undefined;
       const complete = () => {
         if (itemDisabled) return;
-        const fullItem = phases.flatMap((p) => p.items ?? []).find((i) => i.id === item.id);
-        if (!fullItem) return;
-        onCompleteItem(fullItem, task.id);
+        // Use the ribbon row directly — never re-lookup in a closed-over `phases` array.
+        // A stale memo/compiler closure made find() miss and silently no-op (no network call
+        // on desktop or mobile) while the checkbox still looked clickable.
+        onCompleteItem(item as PhaseItem, task.id);
       };
       const hasProofLinks = Boolean(item.screenshot?.some((s) => s.url));
       return (
@@ -341,7 +342,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         </div>
       );
     },
-    [onShift, onCompleteItem, phases, task.id, task.is_virtual_occurrence],
+    [onShift, onCompleteItem, task.id, task.is_virtual_occurrence],
   );
 
   return (

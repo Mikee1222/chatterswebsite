@@ -517,9 +517,9 @@ function PromptCard({
     );
   }
 
-  /* Desktop: floating card */
+  /* Desktop: floating card — pointer-events-none shell so only the card steals clicks. */
   return (
-    <div className="fixed bottom-6 right-6 z-[90] hidden w-[380px] md:block">
+    <div className="pointer-events-none fixed bottom-6 right-6 z-[90] hidden w-[380px] md:block">
       {card}
     </div>
   );

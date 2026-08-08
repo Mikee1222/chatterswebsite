@@ -135,12 +135,14 @@ export function PwaInstallBanner({
       );
     }
     return (
-      <div className="fixed bottom-6 right-6 z-[89] hidden w-[360px] md:block" role="dialog" aria-label="Add to Home Screen">
+      <div className="pointer-events-none fixed bottom-6 right-6 z-[89] hidden w-[360px] md:block">
         <div
-          className="rounded-2xl border border-white/10 bg-black/95 p-4 shadow-2xl backdrop-blur-xl"
+          className="pointer-events-auto rounded-2xl border border-white/10 bg-black/95 p-4 shadow-2xl backdrop-blur-xl"
           style={{
             boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 48px -12px rgba(0,0,0,0.5), 0 0 60px -16px rgba(236,72,153,0.08)",
           }}
+          role="dialog"
+          aria-label="Add to Home Screen"
         >
           {iosContent}
         </div>
@@ -208,18 +210,16 @@ export function PwaInstallBanner({
     );
   }
 
-  /* Desktop: subtle top-right card */
+  /* Desktop: subtle top-right card — pointer-events-none shell so only the card steals clicks. */
   return (
-    <div
-      className="fixed right-4 top-4 z-[89] hidden w-[360px] md:block"
-      role="dialog"
-      aria-label="Install app"
-    >
+    <div className="pointer-events-none fixed right-4 top-4 z-[89] hidden w-[360px] md:block">
       <div
-        className="rounded-2xl border border-white/10 bg-black/95 p-4 shadow-2xl backdrop-blur-xl"
+        className="pointer-events-auto rounded-2xl border border-white/10 bg-black/95 p-4 shadow-2xl backdrop-blur-xl"
         style={{
           boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 48px -12px rgba(0,0,0,0.5), 0 0 60px -16px rgba(236,72,153,0.08)",
         }}
+        role="dialog"
+        aria-label="Install app"
       >
         {content}
       </div>
