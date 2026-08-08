@@ -532,11 +532,15 @@ export function ClientContentHub({ models }: Props) {
     }
   }
 
-  const downloadTarget = (a: ModelContentAssignmentCardDTO) => {
+  const downloadTarget = (a: AssignmentWithModel) => {
     const att = a.file_attachment.find((x) => x.url);
-    if (att?.url) return { href: att.url, label: att.filename || "Download file" };
-    if (a.file_url) return { href: a.file_url, label: "Open link" };
-    return null;
+    const hasFile = Boolean(att?.url || a.file_url);
+    if (!hasFile) return null;
+    const q = new URLSearchParams({ model: a.modelRecordId });
+    return {
+      href: `/api/client/content-assignments/${encodeURIComponent(a.id)}/file?${q}`,
+      label: att?.filename || (att?.url ? "Download file" : "Open link"),
+    };
   };
 
   if (models.length === 0) {

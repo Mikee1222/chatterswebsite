@@ -271,9 +271,13 @@ export function ModelContentAssignmentsClient({
 
   const downloadTarget = (a: ModelContentAssignmentCardDTO) => {
     const att = a.file_attachment.find((x) => x.url);
-    if (att?.url) return { href: att.url, label: att.filename || t("assignments.downloadFile") };
-    if (a.file_url) return { href: a.file_url, label: t("assignments.openLink") };
-    return null;
+    const hasFile = Boolean(att?.url || a.file_url);
+    if (!hasFile) return null;
+    // Stable app URL → API mints a fresh Storage signed URL on each click (avoids 1h TTL / stale SSR).
+    return {
+      href: `/api/model/content-assignments/${encodeURIComponent(a.id)}/file`,
+      label: att?.filename || (att?.url ? t("assignments.downloadFile") : t("assignments.openLink")),
+    };
   };
 
   const clearFilters = () => {
