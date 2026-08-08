@@ -3,6 +3,10 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getModelContext } from "@/lib/model-context-server";
 import { bestTimeToPostUtc } from "@/lib/clariosuite-api";
 import {
+  buildBestTimeRecommendation,
+  warmAudienceSummary,
+} from "@/lib/instagram-insights-ui";
+import {
   resolveInflowwStatsRange,
   type InflowwStatsPreset,
 } from "@/services/infloww-performance";
@@ -45,17 +49,6 @@ function asOnlineHours(v: unknown): Array<{ hour: number; value: number }> {
     .filter((x): x is { hour: number; value: number } => Boolean(x));
 }
 
-function friendlyBestTimeLabel(hourUtc: number): string {
-  const start = hourUtc % 24;
-  const end = (start + 2) % 24;
-  const fmt = (h: number) => {
-    const ampm = h >= 12 ? "PM" : "AM";
-    const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `${h12} ${ampm}`;
-  };
-  return `${fmt(start)}–${fmt(end)} UTC`;
-}
-
 /**
  * GET /api/model/instagram-insights
  * Own-model ClarioSuite Instagram insights for the Earnings Instagram tab.
@@ -78,6 +71,7 @@ export async function GET(request: Request) {
       daily: [],
       totals: null,
       audience: null,
+      audienceSummary: null,
       bestTime: null,
       topPosts: [],
       message:
@@ -87,7 +81,9 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const preset = (url.searchParams.get("preset") || "this_month") as InflowwStatsPreset;
-  const range = resolveInflowwStatsRange(preset);
+  const customFrom = url.searchParams.get("from") ?? undefined;
+  const customTo = url.searchParams.get("to") ?? undefined;
+  const range = resolveInflowwStatsRange(preset, customFrom, customTo);
 
   const [daily, audienceRow, topPosts] = await Promise.all([
     queryClarioSuiteDailyInsights({
@@ -117,7 +113,24 @@ export async function GET(request: Request) {
     followerStart != null && followerEnd != null ? followerEnd - followerStart : null;
 
   const online = asOnlineHours(audienceRow?.online_followers_by_hour);
-  const best = bestTimeToPostUtc(online);
+  const ageRanges = asBuckets(audienceRow?.age_ranges);
+  const countries = asBuckets(audienceRow?.countries);
+  const genderSplit = asBuckets(audienceRow?.gender_split);
+  const followersCount =
+    audienceRow?.followers_count == null ? null : Number(audienceRow.followers_count);
+
+  const bestRec = buildBestTimeRecommendation(online, {
+    topCountryCode: countries[0]?.label ?? null,
+    friendly: true,
+  });
+  const peak = bestTimeToPostUtc(online);
+
+  const audienceSummary = warmAudienceSummary({
+    countries,
+    ageRanges,
+    genders: genderSplit,
+    followersCount: Number.isFinite(followersCount) ? followersCount : null,
+  });
 
   return NextResponse.json({
     linked: true,
@@ -130,20 +143,23 @@ export async function GET(request: Request) {
       total_interactions: interactions,
       avg_engagement_rate: avgEr,
       follower_delta: followerDelta,
+      follower_end: followerEnd,
     },
     audience: audienceRow
       ? {
-          followers_count: audienceRow.followers_count ?? null,
-          age_ranges: asBuckets(audienceRow.age_ranges).slice(0, 6),
-          countries: asBuckets(audienceRow.countries).slice(0, 5),
-          gender_split: asBuckets(audienceRow.gender_split),
+          followers_count: Number.isFinite(followersCount) ? followersCount : null,
+          age_ranges: ageRanges.slice(0, 6),
+          countries: countries.slice(0, 6),
+          gender_split: genderSplit,
         }
       : null,
-    bestTime: best
+    audienceSummary,
+    bestTime: bestRec
       ? {
-          hourUtc: best.hour,
-          friendlyLabel: friendlyBestTimeLabel(best.hour),
-          message: `You get the most engagement around ${friendlyBestTimeLabel(best.hour)} — that's a great time to post!`,
+          hourUtc: bestRec.hourUtc,
+          friendlyLabel: bestRec.windowLabel,
+          message: bestRec.recommendation,
+          peakHourUtc: peak?.hour ?? bestRec.hourUtc,
         }
       : null,
     topPosts,
