@@ -507,6 +507,8 @@ const VA_PERMISSIONS: Permission[] = [
   // NEVER be toggled off in the UI. Keep opt-in permissions out of VA/chatter defaults; for
   // manager, add them to MANAGER_EXCLUDED so the Airtable toggle stays authoritative.
   // winner_sourcing:* is granted to marketing-executive / researcher via Roles UI (custom roles).
+  // daily_review:submit is opt-in via Roles UI only — NOT a code default for any built-in role
+  // below, and must NOT be re-granted to marketing-executive (product decision).
 ];
 
 const MODEL_PERMISSIONS: Permission[] = [
