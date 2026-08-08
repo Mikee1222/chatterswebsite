@@ -208,6 +208,8 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   infloww_performance_alert: ["admin", "manager"],
   spot_check_logged: ["admin", "manager"],
   spot_check_status_changed: ["admin", "manager"],
+  daily_review_submitted: ["admin", "manager"],
+  daily_review_saved: ["admin", "manager"],
   billing_cycle_announced: ["client"],
   payment_submitted: ["client"],
   sop_quiz_passed: ["chatter", "virtual_assistant"],
@@ -899,6 +901,16 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "spot_check_status_changed",
       "Spot check status changed",
       "Αποστέλλεται στον submitter όταν ένα spot check γίνεται Fixed ή Escalated"
+    ),
+    eventEntry(
+      "daily_review_submitted",
+      "Daily review submitted",
+      "Ενημερώνει τους διαχειριστές daily review όταν ξεκινά νέο daily review"
+    ),
+    eventEntry(
+      "daily_review_saved",
+      "Daily review saved",
+      "Ενημερώνει τους διαχειριστές daily review όταν αποθηκεύεται ενημέρωση"
     ),
   ],
   custom_request_alerts: [

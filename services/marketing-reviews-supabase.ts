@@ -6,7 +6,6 @@ import {
   sbAirtableIdsForUuids,
   sbDeleteByPublicId,
   sbInsert,
-  sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
@@ -17,18 +16,23 @@ import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   SPOT_CHECK_STATUSES,
   SPOT_CHECK_TYPES,
+  resolutionTimeNowMs,
   toReviewDateKey,
   type SpotCheckStatus,
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
-import { uploadToPrivateStorage, urlsToAttachments } from "@/lib/supabase-signed-url";
+import {
+  attachmentsFromSignedMap,
+  batchSignUrlMap,
+  uploadToPrivateStorage,
+} from "@/lib/supabase-signed-url";
 import type {
+  DailyReviewFilters,
   MarketingSpotCheck,
   MarketingDailyReview,
   MarketingExecAudit,
   MarketingDailyReviewDetail,
-  ReviewAttachment,
   SpotCheckFilters,
   VaReviewHistorySummary,
 } from "./marketing-reviews";
@@ -65,6 +69,7 @@ type DailyReviewRow = SbRow & {
   actions_assigned?: string | null;
   time_spent_minutes?: number | null;
   manager_name?: string | null;
+  manager_id?: string | null;
   attachments?: string[] | null;
 };
 
@@ -97,13 +102,13 @@ function coerceNumber(v: unknown): number | null {
   const n = Number.parseInt(String(v), 10);
   return Number.isFinite(n) ? n : null;
 }
-async function attachmentsFromUrls(v: string[] | null | undefined): Promise<ReviewAttachment[]> {
-  if (!Array.isArray(v) || v.length === 0) return [];
-  const signed = await urlsToAttachments(v.filter((u): u is string => typeof u === "string" && u.length > 0));
-  return signed.map((a) => ({ url: a.url, filename: a.filename }));
+
+function attachmentFilename(url: string): string | undefined {
+  return url.split("/").pop()?.replace(/^[a-f0-9]+_\d+\./, "") || undefined;
 }
 
-async function mapSpotCheck(row: SpotCheckRow): Promise<MarketingSpotCheck> {
+function mapSpotCheckSync(row: SpotCheckRow, signedMap: Map<string, string>): MarketingSpotCheck {
+  const rawUrls = Array.isArray(row.attachments) ? row.attachments.filter((u): u is string => typeof u === "string" && u.length > 0) : [];
   return {
     id: publicId(row),
     subject: String(row.subject ?? ""),
@@ -119,11 +124,15 @@ async function mapSpotCheck(row: SpotCheckRow): Promise<MarketingSpotCheck> {
     action_taken: String(row.action_taken ?? ""),
     status: coerceSpotCheckStatus(row.status),
     resolution_time: coerceNumber(row.resolution_time),
-    attachments: await attachmentsFromUrls(row.attachments),
+    attachments: attachmentsFromSignedMap(rawUrls, signedMap).map((a) => ({
+      url: a.url,
+      filename: a.filename ?? attachmentFilename(a.url),
+    })),
   };
 }
 
-async function mapDailyReview(row: DailyReviewRow): Promise<MarketingDailyReview> {
+function mapDailyReviewSync(row: DailyReviewRow, signedMap: Map<string, string>): MarketingDailyReview {
+  const rawUrls = Array.isArray(row.attachments) ? row.attachments.filter((u): u is string => typeof u === "string" && u.length > 0) : [];
   return {
     id: publicId(row),
     review_label: String(row.review_label ?? ""),
@@ -136,8 +145,42 @@ async function mapDailyReview(row: DailyReviewRow): Promise<MarketingDailyReview
     actions_assigned: String(row.actions_assigned ?? ""),
     time_spent_minutes: coerceNumber(row.time_spent_minutes),
     manager_name: String(row.manager_name ?? ""),
-    attachments: await attachmentsFromUrls(row.attachments),
+    manager_id: String(row.manager_id ?? ""),
+    attachments: attachmentsFromSignedMap(rawUrls, signedMap).map((a) => ({
+      url: a.url,
+      filename: a.filename ?? attachmentFilename(a.url),
+    })),
   };
+}
+
+async function mapSpotCheck(row: SpotCheckRow): Promise<MarketingSpotCheck> {
+  const signedMap = await batchSignUrlMap(
+    Array.isArray(row.attachments) ? row.attachments.filter((u): u is string => typeof u === "string" && u.length > 0) : [],
+  );
+  return mapSpotCheckSync(row, signedMap);
+}
+
+async function mapDailyReview(row: DailyReviewRow): Promise<MarketingDailyReview> {
+  const signedMap = await batchSignUrlMap(
+    Array.isArray(row.attachments) ? row.attachments.filter((u): u is string => typeof u === "string" && u.length > 0) : [],
+  );
+  return mapDailyReviewSync(row, signedMap);
+}
+
+async function mapSpotChecksBatched(rows: SpotCheckRow[]): Promise<MarketingSpotCheck[]> {
+  const allUrls = rows.flatMap((r) =>
+    Array.isArray(r.attachments) ? r.attachments.filter((u): u is string => typeof u === "string" && u.length > 0) : [],
+  );
+  const signedMap = await batchSignUrlMap(allUrls);
+  return rows.map((row) => mapSpotCheckSync(row, signedMap));
+}
+
+async function mapDailyReviewsBatched(rows: DailyReviewRow[]): Promise<MarketingDailyReview[]> {
+  const allUrls = rows.flatMap((r) =>
+    Array.isArray(r.attachments) ? r.attachments.filter((u): u is string => typeof u === "string" && u.length > 0) : [],
+  );
+  const signedMap = await batchSignUrlMap(allUrls);
+  return rows.map((row) => mapDailyReviewSync(row, signedMap));
 }
 
 async function mapExecAudit(row: ExecAuditRow): Promise<MarketingExecAudit> {
@@ -174,14 +217,32 @@ export async function getSpotChecks(filters: SpotCheckFilters = {}): Promise<Mar
   let q = sb.from(TABLE_SPOT_CHECKS).select("*").order("timestamp", { ascending: false });
   if (filters.exec_va_id?.trim()) q = q.eq("exec_va_id", filters.exec_va_id.trim());
   if (filters.creator_id?.trim()) q = q.eq("creator_id", filters.creator_id.trim());
+  if (filters.manager_id?.trim()) q = q.eq("manager_id", filters.manager_id.trim());
+  if (filters.manager_name?.trim()) q = q.ilike("manager_name", filters.manager_name.trim());
   if (filters.type) q = q.eq("type", filters.type);
   if (filters.status) q = q.eq("status", filters.status);
   if (filters.date_from?.trim()) q = q.gt("timestamp", filters.date_from.trim());
   // Inclusive end day: exclusive upper bound is start of the next calendar day.
   if (filters.date_to?.trim()) q = q.lt("timestamp", addDaysAthensYmd(filters.date_to.trim(), 1));
+  if (filters.has_attachment === true) q = q.not("attachments", "eq", "{}");
+  if (filters.has_attachment === false) q = q.or("attachments.is.null,attachments.eq.{}");
+  if (filters.unresolved_only) {
+    q = q.or("resolution_time.is.null,status.eq.Pending");
+  }
+  if (filters.min_unresolved_age_hours != null && Number.isFinite(filters.min_unresolved_age_hours)) {
+    const cutoff = new Date(Date.now() - filters.min_unresolved_age_hours * 3600_000).toISOString();
+    q = q.lt("timestamp", cutoff).or("resolution_time.is.null,status.eq.Pending");
+  }
   const { data, error } = await q;
   if (error) throw new Error(`marketing_spot_checks: ${error.message}`);
-  return Promise.all(((data ?? []) as unknown as SpotCheckRow[]).map(mapSpotCheck));
+  let rows = (data ?? []) as unknown as SpotCheckRow[];
+  // Client-side attachment presence when PostgREST array filters are unreliable
+  if (filters.has_attachment === true) {
+    rows = rows.filter((r) => Array.isArray(r.attachments) && r.attachments.some((u) => Boolean(u)));
+  } else if (filters.has_attachment === false) {
+    rows = rows.filter((r) => !Array.isArray(r.attachments) || r.attachments.every((u) => !u));
+  }
+  return mapSpotChecksBatched(rows);
 }
 
 export async function getSpotCheckById(id: string): Promise<MarketingSpotCheck | null> {
@@ -193,9 +254,16 @@ export async function createSpotCheck(
   data: Partial<MarketingSpotCheck> & { manager_name: string }
 ): Promise<MarketingSpotCheck> {
   const now = new Date().toISOString();
+  const status = data.status ?? "Pending";
   const subject =
     data.subject?.trim() ||
     `${data.type ?? "Spot check"} — ${data.exec_va_name || data.creator_name || "Review"}`;
+  const resolution =
+    data.resolution_time != null
+      ? data.resolution_time
+      : status === "Fixed"
+        ? resolutionTimeNowMs()
+        : undefined;
   const row = await sbInsert<SpotCheckRow>(TABLE_SPOT_CHECKS, {
     subject,
     timestamp: now,
@@ -208,8 +276,8 @@ export async function createSpotCheck(
     creator_name: data.creator_name ?? "",
     what_was_wrong: data.what_was_wrong ?? "",
     action_taken: data.action_taken ?? "",
-    status: data.status ?? "Pending",
-    ...(data.resolution_time != null ? { resolution_time: data.resolution_time } : {}),
+    status,
+    ...(resolution != null ? { resolution_time: resolution } : {}),
   });
   const spotCheck = await mapSpotCheck(row);
 
@@ -254,8 +322,17 @@ export async function updateSpotCheck(id: string, data: Partial<MarketingSpotChe
   if (data.action_taken !== undefined) patch.action_taken = data.action_taken;
   if (data.status !== undefined) patch.status = data.status;
   if (data.resolution_time !== undefined) patch.resolution_time = data.resolution_time;
+  const before = await getSpotCheckById(id);
+  if (
+    data.status === "Fixed" &&
+    before &&
+    before.status !== "Fixed" &&
+    data.resolution_time === undefined &&
+    before.resolution_time == null
+  ) {
+    patch.resolution_time = resolutionTimeNowMs();
+  }
   if (Object.keys(patch).length === 0) return;
-  const before = data.status !== undefined ? await getSpotCheckById(id) : null;
   await sbUpdateByPublicId(TABLE_SPOT_CHECKS, id, patch);
   if (
     before &&
@@ -319,26 +396,81 @@ export async function appendSpotCheckAttachmentUrls(id: string, urls: string[]):
   await sbUpdateByPublicId(TABLE_SPOT_CHECKS, id, { attachments: existing });
 }
 
-export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
+export async function getDailyReviews(filters: DailyReviewFilters = {}): Promise<MarketingDailyReview[]> {
   const sb = getSupabaseServiceClient();
-  const { data, error } = await sb.from(TABLE_DAILY_REVIEWS).select("*").order("review_date", { ascending: false });
+  let q = sb.from(TABLE_DAILY_REVIEWS).select("*").order("review_date", { ascending: false });
+  if (filters.manager_id?.trim()) q = q.eq("manager_id", filters.manager_id.trim());
+  if (filters.manager_name?.trim()) q = q.ilike("manager_name", filters.manager_name.trim());
+  if (filters.date_from?.trim()) q = q.gte("review_date", filters.date_from.trim());
+  if (filters.date_to?.trim()) q = q.lte("review_date", filters.date_to.trim());
+  const { data, error } = await q;
   if (error) throw new Error(`marketing_daily_reviews: ${error.message}`);
-  return Promise.all(((data ?? []) as unknown as DailyReviewRow[]).map(mapDailyReview));
+  let rows = (data ?? []) as unknown as DailyReviewRow[];
+  if (filters.has_attachment === true) {
+    rows = rows.filter((r) => Array.isArray(r.attachments) && r.attachments.some((u) => Boolean(u)));
+  } else if (filters.has_attachment === false) {
+    rows = rows.filter((r) => !Array.isArray(r.attachments) || r.attachments.every((u) => !u));
+  }
+  if (filters.has_issues === true) {
+    rows = rows.filter((r) => String(r.issues_found ?? "").trim().length > 0);
+  } else if (filters.has_issues === false) {
+    rows = rows.filter((r) => String(r.issues_found ?? "").trim().length === 0);
+  }
+  let reviews = await mapDailyReviewsBatched(rows);
+  if (filters.exec_audit_complete != null) {
+    const details = await Promise.all(
+      reviews.map(async (r) => {
+        const audits = await getExecAuditsForDailyReview(r.id);
+        const complete =
+          audits.length > 0 &&
+          audits.every(
+            (a) =>
+              Boolean(a.exec_va_id) &&
+              (a.phase1_on_time || a.phase2_on_time || a.screenshots_authentic || a.posting_compliance || a.engagement_looks_real || a.issues_found || a.actions_taken),
+          );
+        return { id: r.id, complete };
+      }),
+    );
+    const want = filters.exec_audit_complete;
+    const allowed = new Set(details.filter((d) => d.complete === want).map((d) => d.id));
+    reviews = reviews.filter((r) => allowed.has(r.id));
+  }
+  return reviews;
 }
 
 export async function getDailyReviewByDate(
   date: string,
   managerName: string,
+  managerId?: string,
 ): Promise<MarketingDailyReview | null> {
   const targetKey = toReviewDateKey(date);
   if (!targetKey) return null;
   const managerTarget = managerName.trim().toLowerCase();
-  if (!managerTarget) return null;
-  const rows = await sbSelectAll<DailyReviewRow>(TABLE_DAILY_REVIEWS);
-  const match = rows.find(
-    (row) =>
-      toReviewDateKey(row.review_date) === targetKey &&
-      String(row.manager_name ?? "").trim().toLowerCase() === managerTarget,
+  const idTarget = managerId?.trim() ?? "";
+  if (!managerTarget && !idTarget) return null;
+
+  const sb = getSupabaseServiceClient();
+  // Prefer stable manager_id when available; otherwise filter by name.
+  if (idTarget) {
+    const { data, error } = await sb
+      .from(TABLE_DAILY_REVIEWS)
+      .select("*")
+      .eq("review_date", targetKey)
+      .eq("manager_id", idTarget)
+      .limit(1);
+    if (error) throw new Error(`marketing_daily_reviews: ${error.message}`);
+    const row = ((data ?? []) as unknown as DailyReviewRow[])[0];
+    if (row) return mapDailyReview(row);
+  }
+
+  const { data, error } = await sb
+    .from(TABLE_DAILY_REVIEWS)
+    .select("*")
+    .eq("review_date", targetKey)
+    .limit(50);
+  if (error) throw new Error(`marketing_daily_reviews: ${error.message}`);
+  const match = ((data ?? []) as unknown as DailyReviewRow[]).find(
+    (row) => String(row.manager_name ?? "").trim().toLowerCase() === managerTarget,
   );
   return match ? mapDailyReview(match) : null;
 }
@@ -364,13 +496,14 @@ async function getExecAuditsForDailyReview(dailyReviewId: string): Promise<Marke
 export async function createDailyReview(
   data: Partial<MarketingDailyReview> & { manager_name: string; review_date: string }
 ): Promise<MarketingDailyReview> {
-  const existing = await getDailyReviewByDate(data.review_date, data.manager_name);
+  const existing = await getDailyReviewByDate(data.review_date, data.manager_name, data.manager_id);
   if (existing) return existing;
   const label = data.review_label?.trim() || `Daily review — ${data.review_date}`;
   const row = await sbInsert<DailyReviewRow>(TABLE_DAILY_REVIEWS, {
     review_label: label,
     review_date: data.review_date,
     manager_name: data.manager_name,
+    ...(data.manager_id ? { manager_id: data.manager_id } : {}),
     overall_kpis_reviewed: data.overall_kpis_reviewed ?? [],
     account_compliance_vs_master: data.account_compliance_vs_master ?? [],
     top_performer_id: data.top_performer_id ?? "",
@@ -379,7 +512,31 @@ export async function createDailyReview(
     actions_assigned: data.actions_assigned ?? "",
     ...(data.time_spent_minutes != null ? { time_spent_minutes: data.time_spent_minutes } : {}),
   });
-  return mapDailyReview(row);
+  const review = await mapDailyReview(row);
+
+  const { listUsersWithPermission } = await import("@/services/users");
+  const { PERMISSIONS } = await import("@/lib/permissions");
+  const { notify } = await import("@/services/notification-service");
+  const { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } = await import("@/lib/notification-types");
+  const { dailyReviewSubmitted } = await import("@/lib/notification-copy");
+  const holders = await listUsersWithPermission(PERMISSIONS.DAILY_REVIEW_MANAGE).catch(() => []);
+  const copy = dailyReviewSubmitted(review.manager_name, toReviewDateKey(review.review_date) || review.review_date);
+  for (const u of holders) {
+    if (!u.id) continue;
+    if (review.manager_id && u.id === review.manager_id) continue;
+    await notify({
+      user_id: u.id,
+      event_type: NOTIFICATION_EVENT.DAILY_REVIEW_SUBMITTED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: copy.title,
+      body: copy.body,
+      entity_type: NOTIFICATION_ENTITY.DAILY_REVIEW,
+      entity_id: review.id,
+      actor_user_id: review.manager_id || undefined,
+      _triggerSource: "create_daily_review",
+    }).catch((err) => console.error("[daily_review_submitted] notify failed", err));
+  }
+  return review;
 }
 
 export async function updateDailyReview(id: string, data: Partial<MarketingDailyReview>): Promise<void> {
@@ -393,8 +550,41 @@ export async function updateDailyReview(id: string, data: Partial<MarketingDaily
   if (data.issues_found !== undefined) patch.issues_found = data.issues_found;
   if (data.actions_assigned !== undefined) patch.actions_assigned = data.actions_assigned;
   if (data.time_spent_minutes !== undefined) patch.time_spent_minutes = data.time_spent_minutes;
+  if (data.manager_id !== undefined) patch.manager_id = data.manager_id;
   if (Object.keys(patch).length === 0) return;
+  const before = await getDailyReviewByIdLite(id);
   await sbUpdateByPublicId(TABLE_DAILY_REVIEWS, id, patch);
+
+  const { listUsersWithPermission } = await import("@/services/users");
+  const { PERMISSIONS } = await import("@/lib/permissions");
+  const { notify } = await import("@/services/notification-service");
+  const { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } = await import("@/lib/notification-types");
+  const { dailyReviewSaved } = await import("@/lib/notification-copy");
+  const holders = await listUsersWithPermission(PERMISSIONS.DAILY_REVIEW_MANAGE).catch(() => []);
+  const managerName = data.manager_name ?? before?.manager_name ?? "";
+  const managerId = data.manager_id ?? before?.manager_id ?? "";
+  const reviewDate = toReviewDateKey(data.review_date ?? before?.review_date ?? "") || "";
+  const copy = dailyReviewSaved(managerName, reviewDate);
+  for (const u of holders) {
+    if (!u.id) continue;
+    if (managerId && u.id === managerId) continue;
+    await notify({
+      user_id: u.id,
+      event_type: NOTIFICATION_EVENT.DAILY_REVIEW_SAVED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: copy.title,
+      body: copy.body,
+      entity_type: NOTIFICATION_ENTITY.DAILY_REVIEW,
+      entity_id: id,
+      actor_user_id: managerId || undefined,
+      _triggerSource: "update_daily_review",
+    }).catch((err) => console.error("[daily_review_saved] notify failed", err));
+  }
+}
+
+async function getDailyReviewByIdLite(id: string): Promise<MarketingDailyReview | null> {
+  const row = await sbSelectByPublicId<DailyReviewRow>(TABLE_DAILY_REVIEWS, id);
+  return row ? mapDailyReview(row) : null;
 }
 
 export async function uploadDailyReviewAttachments(

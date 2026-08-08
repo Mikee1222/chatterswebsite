@@ -15,6 +15,7 @@ import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import {
   SPOT_CHECK_STATUSES,
   SPOT_CHECK_TYPES,
+  resolutionTimeNowMs,
   toReviewDateKey,
   type SpotCheckStatus,
   type SpotCheckType,
@@ -23,7 +24,12 @@ import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { listUsersWithPermission } from "@/services/users";
 import { PERMISSIONS } from "@/lib/permissions";
-import { spotCheckLogged, spotCheckStatusChanged } from "@/lib/notification-copy";
+import {
+  dailyReviewSaved,
+  dailyReviewSubmitted,
+  spotCheckLogged,
+  spotCheckStatusChanged,
+} from "@/lib/notification-copy";
 
 export type { SpotCheckStatus, SpotCheckType } from "@/lib/marketing-reviews-helpers";
 
@@ -63,6 +69,7 @@ export interface MarketingDailyReview {
   actions_assigned: string;
   time_spent_minutes: number | null;
   manager_name: string;
+  manager_id: string;
   attachments: ReviewAttachment[];
 }
 
@@ -89,10 +96,25 @@ export interface MarketingDailyReviewDetail extends MarketingDailyReview {
 export interface SpotCheckFilters {
   exec_va_id?: string;
   creator_id?: string;
+  manager_id?: string;
+  manager_name?: string;
   type?: SpotCheckType | "";
   status?: SpotCheckStatus | "";
   date_from?: string;
   date_to?: string;
+  has_attachment?: boolean;
+  unresolved_only?: boolean;
+  min_unresolved_age_hours?: number;
+}
+
+export interface DailyReviewFilters {
+  manager_id?: string;
+  manager_name?: string;
+  date_from?: string;
+  date_to?: string;
+  has_attachment?: boolean;
+  has_issues?: boolean;
+  exec_audit_complete?: boolean;
 }
 
 export interface VaReviewHistorySummary {
@@ -130,6 +152,7 @@ type DailyReviewFields = {
   actions_assigned?: string;
   time_spent_minutes?: number | string | null;
   manager_name?: string;
+  manager_id?: string;
   attachments?: unknown;
 };
 
@@ -214,6 +237,7 @@ function mapDailyReview(rec: AirtableRecord<DailyReviewFields>): MarketingDailyR
     actions_assigned: String(f.actions_assigned ?? ""),
     time_spent_minutes: coerceNumber(f.time_spent_minutes),
     manager_name: String(f.manager_name ?? ""),
+    manager_id: String(f.manager_id ?? ""),
     attachments: mapAttachments(f.attachments),
   };
 }
@@ -244,6 +268,12 @@ function buildSpotCheckFilter(filters: SpotCheckFilters): string | undefined {
   }
   if (filters.creator_id?.trim()) {
     parts.push(`{creator_id} = "${escapeFormulaString(filters.creator_id.trim())}"`);
+  }
+  if (filters.manager_id?.trim()) {
+    parts.push(`{manager_id} = "${escapeFormulaString(filters.manager_id.trim())}"`);
+  }
+  if (filters.manager_name?.trim()) {
+    parts.push(`LOWER({manager_name}) = "${escapeFormulaString(filters.manager_name.trim().toLowerCase())}"`);
   }
   if (filters.type) {
     parts.push(`{type} = "${escapeFormulaString(filters.type)}"`);
@@ -288,7 +318,32 @@ export async function getSpotChecks(filters: SpotCheckFilters = {}): Promise<Mar
     ...(filterByFormula ? { filterByFormula } : {}),
     sort: [{ field: "timestamp", direction: "desc" }],
   });
-  return records.map(mapSpotCheck);
+  let checks = records.map(mapSpotCheck);
+  if (filters.manager_id?.trim()) {
+    const id = filters.manager_id.trim();
+    checks = checks.filter((c) => c.manager_id === id);
+  }
+  if (filters.manager_name?.trim()) {
+    const name = filters.manager_name.trim().toLowerCase();
+    checks = checks.filter((c) => c.manager_name.trim().toLowerCase() === name);
+  }
+  if (filters.has_attachment === true) {
+    checks = checks.filter((c) => c.attachments.length > 0);
+  } else if (filters.has_attachment === false) {
+    checks = checks.filter((c) => c.attachments.length === 0);
+  }
+  if (filters.unresolved_only) {
+    checks = checks.filter((c) => c.resolution_time == null || c.status === "Pending");
+  }
+  if (filters.min_unresolved_age_hours != null && Number.isFinite(filters.min_unresolved_age_hours)) {
+    const cutoff = Date.now() - filters.min_unresolved_age_hours * 3600_000;
+    checks = checks.filter((c) => {
+      if (c.resolution_time != null && c.status !== "Pending") return false;
+      const ts = Date.parse(c.timestamp);
+      return Number.isFinite(ts) && ts < cutoff;
+    });
+  }
+  return checks;
 }
 
 export async function getSpotCheckById(id: string): Promise<MarketingSpotCheck | null> {
@@ -302,9 +357,16 @@ export async function createSpotCheck(
 ): Promise<MarketingSpotCheck> {
   if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).createSpotCheck(data);
   const now = new Date().toISOString();
+  const status = data.status ?? "Pending";
   const subject =
     data.subject?.trim() ||
     `${data.type ?? "Spot check"} — ${data.exec_va_name || data.creator_name || "Review"}`;
+  const resolution =
+    data.resolution_time != null
+      ? data.resolution_time
+      : status === "Fixed"
+        ? resolutionTimeNowMs()
+        : undefined;
   const rec = await createRecord<SpotCheckFields>(TABLE_SPOT_CHECKS, {
     subject,
     timestamp: now,
@@ -317,8 +379,8 @@ export async function createSpotCheck(
     creator_name: data.creator_name ?? "",
     what_was_wrong: data.what_was_wrong ?? "",
     action_taken: data.action_taken ?? "",
-    status: data.status ?? "Pending",
-    ...(data.resolution_time != null ? { resolution_time: data.resolution_time } : {}),
+    status,
+    ...(resolution != null ? { resolution_time: resolution } : {}),
   });
   const spotCheck = mapSpotCheck(rec);
 
@@ -360,11 +422,20 @@ export async function updateSpotCheck(id: string, data: Partial<MarketingSpotChe
   if (data.action_taken !== undefined) patch.action_taken = data.action_taken;
   if (data.status !== undefined) patch.status = data.status;
   if (data.resolution_time !== undefined) patch.resolution_time = data.resolution_time;
-  if (Object.keys(patch).length === 0) return;
 
   // Load prior state so we can detect a status transition into a terminal state and
   // notify the original submitter (manager_id) exactly once per transition.
-  const before = data.status !== undefined ? await getSpotCheckById(id) : null;
+  const before = await getSpotCheckById(id);
+  if (
+    data.status === "Fixed" &&
+    before &&
+    before.status !== "Fixed" &&
+    data.resolution_time === undefined &&
+    before.resolution_time == null
+  ) {
+    patch.resolution_time = resolutionTimeNowMs();
+  }
+  if (Object.keys(patch).length === 0) return;
   await updateRecord(TABLE_SPOT_CHECKS, id, patch);
 
   if (
@@ -422,36 +493,64 @@ export async function appendSpotCheckAttachmentUrls(id: string, urls: string[]):
   void urls;
 }
 
-export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
-  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getDailyReviews();
+export async function getDailyReviews(filters: DailyReviewFilters = {}): Promise<MarketingDailyReview[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getDailyReviews(filters);
   const records = await listAllRecords<DailyReviewFields>(TABLE_DAILY_REVIEWS, {
     sort: [{ field: "review_date", direction: "desc" }],
   });
-  return records.map(mapDailyReview);
+  let reviews = records.map(mapDailyReview);
+  if (filters.manager_id?.trim()) {
+    const id = filters.manager_id.trim();
+    reviews = reviews.filter((r) => r.manager_id === id);
+  }
+  if (filters.manager_name?.trim()) {
+    const name = filters.manager_name.trim().toLowerCase();
+    reviews = reviews.filter((r) => r.manager_name.trim().toLowerCase() === name);
+  }
+  if (filters.date_from?.trim()) {
+    const from = filters.date_from.trim();
+    reviews = reviews.filter((r) => toReviewDateKey(r.review_date) >= from);
+  }
+  if (filters.date_to?.trim()) {
+    const to = filters.date_to.trim();
+    reviews = reviews.filter((r) => toReviewDateKey(r.review_date) <= to);
+  }
+  if (filters.has_attachment === true) {
+    reviews = reviews.filter((r) => r.attachments.length > 0);
+  } else if (filters.has_attachment === false) {
+    reviews = reviews.filter((r) => r.attachments.length === 0);
+  }
+  if (filters.has_issues === true) {
+    reviews = reviews.filter((r) => r.issues_found.trim().length > 0);
+  } else if (filters.has_issues === false) {
+    reviews = reviews.filter((r) => r.issues_found.trim().length === 0);
+  }
+  return reviews;
 }
 
 export async function getDailyReviewByDate(
   date: string,
   managerName: string,
+  managerId?: string,
 ): Promise<MarketingDailyReview | null> {
   if (isSupabaseBackend()) {
-    return (await import("./marketing-reviews-supabase")).getDailyReviewByDate(date, managerName);
+    return (await import("./marketing-reviews-supabase")).getDailyReviewByDate(date, managerName, managerId);
   }
   const targetKey = toReviewDateKey(date);
   if (!targetKey) return null;
   const managerTarget = managerName.trim().toLowerCase();
-  if (!managerTarget) return null;
-  // Airtable filterByFormula string equality on date fields is unreliable (date⇄text
-  // coercion against the base's European D/M/YYYY display format), so fetch all reviews
-  // and match on a normalized YYYY-MM-DD key in JS instead. Volume is small.
+  const idTarget = managerId?.trim() ?? "";
+  if (!managerTarget && !idTarget) return null;
+  // Airtable filterByFormula string equality on date fields is unreliable — fetch and match in JS.
   const records = await listAllRecords<DailyReviewFields>(TABLE_DAILY_REVIEWS, {
     sort: [{ field: "review_date", direction: "desc" }],
   });
-  const match = records.find(
-    (rec) =>
-      toReviewDateKey(rec.fields?.review_date) === targetKey &&
-      String(rec.fields?.manager_name ?? "").trim().toLowerCase() === managerTarget,
-  );
+  const match = records.find((rec) => {
+    if (toReviewDateKey(rec.fields?.review_date) !== targetKey) return false;
+    const mid = String(rec.fields?.manager_id ?? "").trim();
+    if (idTarget && mid) return mid === idTarget;
+    return String(rec.fields?.manager_name ?? "").trim().toLowerCase() === managerTarget;
+  });
   return match ? mapDailyReview(match) : null;
 }
 
@@ -480,7 +579,7 @@ export async function createDailyReview(
   // Guard against duplicate reviews for the same (date, manager) pair (defense-in-depth
   // in case the API-layer check is bypassed or a concurrent request slips through).
   // Returns the existing review instead of creating a second one.
-  const existing = await getDailyReviewByDate(data.review_date, data.manager_name);
+  const existing = await getDailyReviewByDate(data.review_date, data.manager_name, data.manager_id);
   if (existing) return existing;
 
   const label =
@@ -490,6 +589,7 @@ export async function createDailyReview(
     review_label: label,
     review_date: data.review_date,
     manager_name: data.manager_name,
+    ...(data.manager_id ? { manager_id: data.manager_id } : {}),
     overall_kpis_reviewed: data.overall_kpis_reviewed ?? [],
     account_compliance_vs_master: data.account_compliance_vs_master ?? [],
     top_performer_id: data.top_performer_id ?? "",
@@ -498,7 +598,26 @@ export async function createDailyReview(
     actions_assigned: data.actions_assigned ?? "",
     ...(data.time_spent_minutes != null ? { time_spent_minutes: data.time_spent_minutes } : {}),
   });
-  return mapDailyReview(rec);
+  const review = mapDailyReview(rec);
+
+  const holders = await listUsersWithPermission(PERMISSIONS.DAILY_REVIEW_MANAGE).catch(() => []);
+  const copy = dailyReviewSubmitted(review.manager_name, toReviewDateKey(review.review_date) || review.review_date);
+  for (const u of holders) {
+    if (!u.id) continue;
+    if (review.manager_id && u.id === review.manager_id) continue;
+    await notify({
+      user_id: u.id,
+      event_type: NOTIFICATION_EVENT.DAILY_REVIEW_SUBMITTED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: copy.title,
+      body: copy.body,
+      entity_type: NOTIFICATION_ENTITY.DAILY_REVIEW,
+      entity_id: review.id,
+      actor_user_id: review.manager_id || undefined,
+      _triggerSource: "create_daily_review",
+    }).catch((err) => console.error("[daily_review_submitted] notify failed", err));
+  }
+  return review;
 }
 
 export async function updateDailyReview(id: string, data: Partial<MarketingDailyReview>): Promise<void> {
@@ -515,8 +634,31 @@ export async function updateDailyReview(id: string, data: Partial<MarketingDaily
   if (data.issues_found !== undefined) patch.issues_found = data.issues_found;
   if (data.actions_assigned !== undefined) patch.actions_assigned = data.actions_assigned;
   if (data.time_spent_minutes !== undefined) patch.time_spent_minutes = data.time_spent_minutes;
+  if (data.manager_id !== undefined) patch.manager_id = data.manager_id;
   if (Object.keys(patch).length === 0) return;
+  const before = await getDailyReviewDetail(id);
   await updateRecord(TABLE_DAILY_REVIEWS, id, patch);
+
+  const holders = await listUsersWithPermission(PERMISSIONS.DAILY_REVIEW_MANAGE).catch(() => []);
+  const managerName = data.manager_name ?? before?.manager_name ?? "";
+  const managerId = data.manager_id ?? before?.manager_id ?? "";
+  const reviewDate = toReviewDateKey(data.review_date ?? before?.review_date ?? "") || "";
+  const copy = dailyReviewSaved(managerName, reviewDate);
+  for (const u of holders) {
+    if (!u.id) continue;
+    if (managerId && u.id === managerId) continue;
+    await notify({
+      user_id: u.id,
+      event_type: NOTIFICATION_EVENT.DAILY_REVIEW_SAVED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: copy.title,
+      body: copy.body,
+      entity_type: NOTIFICATION_ENTITY.DAILY_REVIEW,
+      entity_id: id,
+      actor_user_id: managerId || undefined,
+      _triggerSource: "update_daily_review",
+    }).catch((err) => console.error("[daily_review_saved] notify failed", err));
+  }
 }
 
 export async function uploadDailyReviewAttachments(

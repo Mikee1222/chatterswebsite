@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { isAllowedDirectUploadToken } from "@/lib/direct-storage-upload";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { filterSpotChecksByManager, spotCheckManagerName } from "@/lib/marketing-reviews-helpers";
+import { filterSpotChecksByManager, spotCheckManagerId, spotCheckManagerName } from "@/lib/marketing-reviews-helpers";
 import {
   appendSpotCheckAttachmentUrls,
   getSpotCheckById,
@@ -22,8 +22,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const existing = await getSpotCheckById(id);
   if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  const managerName = spotCheckManagerName(session);
-  const owned = filterSpotChecksByManager([existing], managerName);
+  const owned = filterSpotChecksByManager(
+    [existing],
+    spotCheckManagerName(session),
+    spotCheckManagerId(session),
+  );
   if (owned.length === 0) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

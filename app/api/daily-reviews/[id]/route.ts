@@ -3,21 +3,27 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
-  filterDailyReviewsByManager,
+  isOwnedByManager,
+  spotCheckManagerId,
   spotCheckManagerName,
 } from "@/lib/marketing-reviews-helpers";
 import { getDailyReviewDetail, updateDailyReview } from "@/services/marketing-reviews";
 
 async function assertDailyReviewAccess(
   session: NonNullable<Awaited<ReturnType<typeof getSessionFromCookies>>>,
-  review: { manager_name: string },
+  review: { manager_name: string; manager_id?: string },
 ): Promise<NextResponse | null> {
   if (await hasPermission(session, PERMISSIONS.DAILY_REVIEW_MANAGE)) return null;
-  const owned = filterDailyReviewsByManager([review], spotCheckManagerName(session));
-  if (owned.length === 0) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (
+    isOwnedByManager(
+      review,
+      spotCheckManagerId(session),
+      spotCheckManagerName(session),
+    )
+  ) {
+    return null;
   }
-  return null;
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {

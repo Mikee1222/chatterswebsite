@@ -2,29 +2,13 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { spotCheckManagerName, toReviewDateKey } from "@/lib/marketing-reviews-helpers";
+import { spotCheckManagerId, spotCheckManagerName } from "@/lib/marketing-reviews-helpers";
 import {
   createDailyReview,
   getDailyReviewByDate,
   getDailyReviews,
+  type DailyReviewFilters,
 } from "@/services/marketing-reviews";
-
-function filterReviews(
-  reviews: Awaited<ReturnType<typeof getDailyReviews>>,
-  params: { date_from?: string; date_to?: string; manager_name?: string },
-) {
-  const fromKey = params.date_from ? toReviewDateKey(params.date_from) : "";
-  const toKey = params.date_to ? toReviewDateKey(params.date_to) : "";
-  const manager = params.manager_name?.trim().toLowerCase() ?? "";
-
-  return reviews.filter((r) => {
-    const dateKey = toReviewDateKey(r.review_date);
-    if (fromKey && dateKey < fromKey) return false;
-    if (toKey && dateKey > toKey) return false;
-    if (manager && r.manager_name.trim().toLowerCase() !== manager) return false;
-    return true;
-  });
-}
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -37,23 +21,31 @@ export async function GET(req: Request) {
   const date = url.searchParams.get("date");
   if (date) {
     const managerParam = url.searchParams.get("manager_name")?.trim();
+    const managerIdParam = url.searchParams.get("manager_id")?.trim();
     const managerName = managerParam || spotCheckManagerName(session);
-    const review = await getDailyReviewByDate(date, managerName);
+    const managerId = managerIdParam || (managerParam ? undefined : spotCheckManagerId(session));
+    const review = await getDailyReviewByDate(date, managerName, managerId);
     return NextResponse.json({ review });
   }
 
-  const dateFrom = url.searchParams.get("date_from") ?? undefined;
-  const dateTo = url.searchParams.get("date_to") ?? undefined;
-  const managerName = url.searchParams.get("manager_name") ?? undefined;
+  const filters: DailyReviewFilters = {
+    date_from: url.searchParams.get("date_from") ?? undefined,
+    date_to: url.searchParams.get("date_to") ?? undefined,
+    manager_name: url.searchParams.get("manager_name") ?? undefined,
+    manager_id: url.searchParams.get("manager_id") ?? undefined,
+  };
+  const hasAttachment = url.searchParams.get("has_attachment");
+  if (hasAttachment === "true") filters.has_attachment = true;
+  if (hasAttachment === "false") filters.has_attachment = false;
+  const hasIssues = url.searchParams.get("has_issues");
+  if (hasIssues === "true") filters.has_issues = true;
+  if (hasIssues === "false") filters.has_issues = false;
+  const execAudit = url.searchParams.get("exec_audit_complete");
+  if (execAudit === "true") filters.exec_audit_complete = true;
+  if (execAudit === "false") filters.exec_audit_complete = false;
 
-  const reviews = await getDailyReviews();
-  return NextResponse.json({
-    reviews: filterReviews(reviews, {
-      date_from: dateFrom,
-      date_to: dateTo,
-      manager_name: managerName,
-    }),
-  });
+  const reviews = await getDailyReviews(filters);
+  return NextResponse.json({ reviews });
 }
 
 export async function POST(req: Request) {
@@ -70,13 +62,15 @@ export async function POST(req: Request) {
   }
 
   const managerName = spotCheckManagerName(session);
-  const existing = await getDailyReviewByDate(reviewDate, managerName);
+  const managerId = spotCheckManagerId(session);
+  const existing = await getDailyReviewByDate(reviewDate, managerName, managerId);
   if (existing) {
     return NextResponse.json({ error: "A review already exists for this date", review: existing }, { status: 409 });
   }
 
   const review = await createDailyReview({
     manager_name: managerName,
+    manager_id: managerId,
     review_date: reviewDate,
     review_label: body.review_label != null ? String(body.review_label) : undefined,
     overall_kpis_reviewed: Array.isArray(body.overall_kpis_reviewed)

@@ -42,7 +42,7 @@ export const SPOT_CHECK_TYPE_STYLES: Record<SpotCheckType, { className: string }
   Other: { className: "border-white/15 bg-white/5 text-[#B8B4B8]/70" },
 };
 
-/** Display name stored on spot checks as `manager_name`. */
+/** Display name stored on spot checks / daily reviews as `manager_name`. */
 export function spotCheckManagerName(session: {
   fullName?: string | null;
   email?: string | null;
@@ -50,24 +50,60 @@ export function spotCheckManagerName(session: {
   return session.fullName?.trim() || session.email?.trim() || "Manager";
 }
 
-/** Client-side filter when Airtable formula for manager_name is unavailable. */
-export function filterSpotChecksByManager<T extends { manager_name: string }>(
+/** Stable ownership id (prefer Airtable id for dual-backend continuity). */
+export function spotCheckManagerId(session: {
+  airtableUserId?: string | null;
+  id: string;
+}): string {
+  return session.airtableUserId?.trim() || session.id;
+}
+
+type ManagerOwned = {
+  manager_name: string;
+  manager_id?: string | null;
+};
+
+/** Prefer stable manager_id; fall back to display-name match for legacy rows. */
+export function isOwnedByManager(
+  row: ManagerOwned,
+  managerId: string,
+  managerName: string,
+): boolean {
+  const id = managerId.trim();
+  const rowId = String(row.manager_id ?? "").trim();
+  if (id && rowId) return rowId === id;
+  const target = managerName.trim().toLowerCase();
+  if (!target) return false;
+  return row.manager_name.trim().toLowerCase() === target;
+}
+
+/** Client-side filter when server-side manager filter is unavailable. */
+export function filterSpotChecksByManager<T extends ManagerOwned>(
   checks: T[],
   managerName: string,
+  managerId?: string,
 ): T[] {
+  const id = managerId?.trim() ?? "";
   const target = managerName.trim().toLowerCase();
-  if (!target) return checks;
-  return checks.filter((sc) => sc.manager_name.trim().toLowerCase() === target);
+  if (!id && !target) return checks;
+  return checks.filter((sc) => isOwnedByManager(sc, id, managerName));
 }
 
 /** Client-side filter for daily reviews submitted by a supervisor. */
-export function filterDailyReviewsByManager<T extends { manager_name: string }>(
+export function filterDailyReviewsByManager<T extends ManagerOwned>(
   reviews: T[],
   managerName: string,
+  managerId?: string,
 ): T[] {
+  const id = managerId?.trim() ?? "";
   const target = managerName.trim().toLowerCase();
-  if (!target) return reviews;
-  return reviews.filter((r) => r.manager_name.trim().toLowerCase() === target);
+  if (!id && !target) return reviews;
+  return reviews.filter((r) => isOwnedByManager(r, id, managerName));
+}
+
+/** Unix ms timestamp for resolution_time when status → Fixed. */
+export function resolutionTimeNowMs(): number {
+  return Date.now();
 }
 
 /** Today's calendar date YYYY-MM-DD in Europe/Athens (business timezone). */

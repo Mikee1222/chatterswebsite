@@ -2,7 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarCheck, Plus, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarCheck,
+  Paperclip,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { DailyReviewFormFields, type DailyReviewFormState } from "@/components/daily-review-form-fields";
 import {
@@ -10,6 +16,17 @@ import {
   ExecAuditCard,
   type ExecAuditDraft,
 } from "@/components/exec-audit-card";
+import {
+  ListPagination,
+  useClientPagination,
+} from "@/components/earnings-filter-list";
+import {
+  CountUp,
+  InflowwCustomDateRange,
+  LuxuryStatCard,
+  StatInfoTooltip,
+  toLocalYmd,
+} from "@/components/infloww-performance-ui";
 import {
   FilterBar,
   FilterChip,
@@ -29,6 +46,7 @@ import {
 import { useToast } from "@/contexts/toast-context";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { ROUTES } from "@/lib/routes";
 import { formatReviewDate, isoDateDaysAgo, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
@@ -39,8 +57,10 @@ import type {
 import { staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 
 const API_BASE = "/api/admin/marketing-reviews/daily-reviews";
+const HISTORY_PAGE_SIZE = 12;
 
 type DateRange = "all" | "7d" | "30d" | "custom";
+type TriFilter = "" | "true" | "false";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
   return {
@@ -102,16 +122,22 @@ export function AdminDailyReviewClient({
   const isSupabase = useIsSupabaseBackend();
   const [reviews, setReviews] = React.useState(initialReviews);
   const [selectedDate, setSelectedDate] = React.useState(todayReviewIso());
+  const [focusManagerName, setFocusManagerName] = React.useState(todayReview?.manager_name ?? "");
+  const [focusManagerId, setFocusManagerId] = React.useState(todayReview?.manager_id ?? "");
   const [activeReview, setActiveReview] = React.useState<MarketingDailyReviewDetail | null>(todayReview);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
   const [deleteReviewId, setDeleteReviewId] = React.useState<string | null>(null);
   const [deleting, setDeleting] = React.useState(false);
 
   const [filterSupervisor, setFilterSupervisor] = React.useState("");
   const [filterDateRange, setFilterDateRange] = React.useState<DateRange>("all");
-  const [filterDateFrom, setFilterDateFrom] = React.useState("");
-  const [filterDateTo, setFilterDateTo] = React.useState("");
+  const [filterDateFrom, setFilterDateFrom] = React.useState(() => toLocalYmd(new Date()));
+  const [filterDateTo, setFilterDateTo] = React.useState(() => toLocalYmd(new Date()));
+  const [filterIssues, setFilterIssues] = React.useState<TriFilter>("");
+  const [filterAttachment, setFilterAttachment] = React.useState<TriFilter>("");
+  const [filterExecAudit, setFilterExecAudit] = React.useState<TriFilter>("");
 
   const [formState, setFormState] = React.useState<DailyReviewFormState>(() => detailToFormState(todayReview));
   const [execAudits, setExecAudits] = React.useState<ExecAuditDraft[]>(() => detailToExecAudits(todayReview));
@@ -119,22 +145,29 @@ export function AdminDailyReviewClient({
 
   const supervisorOptions = React.useMemo(() => {
     const names = new Set(reviews.map((r) => r.manager_name).filter(Boolean));
+    if (filterSupervisor) names.add(filterSupervisor);
     return [...names].sort((a, b) => a.localeCompare(b));
-  }, [reviews]);
+  }, [reviews, filterSupervisor]);
 
   const supervisorFilterOptions = React.useMemo<CustomSelectOption[]>(
-    () => [{ value: "", label: "All" }, ...supervisorOptions.map((name) => ({ value: name, label: name }))],
+    () => [{ value: "", label: "All supervisors" }, ...supervisorOptions.map((name) => ({ value: name, label: name }))],
     [supervisorOptions],
   );
-  const dateRangeOptions = React.useMemo<CustomSelectOption[]>(
+  const triOptions = React.useMemo<CustomSelectOption[]>(
     () => [
-      { value: "all", label: "All time" },
-      { value: "7d", label: "Last 7 days" },
-      { value: "30d", label: "Last 30 days" },
-      { value: "custom", label: "Custom" },
+      { value: "", label: "Any" },
+      { value: "true", label: "Yes" },
+      { value: "false", label: "No" },
     ],
     [],
   );
+
+  const datePresetChips: { id: DateRange; label: string }[] = [
+    { id: "all", label: "All time" },
+    { id: "7d", label: "7 days" },
+    { id: "30d", label: "30 days" },
+    { id: "custom", label: "Custom" },
+  ];
 
   function applyReviewToForm(review: MarketingDailyReviewDetail | null) {
     setFormState(detailToFormState(review));
@@ -142,10 +175,18 @@ export function AdminDailyReviewClient({
     setAttachFiles([]);
   }
 
-  async function loadDate(date: string) {
+  async function loadDate(
+    date: string,
+    manager?: { name?: string; id?: string },
+  ) {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}?date=${encodeURIComponent(date)}`);
+      const name = (manager?.name ?? focusManagerName).trim();
+      const id = (manager?.id ?? focusManagerId).trim();
+      const params = new URLSearchParams({ date });
+      if (name) params.set("manager_name", name);
+      if (id) params.set("manager_id", id);
+      const res = await fetch(`${API_BASE}?${params}`);
       const data = (await res.json()) as { review?: MarketingDailyReview | null };
       if (!data.review) {
         setActiveReview(null);
@@ -157,10 +198,21 @@ export function AdminDailyReviewClient({
       const detail = detailData.review ?? null;
       setActiveReview(detail);
       applyReviewToForm(detail);
+      if (detail) {
+        setFocusManagerName(detail.manager_name);
+        setFocusManagerId(detail.manager_id);
+      }
     } finally {
       setLoading(false);
     }
   }
+
+  const selectedDateRef = React.useRef(selectedDate);
+  selectedDateRef.current = selectedDate;
+  const focusManagerNameRef = React.useRef(focusManagerName);
+  focusManagerNameRef.current = focusManagerName;
+  const focusManagerIdRef = React.useRef(focusManagerId);
+  focusManagerIdRef.current = focusManagerId;
 
   React.useEffect(() => {
     void loadDate(selectedDate);
@@ -168,31 +220,114 @@ export function AdminDailyReviewClient({
   }, [selectedDate]);
 
   async function reloadHistory() {
-    const params = new URLSearchParams();
-    if (filterSupervisor) params.set("manager_name", filterSupervisor);
-    if (filterDateRange === "7d") params.set("date_from", isoDateDaysAgo(7));
-    if (filterDateRange === "30d") params.set("date_from", isoDateDaysAgo(30));
-    if (filterDateRange === "custom") {
-      if (filterDateFrom) params.set("date_from", filterDateFrom);
-      if (filterDateTo) params.set("date_to", filterDateTo);
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filterSupervisor) params.set("manager_name", filterSupervisor);
+      if (filterDateRange === "7d") params.set("date_from", isoDateDaysAgo(7));
+      if (filterDateRange === "30d") params.set("date_from", isoDateDaysAgo(30));
+      if (filterDateRange === "custom") {
+        if (filterDateFrom) params.set("date_from", filterDateFrom);
+        if (filterDateTo) params.set("date_to", filterDateTo);
+      }
+      if (filterIssues) params.set("has_issues", filterIssues);
+      if (filterAttachment) params.set("has_attachment", filterAttachment);
+      if (filterExecAudit) params.set("exec_audit_complete", filterExecAudit);
+      const res = await fetch(`${API_BASE}?${params}`);
+      const data = (await res.json()) as { reviews?: MarketingDailyReview[] };
+      if (res.ok) setReviews(data.reviews ?? []);
+    } finally {
+      setHistoryLoading(false);
     }
-    const res = await fetch(`${API_BASE}?${params}`);
-    const data = (await res.json()) as { reviews?: MarketingDailyReview[] };
-    if (res.ok) setReviews(data.reviews ?? []);
   }
 
   React.useEffect(() => {
     void reloadHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSupervisor, filterDateRange, filterDateFrom, filterDateTo]);
+  }, [
+    filterSupervisor,
+    filterDateRange,
+    filterDateFrom,
+    filterDateTo,
+    filterIssues,
+    filterAttachment,
+    filterExecAudit,
+  ]);
 
-  const hasFilters = Boolean(filterSupervisor) || filterDateRange !== "all";
+  const reloadHistoryRef = React.useRef(reloadHistory);
+  reloadHistoryRef.current = reloadHistory;
+
+  useSupabaseRealtimeRefresh(
+    ["marketing_daily_reviews"],
+    () => {
+      void reloadHistoryRef.current();
+      void loadDate(selectedDateRef.current, {
+        name: focusManagerNameRef.current,
+        id: focusManagerIdRef.current,
+      });
+    },
+    { debounceMs: 700 },
+  );
+
+  const stats = React.useMemo(() => {
+    const weekFrom = isoDateDaysAgo(7);
+    let withIssues = 0;
+    let withAttachments = 0;
+    let thisWeek = 0;
+    for (const r of reviews) {
+      if (r.issues_found.trim()) withIssues += 1;
+      if (r.attachments.length > 0) withAttachments += 1;
+      if (r.review_date >= weekFrom) thisWeek += 1;
+    }
+    return {
+      total: reviews.length,
+      withIssues,
+      withAttachments,
+      thisWeek,
+    };
+  }, [reviews]);
+
+  const pagination = useClientPagination(reviews, HISTORY_PAGE_SIZE);
+  React.useEffect(() => {
+    pagination.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filterSupervisor,
+    filterDateRange,
+    filterDateFrom,
+    filterDateTo,
+    filterIssues,
+    filterAttachment,
+    filterExecAudit,
+    reviews.length,
+  ]);
+
+  const hasFilters =
+    Boolean(filterSupervisor) ||
+    filterDateRange !== "all" ||
+    Boolean(filterIssues) ||
+    Boolean(filterAttachment) ||
+    Boolean(filterExecAudit);
 
   function clearFilters() {
     setFilterSupervisor("");
     setFilterDateRange("all");
-    setFilterDateFrom("");
-    setFilterDateTo("");
+    setFilterDateFrom(toLocalYmd(new Date()));
+    setFilterDateTo(toLocalYmd(new Date()));
+    setFilterIssues("");
+    setFilterAttachment("");
+    setFilterExecAudit("");
+  }
+
+  function openHistoryReview(r: MarketingDailyReview) {
+    const sameDate = r.review_date === selectedDate;
+    setFocusManagerName(r.manager_name);
+    setFocusManagerId(r.manager_id);
+    if (sameDate) {
+      void loadDate(r.review_date, { name: r.manager_name, id: r.manager_id });
+    } else {
+      setSelectedDate(r.review_date);
+    }
   }
 
   async function startReview() {
@@ -205,7 +340,14 @@ export function AdminDailyReviewClient({
       });
       const data = (await res.json()) as { review?: MarketingDailyReview; error?: string };
       if (res.status === 409) {
-        await loadDate(selectedDate);
+        const existing = data.review;
+        if (existing) {
+          setFocusManagerName(existing.manager_name);
+          setFocusManagerId(existing.manager_id);
+        }
+        await loadDate(selectedDate, existing
+          ? { name: existing.manager_name, id: existing.manager_id }
+          : undefined);
         await reloadHistory();
         addToast(
           localToast(
@@ -221,7 +363,12 @@ export function AdminDailyReviewClient({
         addToast(localToast(`dr-err-${Date.now()}`, "Failed", data.error ?? "Could not start review", "high"));
         return;
       }
-      await loadDate(selectedDate);
+      setFocusManagerName(data.review.manager_name);
+      setFocusManagerId(data.review.manager_id);
+      await loadDate(selectedDate, {
+        name: data.review.manager_name,
+        id: data.review.manager_id,
+      });
       await reloadHistory();
       addToast(
         localToast(`dr-start-${Date.now()}`, "Review started", `Daily review for ${formatReviewDate(selectedDate)}`, "normal"),
@@ -267,18 +414,27 @@ export function AdminDailyReviewClient({
           issues_found: audit.issues_found,
           actions_taken: audit.actions_taken,
         };
+        let auditRes: Response;
         if (audit.id) {
-          await fetch(`/api/admin/marketing-reviews/exec-audits/${audit.id}`, {
+          auditRes = await fetch(`/api/admin/marketing-reviews/exec-audits/${audit.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
         } else if (audit.exec_va_id) {
-          await fetch("/api/admin/marketing-reviews/exec-audits", {
+          auditRes = await fetch("/api/admin/marketing-reviews/exec-audits", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...payload, daily_review_id: activeReview.id }),
           });
+        } else {
+          continue;
+        }
+        if (!auditRes.ok) {
+          addToast(
+            localToast(`dr-audit-err-${Date.now()}`, "Failed", "Could not save one or more exec audits", "high"),
+          );
+          return;
         }
       }
 
@@ -292,12 +448,24 @@ export function AdminDailyReviewClient({
         } else {
           for (const f of attachFiles) fd.append("attachments", f);
         }
-        await fetch(`${API_BASE}/${activeReview.id}/attachments`, { method: "POST", body: fd });
+        const attachRes = await fetch(`${API_BASE}/${activeReview.id}/attachments`, {
+          method: "POST",
+          body: fd,
+        });
+        if (!attachRes.ok) {
+          addToast(localToast(`dr-att-err-${Date.now()}`, "Failed", "Could not upload attachments", "high"));
+          return;
+        }
       }
 
-      await loadDate(selectedDate);
+      await loadDate(selectedDate, {
+        name: activeReview.manager_name,
+        id: activeReview.manager_id,
+      });
       await reloadHistory();
       addToast(localToast(`dr-save-ok-${Date.now()}`, "Saved", "Daily review updated.", "normal"));
+    } catch {
+      addToast(localToast(`dr-save-err-${Date.now()}`, "Failed", "Could not save review", "high"));
     } finally {
       setSaving(false);
     }
@@ -336,31 +504,87 @@ export function AdminDailyReviewClient({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <ReviewPageEyebrow>Manager review</ReviewPageEyebrow>
-          <h1 className="mt-1 text-2xl font-bold text-white">Daily review</h1>
-          <p className="mt-1 text-sm text-[#B8B4B8]/60">Manage all supervisor daily reviews</p>
+          <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">Daily review</h1>
+          <p className="mt-1 text-sm text-[#B8B4B8]/60">
+            Manage supervisor end-of-day checklists across the team
+          </p>
         </div>
-        <Link href={ROUTES.admin.spotChecks} className={cn(VA_BTN_SECONDARY, "px-4 py-2.5 text-sm")}>
+        <Link
+          href={ROUTES.admin.spotChecks}
+          className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 py-2.5 text-sm")}
+        >
           ← Spot checks
         </Link>
       </div>
 
-      <section className={cn(VA_CARD, "flex flex-wrap items-end gap-4 p-4 md:p-5")}>
-        <label className="space-y-1.5 text-sm">
-          <span className="text-[#B8B4B8]/60">Review date</span>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <LuxuryStatCard
+          label="Total reviews"
+          value={<CountUp value={stats.total} />}
+          accent="white"
+          tooltip="Reviews matching the current history filters"
+          className="!p-3"
+        />
+        <LuxuryStatCard
+          label="With issues"
+          value={<CountUp value={stats.withIssues} />}
+          accent="amber"
+          tooltip="Reviews that recorded issues found"
+          className="!p-3"
+        />
+        <LuxuryStatCard
+          label="With attachments"
+          value={<CountUp value={stats.withAttachments} />}
+          accent="champagne"
+          tooltip="Reviews that include supporting files"
+          className="!p-3"
+        />
+        <LuxuryStatCard
+          label="This week"
+          value={<CountUp value={stats.thisWeek} />}
+          accent="pink"
+          tooltip="Reviews dated in the last 7 days (within current filters)"
+          className="!p-3"
+          glow
+        />
+      </div>
+
+      <section className={cn(VA_CARD, "flex flex-wrap items-end gap-3 p-4 md:gap-4 md:p-5")}>
+        <label className="min-w-[10rem] flex-1 space-y-1.5 text-sm sm:flex-none">
+          <span className="inline-flex items-center gap-1 text-[#B8B4B8]/60">
+            Review date
+            <StatInfoTooltip text="Pick a date, then start or edit that day's review. History cards also jump here." />
+          </span>
           <input
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className={VA_FILTER_INPUT}
+            className={cn(VA_FILTER_INPUT, "min-h-11 w-full")}
           />
         </label>
+        {focusManagerName ? (
+          <div className="min-w-0 flex-1 space-y-1.5 text-sm">
+            <span className="text-[#B8B4B8]/60">Focused supervisor</span>
+            <p className="truncate rounded-xl border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-3 py-2.5 text-sm text-[#D4AF8C]">
+              {focusManagerName}
+            </p>
+          </div>
+        ) : null}
         {isToday && !activeReview ? (
-          <button type="button" onClick={() => void startReview()} disabled={saving} className={VA_BTN_PRIMARY}>
+          <button
+            type="button"
+            onClick={() => void startReview()}
+            disabled={saving}
+            className={cn(VA_BTN_PRIMARY, "min-h-11")}
+          >
             {saving ? "Starting…" : "Start today's review"}
           </button>
         ) : null}
         {activeReview ? (
-          <QuickActionDelete onClick={() => setDeleteReviewId(activeReview.id)} className="px-4 py-2.5 text-sm">
+          <QuickActionDelete
+            onClick={() => setDeleteReviewId(activeReview.id)}
+            className="min-h-11 px-4 py-2.5 text-sm"
+          >
             <Trash2 className="h-4 w-4" aria-hidden />
             Delete review
           </QuickActionDelete>
@@ -373,15 +597,25 @@ export function AdminDailyReviewClient({
         <ReviewEmptyState
           icon={CalendarCheck}
           title={`No review for ${formatReviewDate(selectedDate)}`}
+          description={
+            focusManagerName
+              ? `No daily review found for ${focusManagerName} on this date.`
+              : "Start a new review or open one from history below."
+          }
           action={
-            <button type="button" onClick={() => void startReview()} disabled={saving} className={VA_BTN_PRIMARY}>
+            <button
+              type="button"
+              onClick={() => void startReview()}
+              disabled={saving}
+              className={cn(VA_BTN_PRIMARY, "min-h-11")}
+            >
               Start review for this date
             </button>
           }
         />
       ) : (
         <div className="space-y-5">
-          <div className={cn(VA_CARD, "space-y-5 p-5 shadow-[0_0_20px_rgba(255,20,147,0.06)]")}>
+          <div className={cn(VA_CARD, "space-y-5 p-4 shadow-[0_0_20px_rgba(255,20,147,0.06)] md:p-5")}>
             <DailyReviewFormFields
               state={formState}
               staffUsers={staffUsers}
@@ -415,7 +649,7 @@ export function AdminDailyReviewClient({
                 <button
                   type="button"
                   onClick={() => setExecAudits((prev) => [...prev, emptyExecAuditDraft()])}
-                  className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 py-2 text-xs")}
+                  className={cn(VA_BTN_SECONDARY, "inline-flex min-h-10 items-center gap-1.5 py-2 text-xs")}
                 >
                   <Plus className="h-3.5 w-3.5" aria-hidden />
                   Add VA audit
@@ -425,7 +659,9 @@ export function AdminDailyReviewClient({
               Per-exec audits
             </ReviewSectionHeader>
             {execAudits.length === 0 ? (
-              <p className="text-sm text-[#B8B4B8]/45">No per-exec audits yet.</p>
+              <p className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center text-sm text-[#B8B4B8]/45">
+                No per-exec audits yet — add one to score VA compliance.
+              </p>
             ) : (
               execAudits.map((audit, index) => (
                 <ExecAuditCard
@@ -446,8 +682,13 @@ export function AdminDailyReviewClient({
             )}
           </div>
 
-          <div className="flex justify-end">
-            <button type="button" onClick={() => void saveReview()} disabled={saving} className={VA_BTN_PRIMARY}>
+          <div className="flex justify-stretch sm:justify-end">
+            <button
+              type="button"
+              onClick={() => void saveReview()}
+              disabled={saving}
+              className={cn(VA_BTN_PRIMARY, "min-h-11 w-full sm:w-auto")}
+            >
               {saving ? "Saving…" : "Save review"}
             </button>
           </div>
@@ -458,7 +699,11 @@ export function AdminDailyReviewClient({
         <ReviewSectionHeader
           action={
             hasFilters ? (
-              <button type="button" onClick={clearFilters} className="text-xs text-[#D4AF8C]/80 hover:text-[#D4AF8C]">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="min-h-10 px-2 text-xs text-[#D4AF8C]/80 active:text-[#D4AF8C]"
+              >
                 Clear filters
               </button>
             ) : null
@@ -467,47 +712,95 @@ export function AdminDailyReviewClient({
           Review history
         </ReviewSectionHeader>
 
-        <FilterBar className="flex flex-wrap items-end gap-3">
-          <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-            Supervisor
-            <ManagerReviewSelect
-              value={filterSupervisor}
-              onChange={setFilterSupervisor}
-              options={supervisorFilterOptions}
-              triggerClassName="min-w-[9rem]"
-            />
-          </label>
-          <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-            Date range
-            <ManagerReviewSelect
-              value={filterDateRange}
-              onChange={(v) => setFilterDateRange(v as DateRange)}
-              options={dateRangeOptions}
-              triggerClassName="min-w-[9rem]"
-            />
-          </label>
+        <FilterBar className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {datePresetChips.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                onClick={() => setFilterDateRange(chip.id)}
+                className={cn(
+                  "min-h-10 rounded-full border px-3 py-1.5 text-xs font-semibold transition duration-200 motion-reduce:transition-none",
+                  filterDateRange === chip.id
+                    ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FF1493] shadow-[0_0_24px_-8px_rgba(255,20,147,0.55)]"
+                    : "border-white/10 bg-white/5 text-white/60 active:border-white/20 active:text-white",
+                )}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+
           {filterDateRange === "custom" ? (
-            <>
-              <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-                From
-                <input
-                  type="date"
-                  value={filterDateFrom}
-                  onChange={(e) => setFilterDateFrom(e.target.value)}
-                  className={cn(VA_FILTER_INPUT, "min-w-[9rem]")}
-                />
-              </label>
-              <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-                To
-                <input
-                  type="date"
-                  value={filterDateTo}
-                  onChange={(e) => setFilterDateTo(e.target.value)}
-                  className={cn(VA_FILTER_INPUT, "min-w-[9rem]")}
-                />
-              </label>
-            </>
+            <InflowwCustomDateRange
+              startYmd={filterDateFrom}
+              endYmd={filterDateTo}
+              className="border-0 bg-transparent p-0 shadow-none"
+              onChange={(start, end) => {
+                setFilterDateFrom(start);
+                setFilterDateTo(end);
+              }}
+              onApply={(start, end) => {
+                setFilterDateFrom(start);
+                setFilterDateTo(end);
+              }}
+            />
           ) : null}
+
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="space-y-1 text-xs text-[#B8B4B8]/60">
+              <span className="inline-flex items-center gap-1">
+                Supervisor
+                <StatInfoTooltip text="Filter history by the supervisor who submitted the review." />
+              </span>
+              <ManagerReviewSelect
+                value={filterSupervisor}
+                onChange={setFilterSupervisor}
+                options={supervisorFilterOptions}
+                triggerClassName="min-h-11 min-w-[10rem]"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-[#B8B4B8]/60">
+              <span className="inline-flex items-center gap-1">
+                Has issues
+                <StatInfoTooltip text="Only show reviews with (or without) issues recorded." />
+              </span>
+              <ManagerReviewSelect
+                value={filterIssues}
+                onChange={(v) => setFilterIssues(v as TriFilter)}
+                options={triOptions}
+                triggerClassName="min-h-11 min-w-[7.5rem]"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-[#B8B4B8]/60">
+              <span className="inline-flex items-center gap-1">
+                Attachments
+                <StatInfoTooltip text="Filter by whether supporting files were uploaded." />
+              </span>
+              <ManagerReviewSelect
+                value={filterAttachment}
+                onChange={(v) => setFilterAttachment(v as TriFilter)}
+                options={triOptions}
+                triggerClassName="min-h-11 min-w-[7.5rem]"
+              />
+            </label>
+            <label className="space-y-1 text-xs text-[#B8B4B8]/60">
+              <span className="inline-flex items-center gap-1">
+                Exec audits
+                <StatInfoTooltip text="Complete = at least one VA audit with checklist answers filled in." />
+              </span>
+              <ManagerReviewSelect
+                value={filterExecAudit}
+                onChange={(v) => setFilterExecAudit(v as TriFilter)}
+                options={[
+                  { value: "", label: "Any" },
+                  { value: "true", label: "Complete" },
+                  { value: "false", label: "Incomplete" },
+                ]}
+                triggerClassName="min-h-11 min-w-[8.5rem]"
+              />
+            </label>
+          </div>
         </FilterBar>
 
         {hasFilters ? (
@@ -526,46 +819,113 @@ export function AdminDailyReviewClient({
                 label={`${filterDateFrom || "…"} → ${filterDateTo || "…"}`}
                 onRemove={() => {
                   setFilterDateRange("all");
-                  setFilterDateFrom("");
-                  setFilterDateTo("");
+                  setFilterDateFrom(toLocalYmd(new Date()));
+                  setFilterDateTo(toLocalYmd(new Date()));
                 }}
               />
+            ) : null}
+            {filterIssues === "true" ? (
+              <FilterChip label="Has issues" onRemove={() => setFilterIssues("")} />
+            ) : null}
+            {filterIssues === "false" ? (
+              <FilterChip label="No issues" onRemove={() => setFilterIssues("")} />
+            ) : null}
+            {filterAttachment === "true" ? (
+              <FilterChip label="Has attachments" onRemove={() => setFilterAttachment("")} />
+            ) : null}
+            {filterAttachment === "false" ? (
+              <FilterChip label="No attachments" onRemove={() => setFilterAttachment("")} />
+            ) : null}
+            {filterExecAudit === "true" ? (
+              <FilterChip label="Audits complete" onRemove={() => setFilterExecAudit("")} />
+            ) : null}
+            {filterExecAudit === "false" ? (
+              <FilterChip label="Audits incomplete" onRemove={() => setFilterExecAudit("")} />
             ) : null}
           </div>
         ) : null}
 
-        {reviews.length === 0 ? (
-          <p className="text-sm text-[#B8B4B8]/45">No reviews match your filters.</p>
+        {historyLoading && reviews.length === 0 ? (
+          <ReviewLoadingState />
+        ) : reviews.length === 0 ? (
+          <ReviewEmptyState
+            icon={CalendarCheck}
+            title="No reviews match your filters"
+            description="Try clearing filters or widening the date range."
+            action={
+              hasFilters ? (
+                <button type="button" onClick={clearFilters} className={cn(VA_BTN_SECONDARY, "min-h-11")}>
+                  Clear filters
+                </button>
+              ) : null
+            }
+          />
         ) : (
           <div className="space-y-2">
-            {reviews.map((r) => (
-              <div
-                key={r.id}
-                className={cn(
-                  "mr-finding-card va-card rounded-2xl flex w-full items-center justify-between gap-3 p-4 transition duration-200 motion-reduce:transition-none hover:-translate-y-0.5",
-                  r.review_date === selectedDate && "ring-1 ring-[#FF1493]/35",
-                )}
-              >
-                <button type="button" onClick={() => setSelectedDate(r.review_date)} className="min-w-0 flex-1 text-left">
-                  <p className="font-medium text-white">{r.review_label}</p>
-                  <p className="text-xs text-[#B8B4B8]/50">
-                    {formatReviewDate(r.review_date)} · {r.manager_name}
-                    {r.time_spent_minutes != null ? ` · ${r.time_spent_minutes} min` : ""}
-                  </p>
-                </button>
-                <div className="flex shrink-0 items-center gap-2">
-                  {r.top_performer_name ? <span className={VA_MODEL_TAG}>{r.top_performer_name}</span> : null}
+            {pagination.pageItems.map((r) => {
+              const selected =
+                r.review_date === selectedDate &&
+                (focusManagerId
+                  ? r.manager_id === focusManagerId
+                  : focusManagerName
+                    ? r.manager_name === focusManagerName
+                    : true);
+              const hasIssues = Boolean(r.issues_found.trim());
+              const hasAtt = r.attachments.length > 0;
+              return (
+                <div
+                  key={r.id}
+                  className={cn(
+                    "mr-finding-card va-card flex w-full items-stretch gap-2 rounded-2xl p-2 transition duration-200 motion-reduce:transition-none sm:items-center sm:gap-3 sm:p-3",
+                    selected && "ring-1 ring-[#FF1493]/35 shadow-[0_0_20px_rgba(255,20,147,0.08)]",
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => openHistoryReview(r)}
+                    className="min-h-12 min-w-0 flex-1 rounded-xl px-2 py-2 text-left active:bg-white/[0.04] sm:px-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-white">{r.review_label || formatReviewDate(r.review_date)}</p>
+                      {hasIssues ? (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+                          <AlertTriangle className="h-3 w-3" aria-hidden />
+                          Issues
+                        </span>
+                      ) : null}
+                      {hasAtt ? (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#D4AF8C]">
+                          <Paperclip className="h-3 w-3" aria-hidden />
+                          {r.attachments.length}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 text-xs text-[#B8B4B8]/50">
+                      {formatReviewDate(r.review_date)} · {r.manager_name}
+                      {r.time_spent_minutes != null ? ` · ${r.time_spent_minutes} min` : ""}
+                    </p>
+                    {r.top_performer_name ? (
+                      <span className={cn(VA_MODEL_TAG, "mt-2 inline-block")}>{r.top_performer_name}</span>
+                    ) : null}
+                  </button>
                   <button
                     type="button"
                     onClick={() => setDeleteReviewId(r.id)}
-                    className="rounded-lg border border-white/10 p-2 text-red-400/55 transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
+                    className="shrink-0 self-center rounded-lg border border-white/10 p-2.5 text-red-400/55 transition active:border-red-500/30 active:bg-red-500/10 active:text-red-300"
                     aria-label="Delete review"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </button>
                 </div>
-              </div>
-            ))}
+              );
+            })}
+            <ListPagination
+              page={pagination.page}
+              totalPages={pagination.totalPages}
+              total={pagination.total}
+              pageSize={HISTORY_PAGE_SIZE}
+              onPageChange={pagination.setPage}
+            />
           </div>
         )}
       </div>

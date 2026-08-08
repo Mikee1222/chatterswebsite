@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   filterDailyReviewsByManager,
+  spotCheckManagerId,
   spotCheckManagerName,
 } from "@/lib/marketing-reviews-helpers";
 import {
@@ -20,14 +21,15 @@ export async function GET(req: Request) {
   }
 
   const managerName = spotCheckManagerName(session);
+  const managerId = spotCheckManagerId(session);
   const date = new URL(req.url).searchParams.get("date");
   if (date) {
-    const review = await getDailyReviewByDate(date, managerName);
+    const review = await getDailyReviewByDate(date, managerName, managerId);
     return NextResponse.json({ review });
   }
 
-  const all = await getDailyReviews();
-  const reviews = filterDailyReviewsByManager(all, managerName);
+  const all = await getDailyReviews({ manager_id: managerId });
+  const reviews = filterDailyReviewsByManager(all, managerName, managerId);
   return NextResponse.json({ reviews });
 }
 
@@ -45,13 +47,15 @@ export async function POST(req: Request) {
   }
 
   const managerName = spotCheckManagerName(session);
-  const existing = await getDailyReviewByDate(reviewDate, managerName);
+  const managerId = spotCheckManagerId(session);
+  const existing = await getDailyReviewByDate(reviewDate, managerName, managerId);
   if (existing) {
     return NextResponse.json({ error: "A review already exists for this date", review: existing }, { status: 409 });
   }
 
   const review = await createDailyReview({
     manager_name: managerName,
+    manager_id: managerId,
     review_date: reviewDate,
     review_label: body.review_label != null ? String(body.review_label) : undefined,
     overall_kpis_reviewed: Array.isArray(body.overall_kpis_reviewed)

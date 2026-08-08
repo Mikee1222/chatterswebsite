@@ -105,6 +105,9 @@ export const NOTIFICATION_EVENT_TYPES = [
   // Marketing spot checks (P2 coverage).
   "spot_check_logged",
   "spot_check_status_changed",
+  // Marketing daily reviews.
+  "daily_review_submitted",
+  "daily_review_saved",
   "tip_approved",
   "tip_rejected",
   "rebill_verified",
@@ -257,6 +260,8 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   infloww_performance_alert: "infloww_performance_alert",
   spot_check_logged: "spot_check_logged",
   spot_check_status_changed: "spot_check_status_changed",
+  daily_review_submitted: "daily_review_submitted",
+  daily_review_saved: "daily_review_saved",
   tip_approved: "tip_approved",
   tip_rejected: "tip_rejected",
   rebill_verified: "rebill_verified",

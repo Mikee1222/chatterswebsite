@@ -49,12 +49,66 @@ export async function resolveStorageUrl(
   return data.signedUrl;
 }
 
-/** Resolve a list of URL strings (mixed sb:// and https). */
+/**
+ * Resolve many URLs with bucket-batched `createSignedUrls` (no per-row N+1).
+ * Non-sb tokens pass through unchanged; order matches input.
+ */
 export async function resolveStorageUrls(
   urls: Array<string | null | undefined>,
   expiresInSec = DEFAULT_EXPIRES_SEC
 ): Promise<string[]> {
-  return Promise.all(urls.map((u) => resolveStorageUrl(u, expiresInSec)));
+  const list = urls.map((u) => (typeof u === "string" ? u : ""));
+  const byBucket = new Map<string, { index: number; path: string }[]>();
+  const out = [...list];
+
+  list.forEach((url, index) => {
+    const parsed = parseSbStorageToken(url);
+    if (!parsed) return;
+    const arr = byBucket.get(parsed.bucket) ?? [];
+    arr.push({ index, path: parsed.path });
+    byBucket.set(parsed.bucket, arr);
+  });
+
+  if (byBucket.size === 0) return out;
+
+  const sb = getSupabaseServiceClient();
+  await Promise.all(
+    [...byBucket.entries()].map(async ([bucket, items]) => {
+      const { data, error } = await sb.storage
+        .from(bucket)
+        .createSignedUrls(
+          items.map((i) => i.path),
+          expiresInSec,
+        );
+      if (error || !data) {
+        console.error("[resolveStorageUrls]", bucket, error?.message);
+        await Promise.all(
+          items.map(async (item) => {
+            out[item.index] = await resolveStorageUrl(list[item.index], expiresInSec);
+          }),
+        );
+        return;
+      }
+      data.forEach((entry, j) => {
+        const item = items[j];
+        if (!item) return;
+        out[item.index] = entry.signedUrl || list[item.index]!;
+      });
+    }),
+  );
+  return out;
+}
+
+/** Unique-url → signed-url map for resolve-then-map list hydration. */
+export async function batchSignUrlMap(
+  urls: string[],
+  expiresInSec = DEFAULT_EXPIRES_SEC,
+): Promise<Map<string, string>> {
+  const unique = [...new Set(urls.filter((u) => typeof u === "string" && u.length > 0))];
+  const signed = await resolveStorageUrls(unique, expiresInSec);
+  const map = new Map<string, string>();
+  unique.forEach((u, i) => map.set(u, signed[i] ?? u));
+  return map;
 }
 
 export type AttachmentLike = { url: string; filename?: string };
@@ -83,14 +137,28 @@ export async function urlsToAttachments(
 ): Promise<AttachmentLike[]> {
   if (!urls?.length) return [];
   const sign = opts?.sign !== false;
-  const out: AttachmentLike[] = [];
-  for (const url of urls) {
-    if (!url) continue;
-    const resolved = sign ? await resolveStorageUrl(url, opts?.expiresInSec) : url;
+  const filtered = urls.filter((u): u is string => typeof u === "string" && u.length > 0);
+  const resolved = sign
+    ? await resolveStorageUrls(filtered, opts?.expiresInSec)
+    : filtered;
+  return filtered.map((url, i) => {
     const filename = url.split("/").pop()?.replace(/^[a-f0-9]+_\d+\./, "") || undefined;
-    out.push({ url: resolved, ...(filename ? { filename } : {}) });
-  }
-  return out;
+    return { url: resolved[i] ?? url, ...(filename ? { filename } : {}) };
+  });
+}
+
+/** Map pre-signed URL tokens using a shared batch map (list hydrate). */
+export function attachmentsFromSignedMap(
+  urls: string[] | null | undefined,
+  signedMap: Map<string, string>,
+): AttachmentLike[] {
+  if (!urls?.length) return [];
+  return urls
+    .filter((u): u is string => typeof u === "string" && u.length > 0)
+    .map((url) => {
+      const filename = url.split("/").pop()?.replace(/^[a-f0-9]+_\d+\./, "") || undefined;
+      return { url: signedMap.get(url) ?? url, ...(filename ? { filename } : {}) };
+    });
 }
 
 /** Upload bytes to a private bucket; returns durable `sb://bucket/path` token. */

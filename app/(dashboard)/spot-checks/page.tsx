@@ -3,7 +3,11 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
-import { filterSpotChecksByManager, spotCheckManagerName } from "@/lib/marketing-reviews-helpers";
+import {
+  filterSpotChecksByManager,
+  spotCheckManagerId,
+  spotCheckManagerName,
+} from "@/lib/marketing-reviews-helpers";
 import { buildRoleLabels, toStaffUserOptions } from "@/lib/staff-assignee-data";
 import { getSpotChecks } from "@/services/marketing-reviews";
 import { listActiveModelsForAssignment } from "@/services/modelss";
@@ -19,14 +23,15 @@ export default async function SpotChecksSubmitPage() {
   }
 
   const managerName = spotCheckManagerName(user);
+  const managerId = spotCheckManagerId(user);
   const [allSpotChecks, models, activeUsers, roles] = await Promise.all([
-    getSpotChecks().catch(() => []),
+    getSpotChecks({ manager_id: managerId }).catch(() => []),
     listActiveModelsForAssignment().catch(() => []),
     listActiveUsers().catch(() => []),
     getRoles().catch(() => []),
   ]);
 
-  const mySubmissions = filterSpotChecksByManager(allSpotChecks, managerName);
+  const mySubmissions = filterSpotChecksByManager(allSpotChecks, managerName, managerId);
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">

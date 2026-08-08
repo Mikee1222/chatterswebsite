@@ -85,6 +85,8 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
+    case "daily_review":
+      return isAdmin ? ROUTES.admin.dailyReview : ROUTES.dailyReview;
     case "model_schedule":
       if (isAdmin) return ROUTES.admin.modelSchedules;
       if (isModel) return ROUTES.model.schedule;
@@ -188,6 +190,8 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
+    case "daily_review":
+      return isAdmin ? ROUTES.admin.dailyReview : ROUTES.dailyReview;
     case "tip":
       return isAdmin ? ROUTES.admin.rebillsTips : ROUTES.chatter.myRebills;
     case "model_schedule":
@@ -305,6 +309,8 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "infloww_performance_alert":
     case "spot_check_logged":
     case "spot_check_status_changed":
+    case "daily_review_submitted":
+    case "daily_review_saved":
       return "Marketing";
     case "login_new_device":
     case "password_changed":

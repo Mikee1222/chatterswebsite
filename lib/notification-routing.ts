@@ -464,6 +464,14 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "Original submitter when a spot check is marked Fixed or Escalated.",
   },
+  daily_review_submitted: {
+    rule: "admin_only",
+    description: "daily_review:manage holders when a supervisor starts/submits a daily review.",
+  },
+  daily_review_saved: {
+    rule: "admin_only",
+    description: "daily_review:manage holders when a daily review is saved/updated.",
+  },
   sop_quiz_passed: {
     rule: "assigned_party_only",
     description: "Chatter/VA when they pass an SOP quiz.",

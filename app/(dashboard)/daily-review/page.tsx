@@ -5,6 +5,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import {
   filterDailyReviewsByManager,
+  spotCheckManagerId,
   spotCheckManagerName,
   todayReviewIso,
 } from "@/lib/marketing-reviews-helpers";
@@ -26,15 +27,16 @@ export default async function DailyReviewSubmitPage() {
   }
 
   const managerName = spotCheckManagerName(user);
+  const managerId = spotCheckManagerId(user);
   const today = todayReviewIso();
   const [allReviews, todayRow, activeUsers, roles] = await Promise.all([
-    getDailyReviews().catch(() => []),
-    getDailyReviewByDate(today, managerName).catch(() => null),
+    getDailyReviews({ manager_id: managerId }).catch(() => []),
+    getDailyReviewByDate(today, managerName, managerId).catch(() => null),
     listActiveUsers().catch(() => []),
     getRoles().catch(() => []),
   ]);
 
-  const mySubmissions = filterDailyReviewsByManager(allReviews, managerName);
+  const mySubmissions = filterDailyReviewsByManager(allReviews, managerName, managerId);
   const todayReview = todayRow ? await getDailyReviewDetail(todayRow.id).catch(() => null) : null;
 
   return (

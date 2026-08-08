@@ -5,6 +5,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   filterDailyReviewsByManager,
+  spotCheckManagerId,
   spotCheckManagerName,
 } from "@/lib/marketing-reviews-helpers";
 import {
@@ -27,7 +28,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   const canManage = await hasPermission(session, PERMISSIONS.DAILY_REVIEW_MANAGE);
   if (!canManage) {
-    const owned = filterDailyReviewsByManager([existing], spotCheckManagerName(session));
+    const owned = filterDailyReviewsByManager(
+      [existing],
+      spotCheckManagerName(session),
+      spotCheckManagerId(session),
+    );
     if (owned.length === 0) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }

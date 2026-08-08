@@ -64,6 +64,7 @@ export function SpotCheckForm({
   className,
 }: Props) {
   const [values, setValues] = React.useState<SpotCheckFormValues>(DEFAULT_VALUES);
+  const [showAssigneeErrors, setShowAssigneeErrors] = React.useState(false);
 
   const typeOptions = React.useMemo<CustomSelectOption[]>(
     () => SPOT_CHECK_TYPES.map((t) => ({ value: t, label: t })),
@@ -87,9 +88,16 @@ export function SpotCheckForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!values.exec_va_id.trim() || !values.creator_id.trim()) {
+      setShowAssigneeErrors(true);
+      return;
+    }
     const payload = lockStatusToPending ? { ...values, status: "Pending" as const } : values;
     const ok = await onSubmit(payload);
-    if (ok !== false) reset();
+    if (ok !== false) {
+      reset();
+      setShowAssigneeErrors(false);
+    }
   }
 
   return (
@@ -105,23 +113,35 @@ export function SpotCheckForm({
         />
       </label>
       <div className="block space-y-1.5 text-sm">
-        <ReviewFieldLabel>Exec / VA</ReviewFieldLabel>
+        <ReviewFieldLabel>Exec / VA *</ReviewFieldLabel>
         <StaffAssigneePicker
           users={staffUsers}
           roleLabels={roleLabels}
           selectedIds={values.exec_va_id ? [values.exec_va_id] : []}
-          onChange={(ids) => setValues((prev) => ({ ...prev, exec_va_id: ids[0] ?? "" }))}
+          onChange={(ids) => {
+            setValues((prev) => ({ ...prev, exec_va_id: ids[0] ?? "" }));
+            setShowAssigneeErrors(false);
+          }}
           singleSelect
         />
+        {showAssigneeErrors && !values.exec_va_id ? (
+          <p className="text-xs text-red-300/90">Select the Exec / VA this finding is about.</p>
+        ) : null}
       </div>
       <label className="block space-y-1.5 text-sm">
-        <ReviewFieldLabel>Creator</ReviewFieldLabel>
+        <ReviewFieldLabel>Creator *</ReviewFieldLabel>
         <ManagerReviewSelect
           value={values.creator_id}
-          onChange={(v) => setValues((prev) => ({ ...prev, creator_id: v }))}
+          onChange={(v) => {
+            setValues((prev) => ({ ...prev, creator_id: v }));
+            setShowAssigneeErrors(false);
+          }}
           options={modelOptions}
           className="w-full"
         />
+        {showAssigneeErrors && !values.creator_id ? (
+          <p className="text-xs text-red-300/90">Select the creator account.</p>
+        ) : null}
       </label>
       <label className="block space-y-1.5 text-sm">
         <ReviewFieldLabel>What was wrong</ReviewFieldLabel>

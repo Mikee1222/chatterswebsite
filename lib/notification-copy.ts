@@ -460,6 +460,28 @@ export function spotCheckStatusChanged(
   };
 }
 
+/** Daily review submitted — daily_review:manage holders. */
+export function dailyReviewSubmitted(
+  managerName: string,
+  reviewDate: string
+): { title: string; body: string } {
+  return {
+    title: "📋 Daily review submitted",
+    body: `${managerName || "A supervisor"} started a daily review for ${reviewDate || "today"}.`,
+  };
+}
+
+/** Daily review saved — daily_review:manage holders. */
+export function dailyReviewSaved(
+  managerName: string,
+  reviewDate: string
+): { title: string; body: string } {
+  return {
+    title: "💾 Daily review saved",
+    body: `${managerName || "A supervisor"} updated the daily review for ${reviewDate || "today"}.`,
+  };
+}
+
 /** Form submitted — admin. */
 export function formSubmittedAdmin(
   formName: string,

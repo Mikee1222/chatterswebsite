@@ -1173,6 +1173,8 @@ export type NotificationEventType =
   | "infloww_performance_alert"
   | "spot_check_logged"
   | "spot_check_status_changed"
+  | "daily_review_submitted"
+  | "daily_review_saved"
   | "sop_quiz_passed"
   | "sop_quiz_failed"
   | "schedule_published"

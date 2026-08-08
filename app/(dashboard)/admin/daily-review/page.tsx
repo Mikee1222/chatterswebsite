@@ -1,7 +1,7 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { spotCheckManagerName, todayReviewIso } from "@/lib/marketing-reviews-helpers";
+import { spotCheckManagerId, spotCheckManagerName, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { buildRoleLabels, toStaffUserOptions } from "@/lib/staff-assignee-data";
 import { getDailyReviewByDate, getDailyReviewDetail, getDailyReviews } from "@/services/marketing-reviews";
 import { getRoles } from "@/services/roles";
@@ -13,10 +13,11 @@ export default async function AdminDailyReviewPage() {
   await requireAdminRoute(user, PERMISSIONS.DAILY_REVIEW_MANAGE);
 
   const managerName = spotCheckManagerName(user!);
+  const managerId = spotCheckManagerId(user!);
   const today = todayReviewIso();
   const [reviews, todayRow, activeUsers, roles] = await Promise.all([
     getDailyReviews().catch(() => []),
-    getDailyReviewByDate(today, managerName).catch(() => null),
+    getDailyReviewByDate(today, managerName, managerId).catch(() => null),
     listActiveUsers().catch(() => []),
     getRoles().catch(() => []),
   ]);
