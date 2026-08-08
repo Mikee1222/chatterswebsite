@@ -27,6 +27,7 @@ import {
   VA_BTN_SECONDARY,
   VA_CHAMPAGNE_DIVIDER,
 } from "@/lib/va-tasks-tokens";
+import { AssignmentProgressBar } from "@/components/content-pipeline-ui";
 import { TaskPhaseRibbon, type PhaseRibbonItem, type PhaseRibbonPhase } from "@/components/task-phase-ribbon";
 import { ChampagneCheckbox } from "@/components/va-tasks-champagne-checkbox";
 import { ManagerReviewTextarea, ReviewSectionHeader } from "@/components/manager-review-ui";
@@ -114,6 +115,8 @@ export type VaTaskCardProps = {
   onShift: boolean;
   isCompleting: boolean;
   phases: TaskPhase[];
+  /** True while phases are in-flight for an expanded card (avoids empty-state flash). */
+  phasesLoading?: boolean;
   getModelAccounts: (modelId: string) => SocialAccount[];
   /** Changes when social accounts for this card's models arrive/update (memo bust). */
   modelAccountsKey?: string;
@@ -146,6 +149,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   onShift,
   isCompleting,
   phases,
+  phasesLoading = false,
   getModelAccounts,
   modelAccountsKey: _modelAccountsKey = "",
   onLoadPhases,
@@ -162,6 +166,8 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   const [expanded, setExpanded] = React.useState(false);
   const [observations, setObservations] = React.useState(task.completed_notes ?? "");
   const [observationsDirty, setObservationsDirty] = React.useState(false);
+  const expandedRef = React.useRef(expanded);
+  expandedRef.current = expanded;
 
   React.useEffect(() => {
     if (!observationsDirty) {
@@ -182,12 +188,23 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   const virtualBadgeLabel =
     task.is_virtual_occurrence && dueYmd && dueYmd > todayYmd ? "Upcoming day" : "Projected";
 
+  const checklistProgress = React.useMemo(() => {
+    let done = 0;
+    let total = 0;
+    for (const phase of phases) {
+      for (const item of phase.items ?? []) {
+        total += 1;
+        if (item.status === "completed") done += 1;
+      }
+    }
+    return { done, total };
+  }, [phases]);
+
+  // Keep expand paint free of setState updaters — fetch runs after the open toggle commits.
   const toggleExpanded = React.useCallback(() => {
-    setExpanded((prev) => {
-      const next = !prev;
-      if (next) void onLoadPhases(task);
-      return next;
-    });
+    const next = !expandedRef.current;
+    setExpanded(next);
+    if (next) void onLoadPhases(task);
   }, [onLoadPhases, task]);
 
   const renderPhaseExtra = React.useCallback(
@@ -431,6 +448,21 @@ export const VaTaskCard = React.memo(function VaTaskCard({
             ))}
           </div>
         ) : null}
+        {checklistProgress.total > 0 ? (
+          <div className="pt-1">
+            <div className="mb-1 flex items-center justify-between text-[11px] tabular-nums text-[#B8B4B8]/45">
+              <span>Checklist</span>
+              <span className="text-[#D4AF8C]/80">
+                {checklistProgress.done}/{checklistProgress.total}
+              </span>
+            </div>
+            <AssignmentProgressBar
+              done={checklistProgress.done}
+              total={checklistProgress.total}
+              widthClass="w-full"
+            />
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-[#B8B4B8]/55">{assigneeLabel(task, userName)}</p>
           <div className="flex shrink-0 flex-wrap items-center gap-1.5">
@@ -501,7 +533,13 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               </button>
             </div>
 
-            <TaskPhaseRibbon phases={phases} renderPhaseExtra={renderPhaseExtra} renderItem={renderItem} />
+            {phasesLoading && phases.length === 0 ? (
+              <p className={cn(VA_CARD, "animate-pulse py-10 text-center text-sm text-[#B8B4B8]/35")}>
+                Loading phases…
+              </p>
+            ) : (
+              <TaskPhaseRibbon phases={phases} renderPhaseExtra={renderPhaseExtra} renderItem={renderItem} />
+            )}
           </div>
 
           <div className="border-t border-[rgba(255,255,255,0.06)] px-5 py-5">
@@ -547,6 +585,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.onShift === next.onShift &&
   prev.isCompleting === next.isCompleting &&
   prev.phases === next.phases &&
+  prev.phasesLoading === next.phasesLoading &&
   prev.getModelAccounts === next.getModelAccounts &&
   prev.modelAccountsKey === next.modelAccountsKey &&
   prev.onLoadPhases === next.onLoadPhases &&
@@ -555,5 +594,8 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.onCompleteItem === next.onCompleteItem &&
   prev.onShadowbanReport === next.onShadowbanReport &&
   prev.onSaveObservations === next.onSaveObservations &&
-  prev.observationsSaving === next.observationsSaving,
+  prev.observationsSaving === next.observationsSaving &&
+  prev.canManage === next.canManage &&
+  prev.onEdit === next.onEdit &&
+  prev.onDelete === next.onDelete,
 );

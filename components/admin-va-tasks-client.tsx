@@ -16,12 +16,25 @@ import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
+import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import {
   filterTasksByAthensYmd,
   getVaTasksViewTodayYmd,
   groupVaTasksForDateView,
 } from "@/lib/va-task-date-filter";
-import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
+import {
+  VA_CARD,
+  VA_CARD_GLOW,
+  VA_FILTER_INPUT,
+  VA_MODEL_TAG,
+  VA_STATUS_BADGE,
+  VA_BTN_PRIMARY,
+  VA_BTN_SECONDARY,
+  VA_CHAMPAGNE_DIVIDER,
+} from "@/lib/va-tasks-tokens";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { FilterBar } from "@/components/manager-review-ui";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
 import { AdminVaTasksFilters } from "@/components/admin-va-tasks-filters";
@@ -38,6 +51,31 @@ import {
 } from "@/components/staff-assignee-picker";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
+
+/** Expand each Athens day in [start, end] (inclusive), capped to keep list snappy. */
+function filterTasksByAthensYmdRange(
+  tasks: VaTaskRecord[],
+  startYmd: string,
+  endYmd: string,
+): VaTaskRecord[] {
+  const start = startYmd.trim().slice(0, 10);
+  const end = endYmd.trim().slice(0, 10);
+  if (!start || !end) return filterTasksByAthensYmd(tasks, start || end);
+  if (start === end) return filterTasksByAthensYmd(tasks, start);
+  const lo = start <= end ? start : end;
+  const hi = start <= end ? end : start;
+  const byId = new Map<string, VaTaskRecord>();
+  let cur = lo;
+  let guard = 0;
+  while (cur <= hi && guard < 31) {
+    for (const t of filterTasksByAthensYmd(tasks, cur)) {
+      byId.set(t.id, t);
+    }
+    cur = addDaysAthensYmd(cur, 1);
+    guard += 1;
+  }
+  return [...byId.values()];
+}
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -382,8 +420,12 @@ export function AdminVaTasksClient({
   const [filterPriority, setFilterPriority] = React.useState("");
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmdState] = React.useState(todayYmd);
+  const [rangeStartYmd, setRangeStartYmd] = React.useState(todayYmd);
+  const [rangeEndYmd, setRangeEndYmd] = React.useState(todayYmd);
   const setSelectedYmd = React.useCallback((ymd: string) => {
     setSelectedYmdState(ymd);
+    setRangeStartYmd(ymd);
+    setRangeEndYmd(ymd);
   }, []);
   const [showAllTasks, setShowAllTasks] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<"list" | "progress">(defaultViewMode);
@@ -400,8 +442,8 @@ export function AdminVaTasksClient({
   }, [canShowList, canViewProgress]);
 
   const dateFilteredTasks = React.useMemo(
-    () => filterTasksByAthensYmd(localTasks, selectedYmd),
-    [localTasks, selectedYmd],
+    () => filterTasksByAthensYmdRange(localTasks, rangeStartYmd, rangeEndYmd),
+    [localTasks, rangeStartYmd, rangeEndYmd],
   );
 
   const [modalOpen, setModalOpen] = React.useState(false);
@@ -672,7 +714,7 @@ export function AdminVaTasksClient({
 
   React.useEffect(() => {
     setShowAllTasks(false);
-  }, [selectedYmd, deferredSearch, filterVa, filterStatus, filterPriority]);
+  }, [selectedYmd, rangeStartYmd, rangeEndYmd, deferredSearch, filterVa, filterStatus, filterPriority]);
 
   const visibleRegularTasks = React.useMemo(
     () => (showAllTasks ? regularTasks : regularTasks.slice(0, TASK_LIST_INITIAL_CAP)),
@@ -1090,7 +1132,9 @@ export function AdminVaTasksClient({
     if (sourceTaskId?.trim()) params.set("source_task_id", sourceTaskId.trim());
     const res = await fetch(`/api/admin/task-phases?${params}`, { credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-    setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
+    React.startTransition(() => {
+      setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
+    });
   }, []);
 
   const handleDeleteRequest = React.useCallback((task: VaTaskRecord) => {
@@ -1323,70 +1367,99 @@ export function AdminVaTasksClient({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#D4AF8C]/65">Administration</p>
-          <h1 className="mt-2 text-[36px] font-semibold leading-tight tracking-tight text-white">
-            Tasks
-          </h1>
-          <p className="mt-2 text-sm text-[#B8B4B8]/55">Assign and manage tasks for your virtual assistants</p>
-          <TaskDateNavigator value={selectedYmd} onChange={setSelectedYmd} className="mt-4" />
-        </div>
-        {canManage ? (
-        <button
-          type="button"
-          onClick={openCreate}
-          className={cn(VA_BTN_PRIMARY, "inline-flex shrink-0 items-center justify-center gap-2 px-5 py-2.5")}
-        >
-          <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
-          New task
-        </button>
-        ) : null}
-      </div>
+      <ContentPipelineHero
+        eyebrow="Administration"
+        title="Tasks"
+        description="Assign, track, and coach virtual assistant checklists — list + progress in one command center."
+        orb="both"
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {canShowList && canViewProgress ? (
+              <AdminVaTasksViewToggle
+                viewMode={viewMode}
+                onChange={setViewMode}
+                showList={canShowList}
+                showProgress={canViewProgress}
+              />
+            ) : null}
+            {canManage ? (
+              <button
+                type="button"
+                onClick={openCreate}
+                className={cn(VA_BTN_PRIMARY, "inline-flex shrink-0 items-center justify-center gap-2 px-5 py-2.5")}
+              >
+                <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
+                New task
+              </button>
+            ) : null}
+          </div>
+        }
+        stats={
+          viewMode === "list" && canShowList ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <LuxuryStatCard
+                label="Total"
+                value={<CountUp value={taskStats.total} />}
+                accent="white"
+                tooltip="Tasks in the active date filter"
+                className="!p-3"
+              />
+              <LuxuryStatCard
+                label="Pending"
+                value={<CountUp value={taskStats.pending} />}
+                accent="champagne"
+                tooltip="Not started"
+                className="!p-3"
+              />
+              <LuxuryStatCard
+                label="In progress"
+                value={<CountUp value={taskStats.inProgress} />}
+                accent="pink"
+                tooltip="Actively being worked"
+                className="!p-3"
+              />
+              <LuxuryStatCard
+                label="Done"
+                value={<CountUp value={taskStats.done} />}
+                accent="emerald"
+                tooltip="Completed (includes recurring history)"
+                className="!p-3"
+              />
+            </div>
+          ) : null
+        }
+      />
 
-      {canShowList && canViewProgress ? (
-        <div className="flex flex-wrap items-center justify-end">
-          <AdminVaTasksViewToggle
-            viewMode={viewMode}
-            onChange={setViewMode}
-            showList={canShowList}
-            showProgress={canViewProgress}
-          />
-        </div>
-      ) : null}
+      <TaskDateNavigator value={selectedYmd} onChange={setSelectedYmd} />
 
       {viewMode === "list" && canShowList ? (
-        <>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        {[
-          { label: "Total", value: taskStats.total, color: "text-white" },
-          { label: "Pending", value: taskStats.pending, color: "text-[#B8B4B8]" },
-          { label: "In progress", value: taskStats.inProgress, color: "text-[#FF1493]" },
-          { label: "Done", value: taskStats.done, color: "text-[#D4AF8C]" },
-        ].map((s) => (
-          <div key={s.label} className={cn(VA_CARD, "p-5 hover:translate-y-0")}>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#B8B4B8]/45">{s.label}</p>
-            <p className={cn("mt-2 text-3xl font-semibold tabular-nums", s.color)}>
-              {s.value}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className={cn(VA_CARD, "flex flex-wrap gap-3 p-4 hover:translate-y-0")}>
-        <AdminVaTasksFilters
-          onDeferredSearchChange={handleDeferredSearchChange}
-          filterVa={filterVa}
-          onFilterVaChange={setFilterVa}
-          filterStatus={filterStatus}
-          onFilterStatusChange={setFilterStatus}
-          filterPriority={filterPriority}
-          onFilterPriorityChange={setFilterPriority}
-          vaOptions={vaOptionsForFilter}
-          className="w-full"
-        />
-      </div>
-        </>
+        <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "space-y-3 p-4")}>
+          <AdminVaTasksFilters
+            onDeferredSearchChange={handleDeferredSearchChange}
+            filterVa={filterVa}
+            onFilterVaChange={setFilterVa}
+            filterStatus={filterStatus}
+            onFilterStatusChange={setFilterStatus}
+            filterPriority={filterPriority}
+            onFilterPriorityChange={setFilterPriority}
+            vaOptions={vaOptionsForFilter}
+            className="w-full"
+          />
+          <InflowwCustomDateRange
+            startYmd={rangeStartYmd}
+            endYmd={rangeEndYmd}
+            className="border-0 bg-transparent p-0 shadow-none"
+            onChange={(start, end) => {
+              setRangeStartYmd(start);
+              setRangeEndYmd(end);
+            }}
+            onApply={(start, end) => {
+              setRangeStartYmd(start);
+              setRangeEndYmd(end);
+              setSelectedYmdState(start);
+            }}
+          />
+        </FilterBar>
       ) : null}
 
       {viewMode === "progress" && canViewProgress ? (

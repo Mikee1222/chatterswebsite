@@ -21,7 +21,10 @@ import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope"
 import { groupRecurringTasks } from "@/lib/recurring-utils";
 import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
 import { formatActiveDuration, isShiftPausedOrOnBreak, shiftActiveSeconds } from "@/lib/shift-active-duration";
-import { VA_CARD, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_CARD_GLOW, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { FilterBar, ManagerReviewFileDropzone } from "@/components/manager-review-ui";
 import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { VaTaskCard, EMPTY_TASK_PHASES, modelAccountsKeyForPhases } from "@/components/va-task-card";
@@ -29,7 +32,6 @@ import { VaTasksSearchBar } from "@/components/va-tasks-search-bar";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
 import { applyOptimisticItemCompletion } from "@/lib/va-task-phase-optimistic";
-import { ManagerReviewFileDropzone } from "@/components/manager-review-ui";
 import { postFormData } from "@/lib/post-form-data";
 import { uploadScreenshotToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
@@ -519,13 +521,23 @@ export function VaTasksClient({
   );
   const handleShiftChange = React.useCallback((next: boolean) => setOnShift(next), []);
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
+  const [phasesLoadingIds, setPhasesLoadingIds] = React.useState<Record<string, true>>({});
   const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});
   const modelAccountsRef = React.useRef(modelAccounts);
   modelAccountsRef.current = modelAccounts;
+  const phasesInflightRef = React.useRef(new Set<string>());
   const getModelAccounts = React.useCallback(
     (modelId: string) => modelAccountsRef.current[modelId] ?? [],
     [],
   );
+  /** Stable per-task keys so expanding one card does not recompute signatures for the whole list. */
+  const modelAccountsKeyByTaskId = React.useMemo(() => {
+    const keys: Record<string, string> = {};
+    for (const [taskId, phases] of Object.entries(taskPhases)) {
+      keys[taskId] = modelAccountsKeyForPhases(phases, modelAccounts);
+    }
+    return keys;
+  }, [taskPhases, modelAccounts]);
   const [completingItem, setCompletingItem] = React.useState<{ item: PhaseItem; taskId: string } | null>(null);
   const [proofFiles, setProofFiles] = React.useState<File[]>([]);
   const [proofError, setProofError] = React.useState<string | null>(null);
@@ -647,37 +659,64 @@ export function VaTasksClient({
 
   const loadPhasesAndAccounts = React.useCallback(async (task: VaTaskRecord) => {
     if (taskPhasesRef.current[task.id]) return;
-    const params = new URLSearchParams({ task_id: task.id });
-    if (task.virtual_source_task_id?.trim()) {
-      params.set("source_task_id", task.virtual_source_task_id.trim());
-    }
-    const res = await fetch(`/api/va/task-phases?${params}`, { credentials: "include" });
-    const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-    const phases: TaskPhase[] = data.phases ?? [];
-
-    const modelIds = [...new Set(phases.map((p) => p.assigned_model_id).filter(Boolean))] as string[];
-    const accountsByModel: Record<string, SocialAccount[]> = {};
-    await Promise.all(
-      modelIds.map(async (modelId) => {
-        const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(modelId)}`, {
-          credentials: "include",
-        });
-        const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
-        if (accRes.ok) {
-          accountsByModel[modelId] = accData.accounts ?? [];
-        }
-      }),
-    );
-
-    // Set phases + accounts together so the memoized card's first expand paint includes links.
-    setModelAccounts((prev) => {
-      const next = { ...prev };
-      for (const [modelId, accs] of Object.entries(accountsByModel)) {
-        if (!next[modelId]) next[modelId] = accs;
+    // Dedupe concurrent expands (Strict Mode / double-click) without recreating this callback.
+    if (phasesInflightRef.current.has(task.id)) return;
+    phasesInflightRef.current.add(task.id);
+    setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
+    try {
+      const params = new URLSearchParams({ task_id: task.id });
+      if (task.virtual_source_task_id?.trim()) {
+        params.set("source_task_id", task.virtual_source_task_id.trim());
       }
-      return next;
-    });
-    setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
+      const res = await fetch(`/api/va/task-phases?${params}`, { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
+      const phases: TaskPhase[] = data.phases ?? [];
+
+      // Paint checklist immediately — do NOT wait on N+1 social-account fetches (desktop expand lag).
+      React.startTransition(() => {
+        setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
+      });
+
+      const modelIds = [
+        ...new Set(
+          phases
+            .map((p) => p.assigned_model_id?.trim())
+            .filter((id): id is string => Boolean(id) && !modelAccountsRef.current[id]),
+        ),
+      ];
+      if (modelIds.length === 0) return;
+
+      const accountsByModel: Record<string, SocialAccount[]> = {};
+      await Promise.all(
+        modelIds.map(async (modelId) => {
+          const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(modelId)}`, {
+            credentials: "include",
+          });
+          const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
+          if (accRes.ok) {
+            accountsByModel[modelId] = accData.accounts ?? [];
+          }
+        }),
+      );
+
+      React.startTransition(() => {
+        setModelAccounts((prev) => {
+          const next = { ...prev };
+          for (const [modelId, accs] of Object.entries(accountsByModel)) {
+            if (!next[modelId]) next[modelId] = accs;
+          }
+          return next;
+        });
+      });
+    } finally {
+      phasesInflightRef.current.delete(task.id);
+      setPhasesLoadingIds((prev) => {
+        if (!prev[task.id]) return prev;
+        const next = { ...prev };
+        delete next[task.id];
+        return next;
+      });
+    }
   }, []);
 
   const submitPhaseItemCompletion = React.useCallback(
@@ -1027,54 +1066,90 @@ export function VaTasksClient({
       />
 
       <div className="mx-auto max-w-5xl space-y-6 px-4 pb-10 md:px-6">
-        {/* ── Page header ── */}
-        <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-white">
-            My tasks
-          </h1>
-          <TaskDateNavigator value={selectedYmd} onChange={setSelectedYmd} className="mt-4" />
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(
-              [
-                { key: "", label: "All", count: taskStats.total },
-                { key: "pending", label: "Pending", count: taskStats.pending },
-                { key: "in_progress", label: "In progress", count: taskStats.inProgress },
-                { key: "done", label: "Done", count: taskStats.done },
-              ] as const
-            ).map((pill) => (
-              <button
-                key={pill.key || "all"}
-                type="button"
-                onClick={() => setFilterStatus(pill.key)}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition duration-200 motion-reduce:transition-none",
-                  filterStatus === pill.key
-                    ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/10 text-[#D4AF8C]"
-                    : "border-[rgba(255,255,255,0.08)] bg-[#151315] text-[#B8B4B8]/75 hover:border-[#D4AF8C]/25",
-                )}
-              >
-                <span>{pill.label}</span>
-                <span className="rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#D4AF8C]">
-                  {pill.count}
-                </span>
-              </button>
-            ))}
-            {taskStats.overdue > 0 ? (
-              <span className="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/8 px-3.5 py-1.5 text-sm text-red-300">
-                Overdue
-                <span className="rounded-full border border-red-500/30 bg-red-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
-                  {taskStats.overdue}
-                </span>
+        <ContentPipelineHero
+          eyebrow="Virtual assistant"
+          title="My tasks"
+          description="Clock in, work the checklist, and keep creator links one tap away."
+          orb="both"
+          stats={
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <LuxuryStatCard
+                label="Total"
+                value={<CountUp value={taskStats.total} />}
+                accent="white"
+                tooltip="Tasks for the selected day"
+                className="!p-3"
+              />
+              <LuxuryStatCard
+                label="Pending"
+                value={<CountUp value={taskStats.pending} />}
+                accent="champagne"
+                tooltip="Not started yet"
+                className="!p-3"
+              />
+              <LuxuryStatCard
+                label="In progress"
+                value={<CountUp value={taskStats.inProgress} />}
+                accent="pink"
+                tooltip="Actively being worked"
+                className="!p-3"
+              />
+              <LuxuryStatCard
+                label="Done"
+                value={<CountUp value={taskStats.done} />}
+                accent="emerald"
+                tooltip="Completed for this day"
+                className="!p-3"
+              />
+            </div>
+          }
+        />
+
+        <TaskDateNavigator value={selectedYmd} onChange={setSelectedYmd} />
+
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { key: "", label: "All", count: taskStats.total },
+              { key: "pending", label: "Pending", count: taskStats.pending },
+              { key: "in_progress", label: "In progress", count: taskStats.inProgress },
+              { key: "done", label: "Done", count: taskStats.done },
+            ] as const
+          ).map((pill) => (
+            <button
+              key={pill.key || "all"}
+              type="button"
+              onClick={() => setFilterStatus(pill.key)}
+              className={cn(
+                "inline-flex min-h-[40px] items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm transition duration-200 motion-reduce:transition-none",
+                filterStatus === pill.key
+                  ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/10 text-[#D4AF8C]"
+                  : "border-[rgba(255,255,255,0.08)] bg-[#151315] text-[#B8B4B8]/75 hover:border-[#D4AF8C]/25",
+              )}
+            >
+              <span>{pill.label}</span>
+              <span className="rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#D4AF8C]">
+                {pill.count}
               </span>
-            ) : null}
-          </div>
+            </button>
+          ))}
+          {taskStats.overdue > 0 ? (
+            <span className="inline-flex min-h-[40px] items-center gap-2 rounded-full border border-red-500/30 bg-red-500/8 px-3.5 py-1.5 text-sm text-red-300">
+              Overdue
+              <span className="rounded-full border border-red-500/30 bg-red-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
+                {taskStats.overdue}
+              </span>
+            </span>
+          ) : null}
         </div>
 
-        <VaTasksSearchBar
-          onDeferredSearchChange={handleDeferredSearchChange}
-          filterPriority={filterPriority}
-          onFilterPriorityChange={setFilterPriority}
-        />
+        <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "space-y-3 p-4")}>
+          <VaTasksSearchBar
+            onDeferredSearchChange={handleDeferredSearchChange}
+            filterPriority={filterPriority}
+            onFilterPriorityChange={setFilterPriority}
+          />
+        </FilterBar>
 
         {/* ── Tasks (readable off-shift; action buttons gated individually) ── */}
         <div className="space-y-4">
@@ -1130,11 +1205,9 @@ export function VaTasksClient({
                   onShift={onShift}
                   isCompleting={completing === task.id}
                   phases={taskPhases[task.id] ?? EMPTY_TASK_PHASES}
+                  phasesLoading={Boolean(phasesLoadingIds[task.id])}
                   getModelAccounts={getModelAccounts}
-                  modelAccountsKey={modelAccountsKeyForPhases(
-                    taskPhases[task.id] ?? EMPTY_TASK_PHASES,
-                    modelAccounts,
-                  )}
+                  modelAccountsKey={modelAccountsKeyByTaskId[task.id] ?? ""}
                   onLoadPhases={loadPhasesAndAccounts}
                   onMarkComplete={handleMarkComplete}
                   onOpenTask={handleOpenTask}
@@ -1166,11 +1239,9 @@ export function VaTasksClient({
                       onShift={onShift}
                       isCompleting={completing === group.currentTask.id}
                       phases={taskPhases[group.currentTask.id] ?? EMPTY_TASK_PHASES}
+                      phasesLoading={Boolean(phasesLoadingIds[group.currentTask.id])}
                       getModelAccounts={getModelAccounts}
-                      modelAccountsKey={modelAccountsKeyForPhases(
-                        taskPhases[group.currentTask.id] ?? EMPTY_TASK_PHASES,
-                        modelAccounts,
-                      )}
+                      modelAccountsKey={modelAccountsKeyByTaskId[group.currentTask.id] ?? ""}
                       onLoadPhases={loadPhasesAndAccounts}
                       onMarkComplete={handleMarkComplete}
                       onOpenTask={handleOpenTask}
