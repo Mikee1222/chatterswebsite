@@ -14,6 +14,7 @@ import {
   money,
   pct,
 } from "@/components/infloww-performance-ui";
+import { ModelInstagramInsightsPanel } from "@/components/model-instagram-insights-panel";
 import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
@@ -100,6 +101,7 @@ function tip(key: keyof typeof CREATOR_EARNINGS_STAT_INFO) {
 }
 
 export function ModelEarningsClient({ modelName }: { modelName: string }) {
+  const [tab, setTab] = React.useState<"earnings" | "instagram">("earnings");
   const [preset, setPreset] = React.useState<InflowwStatsPreset>("this_month");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -159,26 +161,60 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
         </p>
         <h1 className="mt-1 text-2xl font-semibold text-white">My earnings</h1>
         <p className="mt-1 text-sm text-white/50">
-          A warm look at your account health — revenue after fees & refunds, fans, and what’s working.
+          A warm look at your account health — revenue, fans, and Instagram performance.
         </p>
-        <div className="mt-4">
-          <DatePresetBar
-            preset={preset}
-            loading={loading}
-            onSelect={(p) => {
-              if (p === "custom") return;
-              setPreset(p);
-              void load(p);
-            }}
-          />
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTab("earnings")}
+            className={cn(
+              "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+              tab === "earnings"
+                ? "bg-[#FF1493]/20 text-[#FFB6DE] ring-1 ring-[#FF1493]/40"
+                : "bg-white/5 text-white/50 hover:bg-white/10"
+            )}
+          >
+            OnlyFans
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("instagram")}
+            className={cn(
+              "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+              tab === "instagram"
+                ? "bg-[#FF1493]/20 text-[#FFB6DE] ring-1 ring-[#FF1493]/40"
+                : "bg-white/5 text-white/50 hover:bg-white/10"
+            )}
+          >
+            Instagram
+          </button>
         </div>
-        {data?.range ? (
-          <p className="mt-3 text-xs text-white/40">
-            {data.range.startYmd} → {data.range.endYmd}
-          </p>
+        {tab === "earnings" ? (
+          <>
+            <div className="mt-4">
+              <DatePresetBar
+                preset={preset}
+                loading={loading}
+                onSelect={(p) => {
+                  if (p === "custom") return;
+                  setPreset(p);
+                  void load(p);
+                }}
+              />
+            </div>
+            {data?.range ? (
+              <p className="mt-3 text-xs text-white/40">
+                {data.range.startYmd} → {data.range.endYmd}
+              </p>
+            ) : null}
+          </>
         ) : null}
       </div>
 
+      {tab === "instagram" ? <ModelInstagramInsightsPanel /> : null}
+
+      {tab === "earnings" ? (
+        <>
       {error ? (
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
           {error}
@@ -392,6 +428,8 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
           </div>
         )}
       </div>
+        </>
+      ) : null}
     </div>
   );
 }

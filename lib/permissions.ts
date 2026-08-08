@@ -53,6 +53,9 @@ export const PERMISSIONS = {
   MARKETING_MANAGE: "marketing:manage",
   MARKETING_SHADOWBAN_REPORT: "marketing:shadowban-report",
 
+  /** Admin Instagram Insights (ClarioSuite) within Marketing. */
+  INSTAGRAM_INSIGHTS_VIEW: "instagram_insights:view",
+
   VA_TASKS_VIEW: "va-tasks:view",
   VA_TASKS_MANAGE: "va-tasks:manage",
   VA_TASKS_ASSIGN: "va-tasks:assign",
@@ -223,6 +226,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   clients: "Clients",
   whales: "Whales",
   marketing: "Marketing",
+  instagram_insights: "Instagram Insights",
   "va-tasks": "Tasks",
   task_progress: "Task progress",
   task_templates: "Task templates",
@@ -328,6 +332,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "marketing:view": "Προβολή καμπανιών και λογαριασμών marketing",
   "marketing:manage": "Δημιουργία και διαχείριση marketing εργαλείων",
   "marketing:shadowban-report": "Αναφορά και καταγραφή shadowban περιστατικών",
+
+  "instagram_insights:view": "Προβολή Instagram Insights (ClarioSuite) ανά μοντέλο",
 
   "va-tasks:view": "Προβολή εργασιών εικονικού βοηθού",
   "va-tasks:manage": "Δημιουργία και επεξεργασία εργασιών VA",

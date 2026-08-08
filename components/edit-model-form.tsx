@@ -65,6 +65,9 @@ export function EditModelForm({
   const [inflowwCreatorId, setInflowwCreatorId] = React.useState(
     model.infloww_creator_id?.trim() ? model.infloww_creator_id.trim() : ""
   );
+  const [clariosuiteIgUserId, setClariosuiteIgUserId] = React.useState(
+    model.clariosuite_ig_user_id?.trim() ? model.clariosuite_ig_user_id.trim() : ""
+  );
   const [linkedUserId, setLinkedUserId] = React.useState(currentLinkedUserId);
   const [clientId, setClientId] = React.useState(
     () => clientAssignments.find((a) => a.client[0])?.client[0] ?? ""
@@ -145,6 +148,7 @@ export function EditModelForm({
         notes: notes.trim(),
         team,
         infloww_creator_id: inflowwCreatorId.trim() || null,
+        clariosuite_ig_user_id: clariosuiteIgUserId.trim() || null,
         paypal_email: paypalEmail.trim() || undefined,
         paypal_link: paypalLink.trim() || undefined,
         revolut_tag: revolutTag.trim() || undefined,
@@ -280,6 +284,23 @@ export function EditModelForm({
           value={inflowwCreatorId}
           onChange={(e) => setInflowwCreatorId(e.target.value)}
           placeholder="e.g. 2243348022951978"
+          autoComplete="off"
+        />
+      </FormField>
+      <FormField
+        label="ClarioSuite IG user ID"
+        icon={<Hash />}
+        htmlFor="clariosuite_ig_user_id"
+        description="Instagram account id from Marketing → Instagram Insights → IG account lookup."
+      >
+        <FormInput
+          id="clariosuite_ig_user_id"
+          name="clariosuite_ig_user_id"
+          type="text"
+          inputMode="numeric"
+          value={clariosuiteIgUserId}
+          onChange={(e) => setClariosuiteIgUserId(e.target.value)}
+          placeholder="e.g. 17841400000000000"
           autoComplete="off"
         />
       </FormField>

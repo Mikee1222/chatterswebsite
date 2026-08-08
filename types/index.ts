@@ -452,6 +452,11 @@ export interface ModelRecord {
    * Distinct from app-stable `model_id` (`model_*` slug). Prefer this for earnings sync.
    */
   infloww_creator_id?: string | null;
+  /**
+   * ClarioSuite Instagram user id from GET /api/v1/accounts (`igUserId`).
+   * Links this model to Instagram Insights sync.
+   */
+  clariosuite_ig_user_id?: string | null;
   model_name: string;
   platform: Platform;
   status: string;

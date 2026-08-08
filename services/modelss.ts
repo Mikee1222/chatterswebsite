@@ -13,6 +13,7 @@ type Fields = {
   model_id?: string;
   of_user_id?: string;
   infloww_creator_id?: string | null;
+  clariosuite_ig_user_id?: string | null;
   model_name?: string;
   platform?: string;
   status?: string;
@@ -49,6 +50,10 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
     infloww_creator_id:
       typeof f.infloww_creator_id === "string" && f.infloww_creator_id.trim()
         ? f.infloww_creator_id.trim()
+        : null,
+    clariosuite_ig_user_id:
+      typeof f.clariosuite_ig_user_id === "string" && f.clariosuite_ig_user_id.trim()
+        ? f.clariosuite_ig_user_id.trim()
         : null,
     model_name: f.model_name ?? "",
     platform: (f.platform as ModelRecord["platform"]) ?? "other",
@@ -92,6 +97,8 @@ export async function listActiveModelsForAssignment(): Promise<ModelRecord[]> {
 /** Fields we can write for modelss; linked fields as arrays, snapshots as strings. */
 export type ModelssWriteFields = {
   of_user_id?: string;
+  infloww_creator_id?: string | null;
+  clariosuite_ig_user_id?: string | null;
   current_status?: string;
   current_chatter?: string[];
   current_chatter_name?: string;

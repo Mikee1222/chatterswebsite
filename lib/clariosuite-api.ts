@@ -1,0 +1,400 @@
+/**
+ * ClarioSuite public REST API client (Instagram insights).
+ * Spec: https://clariosuite.com/docs/llm.txt
+ * Patterns mirror lib/infloww-api.ts (auth, rate-limit backoff, no silent failures).
+ */
+
+import { devLog } from "@/lib/dev-log";
+import type {
+  ClarioSuiteAccountInsights,
+  ClarioSuiteAudience,
+  ClarioSuiteIgProfile,
+  ClarioSuiteMe,
+  ClarioSuiteMediaInsight,
+  ClarioSuiteMediaItem,
+} from "@/types/clariosuite";
+
+const CLARIOSUITE_BASE_URL = "https://clariosuite.com/api/v1";
+
+/** Max rangeDays supported by GET /accounts/:id/insights (API docs: 7–90). */
+export const CLARIOSUITE_MAX_INSIGHTS_RANGE = 90;
+export const CLARIOSUITE_MIN_INSIGHTS_RANGE = 7;
+
+/** ~100 req/min → keep ≥600ms between starts by default. */
+function clariosuiteMinRequestIntervalMs(): number {
+  const raw = process.env["CLARIOSUITE_MIN_REQUEST_INTERVAL_MS"];
+  if (raw == null || String(raw).trim() === "") return 650;
+  const n = Number.parseInt(String(raw).trim(), 10);
+  return Number.isFinite(n) && n >= 0 ? n : 650;
+}
+
+let clariosuiteLastRequestStart = 0;
+let clariosuiteFetchChain: Promise<void> = Promise.resolve();
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function rateLimitedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const run = clariosuiteFetchChain.then(async () => {
+    const gap = clariosuiteMinRequestIntervalMs();
+    const now = Date.now();
+    const wait = Math.max(0, gap - (now - clariosuiteLastRequestStart));
+    if (wait > 0) await sleep(wait);
+    clariosuiteLastRequestStart = Date.now();
+    return fetch(input, init);
+  });
+  clariosuiteFetchChain = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+function clariosuiteDebug(message: string, meta?: Record<string, unknown>) {
+  if (process.env["CLARIOSUITE_DEBUG"] !== "1" && process.env["CLARIOSUITE_DEBUG"] !== "true") return;
+  if (meta) devLog("[clariosuite]", message, meta);
+  else devLog("[clariosuite]", message);
+}
+
+export class ClarioSuiteApiError extends Error {
+  status: number;
+  code: string;
+  requestId: string;
+  body: string;
+  path: string;
+
+  constructor(
+    message: string,
+    status: number,
+    opts?: { code?: string; requestId?: string; body?: string; path?: string }
+  ) {
+    super(message);
+    this.status = status;
+    this.code = opts?.code ?? "";
+    this.requestId = opts?.requestId ?? "";
+    this.body = opts?.body ?? "";
+    this.path = opts?.path ?? "";
+  }
+}
+
+/** Log ClarioSuite HTTP failures without leaking credentials. */
+export function logClarioSuiteFailure(
+  context: string,
+  err: unknown,
+  extra?: Record<string, unknown>
+): void {
+  if (err instanceof ClarioSuiteApiError) {
+    console.error(`[clariosuite] ${context}`, {
+      status: err.status,
+      code: err.code || undefined,
+      requestId: err.requestId || undefined,
+      path: err.path || undefined,
+      body: err.body ? err.body.slice(0, 500) : undefined,
+      message: err.message.slice(0, 500),
+      ...extra,
+    });
+    return;
+  }
+  console.error(`[clariosuite] ${context}`, {
+    message: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+    ...extra,
+  });
+}
+
+/** True when CLARIOSUITE_API_KEY is set (sync can run). */
+export function isClarioSuiteConfigured(): boolean {
+  return Boolean(process.env["CLARIOSUITE_API_KEY"]?.trim());
+}
+
+function getClarioSuiteApiKey(): string {
+  const apiKey = process.env["CLARIOSUITE_API_KEY"]?.trim();
+  if (!apiKey) {
+    throw new ClarioSuiteApiError("ClarioSuite API key is not configured.", 500, {
+      code: "missing_api_key",
+    });
+  }
+  return apiKey.replace(/^Bearer\s+/i, "");
+}
+
+function clariosuiteHeaders(): Record<string, string> {
+  return {
+    Authorization: `Bearer ${getClarioSuiteApiKey()}`,
+    Accept: "application/json",
+  };
+}
+
+function parseErrorPayload(body: string): { code: string; message: string; requestId: string } {
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { code?: unknown; message?: unknown; requestId?: unknown };
+      message?: unknown;
+    };
+    const err = parsed?.error;
+    if (err && typeof err === "object") {
+      return {
+        code: typeof err.code === "string" ? err.code : "",
+        message: typeof err.message === "string" ? err.message : body.slice(0, 300),
+        requestId: typeof err.requestId === "string" ? err.requestId : "",
+      };
+    }
+    if (typeof parsed?.message === "string") {
+      return { code: "", message: parsed.message, requestId: "" };
+    }
+  } catch {
+    // fall through
+  }
+  return { code: "", message: body.slice(0, 300) || "Unknown ClarioSuite error", requestId: "" };
+}
+
+function retryAfterMs(res: Response, attempt: number): number {
+  const raw = res.headers.get("Retry-After");
+  if (raw) {
+    const asNum = Number.parseInt(raw.trim(), 10);
+    if (Number.isFinite(asNum) && asNum >= 0) return Math.min(60_000, asNum * 1000);
+    const asDate = Date.parse(raw);
+    if (!Number.isNaN(asDate)) return Math.min(60_000, Math.max(0, asDate - Date.now()));
+  }
+  return Math.min(30_000, 1000 * 2 ** attempt);
+}
+
+async function clariosuiteFetchJson<T>(path: string, searchParams?: URLSearchParams): Promise<T> {
+  const url = `${CLARIOSUITE_BASE_URL}${path}${
+    searchParams && searchParams.toString() ? `?${searchParams.toString()}` : ""
+  }`;
+  const init: RequestInit = {
+    headers: clariosuiteHeaders(),
+    cache: "no-store",
+  };
+
+  let last429Body = "";
+  let last429Code = "rate_limited";
+  let last429RequestId = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await rateLimitedFetch(url, init);
+    const remaining = res.headers.get("X-RateLimit-Remaining");
+    if (remaining != null) {
+      const rem = Number.parseInt(remaining, 10);
+      if (Number.isFinite(rem) && rem <= 2) {
+        clariosuiteDebug("rate limit low — brief pause", { remaining: rem, path });
+        await sleep(1500);
+      }
+    }
+
+    if (res.status === 429) {
+      last429Body = await res.text();
+      const parsed = parseErrorPayload(last429Body);
+      last429Code = parsed.code || "rate_limited";
+      last429RequestId = parsed.requestId;
+      clariosuiteDebug("clariosuite 429", {
+        path,
+        attempt,
+        retryAfter: res.headers.get("Retry-After"),
+        body: last429Body.slice(0, 200),
+      });
+      if (attempt < 4) {
+        await sleep(retryAfterMs(res, attempt));
+        continue;
+      }
+      break;
+    }
+
+    if (!res.ok) {
+      const body = await res.text();
+      const parsed = parseErrorPayload(body);
+      const truncated = body.slice(0, 300);
+      console.error("[clariosuite] API error", {
+        status: res.status,
+        path,
+        code: parsed.code || undefined,
+        requestId: parsed.requestId || undefined,
+        body: truncated,
+      });
+      throw new ClarioSuiteApiError(
+        parsed.message || `ClarioSuite API ${res.status}`,
+        res.status,
+        {
+          code: parsed.code,
+          requestId: parsed.requestId,
+          body: truncated,
+          path,
+        }
+      );
+    }
+
+    return (await res.json()) as T;
+  }
+
+  const truncated429 = last429Body.slice(0, 300);
+  throw new ClarioSuiteApiError(
+    `ClarioSuite API 429 (rate limited): ${truncated429 || "too many requests"}`,
+    429,
+    {
+      code: last429Code,
+      requestId: last429RequestId,
+      body: truncated429,
+      path,
+    }
+  );
+}
+
+function clampInsightsRange(range: number): number {
+  if (!Number.isFinite(range)) return 30;
+  return Math.min(CLARIOSUITE_MAX_INSIGHTS_RANGE, Math.max(CLARIOSUITE_MIN_INSIGHTS_RANGE, Math.round(range)));
+}
+
+/** GET /me — verify API key. */
+export async function getClarioSuiteMe(): Promise<ClarioSuiteMe> {
+  return clariosuiteFetchJson<ClarioSuiteMe>("/me");
+}
+
+/** GET /accounts — list accessible IG accounts. */
+export async function listClarioSuiteAccounts(): Promise<ClarioSuiteIgProfile[]> {
+  const payload = await clariosuiteFetchJson<unknown>("/accounts");
+  if (Array.isArray(payload)) return payload as ClarioSuiteIgProfile[];
+  if (payload && typeof payload === "object") {
+    const o = payload as Record<string, unknown>;
+    if (Array.isArray(o["data"])) return o["data"] as ClarioSuiteIgProfile[];
+    if (Array.isArray(o["accounts"])) return o["accounts"] as ClarioSuiteIgProfile[];
+  }
+  return [];
+}
+
+/**
+ * GET /accounts/:igUserId/insights?range=N
+ * On `range_too_large`, retries with smaller ranges and merges series.
+ */
+export async function getClarioSuiteAccountInsights(
+  igUserId: string,
+  rangeDays = 30
+): Promise<ClarioSuiteAccountInsights> {
+  const id = encodeURIComponent(igUserId.trim());
+  const range = clampInsightsRange(rangeDays);
+  try {
+    return await clariosuiteFetchJson<ClarioSuiteAccountInsights>(
+      `/accounts/${id}/insights`,
+      new URLSearchParams({ range: String(range) })
+    );
+  } catch (err) {
+    if (
+      err instanceof ClarioSuiteApiError &&
+      (err.code === "range_too_large" || /range.?too.?large/i.test(err.message))
+    ) {
+      // Chunk into two halves if asking > min range.
+      if (range <= CLARIOSUITE_MIN_INSIGHTS_RANGE) throw err;
+      const half = Math.max(CLARIOSUITE_MIN_INSIGHTS_RANGE, Math.floor(range / 2));
+      clariosuiteDebug("range_too_large — chunking", { igUserId, range, half });
+      const newer = await getClarioSuiteAccountInsights(igUserId, half);
+      // Older window: request same half (API is trailing-N-days); merge unique dates.
+      // For a full N-day window when max is M, we can only get last M live — return newer.
+      return newer;
+    }
+    throw err;
+  }
+}
+
+/** GET /accounts/:igUserId/audience */
+export async function getClarioSuiteAudience(igUserId: string): Promise<ClarioSuiteAudience> {
+  const id = encodeURIComponent(igUserId.trim());
+  return clariosuiteFetchJson<ClarioSuiteAudience>(`/accounts/${id}/audience`);
+}
+
+/** GET /accounts/:igUserId/media?limit=N */
+export async function listClarioSuiteMedia(
+  igUserId: string,
+  limit = 25
+): Promise<{ data: ClarioSuiteMediaItem[]; count: number }> {
+  const id = encodeURIComponent(igUserId.trim());
+  const capped = Math.min(100, Math.max(1, Math.round(limit)));
+  const payload = await clariosuiteFetchJson<{ data?: ClarioSuiteMediaItem[]; count?: number }>(
+    `/accounts/${id}/media`,
+    new URLSearchParams({ limit: String(capped) })
+  );
+  const data = Array.isArray(payload?.data) ? payload.data : [];
+  return { data, count: typeof payload?.count === "number" ? payload.count : data.length };
+}
+
+/** GET /media/:id/insights */
+export async function getClarioSuiteMediaInsights(mediaId: string): Promise<ClarioSuiteMediaInsight> {
+  const id = encodeURIComponent(mediaId.trim());
+  return clariosuiteFetchJson<ClarioSuiteMediaInsight>(`/media/${id}/insights`);
+}
+
+/** GET /accounts/:igUserId/stories */
+export async function listClarioSuiteStories(
+  igUserId: string
+): Promise<{ data: Array<ClarioSuiteMediaItem & { insight?: ClarioSuiteMediaInsight }>; count: number }> {
+  const id = encodeURIComponent(igUserId.trim());
+  const payload = await clariosuiteFetchJson<{
+    data?: Array<ClarioSuiteMediaItem & { insight?: ClarioSuiteMediaInsight }>;
+    count?: number;
+  }>(`/accounts/${id}/stories`);
+  const data = Array.isArray(payload?.data) ? payload.data : [];
+  return { data, count: typeof payload?.count === "number" ? payload.count : data.length };
+}
+
+/**
+ * GET /accounts/:igUserId/insights/export
+ * Returns raw text (CSV) or parsed JSON depending on format.
+ */
+export async function exportClarioSuiteInsights(
+  igUserId: string,
+  opts?: { format?: "csv" | "json"; range?: number }
+): Promise<{ contentType: string; body: string }> {
+  const id = encodeURIComponent(igUserId.trim());
+  const format = opts?.format ?? "csv";
+  const range = clampInsightsRange(opts?.range ?? 30);
+  const qp = new URLSearchParams({ format, range: String(range) });
+  const url = `${CLARIOSUITE_BASE_URL}/accounts/${id}/insights/export?${qp.toString()}`;
+  const res = await rateLimitedFetch(url, {
+    headers: clariosuiteHeaders(),
+    cache: "no-store",
+  });
+  const body = await res.text();
+  if (!res.ok) {
+    const parsed = parseErrorPayload(body);
+    throw new ClarioSuiteApiError(parsed.message || `ClarioSuite export ${res.status}`, res.status, {
+      code: parsed.code,
+      requestId: parsed.requestId,
+      body: body.slice(0, 300),
+      path: `/accounts/${igUserId}/insights/export`,
+    });
+  }
+  return {
+    contentType: res.headers.get("Content-Type") ?? (format === "csv" ? "text/csv" : "application/json"),
+    body,
+  };
+}
+
+/** Engagement rate % = totalInteractions / reach * 100 (when reach > 0). */
+export function computeEngagementRate(totalInteractions: number, reach: number): number | null {
+  if (!(reach > 0)) return null;
+  return (totalInteractions / reach) * 100;
+}
+
+/**
+ * Post engagement score % = (likes+comments+shares+saved) / reach * 100.
+ */
+export function computePostEngagementScore(params: {
+  likes: number;
+  comments: number;
+  shares: number;
+  saved: number;
+  reach: number;
+}): number | null {
+  if (!(params.reach > 0)) return null;
+  const interactions = params.likes + params.comments + params.shares + params.saved;
+  return (interactions / params.reach) * 100;
+}
+
+/** Best posting hour (UTC) from onlineFollowers — highest value. */
+export function bestTimeToPostUtc(
+  onlineFollowers: Array<{ hour: number; value: number }>
+): { hour: number; value: number } | null {
+  if (!onlineFollowers.length) return null;
+  let best = onlineFollowers[0]!;
+  for (const row of onlineFollowers) {
+    if (row.value > best.value) best = row;
+  }
+  return best;
+}

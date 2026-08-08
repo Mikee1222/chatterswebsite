@@ -532,6 +532,13 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.MARKETING_MANAGE,
   },
   {
+    href: ROUTES.admin.instagramInsights,
+    label: "Instagram Insights",
+    iconKey: "LineChart",
+    navSection: "MARKETING",
+    requiresPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
+  },
+  {
     href: ROUTES.admin.informations,
     label: "Informations",
     iconKey: "Info",

@@ -114,6 +114,8 @@ export const ROUTES = {
     modelContentRequests: "/admin/model-content-requests",
     expenseRequests: "/admin/expense-requests",
     marketing: "/admin/marketing",
+    /** ClarioSuite Instagram Insights (admin Marketing section). */
+    instagramInsights: "/admin/instagram-insights",
     spotChecks: "/admin/spot-checks",
     dailyReview: "/admin/daily-review",
     informations: "/admin/informations",
