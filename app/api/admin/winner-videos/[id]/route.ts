@@ -27,10 +27,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const reviewerName = (session.fullName || session.email || "").trim();
 
   if (action === "approve") {
-    const recreation_deadline = String(body.recreation_deadline ?? "").trim();
-    if (!recreation_deadline) {
-      return NextResponse.json({ error: "Recreation deadline is required" }, { status: 400 });
-    }
     // Bunch finds inherit target model + creative from the bunch; ungrouped still need a creator.
     const existing = await getWinnerVideoById(id);
     const isBunchFind = Boolean(existing?.bunch_id?.trim());
@@ -43,7 +39,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const quality_rating = coerceWinnerVideoQualityRating(body.quality_rating);
     const video = await approveWinnerVideo(id, {
       assigned_creator_name,
-      recreation_deadline,
+      recreation_deadline: null,
       assigned_creative_id: assigned_creative_id || undefined,
       assigned_creative_name: assigned_creative_name || undefined,
       reviewed_by_name: reviewerName,

@@ -165,7 +165,6 @@ export function AdminWinnerVideosClient({
   const [approveId, setApproveId] = React.useState<string | null>(null);
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [creatorId, setCreatorId] = React.useState("");
-  const [deadline, setDeadline] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
   const [qualityRating, setQualityRating] = React.useState<WinnerVideoQualityRating | null>(null);
 
@@ -415,7 +414,6 @@ export function AdminWinnerVideosClient({
       );
       setCreatorId(match?.id ?? "");
     }
-    setDeadline("");
     setQualityRating(null);
   }
 
@@ -1059,16 +1057,6 @@ export function AdminWinnerVideosClient({
                     </div>
                   ) : null}
                   <div>
-                    <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
-                    <input
-                      type="date"
-                      value={deadline}
-                      onChange={(e) => setDeadline(e.target.value)}
-                      className={VA_FILTER_INPUT}
-                      required
-                    />
-                  </div>
-                  <div>
                     <ReviewFieldLabel>Quality rating</ReviewFieldLabel>
                     <QualityRatingPicker value={qualityRating} onChange={setQualityRating} />
                   </div>
@@ -1078,13 +1066,10 @@ export function AdminWinnerVideosClient({
                     </button>
                     <button
                       type="button"
-                      disabled={
-                        !deadline ||
-                        (!isBunchApprove && (!creatorId || !selectedCreatorName.trim()))
-                      }
+                      disabled={!isBunchApprove && (!creatorId || !selectedCreatorName.trim())}
                       className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
                       onClick={() => {
-                        if (!approveId || !deadline) return;
+                        if (!approveId) return;
                         if (!isBunchApprove && (!creatorId || !selectedCreatorName.trim())) return;
                         void (async () => {
                           const ok = await patchVideo(approveId, {
@@ -1092,7 +1077,6 @@ export function AdminWinnerVideosClient({
                             assigned_creator_name: isBunchApprove
                               ? approveInheritedModel
                               : selectedCreatorName.trim(),
-                            recreation_deadline: deadline,
                             quality_rating: qualityRating,
                           });
                           if (ok) setApproveId(null);

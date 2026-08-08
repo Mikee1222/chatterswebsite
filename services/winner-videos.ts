@@ -420,7 +420,8 @@ export async function appendWinnerVideoScreenshotUrls(id: string, urls: string[]
 
 export type ApproveWinnerVideoInput = {
   assigned_creator_name: string;
-  recreation_deadline: string;
+  /** Optional; Approve UI no longer collects this — left null. Column retained for legacy rows. */
+  recreation_deadline?: string | null;
   /** Creative (staff) who will write the script. Optional for Fill Bunches finds (inherits from bunch). */
   assigned_creative_id?: string;
   assigned_creative_name?: string;
@@ -476,7 +477,7 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
   const patch: WinnerVideoFields = {
     status: "Approved",
     assigned_creator_name: creatorName,
-    recreation_deadline: data.recreation_deadline.trim(),
+    recreation_deadline: data.recreation_deadline?.trim() || null,
     reviewed_by_name: data.reviewed_by_name.trim(),
     reviewed_at: now,
     rejection_reason: "",
