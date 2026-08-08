@@ -619,6 +619,12 @@ export function AdminRolesClient({
               />
             ) : (
               <div className="sop-glass-panel rounded-2xl p-5 md:p-6">
+                {(() => {
+                  // System roles: ONLY the slug is locked. Label, description, color,
+                  // permissions, and notification defaults must stay editable.
+                  const slugLocked = draft.is_system_role;
+                  return (
+                <>
                 <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <div className="flex items-center gap-2">
@@ -630,7 +636,9 @@ export function AdminRolesClient({
                       ) : null}
                     </div>
                     <p className="mt-1 text-sm text-white/45">
-                      {draft.is_system_role ? "System role — slug cannot be changed" : "Custom role"}
+                      {slugLocked
+                        ? "System role — only the slug is locked; label, permissions, and notifications stay editable"
+                        : "Custom role"}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -667,9 +675,10 @@ export function AdminRolesClient({
                       Slug
                     </label>
                     <FormInput
-                      value={draft.isNew && !draft.is_system_role ? slugFromLabel(draft.label) || draft.role_id : draft.role_id}
+                      value={draft.isNew && !slugLocked ? slugFromLabel(draft.label) || draft.role_id : draft.role_id}
                       readOnly
-                      className="opacity-70"
+                      title={slugLocked ? "System role slug cannot be changed" : undefined}
+                      className={slugLocked ? "opacity-70" : undefined}
                     />
                   </div>
                   <div>
@@ -836,7 +845,7 @@ export function AdminRolesClient({
                       </h3>
                       <p className="mt-1 text-sm text-white/45">
                         {isSystemRole
-                          ? "Control exactly who receives each notification. Personal events (blue) go to the specific user involved. Broadcast events (amber) go to all users with this role. Dimmed events are outside the default matrix for this role — turn the category on, then enable individual events to include them."
+                          ? "All toggles below are editable for this system role. Personal events (blue) go to the specific user involved. Broadcast events (amber) go to all users with this role. Dimmed labels are outside the default matrix — turn the category on, then enable individual events to include them."
                           : "Enable or disable each notification type for this custom role."}
                       </p>
                     </div>
@@ -929,6 +938,7 @@ export function AdminRolesClient({
                                   <PermissionSwitch
                                     id={switchId}
                                     checked={categoryOn}
+                                    // Category masters stay editable for system roles (slugLocked must not apply here)
                                     onChange={(next) => toggleNotificationCategory(cat.key, next)}
                                   />
                                 </div>
@@ -983,16 +993,16 @@ export function AdminRolesClient({
                                       return (
                                         <li
                                           key={eventKey}
-                                          className={cn(
-                                            "flex items-center justify-between gap-3 py-1.5",
-                                            isNonApplicable && "opacity-50"
-                                          )}
+                                          className="flex items-center justify-between gap-3 py-1.5"
                                           title={isNonApplicable ? noneTooltip : undefined}
                                         >
                                           <label
                                             htmlFor={eventSwitchId}
                                             className={cn(
                                               "min-w-0 flex-1",
+                                              // Dim label only — never the switch. System-role
+                                              // scope hints must not look like a form-wide lock.
+                                              isNonApplicable && "opacity-55",
                                               categoryOn ? "cursor-pointer" : "cursor-not-allowed"
                                             )}
                                           >
@@ -1023,6 +1033,7 @@ export function AdminRolesClient({
                                               </p>
                                             ) : null}
                                           </label>
+                                          {/* disabled only when category master is off — never by is_system_role */}
                                           <PermissionSwitch
                                             id={eventSwitchId}
                                             checked={eventChecked}
@@ -1049,6 +1060,9 @@ export function AdminRolesClient({
                   })()}
                 </div>
                 )}
+                </>
+                  );
+                })()}
               </div>
             )}
           </section>
