@@ -14,6 +14,7 @@ import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
 } from "@/services/clariosuite-sync";
+import { getCrossPlatformAnalytics } from "@/services/cross-platform-analytics";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -129,13 +130,14 @@ export async function GET(request: Request) {
       topPosts: [],
       comparison: [],
       lastSyncedAt: null,
+      crossPlatform: null,
     });
   }
 
   const selected =
     (modelRecordId && linked.find((l) => l.modelRecordId === modelRecordId)) || linked[0]!;
 
-  const [daily, audienceRow, topPosts, allDaily] = await Promise.all([
+  const [daily, audienceRow, topPosts, allDaily, crossPlatform] = await Promise.all([
     queryClarioSuiteDailyInsights({
       modelRecordId: selected.modelRecordId,
       startYmd: range.startYmd,
@@ -144,6 +146,12 @@ export async function GET(request: Request) {
     getClarioSuiteAudienceSnapshot({ modelRecordId: selected.modelRecordId }),
     queryClarioSuiteTopPosts({ modelRecordId: selected.modelRecordId, limit: 10 }),
     queryClarioSuiteDailyInsights({
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+    }),
+    getCrossPlatformAnalytics({
+      modelRecordId: selected.modelRecordId,
+      modelName: selected.modelName,
       startYmd: range.startYmd,
       endYmd: range.endYmd,
     }),
@@ -233,5 +241,6 @@ export async function GET(request: Request) {
     topPosts,
     comparison,
     lastSyncedAt,
+    crossPlatform,
   });
 }

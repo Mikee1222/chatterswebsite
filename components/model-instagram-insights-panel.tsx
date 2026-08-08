@@ -17,6 +17,7 @@ import {
   RankedBarList,
   TopPostsLeaderboard,
 } from "@/components/instagram-insights-shared";
+import { ModelIgToOfCard } from "@/components/cross-platform-insights";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import {
@@ -26,6 +27,7 @@ import {
   IG_STAT_INFO,
 } from "@/lib/instagram-insights-ui";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
+import type { ModelCrossPlatformCard } from "@/services/cross-platform-analytics";
 
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
@@ -81,6 +83,7 @@ type Payload = {
     comments: number;
     rank: number;
   }>;
+  crossPlatformCard?: ModelCrossPlatformCard | null;
   error?: string;
 };
 
@@ -285,6 +288,8 @@ export function ModelInstagramInsightsPanel() {
           />
         </div>
       )}
+
+      <ModelIgToOfCard card={data?.crossPlatformCard} loading={loading} />
 
       <div className={cn(VA_CARD, "p-4")}>
         <div className="flex items-center gap-2">

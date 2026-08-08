@@ -21,6 +21,8 @@ export const IG_STAT_INFO = {
   comparison: "Linked models ranked by reach, engagement rate, and follower growth in this range.",
   connection:
     "ClarioSuite API key health (/me), linked model count, and when audience/insights were last synced.",
+  cross_platform:
+    "Joins Instagram Insights with Infloww OnlyFans stats for the same model and dates. Patterns describe alignment — not causation.",
 } as const;
 
 export type IgStatMetricId = keyof typeof IG_STAT_INFO;

@@ -14,6 +14,10 @@ import {
   listCreatorTransactions,
   listMarketingLinks,
 } from "@/services/infloww-creator-earnings";
+import {
+  getCrossPlatformAnalytics,
+  toModelCrossPlatformCard,
+} from "@/services/cross-platform-analytics";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -87,6 +91,19 @@ export async function GET(req: NextRequest) {
       ? daily.reduce((a, b) => (a.date >= b.date ? a : b))
       : null;
 
+    let crossPlatformCard = null;
+    try {
+      const xp = await getCrossPlatformAnalytics({
+        modelRecordId,
+        modelName: ctx.modelRecord.model_name,
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+      });
+      crossPlatformCard = toModelCrossPlatformCard(xp);
+    } catch (xpErr) {
+      console.warn("[model/earnings] cross-platform skipped", xpErr);
+    }
+
     return NextResponse.json({
       range,
       modelName: ctx.modelRecord.model_name,
@@ -97,6 +114,7 @@ export async function GET(req: NextRequest) {
       acquisition,
       latest,
       tooltips: CREATOR_EARNINGS_STAT_INFO,
+      crossPlatformCard,
     });
   } catch (err) {
     console.error("[model/earnings]", err);

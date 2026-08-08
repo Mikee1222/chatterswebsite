@@ -28,6 +28,7 @@ import {
   RankedBarList,
   TopPostsLeaderboard,
 } from "@/components/instagram-insights-shared";
+import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import {
@@ -120,6 +121,7 @@ type InsightsPayload = {
     days: number;
   }>;
   lastSyncedAt: string | null;
+  crossPlatform?: import("@/services/cross-platform-analytics").CrossPlatformAnalytics | null;
   error?: string;
 };
 
@@ -732,6 +734,11 @@ export function AdminInstagramInsightsClient() {
         </div>
         <TopPostsLeaderboard posts={data?.topPosts ?? []} loading={loading} />
       </div>
+
+      {/* Cross-platform: IG × Infloww */}
+      {data?.selectedModelId ? (
+        <CrossPlatformInsightsSection data={data.crossPlatform} loading={loading} />
+      ) : null}
 
       {/* Cross-model comparison */}
       <div className={cn(VA_CARD, "overflow-hidden")}>

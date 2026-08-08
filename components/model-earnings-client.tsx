@@ -15,8 +15,10 @@ import {
   pct,
 } from "@/components/infloww-performance-ui";
 import { ModelInstagramInsightsPanel } from "@/components/model-instagram-insights-panel";
+import { ModelIgToOfCard } from "@/components/cross-platform-insights";
 import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
+import type { ModelCrossPlatformCard } from "@/services/cross-platform-analytics";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
@@ -93,6 +95,7 @@ type Payload = {
     fans_with_renew_on?: number;
     date: string;
   } | null;
+  crossPlatformCard?: ModelCrossPlatformCard | null;
   error?: string;
 };
 
@@ -227,6 +230,8 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
           then this page stays empty.
         </div>
       ) : null}
+
+      <ModelIgToOfCard card={data?.crossPlatformCard} loading={loading} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <LuxuryStatCard

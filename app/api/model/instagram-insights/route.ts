@@ -15,6 +15,10 @@ import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
 } from "@/services/clariosuite-sync";
+import {
+  getCrossPlatformAnalytics,
+  toModelCrossPlatformCard,
+} from "@/services/cross-platform-analytics";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -74,6 +78,7 @@ export async function GET(request: Request) {
       audienceSummary: null,
       bestTime: null,
       topPosts: [],
+      crossPlatformCard: null,
       message:
         "Your Instagram account isn’t linked yet. Ask an admin to connect it in Accounts → Models.",
     });
@@ -85,7 +90,7 @@ export async function GET(request: Request) {
   const customTo = url.searchParams.get("to") ?? undefined;
   const range = resolveInflowwStatsRange(preset, customFrom, customTo);
 
-  const [daily, audienceRow, topPosts] = await Promise.all([
+  const [daily, audienceRow, topPosts, crossPlatform] = await Promise.all([
     queryClarioSuiteDailyInsights({
       modelRecordId: modelRecord.id,
       startYmd: range.startYmd,
@@ -93,7 +98,14 @@ export async function GET(request: Request) {
     }),
     getClarioSuiteAudienceSnapshot({ modelRecordId: modelRecord.id }),
     queryClarioSuiteTopPosts({ modelRecordId: modelRecord.id, limit: 8 }),
+    getCrossPlatformAnalytics({
+      modelRecordId: modelRecord.id,
+      modelName: modelRecord.model_name,
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+    }),
   ]);
+  const crossPlatformCard = toModelCrossPlatformCard(crossPlatform);
 
   const reach = daily.reduce((s, d) => s + d.reach, 0);
   const views = daily.reduce((s, d) => s + d.views, 0);
@@ -163,5 +175,6 @@ export async function GET(request: Request) {
         }
       : null,
     topPosts,
+    crossPlatformCard,
   });
 }
