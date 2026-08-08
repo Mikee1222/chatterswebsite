@@ -41,6 +41,38 @@ async function invalidateRbacCache(roleName?: string): Promise<void> {
   clearRoleNotificationCache(roleName);
 }
 
+/**
+ * Best-effort mirror of role fields to Airtable after a Supabase write.
+ * Production SoT is Supabase (`DATA_BACKEND=supabase`), but Airtable `roles`
+ * can still drift when Roles UI saves only to Supabase — that stale JSON
+ * confuses dual-backend debugging and any leftover Airtable read paths.
+ */
+async function mirrorRoleFieldsToAirtable(row: Row, mapped: RoleRecord): Promise<void> {
+  const airtableId = row.airtable_id?.trim();
+  if (!airtableId?.startsWith("rec")) return;
+  try {
+    const { invalidateListRecordsReadCacheForTable, updateRecord } = await import(
+      "@/lib/airtable-server"
+    );
+    await updateRecord("roles", airtableId, {
+      role_id: mapped.role_id,
+      label: mapped.label,
+      description: mapped.description,
+      permissions: JSON.stringify(mapped.permissions),
+      notification_defaults: JSON.stringify(mapped.notification_defaults),
+      is_system_role: mapped.is_system_role,
+      color: mapped.color,
+      updated_at: mapped.updated_at || new Date().toISOString(),
+    });
+    invalidateListRecordsReadCacheForTable("roles");
+  } catch (err) {
+    console.warn(
+      `[roles-supabase] Airtable mirror failed for ${mapped.role_id}:`,
+      err instanceof Error ? err.message : err
+    );
+  }
+}
+
 function parsePermissionsJson(raw: unknown): Permission[] {
   if (typeof raw !== "string" || !raw.trim()) return [];
   try {
@@ -177,6 +209,7 @@ export async function upsertRole(
     const row = await sbUpdateByPublicId<Row>(TABLE, existingRecordId, fields);
     const mapped = mapRow(row);
     await invalidateRbacCache(mapped.role_id);
+    await mirrorRoleFieldsToAirtable(row, mapped);
     return mapped;
   }
 
@@ -184,6 +217,7 @@ export async function upsertRole(
   const row = await sbInsert<Row>(TABLE, fields);
   const mapped = mapRow(row);
   await invalidateRbacCache(mapped.role_id);
+  await mirrorRoleFieldsToAirtable(row, mapped);
   return mapped;
 }
 

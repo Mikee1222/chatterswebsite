@@ -24,6 +24,10 @@ export function getSupabaseServiceClient(): SupabaseClient {
 
   cached = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: {
+      // Next.js 14 App Router may cache fetch GETs; role/permission reads must stay fresh.
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
   return cached;
 }

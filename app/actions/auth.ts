@@ -56,10 +56,10 @@ export async function login(formData: FormData) {
     rememberMe,
   });
 
-  // 1. Try Airtable user (hashed password)
+  // 1. Try users table (hashed password) — backend routed via DATA_BACKEND
   try {
     const user = await getUserByEmailForAuth(submittedEmail);
-    console.log(`${logPrefix} airtable lookup`, {
+    console.log(`${logPrefix} user lookup`, {
       email: obfuscatedEmail,
       userFound: !!user,
       canLogin: !!user?.can_login,
@@ -101,7 +101,7 @@ export async function login(formData: FormData) {
           // Remember me: persistent cookie (30 days). Unchecked: session cookie (no maxAge → cleared when browser closes).
           ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
         });
-        console.log(`${logPrefix} login success (airtable)`, { email: obfuscatedEmail, role: user.role });
+        console.log(`${logPrefix} login success`, { email: obfuscatedEmail, role: user.role });
         try {
           const hdrs = await headers();
           const ua = hdrs.get("user-agent")?.trim() || "";

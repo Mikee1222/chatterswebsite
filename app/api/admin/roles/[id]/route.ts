@@ -99,6 +99,12 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       id
     );
     clearRbacCache(updated.role_id);
+    try {
+      const { revalidatePath } = await import("next/cache");
+      revalidatePath("/", "layout");
+    } catch {
+      /* non-blocking */
+    }
     return NextResponse.json({ success: true, role: updated });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
