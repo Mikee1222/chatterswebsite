@@ -78,7 +78,7 @@ function coerceAuthRoles(v: unknown): SopAuthRole[] {
   return normalizeAuthRoleSlugs(v.filter((x): x is string => typeof x === "string"));
 }
 
-const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly"];
+const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly", "per_event"];
 
 const STANDARD_TYPES: readonly StandardType[] = ["text", "file"];
 

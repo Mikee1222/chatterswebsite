@@ -24,6 +24,7 @@ import {
   BarChart3,
   Building2,
   ChevronDown,
+  Eye,
   GripVertical,
   Layers,
   Pencil,
@@ -67,6 +68,7 @@ import {
   SOP_COLOR_STYLES,
 } from "@/components/sop/sop-colors";
 import { SopFunctionInfoCard } from "@/components/sop/sop-function-info-card";
+import { SopFunctionDetailsModal } from "@/components/sop/sop-function-details-modal";
 import { SopIconPicker, SopRoleIcon, normalizeSopIconName } from "@/components/sop/sop-icons";
 import { useSopMotion } from "@/components/sop/sop-motion";
 import { SopCertificationMiniBadge } from "@/components/sop-certification-shelf";
@@ -451,11 +453,13 @@ function SortableRoleRow({
 function SortableFunctionRow({
   fn,
   department,
+  onView,
   onEdit,
   onDelete,
 }: {
   fn: SopFunction;
   department: SopDepartment | undefined;
+  onView: (f: SopFunction) => void;
   onEdit: (f: SopFunction) => void;
   onDelete: (f: SopFunction) => void;
 }) {
@@ -470,6 +474,7 @@ function SortableFunctionRow({
     zIndex: isDragging ? 50 : undefined,
   };
   const deptCfg = department ? SOP_COLOR_STYLES[department.color] : SOP_COLOR_STYLES.gray;
+  const cadenceType = CADENCE_TYPES.includes(fn.cadence_type) ? fn.cadence_type : "weekly";
 
   return (
     <motion.div
@@ -501,10 +506,10 @@ function SortableFunctionRow({
         </SopGlowBadge>
       ) : null}
       <SopGlowBadge
-        className={CADENCE_STYLES[fn.cadence_type].badge}
-        glowClassName={CADENCE_STYLES[fn.cadence_type].glow}
+        className={CADENCE_STYLES[cadenceType].badge}
+        glowClassName={CADENCE_STYLES[cadenceType].glow}
       >
-        {CADENCE_LABELS[fn.cadence_type]}
+        {CADENCE_LABELS[cadenceType]}
       </SopGlowBadge>
       {fn.loom_url.trim() ? (
         <SopGlowBadge className="border-violet-500/30 bg-violet-500/12 text-violet-200" glowClassName="shadow-[0_0_14px_-5px_rgba(139,92,246,0.35)]">
@@ -512,7 +517,17 @@ function SortableFunctionRow({
           Loom
         </SopGlowBadge>
       ) : null}
-      <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <button
+          type="button"
+          onClick={() => onView(fn)}
+          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-sky-200/80 hover:bg-sky-500/15 hover:text-sky-100"
+          aria-label="View details"
+          title="View details"
+        >
+          <Eye className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">View details</span>
+        </button>
         <button
           type="button"
           onClick={() => onEdit(fn)}
@@ -691,6 +706,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
 
   const [fnModalOpen, setFnModalOpen] = React.useState(false);
   const [fnEditing, setFnEditing] = React.useState<SopFunction | null>(null);
+  const [fnViewing, setFnViewing] = React.useState<SopFunction | null>(null);
   const [fnForm, setFnForm] = React.useState<FunctionForm>(emptyFunctionForm());
   const [fnSaving, setFnSaving] = React.useState(false);
   const [fnFileUploading, setFnFileUploading] = React.useState(false);
@@ -1117,6 +1133,10 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
     setFnFileUploadError("");
     setFnModalOpen(true);
     void loadQuizQuestions(f.id);
+  }
+
+  function openFnView(f: SopFunction) {
+    setFnViewing(f);
   }
 
   async function handleFnFileSelect(file: File | null) {
@@ -1676,6 +1696,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
                                         ? deptById.get(selectedRole.department_id)
                                         : undefined
                                     }
+                                    onView={openFnView}
                                     onEdit={openFnEdit}
                                     onDelete={(f) => void openDeleteConfirm({ type: "function", item: f })}
                                   />
@@ -1845,7 +1866,11 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
                             id="sop-fn-cadence-note"
                             value={fnForm.cadence_note}
                             onChange={(e) => setFnForm((f) => ({ ...f, cadence_note: e.target.value }))}
-                            placeholder="e.g. Mon & Thu"
+                            placeholder={
+                              fnForm.cadence_type === "per_event"
+                                ? "e.g. After each live stream"
+                                : "e.g. Mon & Thu"
+                            }
                           />
                         </div>
                       </div>
@@ -2156,6 +2181,25 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
                   </SopFormSection>
                 </div>
               </SopModalShell>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {fnViewing ? (
+              <SopFunctionDetailsModal
+                fn={fnViewing}
+                role={selectedRole}
+                department={
+                  selectedRole?.department_id
+                    ? deptById.get(selectedRole.department_id)
+                    : undefined
+                }
+                onClose={() => setFnViewing(null)}
+                onEdit={(f) => {
+                  setFnViewing(null);
+                  openFnEdit(f);
+                }}
+              />
             ) : null}
           </AnimatePresence>
 

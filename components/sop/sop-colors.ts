@@ -48,13 +48,27 @@ export const SOP_COLOR_STYLES: Record<
   },
 };
 
-export const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly"];
+export const CADENCE_TYPES: readonly CadenceType[] = [
+  "daily",
+  "weekly",
+  "monthly",
+  "per_event",
+];
 
 export const CADENCE_LABELS: Record<CadenceType, string> = {
   daily: "Daily",
   weekly: "Weekly",
   monthly: "Monthly",
+  per_event: "Per Event",
 };
+
+/**
+ * Cadences that imply a fixed schedule (reminders / recurrence).
+ * `per_event` is completed when a triggering event occurs — skip auto scheduling.
+ */
+export function cadenceHasFixedSchedule(cadence: CadenceType): boolean {
+  return cadence !== "per_event";
+}
 
 export const CADENCE_STYLES: Record<CadenceType, { badge: string; glow: string }> = {
   daily: {
@@ -68,5 +82,9 @@ export const CADENCE_STYLES: Record<CadenceType, { badge: string; glow: string }
   monthly: {
     badge: "border-pink-500/30 bg-pink-500/12 text-pink-200",
     glow: "shadow-[0_0_16px_-6px_rgba(236,72,153,0.3)]",
+  },
+  per_event: {
+    badge: "border-sky-500/30 bg-sky-500/12 text-sky-200",
+    glow: "shadow-[0_0_16px_-6px_rgba(14,165,233,0.3)]",
   },
 };

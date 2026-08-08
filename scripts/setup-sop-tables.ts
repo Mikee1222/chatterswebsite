@@ -54,6 +54,7 @@ const CADENCE_TYPE_CHOICES = [
   { name: "biweekly" },
   { name: "monthly" },
   { name: "ad_hoc" },
+  { name: "per_event" },
 ];
 
 function log(msg: string) {

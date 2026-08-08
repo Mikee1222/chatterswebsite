@@ -13,7 +13,7 @@ const patchSchema = z.object({
   sop_file_url: z.string().max(2000).optional(),
   sop_file_name: z.string().max(500).optional(),
   loom_url: z.string().max(2000).optional(),
-  cadence_type: z.enum(["daily", "weekly", "monthly"]).optional(),
+  cadence_type: z.enum(["daily", "weekly", "monthly", "per_event"]).optional(),
   cadence_note: z.string().max(500).optional(),
   is_active: z.boolean().optional(),
   sort_order: z.number().int().min(0).optional(),

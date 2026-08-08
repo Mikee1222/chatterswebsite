@@ -32,7 +32,7 @@ const ROLES = "sop_roles";
 const FUNCS = "sop_functions";
 
 const SOP_COLORS: readonly SopColor[] = ["blue", "pink", "green", "orange", "purple", "gray"];
-const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly"];
+const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly", "per_event"];
 const STANDARD_TYPES: readonly StandardType[] = ["text", "file"];
 
 function coerceSortOrder(v: unknown): number {

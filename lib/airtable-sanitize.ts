@@ -445,7 +445,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     color: new Set(["blue", "pink", "green", "orange", "purple", "gray"]),
   },
   sop_functions: {
-    cadence_type: new Set(["daily", "weekly", "monthly"]),
+    cadence_type: new Set(["daily", "weekly", "monthly", "per_event"]),
     standard_type: new Set(["text", "file"]),
   },
   sop_quiz_questions: {

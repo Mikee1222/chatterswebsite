@@ -140,7 +140,7 @@ export type SopColor = "blue" | "pink" | "green" | "orange" | "purple" | "gray";
 export type SopAuthRole = string;
 
 /** SOP Library — `sop_functions.cadence_type` single-select options. */
-export type CadenceType = "daily" | "weekly" | "monthly";
+export type CadenceType = "daily" | "weekly" | "monthly" | "per_event";
 
 export type SopDepartment = {
   id: string;

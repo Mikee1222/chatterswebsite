@@ -4,7 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { createFunction, getFunctionsByRoleAdmin } from "@/services/sops";
 
-const cadenceSchema = z.enum(["daily", "weekly", "monthly"]);
+const cadenceSchema = z.enum(["daily", "weekly", "monthly", "per_event"]);
 
 const standardTypeSchema = z.enum(["text", "file"]);
 
