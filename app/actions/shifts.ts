@@ -315,7 +315,9 @@ export async function startVaTaskShiftAction() {
     }).catch((err) => console.error("[startVaTaskShift] self-close lost race failed", err));
   }
 
-  // Non-blocking side effects — return ON SHIFT to the client immediately.
+  // Activity log can stay fire-and-forget; spawn must be awaited so today's recurring
+  // rows materialize before the serverless request freezes (void spawn was dropping work
+  // after response — today's checklist stayed locked on virtual "Upcoming day" preview).
   void createActivityLog({
     actor_user_id: user.id,
     actor_name: user.fullName ?? user.email,
@@ -325,23 +327,21 @@ export async function startVaTaskShiftAction() {
     summary: `${user.fullName ?? user.email} started a task shift`,
   }).catch((err) => console.error("[task-shift/start] activity log failed", err));
 
-  void (async () => {
-    try {
-      const { spawnTodayRecurringOccurrencesForVa } = await import("@/services/va-task-recurring-spawn");
-      const spawnResult = await spawnTodayRecurringOccurrencesForVa(vaId);
-      if (spawnResult.spawned > 0) {
-        console.log(
-          `[task-shift/start] spawned ${spawnResult.spawned} today's recurring occurrence(s) for ${vaId}`,
-        );
-        revalidatePath(ROUTES.va.tasks);
-        revalidatePath(ROUTES.va.home);
-        revalidatePath(ROUTES.va.schedule);
-        revalidatePath(ROUTES.admin.vaTasks);
-      }
-    } catch (spawnErr) {
-      console.error("[task-shift/start] spawn today recurring failed", spawnErr);
+  try {
+    const { spawnTodayRecurringOccurrencesForVa } = await import("@/services/va-task-recurring-spawn");
+    const spawnResult = await spawnTodayRecurringOccurrencesForVa(vaId);
+    if (spawnResult.spawned > 0) {
+      console.log(
+        `[task-shift/start] spawned ${spawnResult.spawned} today's recurring occurrence(s) for ${vaId}`,
+      );
+      revalidatePath(ROUTES.va.tasks);
+      revalidatePath(ROUTES.va.home);
+      revalidatePath(ROUTES.va.schedule);
+      revalidatePath(ROUTES.admin.vaTasks);
     }
-  })();
+  } catch (spawnErr) {
+    console.error("[task-shift/start] spawn today recurring failed", spawnErr);
+  }
 
   return {
     success: true,

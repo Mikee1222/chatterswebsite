@@ -32,6 +32,12 @@ export default async function AdminVaTasksPage() {
   const adminTodayYmd = getVaTasksViewTodayYmd();
   const athensStartYmd = addDaysAthensYmd(adminTodayYmd, -VA_TASKS_ADMIN_FETCH_PAST_DAYS);
   const athensEndYmd = addDaysAthensYmd(adminTodayYmd, VA_TASKS_ADMIN_FETCH_FUTURE_DAYS);
+  // Same safety net as personal /va-tasks: ensure today's real recurring rows exist before
+  // the board projects virtual "Upcoming day" previews for Athens today.
+  await import("@/services/va-task-recurring-spawn")
+    .then(({ spawnTodayRecurringOccurrencesAll }) => spawnTodayRecurringOccurrencesAll())
+    .catch((err) => console.error("[admin/va-tasks] spawn today recurring failed", err));
+
   const [tasks, activeUsers, modelss, roles] = await Promise.all([
     getAllVaTasks({
       athensStartYmd,

@@ -13,6 +13,8 @@ import {
   Trash2,
 } from "lucide-react";
 import { formatDateEuropean } from "@/lib/format";
+import { ymdInAthens } from "@/lib/airtable-datetime";
+import { getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
 import { getSocialColor } from "@/lib/social-platform-config";
 import type { VaTaskRecord, VaTaskPriority, VaTaskStatus } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
@@ -175,6 +177,10 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   const overdue = isPastDue(task.due_date) && task.status !== "done" && task.status !== "skipped";
   const modelNames = task.assigned_model_names ?? [];
   const showDone = showDoneButton(task, phases);
+  const dueYmd = ymdInAthens(task.due_date);
+  const todayYmd = getVaTasksViewTodayYmd();
+  const virtualBadgeLabel =
+    task.is_virtual_occurrence && dueYmd && dueYmd > todayYmd ? "Upcoming day" : "Projected";
 
   const toggleExpanded = React.useCallback(() => {
     setExpanded((prev) => {
@@ -265,8 +271,13 @@ export const VaTaskCard = React.memo(function VaTaskCard({
       const isVirtual = Boolean(task.is_virtual_occurrence || task.id.startsWith("virt_"));
       const itemDisabled =
         isVirtual || !onShift || item.status === "completed" || phase.status === "overdue";
+      const dueYmd = ymdInAthens(task.due_date);
+      const todayYmd = getVaTasksViewTodayYmd();
+      const isFutureVirtual = isVirtual && Boolean(dueYmd && dueYmd > todayYmd);
       const hintTitle = isVirtual
-        ? "Projected day — checklist unlocks when this day’s real task exists"
+        ? isFutureVirtual
+          ? "Upcoming day — checklist unlocks when this day’s real task exists"
+          : "Projected day — checklist unlocks when this day’s real task exists"
         : !onShift
           ? "Start or resume your shift to complete items"
           : undefined;
@@ -370,7 +381,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
             ) : null}
             {task.is_virtual_occurrence ? (
               <span className={cn(VA_STATUS_BADGE, "border-sky-500/30 bg-sky-500/10 text-sky-300")}>
-                Upcoming day
+                {virtualBadgeLabel}
               </span>
             ) : null}
           </div>

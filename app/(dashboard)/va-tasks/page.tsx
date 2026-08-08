@@ -33,6 +33,13 @@ export default async function VaTasksPage() {
   const canManage = await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE);
 
   const vaId = user.airtableUserId ?? user.id;
+  // Materialize today's real recurring rows before render — marketing-exec / VA may open
+  // /va-tasks without a shift-start, and day-boundary cron alone has left today as a locked
+  // virtual "Upcoming day" preview when the real row was never created.
+  await import("@/services/va-task-recurring-spawn")
+    .then(({ spawnTodayRecurringOccurrencesForVa }) => spawnTodayRecurringOccurrencesForVa(vaId))
+    .catch((err) => console.error("[va-tasks] spawn today recurring failed", err));
+
   const [tasks, activeShift] = await Promise.all([
     getVaTasksForUser(vaId).catch(() => []),
     getActiveVaTaskShift(vaId).catch(() => null),

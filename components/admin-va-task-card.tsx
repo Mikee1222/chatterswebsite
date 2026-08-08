@@ -3,6 +3,8 @@
 import * as React from "react";
 import { Bell, Check, Camera, Clock, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { formatDateEuropean } from "@/lib/format";
+import { ymdInAthens } from "@/lib/airtable-datetime";
+import { getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
 import type { VaTaskRecord, VaTaskStatus, VaTaskPriority } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import { cn } from "@/lib/utils";
@@ -124,6 +126,9 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   const isVirtual = Boolean(task.is_virtual_occurrence || task.id.startsWith("virt_"));
   /** Inline phase edits stay on real rows; use Edit for series / occurrence changes. */
   const canEditPhases = canManage && !isVirtual;
+  const dueYmd = ymdInAthens(task.due_date);
+  const todayYmd = getVaTasksViewTodayYmd();
+  const virtualBadgeLabel = isVirtual && dueYmd && dueYmd > todayYmd ? "Upcoming day" : "Projected";
 
   const togglePhases = React.useCallback(async () => {
     if (expanded) {
@@ -327,7 +332,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
               ) : null}
               {task.is_virtual_occurrence ? (
                 <span className="rounded-full border border-sky-500/25 bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300">
-                  Upcoming day
+                  {virtualBadgeLabel}
                 </span>
               ) : null}
             </div>

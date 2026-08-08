@@ -44,6 +44,11 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Materialize today's recurring rows FIRST — must not share Promise.all with heavier
+    // jobs (timeout/reject of a sibling previously risked skipping this safety net, leaving
+    // Athens-today as a locked virtual "Upcoming day" preview with no real va_tasks row).
+    const vaTodayRecurringSpawn = await runVaTodayRecurringOccurrenceSpawner();
+
     const [
       lateShifts,
       availabilityReminders,
@@ -53,7 +58,6 @@ export async function GET(request: Request) {
       vaTaskReminders,
       vaTaskOverdueEscalation,
       vaRecurringSpawn,
-      vaTodayRecurringSpawn,
       stuckCustomRequestAlerts,
       personalEventReminders,
       modelLiveScheduledReminders,
@@ -68,7 +72,6 @@ export async function GET(request: Request) {
       runVaTaskReminders(),
       runVaTaskOverdueEscalation(),
       runVaRecurringTaskSpawner(),
-      runVaTodayRecurringOccurrenceSpawner(),
       runStuckCustomRequestAlerts(),
       runPersonalEventReminders(),
       runModelLiveScheduledReminders(),

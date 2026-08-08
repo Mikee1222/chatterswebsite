@@ -407,10 +407,12 @@ export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronR
 export async function runVaTodayRecurringOccurrenceSpawner(): Promise<VaTodayRecurringSpawnCronResult> {
   try {
     const { spawnTodayRecurringOccurrencesAll } = await import("@/services/va-task-recurring-spawn");
+    const { getVaTasksViewTodayYmd } = await import("@/lib/va-task-date-filter");
+    const todayYmd = getVaTasksViewTodayYmd();
     const result = await spawnTodayRecurringOccurrencesAll();
-    if (result.spawned > 0) {
-      console.log(`[cron] spawned ${result.spawned} today's recurring occurrence(s)`);
-    }
+    console.log(
+      `[cron] va_today_recurring_spawn athens=${todayYmd} spawned=${result.spawned} skipped=${result.skipped}`,
+    );
     return { ok: true, ...result };
   } catch (e) {
     console.error("[runVaTodayRecurringOccurrenceSpawner]", e);
