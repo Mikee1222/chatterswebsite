@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Copy, RefreshCw, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, ExternalLink, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ClarioSuiteIgProfile } from "@/types/clariosuite";
 
@@ -9,11 +9,14 @@ const PAGE_SIZE = 25;
 
 type SortKey = "username" | "igUserId" | "followers";
 type SortDir = "asc" | "desc";
+type EmptyReason = "missing_api_key" | "no_ig_accounts" | "api_error" | null;
 
 export function AdminClarioSuiteAccountsLookup() {
   const [accounts, setAccounts] = React.useState<ClarioSuiteIgProfile[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
+  const [emptyReason, setEmptyReason] = React.useState<EmptyReason>(null);
+  const [hint, setHint] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [sortKey, setSortKey] = React.useState<SortKey>("username");
   const [sortDir, setSortDir] = React.useState<SortDir>("asc");
@@ -23,16 +26,38 @@ export function AdminClarioSuiteAccountsLookup() {
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+    setEmptyReason(null);
+    setHint(null);
     try {
       const res = await fetch("/api/admin/clariosuite-accounts");
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
+        message?: string | null;
+        emptyReason?: EmptyReason;
         accounts?: ClarioSuiteIgProfile[];
       };
       if (!res.ok) {
-        throw new Error(body.error || `Failed to load accounts (${res.status})`);
+        const reason =
+          body.emptyReason ??
+          (res.status === 503 ||
+          (body.error || "").toLowerCase().includes("not configured") ||
+          (body.error || "").toLowerCase().includes("api key")
+            ? "missing_api_key"
+            : "api_error");
+        setEmptyReason(reason);
+        setAccounts([]);
+        throw new Error(
+          body.message ||
+            body.error ||
+            (reason === "missing_api_key"
+              ? "API key not configured"
+              : `Failed to load accounts (${res.status})`)
+        );
       }
-      setAccounts(Array.isArray(body.accounts) ? body.accounts : []);
+      const rows = Array.isArray(body.accounts) ? body.accounts : [];
+      setAccounts(rows);
+      setEmptyReason(rows.length === 0 ? body.emptyReason ?? "no_ig_accounts" : null);
+      setHint(typeof body.message === "string" ? body.message : null);
     } catch (e) {
       setAccounts([]);
       setError(e instanceof Error ? e.message : "Failed to load accounts");
@@ -78,6 +103,7 @@ export function AdminClarioSuiteAccountsLookup() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const hasSearch = query.trim().length > 0;
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -138,14 +164,15 @@ export function AdminClarioSuiteAccountsLookup() {
       </div>
 
       {error ? (
-        <p className="mx-4 my-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-          {error}
-          {error.toLowerCase().includes("not configured") || error.toLowerCase().includes("api key") ? (
-            <span className="mt-1 block text-red-200/70">
-              Set CLARIOSUITE_API_KEY in Vercel env.
-            </span>
+        <div className="mx-4 my-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <p>{error}</p>
+          {emptyReason === "missing_api_key" ? (
+            <p className="mt-1 text-red-200/70">
+              Set <code className="text-red-100">CLARIOSUITE_API_KEY</code> in Vercel Production env
+              and redeploy.
+            </p>
           ) : null}
-        </p>
+        </div>
       ) : null}
 
       {loading && accounts.length === 0 && !error ? (
@@ -154,7 +181,31 @@ export function AdminClarioSuiteAccountsLookup() {
         </p>
       ) : null}
 
-      {!loading && !error && filtered.length === 0 ? (
+      {!loading && !error && accounts.length === 0 ? (
+        <div className="mx-4 my-4 space-y-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-5 text-center">
+          <p className="text-sm font-medium text-amber-100">
+            {emptyReason === "missing_api_key"
+              ? "API key not configured"
+              : "No IG accounts — connect in ClarioSuite dashboard first"}
+          </p>
+          <p className="text-xs text-amber-100/70">
+            {hint ||
+              (emptyReason === "missing_api_key"
+                ? "Set CLARIOSUITE_API_KEY in Vercel Production and redeploy."
+                : "Your ClarioSuite API key is valid, but this key has access to zero Instagram accounts. Connect accounts in ClarioSuite (Settings / Accounts), then refresh.")}
+          </p>
+          <a
+            href="https://clariosuite.com"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 pt-1 text-xs font-semibold text-[#D4AF8C] hover:underline"
+          >
+            Open ClarioSuite <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+      ) : null}
+
+      {!loading && !error && accounts.length > 0 && filtered.length === 0 && hasSearch ? (
         <p className="px-4 py-10 text-center text-sm text-white/40">No accounts match your search.</p>
       ) : null}
 

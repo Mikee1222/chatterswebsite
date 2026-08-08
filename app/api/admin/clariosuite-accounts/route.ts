@@ -24,22 +24,57 @@ export async function GET() {
 
   if (!isClarioSuiteConfigured()) {
     return NextResponse.json(
-      { error: "ClarioSuite API key is not configured.", accounts: [], count: 0 },
+      {
+        error: "API key not configured",
+        code: "missing_api_key",
+        accounts: [],
+        count: 0,
+        configured: false,
+        emptyReason: "missing_api_key" as const,
+        message:
+          "API key not configured. Set CLARIOSUITE_API_KEY in Vercel (Production) and redeploy.",
+      },
       { status: 503 }
     );
   }
 
   try {
     const accounts = await listClarioSuiteAccounts();
-    return NextResponse.json({ accounts, count: accounts.length });
+    const empty = accounts.length === 0;
+    return NextResponse.json({
+      accounts,
+      count: accounts.length,
+      configured: true,
+      emptyReason: empty ? ("no_ig_accounts" as const) : null,
+      message: empty
+        ? "No IG accounts — connect Instagram accounts in the ClarioSuite dashboard first, then refresh."
+        : null,
+    });
   } catch (err) {
     console.error("[admin/clariosuite-accounts]", err);
     if (err instanceof ClarioSuiteApiError) {
       const status = err.status >= 400 && err.status < 600 ? err.status : 502;
-      return NextResponse.json({ error: err.message, code: err.code }, { status });
+      return NextResponse.json(
+        {
+          error: err.message,
+          code: err.code,
+          accounts: [],
+          count: 0,
+          configured: true,
+          emptyReason: "api_error" as const,
+          message: err.message,
+        },
+        { status }
+      );
     }
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to fetch ClarioSuite accounts" },
+      {
+        error: err instanceof Error ? err.message : "Failed to fetch ClarioSuite accounts",
+        accounts: [],
+        count: 0,
+        configured: true,
+        emptyReason: "api_error" as const,
+      },
       { status: 500 }
     );
   }

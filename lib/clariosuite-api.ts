@@ -248,16 +248,65 @@ export async function getClarioSuiteMe(): Promise<ClarioSuiteMe> {
   return clariosuiteFetchJson<ClarioSuiteMe>("/me");
 }
 
-/** GET /accounts — list accessible IG accounts. */
-export async function listClarioSuiteAccounts(): Promise<ClarioSuiteIgProfile[]> {
-  const payload = await clariosuiteFetchJson<unknown>("/accounts");
-  if (Array.isArray(payload)) return payload as ClarioSuiteIgProfile[];
+type ClarioSuiteAccountsPage = {
+  data: ClarioSuiteIgProfile[];
+  meta?: {
+    count?: number;
+    limit?: number;
+    cursor?: string | null;
+    has_more?: boolean;
+  };
+};
+
+function parseAccountsPayload(payload: unknown): ClarioSuiteAccountsPage {
+  if (Array.isArray(payload)) {
+    return { data: payload as ClarioSuiteIgProfile[], meta: { count: payload.length, has_more: false } };
+  }
   if (payload && typeof payload === "object") {
     const o = payload as Record<string, unknown>;
-    if (Array.isArray(o["data"])) return o["data"] as ClarioSuiteIgProfile[];
-    if (Array.isArray(o["accounts"])) return o["accounts"] as ClarioSuiteIgProfile[];
+    const dataRaw = Array.isArray(o["data"])
+      ? o["data"]
+      : Array.isArray(o["accounts"])
+        ? o["accounts"]
+        : null;
+    if (dataRaw) {
+      const metaRaw = o["meta"];
+      const meta =
+        metaRaw && typeof metaRaw === "object"
+          ? (metaRaw as ClarioSuiteAccountsPage["meta"])
+          : undefined;
+      return { data: dataRaw as ClarioSuiteIgProfile[], meta };
+    }
   }
-  return [];
+  return { data: [], meta: { count: 0, has_more: false } };
+}
+
+/**
+ * GET /accounts — list accessible IG accounts.
+ * Live API returns paginated `{ data, meta }` (docs historically showed a bare array).
+ * Follows `meta.has_more` / `meta.cursor` until exhausted.
+ */
+export async function listClarioSuiteAccounts(): Promise<ClarioSuiteIgProfile[]> {
+  const all: ClarioSuiteIgProfile[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null | undefined = undefined;
+  for (let page = 0; page < 20; page++) {
+    const qp = new URLSearchParams({ limit: "100" });
+    if (cursor) qp.set("cursor", cursor);
+    const payload = await clariosuiteFetchJson<unknown>("/accounts", qp);
+    const { data, meta } = parseAccountsPayload(payload);
+    for (const row of data) {
+      const id = typeof row?.igUserId === "string" ? row.igUserId : "";
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      all.push(row);
+    }
+    if (!meta?.has_more) break;
+    const next = typeof meta.cursor === "string" && meta.cursor.trim() ? meta.cursor.trim() : null;
+    if (!next || next === cursor) break;
+    cursor = next;
+  }
+  return all;
 }
 
 /**

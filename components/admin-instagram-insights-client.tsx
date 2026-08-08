@@ -88,6 +88,10 @@ type HealthPayload = {
   healthy: boolean;
   me: { name: string; keyId: string; orgId: string | null } | null;
   meError: string | null;
+  accountsCount?: number | null;
+  accountsError?: string | null;
+  emptyReason?: "missing_api_key" | "no_ig_accounts" | "api_error" | null;
+  message?: string | null;
   modelsTotal: number;
   modelsLinked: number;
 };
@@ -304,6 +308,9 @@ export function AdminInstagramInsightsClient() {
             {health ? (
               <span className="ml-2 text-white/30">
                 · {health.modelsLinked}/{health.modelsTotal} models linked
+                {health.accountsCount != null
+                  ? ` · ${health.accountsCount} ClarioSuite IG account${health.accountsCount === 1 ? "" : "s"}`
+                  : ""}
               </span>
             ) : null}
           </p>
@@ -319,10 +326,20 @@ export function AdminInstagramInsightsClient() {
       {!loading && data && !data.models.length ? (
         <div className={cn(VA_CARD, "space-y-3 p-6 text-center")}>
           <Sparkles className="mx-auto h-8 w-8 text-[#D4AF8C]/70" />
-          <h2 className="text-lg font-semibold text-white">Link an Instagram account</h2>
+          <h2 className="text-lg font-semibold text-white">
+            {health && !health.configured
+              ? "API key not configured"
+              : health?.emptyReason === "no_ig_accounts"
+                ? "No IG accounts in ClarioSuite"
+                : "Link an Instagram account"}
+          </h2>
           <p className="mx-auto max-w-md text-sm text-white/50">
-            Copy an IG user ID from the lookup below, then paste it on Accounts → Models → Edit →
-            ClarioSuite IG user ID. After linking, run Sync now.
+            {health && !health.configured
+              ? "Set CLARIOSUITE_API_KEY in Vercel Production and redeploy."
+              : health?.emptyReason === "no_ig_accounts"
+                ? health.message ||
+                  "Connect Instagram accounts in the ClarioSuite dashboard first, then refresh the lookup below and paste an IG user ID on Accounts → Models."
+                : "Copy an IG user ID from the lookup below, then paste it on Accounts → Models → Edit → ClarioSuite IG user ID. After linking, run Sync now."}
           </p>
         </div>
       ) : null}
@@ -617,13 +634,18 @@ export function AdminInstagramInsightsClient() {
       </div>
 
       <div className={cn(VA_CARD, "p-4")}>
-        <div className="mb-3 flex items-center gap-2 text-sm text-white/60">
-          {health?.healthy ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          ) : (
-            <Activity className="h-4 w-4 text-amber-300" />
-          )}
-          Connection & linking
+        <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm text-white/60">
+            {health?.healthy ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            ) : (
+              <Activity className="h-4 w-4 text-amber-300" />
+            )}
+            Connection & linking
+          </div>
+          {health?.message && (health.emptyReason === "no_ig_accounts" || !health.configured) ? (
+            <p className="text-xs text-amber-200/80">{health.message}</p>
+          ) : null}
         </div>
         <AdminClarioSuiteAccountsLookup />
       </div>
