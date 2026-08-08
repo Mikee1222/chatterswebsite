@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown, ClipboardList, Flag, ImageIcon, RotateCcw } from "lucide-react";
+import { Check, ChevronDown, ClipboardList, Flag, ImageIcon, RotateCcw, X } from "lucide-react";
 import {
   ReviewEmptyState,
   ReviewSectionHeader,
@@ -15,6 +15,7 @@ import { formatVaBreakdownLine } from "@/lib/daily-review-checklist-format";
 import type {
   DailyReviewChecklistItem,
   DailyReviewChecklistPayload,
+  DailyReviewChecklistScreenshot,
   DailyReviewChecklistTask,
   DailyReviewChecklistVa,
   DailyReviewChecklistVaShared,
@@ -117,6 +118,80 @@ function VerificationOverlay({
   );
 }
 
+/** Thumbnail strip + click-to-view lightbox (same pattern as admin fines/bonuses). */
+function ItemScreenshotGallery({
+  requiresScreenshot,
+  screenshots,
+}: {
+  requiresScreenshot: boolean;
+  screenshots: DailyReviewChecklistScreenshot[];
+}) {
+  const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
+  const shots = screenshots.filter((s) => Boolean(s.url));
+
+  if (!requiresScreenshot && shots.length === 0) return null;
+
+  return (
+    <>
+      <div className="mt-2 space-y-1.5">
+        {shots.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {shots.map((shot, index) => (
+              <button
+                key={`${shot.url}-${index}`}
+                type="button"
+                onClick={() => setLightboxUrl(shot.url)}
+                className="group relative h-14 w-14 overflow-hidden rounded-lg border border-white/12 bg-white/5 transition-colors hover:border-[#D4AF8C]/45 hover:bg-white/10"
+                title={shot.filename || `Screenshot ${index + 1}`}
+                aria-label={`View screenshot ${index + 1}${shot.filename ? `: ${shot.filename}` : ""}`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={shot.url}
+                  alt={shot.filename || `Screenshot ${index + 1}`}
+                  className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                  loading="lazy"
+                />
+              </button>
+            ))}
+          </div>
+        ) : requiresScreenshot ? (
+          <p className="inline-flex items-center gap-1.5 text-xs text-amber-300/85">
+            <ImageIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            No screenshot attached
+          </p>
+        ) : null}
+      </div>
+
+      {lightboxUrl ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Screenshot preview"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 z-10 rounded-full border border-white/20 bg-black/60 p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Close screenshot"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Screenshot full size"
+            className="max-h-[90vh] max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function ItemRow({
   item,
   va,
@@ -164,7 +239,10 @@ function ItemRow({
             {item.requires_screenshot ? (
               <span className="inline-flex items-center gap-1 text-[10px] text-[#D4AF8C]/70">
                 <ImageIcon className="h-3 w-3" aria-hidden />
-                Screenshot{item.screenshot_count > 0 ? ` · ${item.screenshot_count}` : ""}
+                Screenshot
+                {(item.screenshots?.length ?? item.screenshot_count) > 0
+                  ? ` · ${item.screenshots?.length ?? item.screenshot_count}`
+                  : ""}
               </span>
             ) : null}
           </div>
@@ -175,6 +253,10 @@ function ItemRow({
           {item.description ? (
             <p className="text-sm text-[#B8B4B8]/65">{item.description}</p>
           ) : null}
+          <ItemScreenshotGallery
+            requiresScreenshot={item.requires_screenshot}
+            screenshots={item.screenshots ?? []}
+          />
           <VerificationOverlay verification={item.verification} verifications={verifications} />
         </div>
 

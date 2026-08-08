@@ -15,12 +15,20 @@ import {
   getDailyReviews,
   type MarketingDailyReview,
 } from "@/services/marketing-reviews";
-import { getPhasesForTasksDisplay, type PhaseItem, type TaskPhase } from "@/services/task-phases";
+import { batchSignUrlMap } from "@/lib/supabase-signed-url";
+import {
+  getPhasesForTasksDisplay,
+  type PhaseItem,
+  type PhaseScreenshot,
+  type TaskPhase,
+} from "@/services/task-phases";
 import { getAllVaTasks } from "@/services/va-tasks";
 import { listActiveUsers } from "@/services/users";
 import type { VaTaskRecord } from "@/types";
 
 export type ChecklistItemVaStatus = "pending" | "completed";
+
+export type DailyReviewChecklistScreenshot = PhaseScreenshot;
 
 export interface DailyReviewChecklistItem {
   item_id: string;
@@ -37,6 +45,8 @@ export interface DailyReviewChecklistItem {
   completed_by_va_id: string;
   completed_by_va_name: string;
   screenshot_count: number;
+  /** Signed (or https) URLs for VA-uploaded proof screenshots. */
+  screenshots: DailyReviewChecklistScreenshot[];
   verification: DailyReviewItemVerification | null;
 }
 
@@ -230,6 +240,9 @@ function mapItem(
   task: VaTaskRecord,
   verificationByItem: Map<string, DailyReviewItemVerification>,
 ): DailyReviewChecklistItem {
+  const screenshots = (item.screenshot ?? []).filter(
+    (s): s is PhaseScreenshot => Boolean(s?.url && typeof s.url === "string"),
+  );
   return {
     item_id: item.id,
     phase_id: phase.phase_id || phase.id,
@@ -244,9 +257,41 @@ function mapItem(
     completed_at: item.completed_at,
     completed_by_va_id: item.completed_by_va_id,
     completed_by_va_name: item.completed_by_va_name,
-    screenshot_count: item.screenshot?.length ?? 0,
+    screenshot_count: screenshots.length,
+    screenshots,
     verification: verificationByItem.get(item.id) ?? null,
   };
+}
+
+/** Re-mint signed URLs for any leftover `sb://` tokens (Airtable path / stale maps). */
+async function ensureChecklistScreenshotsSigned(
+  vas: DailyReviewChecklistVa[],
+): Promise<DailyReviewChecklistVa[]> {
+  const urls: string[] = [];
+  for (const va of vas) {
+    for (const task of va.tasks) {
+      for (const item of task.items) {
+        for (const s of item.screenshots) {
+          if (s.url) urls.push(s.url);
+        }
+      }
+    }
+  }
+  if (!urls.length) return vas;
+  const signedMap = await batchSignUrlMap(urls);
+  return vas.map((va) => ({
+    ...va,
+    tasks: va.tasks.map((task) => ({
+      ...task,
+      items: task.items.map((item) => ({
+        ...item,
+        screenshots: item.screenshots.map((s) => ({
+          ...s,
+          url: signedMap.get(s.url) ?? s.url,
+        })),
+      })),
+    })),
+  }));
 }
 
 function groupByVa(
@@ -332,7 +377,9 @@ export async function getDailyReviewChecklistForDate(params: {
     : [];
   const verificationByItem = new Map(verifications.map((v) => [v.task_phase_item_id, v]));
 
-  const vas = groupByVa(tasks, phasesByTask, nameMap, verificationByItem);
+  const vas = await ensureChecklistScreenshotsSigned(
+    groupByVa(tasks, phasesByTask, nameMap, verificationByItem),
+  );
   return {
     date,
     vas,

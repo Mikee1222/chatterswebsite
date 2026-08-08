@@ -14,7 +14,11 @@ import {
   type SbRow,
 } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
-import { urlsToAttachments } from "@/lib/supabase-signed-url";
+import {
+  attachmentsFromSignedMap,
+  batchSignUrlMap,
+  urlsToAttachments,
+} from "@/lib/supabase-signed-url";
 
 export type PhaseScreenshot = { url: string; filename?: string };
 
@@ -106,8 +110,10 @@ function asPhaseStatus(v: unknown): TaskPhase["status"] {
   return "pending";
 }
 
-async function mapItem(row: ItemRow): Promise<PhaseItem> {
-  const screenshot = await urlsToAttachments(row.screenshot);
+function mapItemFromSigned(
+  row: ItemRow,
+  signedMap: Map<string, string>,
+): PhaseItem {
   return {
     id: publicId(row),
     item_id: row.item_id ?? publicId(row),
@@ -116,13 +122,21 @@ async function mapItem(row: ItemRow): Promise<PhaseItem> {
     title: row.title ?? "",
     description: row.description ?? "",
     requires_screenshot: row.requires_screenshot === true,
-    screenshot,
+    screenshot: attachmentsFromSignedMap(row.screenshot, signedMap),
     status: row.status === "completed" ? "completed" : "pending",
     completed_by_va_id: row.completed_by_va_id ?? "",
     completed_by_va_name: row.completed_by_va_name ?? "",
     completed_at: row.completed_at ?? null,
     sort_order: typeof row.sort_order === "number" ? Number(row.sort_order) : Number(row.sort_order) || 0,
     step_type: coerceTaskStepType(row.step_type),
+  };
+}
+
+async function mapItem(row: ItemRow): Promise<PhaseItem> {
+  const screenshot = await urlsToAttachments(row.screenshot);
+  return {
+    ...mapItemFromSigned(row, new Map()),
+    screenshot,
   };
 }
 
@@ -162,7 +176,14 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
   if (pe) throw new Error(`fetchPhasesGroupedByTaskId phases: ${pe.message}`);
   if (ie) throw new Error(`fetchPhasesGroupedByTaskId items: ${ie.message}`);
 
-  const items = await Promise.all(((itemData as ItemRow[]) ?? []).map(mapItem));
+  const rawItems = (itemData as ItemRow[]) ?? [];
+  const allScreenshotUrls = rawItems.flatMap((row) =>
+    Array.isArray(row.screenshot)
+      ? row.screenshot.filter((u): u is string => typeof u === "string" && u.length > 0)
+      : [],
+  );
+  const signedMap = await batchSignUrlMap(allScreenshotUrls);
+  const items = rawItems.map((row) => mapItemFromSigned(row, signedMap));
   const byTaskId: Record<string, TaskPhase[]> = {};
 
   for (const row of (phaseData as PhaseRow[]) ?? []) {

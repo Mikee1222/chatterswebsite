@@ -32,6 +32,22 @@ async function main() {
           items: v.stats.total_items,
           tasks: v.tasks.length,
         })),
+        screenshot_sample: checklist.vas
+          .flatMap((v) => v.tasks.flatMap((t) => t.items))
+          .filter((i) => i.requires_screenshot || i.screenshots.length > 0)
+          .slice(0, 5)
+          .map((i) => ({
+            title: i.title,
+            requires_screenshot: i.requires_screenshot,
+            screenshot_count: i.screenshot_count,
+            urls: i.screenshots.map((s) => {
+              const u = s.url;
+              if (u.startsWith("sb://")) return { kind: "sb_token", prefix: u.slice(0, 40) };
+              if (u.includes("token=")) return { kind: "signed", ok: true };
+              if (u.startsWith("https://")) return { kind: "https", ok: true };
+              return { kind: "other", prefix: u.slice(0, 40) };
+            }),
+          })),
       },
       null,
       2,
