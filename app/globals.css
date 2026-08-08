@@ -426,6 +426,15 @@ summary,
   animation: float-particle linear infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .animate-float,
+  .animate-float-slow,
+  .animate-float-particle,
+  .animate-shimmer {
+    animation: none !important;
+  }
+}
+
 @keyframes shimmer {
   0% {
     transform: translateX(-100%);
