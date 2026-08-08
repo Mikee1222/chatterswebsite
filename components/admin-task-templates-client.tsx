@@ -73,6 +73,23 @@ function emptyDraftPhase(): DraftPhase {
   return { tempId: newTempId(), title: "", description: "", items: [] };
 }
 
+/** Deep-clone a draft phase with fresh tempIds so edits never mutate the original. */
+function cloneDraftPhase(phase: DraftPhase, labelIndex: number): DraftPhase {
+  const baseTitle = phase.title.trim() || `Phase ${labelIndex}`;
+  return {
+    tempId: newTempId(),
+    title: `${baseTitle} (Copy)`,
+    description: phase.description,
+    items: phase.items.map((item) => ({
+      tempId: newTempId(),
+      title: item.title,
+      description: item.description,
+      requires_screenshot: item.requires_screenshot,
+      step_type: item.step_type,
+    })),
+  };
+}
+
 function SortableDraftItem({
   item,
   itemIdx,
@@ -173,6 +190,7 @@ function SortableDraftPhase({
   phaseIndex,
   reduceMotion,
   onUpdatePhase,
+  onDuplicatePhase,
   onRemovePhase,
   onAddItem,
   onUpdateItem,
@@ -183,6 +201,7 @@ function SortableDraftPhase({
   phaseIndex: number;
   reduceMotion: boolean;
   onUpdatePhase: (tempId: string, patch: Partial<DraftPhase>) => void;
+  onDuplicatePhase: (tempId: string) => void;
   onRemovePhase: (tempId: string) => void;
   onAddItem: (phaseTempId: string) => void;
   onUpdateItem: (phaseTempId: string, itemTempId: string, patch: Partial<DraftItem>) => void;
@@ -233,6 +252,15 @@ function SortableDraftPhase({
           placeholder={`Phase ${phaseIndex + 1} title`}
           className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-white placeholder:text-white/20 focus:outline-none"
         />
+        <button
+          type="button"
+          onClick={() => onDuplicatePhase(phase.tempId)}
+          className="rounded-lg p-1 text-white/20 transition hover:bg-white/10 hover:text-white/70"
+          aria-label="Duplicate phase"
+          title="Duplicate phase"
+        >
+          <Copy className="h-3.5 w-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => onRemovePhase(phase.tempId)}
@@ -394,6 +422,17 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
 
   function removePhase(tempId: string) {
     setDraftPhases((prev) => prev.filter((p) => p.tempId !== tempId));
+  }
+
+  function duplicatePhase(tempId: string) {
+    setDraftPhases((prev) => {
+      const idx = prev.findIndex((p) => p.tempId === tempId);
+      if (idx < 0) return prev;
+      const clone = cloneDraftPhase(prev[idx]!, idx + 1);
+      const next = [...prev];
+      next.splice(idx + 1, 0, clone);
+      return next;
+    });
   }
 
   function addItem(phaseTempId: string) {
@@ -781,6 +820,7 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
                             phaseIndex={phaseIndex}
                             reduceMotion={reduceMotion}
                             onUpdatePhase={updatePhase}
+                            onDuplicatePhase={duplicatePhase}
                             onRemovePhase={removePhase}
                             onAddItem={addItem}
                             onUpdateItem={updateItem}
