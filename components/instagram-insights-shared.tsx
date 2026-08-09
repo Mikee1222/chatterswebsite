@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
-import { Clapperboard, ImageIcon, Layers, Sparkles } from "lucide-react";
+import { Check, ChevronDown, Clapperboard, ImageIcon, Layers, Search, Sparkles } from "lucide-react";
 import { IgInstagramExternalButton, IgViewStatsButton } from "@/components/instagram-insights-buttons";
-import { VA_CARD } from "@/lib/va-tasks-tokens";
+import { MR_SELECT_TRIGGER } from "@/components/manager-review-ui";
+import { VA_CARD, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import {
   CHART_TOOLTIP_STYLE,
@@ -425,5 +427,277 @@ export function RankedBarList({
         );
       })}
     </ul>
+  );
+}
+
+/* ── Admin filter bar ─────────────────────────────────────────── */
+
+export type IgModelOption = { id: string; name: string };
+
+function modelInitial(name: string): string {
+  const trimmed = name.trim();
+  return trimmed ? trimmed.charAt(0).toUpperCase() : "?";
+}
+
+function ModelInitialAvatar({ name, size = "md" }: { name: string; size?: "sm" | "md" }) {
+  const dim = size === "sm" ? "h-6 w-6 text-[10px]" : "h-7 w-7 text-[11px]";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-full bg-[#FF1493]/15 font-semibold text-[#FFB6DE]",
+        dim
+      )}
+    >
+      {modelInitial(name)}
+    </span>
+  );
+}
+
+export function IgModelPicker({
+  models,
+  value,
+  onChange,
+  disabled,
+  loading,
+  emptyLabel = "No linked models",
+  className,
+}: {
+  models: IgModelOption[];
+  value: string;
+  onChange: (id: string) => void;
+  disabled?: boolean;
+  loading?: boolean;
+  emptyLabel?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const rootRef = React.useRef<HTMLDivElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const searchRef = React.useRef<HTMLInputElement>(null);
+  const [portalPos, setPortalPos] = React.useState<{
+    left: number;
+    width: number;
+    top?: number;
+    bottom?: number;
+  } | null>(null);
+
+  const selected = models.find((m) => m.id === value);
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) => m.name.toLowerCase().includes(q));
+  }, [models, query]);
+
+  const updatePortalPosition = React.useCallback(() => {
+    const root = rootRef.current;
+    if (!root || !open) return;
+    const rect = root.getBoundingClientRect();
+    const need = 280;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const up = spaceBelow < need && spaceAbove > spaceBelow;
+    const gap = 4;
+    if (up) {
+      setPortalPos({
+        left: rect.left,
+        width: rect.width,
+        bottom: window.innerHeight - rect.top + gap,
+      });
+    } else {
+      setPortalPos({
+        left: rect.left,
+        width: rect.width,
+        top: rect.bottom + gap,
+      });
+    }
+  }, [open]);
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setPortalPos(null);
+      return;
+    }
+    updatePortalPosition();
+    window.addEventListener("resize", updatePortalPosition);
+    window.addEventListener("scroll", updatePortalPosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePortalPosition);
+      window.removeEventListener("scroll", updatePortalPosition, true);
+    };
+  }, [open, updatePortalPosition, models.length]);
+
+  React.useEffect(() => {
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    const t = window.setTimeout(() => searchRef.current?.focus(), 0);
+    return () => window.clearTimeout(t);
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const isDisabled = disabled || loading || models.length === 0;
+
+  const listbox = (
+    <div
+      ref={panelRef}
+      role="listbox"
+      className="max-h-72 overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl"
+      style={
+        portalPos
+          ? {
+              position: "fixed",
+              left: portalPos.left,
+              width: portalPos.width,
+              zIndex: 10050,
+              ...(portalPos.top != null ? { top: portalPos.top } : {}),
+              ...(portalPos.bottom != null ? { bottom: portalPos.bottom } : {}),
+            }
+          : undefined
+      }
+    >
+      <div className="sticky top-0 z-10 border-b border-white/10 bg-[#1a1a1a] p-2">
+        <div className="relative">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35"
+            aria-hidden
+          />
+          <input
+            ref={searchRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search models…"
+            className={cn(
+              VA_FILTER_INPUT,
+              "h-11 w-full pl-9 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]"
+            )}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setOpen(false);
+            }}
+          />
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-white/40">No models match your search.</p>
+      ) : (
+        filtered.map((m) => {
+          const active = value === m.id;
+          return (
+            <button
+              key={m.id}
+              type="button"
+              role="option"
+              aria-selected={active}
+              onClick={() => {
+                onChange(m.id);
+                setOpen(false);
+              }}
+              className={cn(
+                "flex min-h-[44px] w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition hover:bg-white/10",
+                active && "bg-[#FF1493]/10"
+              )}
+            >
+              <ModelInitialAvatar name={m.name} size="sm" />
+              <span className={cn("min-w-0 flex-1 truncate", active ? "font-medium text-[#FFB6DE]" : "text-white")}>
+                {m.name}
+              </span>
+              {active ? <Check className="h-4 w-4 shrink-0 text-[#FF1493]" /> : null}
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+
+  return (
+    <div
+      ref={rootRef}
+      className={cn("relative min-w-0", className)}
+      style={{ zIndex: open ? 50 : 1 }}
+    >
+      <button
+        type="button"
+        disabled={isDisabled}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={() => !isDisabled && setOpen((v) => !v)}
+        className={cn(
+          MR_SELECT_TRIGGER,
+          "flex min-h-[44px] w-full items-center justify-between gap-2 px-3 text-left",
+          open && "border-[#FF1493]/50 shadow-[0_0_16px_-4px_rgba(255,20,147,0.25)]"
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          {selected ? (
+            <>
+              <ModelInitialAvatar name={selected.name} />
+              <span className="truncate text-white">{selected.name}</span>
+            </>
+          ) : (
+            <span className="text-white/45">{models.length === 0 ? emptyLabel : "Select model…"}</span>
+          )}
+        </span>
+        <ChevronDown
+          className={cn("h-4 w-4 shrink-0 text-white/40 transition-transform", open && "rotate-180")}
+        />
+      </button>
+      {open && !isDisabled && portalPos && typeof document !== "undefined"
+        ? createPortal(listbox, document.body)
+        : null}
+    </div>
+  );
+}
+
+export type IgContentTypeFilter = "all" | "reels" | "carousels" | "posts";
+
+const IG_CONTENT_TYPE_OPTIONS: { id: IgContentTypeFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "reels", label: "Reels" },
+  { id: "carousels", label: "Carousels" },
+  { id: "posts", label: "Posts" },
+];
+
+export function IgContentTypeChips({
+  value,
+  onChange,
+  className,
+}: {
+  value: IgContentTypeFilter;
+  onChange: (next: IgContentTypeFilter) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-wrap gap-2", className)}>
+      {IG_CONTENT_TYPE_OPTIONS.map((opt) => {
+        const active = value === opt.id;
+        return (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onChange(opt.id)}
+            className={cn(
+              "min-h-[44px] rounded-full border px-4 py-2 text-xs font-semibold transition duration-200 motion-reduce:transition-none",
+              active
+                ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FFB6DE] shadow-[0_0_24px_-8px_rgba(255,20,147,0.55)]"
+                : "border-white/10 bg-white/5 text-white/60 hover:border-white/20 hover:text-white"
+            )}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
   );
 }

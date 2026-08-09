@@ -32,11 +32,15 @@ import {
 import { AdminClarioSuiteAccountsLookup } from "@/components/admin-clariosuite-accounts-lookup";
 import {
   GenderDonut,
+  IgContentTypeChips,
   IgEmptyState,
+  IgModelPicker,
   IgSkeleton,
   RankedBarList,
   TopPostsLeaderboard,
+  type IgContentTypeFilter,
 } from "@/components/instagram-insights-shared";
+import { FilterBar } from "@/components/manager-review-ui";
 import { IgStoriesSection } from "@/components/instagram-stories-ui";
 import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
@@ -95,8 +99,6 @@ type CompareSortKey =
   | "engagement"
   | "growth_rate"
   | "top_post_engagement";
-
-type ContentTypeFilter = "all" | "reels" | "carousels" | "posts";
 
 type ComparisonRow = {
   modelId: string;
@@ -283,7 +285,7 @@ export function AdminInstagramInsightsClient() {
   const [compareSort, setCompareSort] = React.useState<CompareSortKey>("reach");
   const [compareSortAsc, setCompareSortAsc] = React.useState(false);
   const [compareSelected, setCompareSelected] = React.useState<string[]>([]);
-  const [contentFilter, setContentFilter] = React.useState<ContentTypeFilter>("all");
+  const [contentFilter, setContentFilter] = React.useState<IgContentTypeFilter>("all");
   const [viewAsProfile, setViewAsProfile] = React.useState(false);
   const [chartMode, setChartMode] = React.useState<"bars" | "radar">("bars");
 
@@ -564,75 +566,68 @@ export function AdminInstagramInsightsClient() {
         </div>
 
         {/* Filters */}
-        <div className="relative mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          {showModelFilter ? (
-            <label className="flex min-w-[200px] flex-col gap-1 text-xs text-white/45">
-              Model
-              <select
-                value={modelId}
-                disabled={loading || !(data?.models?.length)}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setModelId(next);
-                  setViewAsProfile(false);
-                  void load({ modelId: next });
-                }}
-                className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-[#FF1493]/50"
-              >
-                {(data?.models ?? []).length === 0 ? (
-                  <option value="">No linked models</option>
-                ) : (
-                  (data?.models ?? []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))
-                )}
-              </select>
-            </label>
-          ) : null}
+        <FilterBar className="relative mt-5 border border-white/10 bg-white/[0.03] p-4 md:p-5">
+          <div className="flex flex-col gap-5">
+            {(showModelFilter || showContentFilter) && (
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-[minmax(0,240px)_1fr]">
+                {showModelFilter ? (
+                  <div className="min-w-0 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                      Model
+                    </p>
+                    <IgModelPicker
+                      models={data?.models ?? []}
+                      value={modelId}
+                      disabled={!(data?.models?.length)}
+                      loading={loading}
+                      onChange={(next) => {
+                        setModelId(next);
+                        setViewAsProfile(false);
+                        void load({ modelId: next });
+                      }}
+                    />
+                  </div>
+                ) : null}
 
-          {showContentFilter ? (
-            <label className="flex min-w-[140px] flex-col gap-1 text-xs text-white/45">
-              Content type
-              <select
-                value={contentFilter}
-                onChange={(e) => setContentFilter(e.target.value as ContentTypeFilter)}
-                className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-[#FF1493]/50"
-              >
-                <option value="all">All</option>
-                <option value="reels">Reels</option>
-                <option value="carousels">Carousels</option>
-                <option value="posts">Posts</option>
-              </select>
-            </label>
-          ) : null}
+                {showContentFilter ? (
+                  <div className="min-w-0 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                      Content type
+                    </p>
+                    <IgContentTypeChips value={contentFilter} onChange={setContentFilter} />
+                  </div>
+                ) : null}
+              </div>
+            )}
 
-          <div className="min-w-0 flex-1">
-            <DatePresetBar
-              preset={preset}
-              loading={loading}
-              onSelect={(p) => {
-                setPreset(p);
-                if (p === "custom") {
-                  if (!customFrom || !customTo) {
-                    setCustomFrom(data?.range.startYmd ?? "");
-                    setCustomTo(data?.range.endYmd ?? "");
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                Date range
+              </p>
+              <DatePresetBar
+                preset={preset}
+                loading={loading}
+                onSelect={(p) => {
+                  setPreset(p);
+                  if (p === "custom") {
+                    if (!customFrom || !customTo) {
+                      setCustomFrom(data?.range.startYmd ?? "");
+                      setCustomTo(data?.range.endYmd ?? "");
+                    }
+                    return;
                   }
-                  return;
-                }
-                void load({ preset: p });
-              }}
-            />
+                  void load({ preset: p });
+                }}
+              />
+            </div>
           </div>
-        </div>
 
-        {preset === "custom" ? (
-          <div className="relative mt-3">
+          {preset === "custom" ? (
             <InflowwCustomDateRange
               startYmd={customFrom || data?.range.startYmd || ""}
               endYmd={customTo || data?.range.endYmd || ""}
               loading={loading}
+              className="mt-4 border-white/8 bg-black/20"
               onChange={(s, e) => {
                 setCustomFrom(s);
                 setCustomTo(e);
@@ -643,25 +638,40 @@ export function AdminInstagramInsightsClient() {
                 void load({ preset: "custom", from: s, to: e });
               }}
             />
-          </div>
-        ) : null}
+          ) : null}
 
-        {data?.range ? (
-          <p className="relative mt-3 text-xs text-white/40">
-            {data.range.startYmd} → {data.range.endYmd}
-            {tab === "by_model" && data.selectedModelName ? (
-              <span className="ml-2 text-white/50">· Viewing {data.selectedModelName}</span>
-            ) : null}
-            {health ? (
-              <span className="ml-2 text-white/30">
-                · {health.modelsLinked}/{health.modelsTotal} models linked
-                {health.accountsCount != null
-                  ? ` · ${health.accountsCount} ClarioSuite IG account${health.accountsCount === 1 ? "" : "s"}`
-                  : ""}
+          {data?.range ? (
+            <p className="mt-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs leading-relaxed text-white/45">
+              {showModelFilter && data.selectedModelName ? (
+                <>
+                  <span>
+                    Viewing{" "}
+                    <span className="font-medium text-white/70">{data.selectedModelName}</span>
+                  </span>
+                  <span className="hidden text-white/25 sm:inline" aria-hidden>
+                    ·
+                  </span>
+                </>
+              ) : null}
+              <span className="tabular-nums">
+                {data.range.startYmd} → {data.range.endYmd}
               </span>
-            ) : null}
-          </p>
-        ) : null}
+              {health ? (
+                <>
+                  <span className="hidden text-white/25 sm:inline" aria-hidden>
+                    ·
+                  </span>
+                  <span>
+                    {health.modelsLinked}/{health.modelsTotal} models linked
+                    {health.accountsCount != null
+                      ? ` · ${health.accountsCount} ClarioSuite IG account${health.accountsCount === 1 ? "" : "s"}`
+                      : ""}
+                  </span>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+        </FilterBar>
       </div>
 
       {/* Tabs */}
