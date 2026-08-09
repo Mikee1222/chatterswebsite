@@ -222,6 +222,8 @@ export async function getClarioSuiteProfileSimulator(
 
   return {
     profile,
+    // ClarioSuite GET /accounts does not expose IG verification (see llm.txt IgProfile).
+    // isVerified is parsed if the API adds it later; badge is omitted when false/undefined.
     highlightsAvailable: false,
     highlightsNote:
       "Instagram highlights are not available from the ClarioSuite API — omitted from the simulator.",
