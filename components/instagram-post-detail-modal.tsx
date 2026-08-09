@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { AnimatePresence } from "framer-motion";
-import { ExternalLink, ImageIcon, Layers } from "lucide-react";
+import { ImageIcon, Layers } from "lucide-react";
+import { IgInstagramExternalButton } from "@/components/instagram-insights-buttons";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { cn } from "@/lib/utils";
 import {
@@ -144,14 +145,12 @@ export function InstagramPostDetailModal({
                     .join(" · ") || "Instagram media"}
                 </p>
                 {(detail?.permalink || seed?.permalink) ? (
-                  <a
-                    href={detail?.permalink || seed?.permalink || "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#FFB6DE] hover:underline"
-                  >
-                    Open on Instagram <ExternalLink className="h-3 w-3" />
-                  </a>
+                  <div className="mt-3">
+                    <IgInstagramExternalButton
+                      href={detail?.permalink || seed?.permalink || "#"}
+                      className="md:w-auto"
+                    />
+                  </div>
                 ) : null}
               </div>
             </div>

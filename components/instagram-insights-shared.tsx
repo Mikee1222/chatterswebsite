@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { Clapperboard, ExternalLink, ImageIcon, Layers, Sparkles } from "lucide-react";
+import { Clapperboard, ImageIcon, Layers, Sparkles } from "lucide-react";
+import { IgInstagramExternalButton, IgViewStatsButton } from "@/components/instagram-insights-buttons";
 import { VA_CARD } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import {
@@ -159,19 +160,17 @@ export function TopPostCard({
             <span>{fmtNum(post.comments)} comments</span>
           </div>
           {interactive ? (
-            <p className="mt-2 text-[11px] font-medium text-[#FFB6DE]/80 group-hover:text-[#FFB6DE]">
-              View detailed stats →
-            </p>
+            <IgViewStatsButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect?.(post);
+              }}
+              className="mt-2"
+            />
           ) : post.permalink ? (
-            <a
-              href={post.permalink}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-[#FFB6DE] hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              Open on Instagram <ExternalLink className="h-3 w-3" />
-            </a>
+            <div className="mt-2" onClick={(e) => e.stopPropagation()}>
+              <IgInstagramExternalButton href={post.permalink} className="md:w-auto" />
+            </div>
           ) : null}
         </div>
       </div>

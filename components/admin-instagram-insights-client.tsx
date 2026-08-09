@@ -37,6 +37,7 @@ import {
   RankedBarList,
   TopPostsLeaderboard,
 } from "@/components/instagram-insights-shared";
+import { IgStoriesSection } from "@/components/instagram-stories-ui";
 import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
@@ -1095,67 +1096,14 @@ export function AdminInstagramInsightsClient() {
                   <SectionLabel>Stories</SectionLabel>
                   <StatInfoTooltip text={IG_STAT_INFO.stories} />
                 </div>
-                {data?.stories?.error ? (
-                  <IgEmptyState
-                    title="Stories unavailable"
-                    detail="ClarioSuite didn’t return active stories for this account right now."
-                  />
-                ) : !(data?.stories?.active?.length) ? (
-                  <IgEmptyState
-                    title="No active stories"
-                    detail="When this account has live Stories, they’ll list here. Performance metrics appear only if the API provides them."
-                  />
-                ) : (
-                  <div className="space-y-3">
-                    <p className="text-xs text-white/45">
-                      {data.stories.active.length} currently active
-                      {!data.stories.has_metrics
-                        ? " · performance metrics not provided by API"
-                        : ""}
-                    </p>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      {data.stories.active.map((s) => (
-                        <div
-                          key={s.id}
-                          className="overflow-hidden rounded-2xl border border-white/10 bg-black/25"
-                        >
-                          {s.image_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={s.image_url}
-                              alt=""
-                              className="aspect-[9/16] max-h-48 w-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex aspect-[9/16] max-h-48 items-center justify-center bg-white/5 text-xs text-white/30">
-                              Story
-                            </div>
-                          )}
-                          <div className="space-y-1 p-3 text-xs text-white/55">
-                            <p className="text-white/70">{s.media_type || "STORY"}</p>
-                            {data.stories?.has_metrics ? (
-                              <p>
-                                Reach {fmtNum(s.reach)} · Views {fmtNum(s.views)}
-                              </p>
-                            ) : (
-                              <p className="text-white/35">No performance metrics from API</p>
-                            )}
-                            {s.permalink ? (
-                              <a
-                                href={s.permalink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-[#FFB6DE] hover:underline"
-                              >
-                                Open
-                              </a>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <IgStoriesSection
+                  stories={data?.stories}
+                  errorTitle="Stories unavailable"
+                  errorDetail="ClarioSuite didn’t return active stories for this account right now."
+                  emptyTitle="No active stories"
+                  emptyDetail="When this account has live Stories, they’ll list here. Performance metrics appear only if the API provides them."
+                  metricsUnavailableNote="No performance metrics from API for these Stories."
+                />
               </div>
 
               {/* Trends */}
