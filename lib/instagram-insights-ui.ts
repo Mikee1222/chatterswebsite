@@ -7,7 +7,7 @@ export const IG_STAT_INFO = {
     "Unique accounts that saw this creator’s content at least once in the selected range (sum of daily reach).",
   views: "Total content views (plays/impressions-style) across the selected range.",
   engagement_rate:
-    "Average of daily (total interactions ÷ reach × 100). Measures how actively the audience responds when they see content.",
+    "Account engagement when ClarioSuite provides daily interactions (interactions ÷ reach × 100). If that series is missing, we use the average engagement score of synced top posts in the range — never a fake 0.00%.",
   follower_growth:
     "Change in reconstructed follower count from the first to last day with follower data in this range.",
   follower_trend: "Daily follower count reconstructed from growth deltas + current followers.",

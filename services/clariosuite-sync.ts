@@ -141,8 +141,10 @@ async function upsertDailyInsights(
   const payload = sorted.map((date) => {
     const r = Math.round(reach.get(date) ?? 0);
     const v = Math.round(views.get(date) ?? 0);
-    const ti = Math.round(interactions.get(date) ?? 0);
-    const er = computeEngagementRate(ti, r);
+    // Interactions series is often empty from Meta/ClarioSuite — do not invent 0% ER.
+    const hasInteractions = interactions.has(date);
+    const ti = hasInteractions ? Math.round(interactions.get(date) ?? 0) : 0;
+    const er = hasInteractions ? computeEngagementRate(ti, r) : null;
     return {
       ig_user_id: link.igUserId,
       model_record_id: link.modelRecordId,

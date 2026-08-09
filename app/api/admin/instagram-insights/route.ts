@@ -14,6 +14,7 @@ import {
   postingFrequency,
   postingVsReachSeries,
   priorEqualLengthRange,
+  resolveEngagementRate,
   summarizeIgDaily,
 } from "@/lib/instagram-insights-stats";
 import {
@@ -68,7 +69,8 @@ type PostRow = Awaited<ReturnType<typeof queryClarioSuiteTopPosts>>[number];
 function buildComparisonRows(
   linked: LinkedModel[],
   allDaily: DailyRow[],
-  postsByModel: Map<string, PostRow[]>
+  postsByModel: Map<string, PostRow[]>,
+  range?: { startYmd: string; endYmd: string }
 ) {
   const byModel = new Map<string, { modelId: string; modelName: string; rows: DailyRow[] }>();
   for (const m of linked) {
@@ -87,6 +89,7 @@ function buildComparisonRows(
   return [...byModel.values()].map((m) => {
     const s = summarizeIgDaily(m.rows);
     const posts = postsByModel.get(m.modelId) ?? [];
+    const avgEr = resolveEngagementRate(s.avg_engagement_rate, posts, range);
     const topEng =
       posts.reduce<number | null>((best, p) => {
         if (p.engagement_score == null) return best;
@@ -99,7 +102,7 @@ function buildComparisonRows(
       modelName: m.modelName,
       reach: s.reach,
       views: s.views,
-      avg_engagement_rate: s.avg_engagement_rate,
+      avg_engagement_rate: avgEr,
       follower_start: s.follower_start,
       follower_end: s.follower_end,
       follower_delta: s.follower_delta,
@@ -211,20 +214,37 @@ export async function GET(request: Request) {
     ]);
 
   const postsByModel = new Map(allTopPosts.map((r) => [r.modelId, r.posts]));
-  const totals = summarizeIgDaily(daily);
-  const comparison = buildComparisonRows(linked, allDaily, postsByModel).sort(
-    (a, b) => b.reach - a.reach
-  );
-  const priorComparison = buildComparisonRows(linked, priorDaily, postsByModel);
+  const dailyTotals = summarizeIgDaily(daily);
+  const totals = {
+    ...dailyTotals,
+    avg_engagement_rate: resolveEngagementRate(dailyTotals.avg_engagement_rate, topPosts, {
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+    }),
+  };
+  const comparison = buildComparisonRows(linked, allDaily, postsByModel, {
+    startYmd: range.startYmd,
+    endYmd: range.endYmd,
+  }).sort((a, b) => b.reach - a.reach);
+  const priorComparison = buildComparisonRows(linked, priorDaily, postsByModel, {
+    startYmd: priorRange.startYmd,
+    endYmd: priorRange.endYmd,
+  });
   const callouts = buildCompareCallouts(comparison, priorComparison);
 
-  // Agency overview
+  // Agency overview — same per-model ER path as By Model / Compare (no parallel formula)
   const agency = summarizeIgDaily(allDaily);
-  const erModels = comparison.filter((c) => c.avg_engagement_rate != null);
+  const erModels = comparison.filter(
+    (c) => c.avg_engagement_rate != null && c.avg_engagement_rate > 0
+  );
   const overviewAvgEr =
     erModels.length > 0
       ? erModels.reduce((s, c) => s + (c.avg_engagement_rate ?? 0), 0) / erModels.length
-      : agency.avg_engagement_rate;
+      : resolveEngagementRate(
+          agency.avg_engagement_rate,
+          allTopPosts.flatMap((r) => r.posts),
+          { startYmd: range.startYmd, endYmd: range.endYmd }
+        );
   const totalFollowers = comparison.reduce((s, c) => s + (c.follower_end ?? 0), 0);
   const hasFollowerEnds = comparison.some((c) => c.follower_end != null);
   const topModel =

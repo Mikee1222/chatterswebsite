@@ -3,6 +3,7 @@
  * Pure derive + thin loader — no sync logic. Correlation ≠ causation in all copy.
  */
 
+import { resolveEngagementRate, summarizeIgDaily } from "@/lib/instagram-insights-stats";
 import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
@@ -461,25 +462,18 @@ export function deriveCrossPlatformAnalytics(input: {
     convNote = `ESTIMATE only: new OF subscribers ÷ IG reach × 100 ≈ ${ratePct}%. This is not a true attribution rate — fans can arrive from many channels, and reach isn’t unique across days.`;
   }
 
-  // ── 5. Combined Growth Score ────────────────────────────────────────────
-  const curErDays = igDaily.filter((d) => d.engagement_rate != null && d.engagement_rate > 0);
-  const curAvgEr =
-    curErDays.length > 0
-      ? curErDays.reduce((s, d) => s + (d.engagement_rate ?? 0), 0) / curErDays.length
-      : totalReach > 0
-        ? (igDaily.reduce((s, d) => s + d.total_interactions, 0) / totalReach) * 100
-        : null;
-
-  const prevErDays = prevIgDaily.filter(
-    (d) => d.engagement_rate != null && d.engagement_rate > 0
+  // ── 5. Combined Growth Score (same ER path as Instagram Insights stats) ─
+  const prevRange = previousPeriodRange(startYmd, endYmd);
+  const curAvgEr = resolveEngagementRate(
+    summarizeIgDaily(igDaily).avg_engagement_rate,
+    topPosts,
+    { startYmd, endYmd }
   );
-  const prevReach = prevIgDaily.reduce((s, d) => s + d.reach, 0);
-  const prevAvgEr =
-    prevErDays.length > 0
-      ? prevErDays.reduce((s, d) => s + (d.engagement_rate ?? 0), 0) / prevErDays.length
-      : prevReach > 0
-        ? (prevIgDaily.reduce((s, d) => s + d.total_interactions, 0) / prevReach) * 100
-        : null;
+  const prevAvgEr = resolveEngagementRate(
+    summarizeIgDaily(prevIgDaily).avg_engagement_rate,
+    topPosts,
+    { startYmd: prevRange.startYmd, endYmd: prevRange.endYmd }
+  );
 
   const igEngagementScore =
     curAvgEr == null

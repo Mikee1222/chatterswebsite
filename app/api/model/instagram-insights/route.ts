@@ -6,6 +6,7 @@ import {
   buildBestTimeRecommendation,
   warmAudienceSummary,
 } from "@/lib/instagram-insights-ui";
+import { resolveEngagementRate, summarizeIgDaily } from "@/lib/instagram-insights-stats";
 import {
   resolveInflowwStatsRange,
   type InflowwStatsPreset,
@@ -107,22 +108,13 @@ export async function GET(request: Request) {
   ]);
   const crossPlatformCard = toModelCrossPlatformCard(crossPlatform);
 
-  const reach = daily.reduce((s, d) => s + d.reach, 0);
-  const views = daily.reduce((s, d) => s + d.views, 0);
-  const interactions = daily.reduce((s, d) => s + d.total_interactions, 0);
-  const erDays = daily.filter((d) => d.engagement_rate != null);
-  const avgEr =
-    erDays.length > 0
-      ? erDays.reduce((s, d) => s + (d.engagement_rate ?? 0), 0) / erDays.length
-      : reach > 0
-        ? (interactions / reach) * 100
-        : null;
-
-  const withFollowers = daily.filter((d) => d.follower_count != null);
-  const followerStart = withFollowers[0]?.follower_count ?? null;
-  const followerEnd = withFollowers[withFollowers.length - 1]?.follower_count ?? null;
-  const followerDelta =
-    followerStart != null && followerEnd != null ? followerEnd - followerStart : null;
+  const dailyTotals = summarizeIgDaily(daily);
+  const avgEr = resolveEngagementRate(dailyTotals.avg_engagement_rate, topPosts, {
+    startYmd: range.startYmd,
+    endYmd: range.endYmd,
+  });
+  const { reach, views, total_interactions: interactions, follower_delta: followerDelta, follower_end: followerEnd } =
+    dailyTotals;
 
   const online = asOnlineHours(audienceRow?.online_followers_by_hour);
   const ageRanges = asBuckets(audienceRow?.age_ranges);

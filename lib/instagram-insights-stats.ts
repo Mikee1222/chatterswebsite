@@ -23,17 +23,31 @@ export type IgPostRow = {
   posted_at?: string | null;
 };
 
+/**
+ * Account-level engagement from daily rows.
+ *
+ * ClarioSuite often omits `series.interactions` (sync historically stored 0 / 0%),
+ * so we ignore non-positive rates unless there are real interactions to back them up.
+ * Callers should pass the result through `resolveEngagementRate` for top-post fallback.
+ */
 export function summarizeIgDaily(daily: IgDailyRow[]) {
   const reach = daily.reduce((s, d) => s + d.reach, 0);
   const views = daily.reduce((s, d) => s + d.views, 0);
   const interactions = daily.reduce((s, d) => s + d.total_interactions, 0);
-  const erDays = daily.filter((d) => d.engagement_rate != null);
-  const avgEr =
+  // Prefer days with a real positive rate; treat 0% with 0 interactions as "missing".
+  const erDays = daily.filter(
+    (d) =>
+      d.engagement_rate != null &&
+      Number.isFinite(d.engagement_rate) &&
+      (d.engagement_rate > 0 || d.total_interactions > 0)
+  );
+  let avgEr: number | null =
     erDays.length > 0
       ? erDays.reduce((s, d) => s + (d.engagement_rate ?? 0), 0) / erDays.length
-      : reach > 0
-        ? (interactions / reach) * 100
-        : null;
+      : null;
+  if (avgEr == null && reach > 0 && interactions > 0) {
+    avgEr = (interactions / reach) * 100;
+  }
   const withFollowers = daily.filter((d) => d.follower_count != null);
   const followerStart = withFollowers[0]?.follower_count ?? null;
   const followerEnd = withFollowers[withFollowers.length - 1]?.follower_count ?? null;
@@ -48,6 +62,43 @@ export function summarizeIgDaily(daily: IgDailyRow[]) {
     follower_end: followerEnd,
     follower_delta: followerDelta,
   };
+}
+
+/** Mean post engagement score % (likes+comments+shares+saved ÷ reach × 100). */
+export function averagePostEngagementScore(
+  posts: Array<{ engagement_score: number | null | undefined; posted_at?: string | null }>,
+  opts?: { startYmd?: string; endYmd?: string }
+): number | null {
+  const start = opts?.startYmd?.slice(0, 10);
+  const end = opts?.endYmd?.slice(0, 10);
+  const scores: number[] = [];
+  for (const p of posts) {
+    const score = p.engagement_score;
+    if (score == null || !Number.isFinite(score) || !(score > 0)) continue;
+    if (start || end) {
+      const ymd = (p.posted_at ?? "").slice(0, 10);
+      if (!ymd) continue;
+      if (start && ymd < start) continue;
+      if (end && ymd > end) continue;
+    }
+    scores.push(score);
+  }
+  if (!scores.length) return null;
+  return scores.reduce((s, n) => s + n, 0) / scores.length;
+}
+
+/**
+ * Single engagement-rate path for per-model totals, Compare leaderboard, and Overview avg.
+ * Prefer account daily ER; when missing (common when interactions series is empty), use
+ * mean top-post engagement in range so UI never shows a fake 0.00%.
+ */
+export function resolveEngagementRate(
+  dailyAvg: number | null | undefined,
+  posts: Array<{ engagement_score: number | null | undefined; posted_at?: string | null }>,
+  opts?: { startYmd?: string; endYmd?: string }
+): number | null {
+  if (dailyAvg != null && Number.isFinite(dailyAvg) && dailyAvg > 0) return dailyAvg;
+  return averagePostEngagementScore(posts, opts);
 }
 
 /** Follower growth rate % over the period (requires start > 0). */
