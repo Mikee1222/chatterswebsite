@@ -381,22 +381,43 @@ export function ModelInstagramInsightsPanel() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {SUB_TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSubTab(t.id)}
-            className={cn(
-              "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition",
-              subTab === t.id
-                ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FFB6DE]"
-                : "border-white/10 bg-white/[0.03] text-white/55 hover:bg-white/[0.06]"
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap gap-1.5">
+          {SUB_TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => {
+                setSubTab(t.id);
+                if (t.id !== "profile") setViewAsProfile(false);
+              }}
+              className={cn(
+                "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition",
+                subTab === t.id
+                  ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FFB6DE]"
+                  : "border-white/10 bg-white/[0.03] text-white/55 hover:bg-white/[0.06]"
+              )}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setSubTab("profile");
+            setViewAsProfile((v) => !v);
+          }}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition",
+            viewAsProfile && subTab === "profile"
+              ? "border-[#D4AF8C]/50 bg-[#D4AF8C]/15 text-[#E8D0B0]"
+              : "border-white/15 bg-white/[0.04] text-white/70 hover:bg-white/[0.07]"
+          )}
+        >
+          <Smartphone className="h-3.5 w-3.5" />
+          {viewAsProfile && subTab === "profile" ? "Hide profile" : "View as Profile"}
+        </button>
       </div>
 
       {error ? (
@@ -849,43 +870,49 @@ export function ModelInstagramInsightsPanel() {
       {/* ── Profile ───────────────────────────────────────────── */}
       {subTab === "profile" ? (
         <div className="space-y-5">
-          <div className={cn(VA_CARD, "p-4 md:p-5")}>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <SectionLabel>View as Profile</SectionLabel>
-                <p className="mt-1 text-xs text-white/40">
-                  See your Instagram the way fans see it — live profile + post grid. Tap a post for
-                  stats.
-                </p>
+          {viewAsProfile ? (
+            <div className={cn(VA_CARD, VA_CARD_GLOW, "relative overflow-hidden p-5 md:p-8")}>
+              <div
+                className="pointer-events-none absolute inset-0 opacity-70"
+                style={{
+                  background:
+                    "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(255,20,147,0.14), transparent 55%), radial-gradient(ellipse 50% 40% at 80% 80%, rgba(212,175,140,0.1), transparent 50%)",
+                }}
+              />
+              <div className="relative mb-5 flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <SectionLabel>Instagram Profile Simulator</SectionLabel>
+                  <p className="mt-1 max-w-md text-sm text-white/60">
+                    See your profile the way your fans do! Live ClarioSuite data in a realistic
+                    iPhone mockup — tap Posts, Reels, or Carousels, then tap any post for stats.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setViewAsProfile(false)}
+                  className="rounded-xl border border-white/10 px-3 py-1.5 text-xs text-white/55 hover:bg-white/[0.05]"
+                >
+                  Back to analytics
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setViewAsProfile((v) => !v)}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition",
-                  viewAsProfile
-                    ? "border-[#D4AF8C]/50 bg-[#D4AF8C]/15 text-[#E8D0B0]"
-                    : "border-white/15 bg-white/[0.04] text-white/70 hover:bg-white/[0.07]"
-                )}
-              >
-                <Smartphone className="h-3.5 w-3.5" />
-                {viewAsProfile ? "Hide" : "Show mockup"}
-              </button>
-            </div>
-            {viewAsProfile ? (
-              <div className="flex justify-center py-2">
+              <div className="relative flex justify-center py-2">
                 <InstagramProfileSimulator
                   compact
                   profileUrl="/api/model/instagram-insights/profile"
                   detailUrlFor={detailUrlFor}
                 />
               </div>
-            ) : (
-              <p className="py-6 text-center text-sm text-white/40">
-                Tap Show mockup to open your phone-style profile simulator.
+            </div>
+          ) : (
+            <div className={cn(VA_CARD, "p-4 md:p-5")}>
+              <SectionLabel>Your Instagram profile</SectionLabel>
+              <p className="mt-2 max-w-lg text-sm leading-relaxed text-white/55">
+                See your profile the way your fans do! Tap{" "}
+                <span className="font-semibold text-white/75">View as Profile</span> above to open
+                the iPhone mockup with your live posts, reels, and carousels.
               </p>
-            )}
-          </div>
+            </div>
+          )}
 
           <ModelIgToOfCard card={data?.crossPlatformCard} loading={loading} />
         </div>

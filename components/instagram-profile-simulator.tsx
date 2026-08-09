@@ -7,16 +7,7 @@ import { fmtCompact, type IgPostGroup } from "@/lib/instagram-insights-ui";
 import { InstagramPostDetailModal } from "@/components/instagram-post-detail-modal";
 import { IgSkeleton } from "@/components/instagram-insights-shared";
 
-function CellularBars({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 18 12" className={className} fill="currentColor" aria-hidden>
-      <rect x="0" y="8" width="2.5" height="4" rx="0.5" />
-      <rect x="4" y="5.5" width="2.5" height="6.5" rx="0.5" />
-      <rect x="8" y="3" width="2.5" height="9" rx="0.5" />
-      <rect x="12" y="0.5" width="2.5" height="11.5" rx="0.5" />
-    </svg>
-  );
-}
+type ProfileTab = "posts" | "reels" | "carousels";
 
 type ProfilePayload = {
   profile: {
@@ -29,6 +20,7 @@ type ProfilePayload = {
     followersCount: number | null;
     followsCount: number | null;
     mediaCount: number | null;
+    isVerified?: boolean;
   };
   highlightsAvailable: boolean;
   highlightsNote?: string;
@@ -40,28 +32,125 @@ type ProfilePayload = {
     caption: string | null;
     image_url: string | null;
     posted_at: string | null;
+    views_count: number | null;
     group: IgPostGroup;
   }>;
   error?: string;
 };
 
-function IgGridIcon({ group }: { group: IgPostGroup }) {
-  if (group === "reels") {
-    return (
-      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 drop-shadow" fill="white" aria-hidden>
-        <path d="M8 5.14v13.72L19 12 8 5.14z" />
-      </svg>
-    );
-  }
-  if (group === "carousels") {
-    return (
-      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 drop-shadow" fill="none" stroke="white" strokeWidth="2" aria-hidden>
-        <rect x="3" y="5" width="14" height="14" rx="1.5" />
-        <path d="M19 8v10a2 2 0 0 1-2 2H7" />
-      </svg>
-    );
-  }
-  return null;
+/** Instagram scalloped verified badge — only render when profile.isVerified is true. */
+function IgVerifiedBadge({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 40 40"
+      className={cn("shrink-0", className)}
+      aria-label="Verified"
+      role="img"
+    >
+      <path
+        d="M19.998 3.094 14.638 0l-2.972 5.15H5.432v6.354L0 14.637l3.094 5.359L0 25.355l5.432 3.133v6.354h6.234L14.638 40l5.36-3.094L25.358 40l3.132-5.432h6.354v-6.354L40 25.355l-3.094-5.359L40 14.637l-5.432-3.133V5.15h-6.234L25.358 0l-5.36 3.094z"
+        fill="#3897F0"
+      />
+      <path
+        d="M17.997 24.997l-3.999-3.999 1.414-1.414 2.585 2.585 6.586-6.586 1.414 1.414-7.999 7.999z"
+        fill="white"
+      />
+    </svg>
+  );
+}
+
+function IgPlayIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden>
+      <path d="M8 5.14v13.72L19 12 8 5.14z" />
+    </svg>
+  );
+}
+
+function IgCarouselIcon({
+  className,
+  strokeWidth = 2,
+}: {
+  className?: string;
+  strokeWidth?: number;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={strokeWidth}
+      aria-hidden
+    >
+      <rect x="3" y="5" width="14" height="14" rx="1.5" />
+      <path d="M19 8v10a2 2 0 0 1-2 2H7" />
+    </svg>
+  );
+}
+
+function ProfileTabBar({
+  active,
+  onChange,
+  counts,
+}: {
+  active: ProfileTab;
+  onChange: (tab: ProfileTab) => void;
+  counts: Record<ProfileTab, number>;
+}) {
+  const tabs: Array<{ id: ProfileTab; icon: React.ReactNode; label: string }> = [
+    { id: "posts", icon: <Grid3X3 className="h-[22px] w-[22px]" strokeWidth={1.75} />, label: "Posts" },
+    {
+      id: "reels",
+      icon: <IgPlayIcon className="h-[22px] w-[22px]" />,
+      label: "Reels",
+    },
+    {
+      id: "carousels",
+      icon: <IgCarouselIcon className="h-[22px] w-[22px]" strokeWidth={1.75} />,
+      label: "Carousels",
+    },
+  ];
+
+  return (
+    <div className="flex border-t border-black/10">
+      {tabs.map((tab) => {
+        const isActive = active === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            aria-label={`${tab.label} (${counts[tab.id]})`}
+            aria-pressed={isActive}
+            onClick={() => onChange(tab.id)}
+            className={cn(
+              "relative flex flex-1 items-center justify-center py-2.5 transition-colors",
+              isActive ? "text-black" : "text-black/35 hover:text-black/55"
+            )}
+          >
+            {tab.icon}
+            <span
+              className={cn(
+                "absolute inset-x-0 -bottom-px h-[1.5px] bg-black transition-opacity duration-200",
+                isActive ? "opacity-100" : "opacity-0"
+              )}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function CellularBars({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 18 12" className={className} fill="currentColor" aria-hidden>
+      <rect x="0" y="8" width="2.5" height="4" rx="0.5" />
+      <rect x="4" y="5.5" width="2.5" height="6.5" rx="0.5" />
+      <rect x="8" y="3" width="2.5" height="9" rx="0.5" />
+      <rect x="12" y="0.5" width="2.5" height="11.5" rx="0.5" />
+    </svg>
+  );
 }
 
 function StatusBar() {
@@ -92,7 +181,28 @@ export function InstagramProfileSimulator({
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<ProfilePayload | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [activeTab, setActiveTab] = React.useState<ProfileTab>("posts");
   const selectedPost = data?.posts.find((p) => p.media_id === selectedId) ?? null;
+
+  const tabCounts = React.useMemo(() => {
+    const posts = data?.posts ?? [];
+    return {
+      posts: posts.filter((p) => p.group === "posts").length,
+      reels: posts.filter((p) => p.group === "reels").length,
+      carousels: posts.filter((p) => p.group === "carousels").length,
+    };
+  }, [data?.posts]);
+
+  const filteredPosts = React.useMemo(() => {
+    const posts = data?.posts ?? [];
+    if (activeTab === "reels") return posts.filter((p) => p.group === "reels");
+    if (activeTab === "carousels") return posts.filter((p) => p.group === "carousels");
+    return posts.filter((p) => p.group === "posts");
+  }, [data?.posts, activeTab]);
+
+  React.useEffect(() => {
+    setActiveTab("posts");
+  }, [profileUrl]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -188,10 +298,15 @@ export function InstagramProfileSimulator({
                   {/* Profile header */}
                   <div className="px-3 pt-1">
                     <div className="mb-3 flex items-center justify-between">
-                      <p className="truncate text-[15px] font-bold tracking-tight">
-                        {profile.username}
-                      </p>
-                      <MoreHorizontal className="h-5 w-5 text-black/70" />
+                      <div className="flex min-w-0 items-center gap-1">
+                        <p className="truncate text-[15px] font-bold tracking-tight">
+                          {profile.username}
+                        </p>
+                        {profile.isVerified ? (
+                          <IgVerifiedBadge className="h-[14px] w-[14px]" />
+                        ) : null}
+                      </div>
+                      <MoreHorizontal className="h-5 w-5 shrink-0 text-black/70" />
                     </div>
 
                     <div className="flex items-center gap-4">
@@ -274,12 +389,17 @@ export function InstagramProfileSimulator({
                   </div>
 
                   {/* Highlights omitted — not in ClarioSuite API */}
-                  <div className="mt-3 border-t border-black/10">
-                    <div className="flex items-center justify-center gap-1 border-b-2 border-black py-2">
-                      <Grid3X3 className="h-4 w-4" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-[1px] bg-white">
-                      {(data?.posts ?? []).map((post) => (
+                  <div className="mt-3">
+                    <ProfileTabBar
+                      active={activeTab}
+                      onChange={setActiveTab}
+                      counts={tabCounts}
+                    />
+                    <div
+                      key={activeTab}
+                      className="grid grid-cols-3 gap-[1px] bg-white motion-reduce:transition-none animate-in fade-in duration-200"
+                    >
+                      {filteredPosts.map((post) => (
                         <button
                           key={post.media_id}
                           type="button"
@@ -305,14 +425,33 @@ export function InstagramProfileSimulator({
                               )}
                             </div>
                           )}
-                          <span className="absolute right-1 top-1 text-white">
-                            <IgGridIcon group={post.group} />
-                          </span>
+
+                          {activeTab === "reels" ? (
+                            <>
+                              <span className="absolute right-1.5 top-1.5 text-white drop-shadow-md">
+                                <IgPlayIcon className="h-3.5 w-3.5" />
+                              </span>
+                              {post.views_count != null && post.views_count > 0 ? (
+                                <span className="absolute bottom-1.5 left-1.5 flex items-center gap-0.5 text-[10px] font-semibold text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]">
+                                  <IgPlayIcon className="h-2.5 w-2.5" />
+                                  {fmtCompact(post.views_count)}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : activeTab === "carousels" ? (
+                            <span className="absolute right-1 top-1 text-white">
+                              <IgCarouselIcon className="h-3.5 w-3.5 drop-shadow text-white" />
+                            </span>
+                          ) : null}
                         </button>
                       ))}
-                      {!data?.posts.length ? (
+                      {!filteredPosts.length ? (
                         <p className="col-span-3 py-10 text-center text-xs text-black/40">
-                          No recent posts
+                          {activeTab === "reels"
+                            ? "No reels yet"
+                            : activeTab === "carousels"
+                              ? "No carousels yet"
+                              : "No posts yet"}
                         </p>
                       ) : null}
                     </div>

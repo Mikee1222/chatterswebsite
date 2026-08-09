@@ -259,9 +259,40 @@ type ClarioSuiteAccountsPage = {
   };
 };
 
+function parseIgVerified(raw: Record<string, unknown>): boolean {
+  const v = raw["isVerified"] ?? raw["is_verified"] ?? raw["verified"];
+  return v === true;
+}
+
+/** Normalize GET /accounts row — forward-compatible if ClarioSuite adds fields later. */
+export function normalizeClarioSuiteIgProfile(raw: unknown): ClarioSuiteIgProfile | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const igUserId = typeof o.igUserId === "string" ? o.igUserId.trim() : "";
+  const username = typeof o.username === "string" ? o.username.trim() : "";
+  if (!igUserId || !username) return null;
+  return {
+    igUserId,
+    username,
+    accountType: typeof o.accountType === "string" ? o.accountType : null,
+    name: typeof o.name === "string" ? o.name : null,
+    biography: typeof o.biography === "string" ? o.biography : null,
+    website: typeof o.website === "string" ? o.website : null,
+    profilePictureUrl: typeof o.profilePictureUrl === "string" ? o.profilePictureUrl : null,
+    followersCount: typeof o.followersCount === "number" ? o.followersCount : null,
+    followsCount: typeof o.followsCount === "number" ? o.followsCount : null,
+    mediaCount: typeof o.mediaCount === "number" ? o.mediaCount : null,
+    isVerified: parseIgVerified(o),
+  };
+}
+
 function parseAccountsPayload(payload: unknown): ClarioSuiteAccountsPage {
+  const normalizeRows = (rows: unknown[]): ClarioSuiteIgProfile[] =>
+    rows.map(normalizeClarioSuiteIgProfile).filter((r): r is ClarioSuiteIgProfile => r != null);
+
   if (Array.isArray(payload)) {
-    return { data: payload as ClarioSuiteIgProfile[], meta: { count: payload.length, has_more: false } };
+    const data = normalizeRows(payload);
+    return { data, meta: { count: data.length, has_more: false } };
   }
   if (payload && typeof payload === "object") {
     const o = payload as Record<string, unknown>;
@@ -276,7 +307,7 @@ function parseAccountsPayload(payload: unknown): ClarioSuiteAccountsPage {
         metaRaw && typeof metaRaw === "object"
           ? (metaRaw as ClarioSuiteAccountsPage["meta"])
           : undefined;
-      return { data: dataRaw as ClarioSuiteIgProfile[], meta };
+      return { data: normalizeRows(dataRaw), meta };
     }
   }
   return { data: [], meta: { count: 0, has_more: false } };

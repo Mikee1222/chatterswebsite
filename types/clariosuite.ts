@@ -11,6 +11,8 @@ export type ClarioSuiteIgProfile = {
   followersCount: number | null;
   followsCount: number | null;
   mediaCount: number | null;
+  /** True only when ClarioSuite GET /accounts exposes verification (not in current API spec). */
+  isVerified?: boolean;
 };
 
 export type ClarioSuiteTimeSeriesPoint = {

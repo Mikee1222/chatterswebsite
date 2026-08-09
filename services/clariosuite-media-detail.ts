@@ -12,7 +12,10 @@ import {
 } from "@/lib/clariosuite-api";
 import { classifyIgPost } from "@/lib/instagram-insights-ui";
 import type { ClarioSuiteCarouselChild, ClarioSuiteIgProfile } from "@/types/clariosuite";
-import { getClarioSuiteTopPostByMediaId } from "@/services/clariosuite-sync";
+import {
+  getClarioSuiteTopPostByMediaId,
+  queryClarioSuiteTopPosts,
+} from "@/services/clariosuite-sync";
 
 function n(v: unknown): number | null {
   if (v == null) return null;
@@ -177,6 +180,7 @@ export type ClarioSuiteProfileSimulatorPayload = {
     posted_at: string | null;
     like_count: number | null;
     comments_count: number | null;
+    views_count: number | null;
     group: ReturnType<typeof classifyIgPost>;
   }>;
 };
@@ -190,7 +194,13 @@ export async function getClarioSuiteProfileSimulator(
       status: 404,
     });
   }
-  const { data: media } = await listClarioSuiteMedia(igUserId, 30);
+  const [{ data: media }, syncedTopPosts] = await Promise.all([
+    listClarioSuiteMedia(igUserId, 30),
+    queryClarioSuiteTopPosts({ igUserId, limit: 50 }).catch(() => []),
+  ]);
+  const viewsByMediaId = new Map(
+    syncedTopPosts.map((p) => [p.media_id, p.views > 0 ? p.views : null] as const)
+  );
   const posts = media
     .filter((m) => m?.id)
     .map((m) => ({
@@ -203,6 +213,7 @@ export async function getClarioSuiteProfileSimulator(
       posted_at: m.timestamp || null,
       like_count: m.likeCount,
       comments_count: m.commentsCount,
+      views_count: viewsByMediaId.get(m.id) ?? null,
       group: classifyIgPost({
         mediaType: m.mediaType,
         mediaProductType: m.mediaProductType,
