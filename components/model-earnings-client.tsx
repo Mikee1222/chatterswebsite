@@ -3,7 +3,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { useReducedMotion } from "framer-motion";
-import { Heart, Sparkles } from "lucide-react";
+import { Camera, DollarSign, Heart, Sparkles } from "lucide-react";
 import {
   CountUp,
   DatePresetBar,
@@ -104,7 +104,15 @@ function tip(key: keyof typeof CREATOR_EARNINGS_STAT_INFO) {
 }
 
 export function ModelEarningsClient({ modelName }: { modelName: string }) {
-  const [tab, setTab] = React.useState<"earnings" | "instagram">("earnings");
+  const [tab, setTab] = React.useState<"earnings" | "instagram">(() => {
+    if (typeof window === "undefined") return "earnings";
+    try {
+      const q = new URLSearchParams(window.location.search).get("tab");
+      return q === "instagram" ? "instagram" : "earnings";
+    } catch {
+      return "earnings";
+    }
+  });
   const [preset, setPreset] = React.useState<InflowwStatsPreset>("this_month");
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -166,30 +174,83 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
         <p className="mt-1 text-sm text-white/50">
           A warm look at your account health — revenue, fans, and Instagram performance.
         </p>
-        <div className="mt-4 flex gap-2">
+        <div
+          className="mt-4 flex gap-2.5"
+          role="tablist"
+          aria-label="Earnings platforms"
+        >
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "earnings"}
             onClick={() => setTab("earnings")}
             className={cn(
-              "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+              "group relative inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-sm font-semibold tracking-wide",
+              "motion-safe:transition-[transform,box-shadow,background-color,color,border-color,opacity] motion-safe:duration-300 motion-safe:ease-out",
+              "motion-reduce:transition-none",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#151315]",
               tab === "earnings"
-                ? "bg-[#FF1493]/20 text-[#FFB6DE] ring-1 ring-[#FF1493]/40"
-                : "bg-white/5 text-white/50 hover:bg-white/10"
+                ? cn(
+                    "z-[1] scale-[1.02] border border-[#FF1493]/55 bg-gradient-to-br from-[#FF1493]/35 via-[#FF1493]/18 to-[#D4AF8C]/20",
+                    "text-white shadow-[0_12px_40px_-12px_rgba(255,20,147,0.65),0_0_0_1px_rgba(212,175,140,0.25),inset_0_1px_0_rgba(255,255,255,0.18)]",
+                    "motion-reduce:scale-100"
+                  )
+                : "scale-100 border border-white/8 bg-white/[0.04] text-white/45 hover:border-[#FF1493]/25 hover:bg-white/[0.07] hover:text-white/70"
             )}
           >
-            OnlyFans
+            {tab === "earnings" ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_30%_0%,rgba(255,182,222,0.35),transparent_55%),radial-gradient(ellipse_at_90%_100%,rgba(212,175,140,0.28),transparent_50%)]"
+              />
+            ) : null}
+            <DollarSign
+              className={cn(
+                "relative h-4 w-4 shrink-0 motion-safe:transition-transform motion-safe:duration-300",
+                tab === "earnings"
+                  ? "text-[#FFB6DE] drop-shadow-[0_0_8px_rgba(255,20,147,0.7)] motion-safe:scale-110"
+                  : "text-white/40 group-hover:text-[#D4AF8C]/80"
+              )}
+              strokeWidth={2.25}
+            />
+            <span className="relative">OnlyFans</span>
           </button>
           <button
             type="button"
+            role="tab"
+            aria-selected={tab === "instagram"}
             onClick={() => setTab("instagram")}
             className={cn(
-              "rounded-xl px-3 py-1.5 text-xs font-semibold transition",
+              "group relative inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-sm font-semibold tracking-wide",
+              "motion-safe:transition-[transform,box-shadow,background-color,color,border-color,opacity] motion-safe:duration-300 motion-safe:ease-out",
+              "motion-reduce:transition-none",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#151315]",
               tab === "instagram"
-                ? "bg-[#FF1493]/20 text-[#FFB6DE] ring-1 ring-[#FF1493]/40"
-                : "bg-white/5 text-white/50 hover:bg-white/10"
+                ? cn(
+                    "z-[1] scale-[1.02] border border-transparent text-white",
+                    "bg-[linear-gradient(135deg,rgba(253,29,29,0.45)_0%,rgba(199,54,168,0.42)_42%,rgba(131,58,180,0.48)_100%)]",
+                    "shadow-[0_12px_40px_-12px_rgba(199,54,168,0.6),0_0_0_1px_rgba(253,29,29,0.25),inset_0_1px_0_rgba(255,255,255,0.16)]",
+                    "motion-reduce:scale-100"
+                  )
+                : "scale-100 border border-white/8 bg-white/[0.04] text-white/45 hover:border-[#C736A8]/30 hover:bg-white/[0.07] hover:text-white/70"
             )}
           >
-            Instagram
+            {tab === "instagram" ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_20%_0%,rgba(253,187,45,0.28),transparent_45%),radial-gradient(ellipse_at_85%_110%,rgba(88,81,219,0.35),transparent_55%)]"
+              />
+            ) : null}
+            <Camera
+              className={cn(
+                "relative h-4 w-4 shrink-0 motion-safe:transition-transform motion-safe:duration-300",
+                tab === "instagram"
+                  ? "text-[#FFD4E8] drop-shadow-[0_0_8px_rgba(253,29,29,0.55)] motion-safe:scale-110"
+                  : "text-white/40 group-hover:text-[#E1306C]/80"
+              )}
+              strokeWidth={2.25}
+            />
+            <span className="relative">Instagram</span>
           </button>
         </div>
         {tab === "earnings" ? (

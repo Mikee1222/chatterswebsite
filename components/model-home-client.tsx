@@ -4,7 +4,21 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { Activity, DollarSign, FileText, Heart, Loader2, Package, Radio, Sparkles, TrendingUp } from "lucide-react";
+import {
+  Activity,
+  ArrowRight,
+  CalendarDays,
+  Clapperboard,
+  DollarSign,
+  FileText,
+  Instagram,
+  Loader2,
+  Package,
+  Radio,
+  Sparkles,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import {
   MODEL_GO_LIVE_PLATFORM_OPTIONS,
@@ -13,19 +27,14 @@ import {
   type ModelLiveStreamReasonOption,
   modelLiveStreamPlatformLabel,
 } from "@/lib/airtable-options";
-import { VA_BTN_PRIMARY, VA_CARD } from "@/lib/va-tasks-tokens";
+import { formatShootLabel } from "@/lib/model-home-dashboard";
+import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "@/lib/use-translations";
 import { useRealtime } from "@/contexts/realtime-context";
-
-const cardVariants = {
-  hidden: { opacity: 0, y: 16 },
-  show: (i: number) => ({
-    opacity: 1,
-    y: 0,
-    transition: { delay: 0.08 + i * 0.06, duration: 0.38, ease: [0.22, 1, 0.36, 1] as const },
-  }),
-};
+import { CountUp, money } from "@/components/infloww-performance-ui";
+import type { ModelHomeDashboardData } from "@/services/model-home-dashboard";
+import type { ModelHomeActivityKind } from "@/lib/model-home-dashboard";
 
 export type ModelHomeActiveLive = {
   id: string;
@@ -43,7 +52,54 @@ export type ModelHomeClientProps = {
   pendingCustomRequestsCount: number;
   /** VA content assignments with status `pending` for this model. */
   pendingVaAssignmentsCount: number;
+  dashboard: ModelHomeDashboardData;
 };
+
+function formatHeaderDate(d: Date): string {
+  return d.toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function getGreeting(hour: number): string {
+  if (hour < 12) return "morning";
+  if (hour < 17) return "afternoon";
+  return "evening";
+}
+
+function formatRelativeTime(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "—";
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 45) return "Just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 36) return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  if (days < 14) return `${days}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function activityIcon(kind: ModelHomeActivityKind) {
+  switch (kind) {
+    case "large_sale":
+    case "subscriber_milestone":
+      return DollarSign;
+    case "live_session":
+      return Radio;
+    case "shoot_scheduled":
+      return Clapperboard;
+    case "va_completed":
+      return FileText;
+    case "custom_approved":
+    case "custom_filmed":
+    default:
+      return Package;
+  }
+}
 
 function formatLiveDuration(totalSec: number): string {
   const h = Math.floor(totalSec / 3600);
@@ -63,6 +119,7 @@ export function ModelHomeClient({
   activeLive: activeLiveProp,
   pendingCustomRequestsCount,
   pendingVaAssignmentsCount,
+  dashboard,
 }: ModelHomeClientProps) {
   const { t } = useTranslations();
   const reduceMotion = useReducedMotion();
@@ -287,12 +344,6 @@ export function ModelHomeClient({
     }
   }, [activeLive, fetchActiveLive, router, setLiveState, t]);
 
-  const comingSoonCards = [
-    { key: "today" as const, title: t("home.todayEarnings"), Icon: DollarSign },
-    { key: "week" as const, title: t("home.weekEarnings"), Icon: TrendingUp },
-    { key: "fans" as const, title: t("home.totalFans"), Icon: Heart },
-  ] as const;
-
   const isLive = activeLive != null;
   const platformLabel = activeLive
     ? modelLiveStreamPlatformLabel(activeLive.platform)
@@ -322,33 +373,97 @@ export function ModelHomeClient({
         ? `LIVE · ${platformLabel}`
         : null;
 
+  const { earnings, instagram, upcomingShoot, hero, activity } = dashboard;
+  const now = React.useMemo(() => new Date(), []);
+  const greetingKey = getGreeting(now.getHours());
+  const trendUp = earnings.direction === "up";
+  const trendDown = earnings.direction === "down";
+  const TrendIcon = trendUp ? TrendingUp : trendDown ? TrendingDown : TrendingUp;
+
   return (
     <div className="space-y-8 md:space-y-10">
+      {/* —— Greeting + hero snapshot —— */}
       <motion.section
         initial={reduceMotion ? false : { opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
         className={cn(
-          "relative overflow-hidden rounded-3xl border border-white/10 bg-zinc-950/75 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl md:p-8"
+          VA_CARD,
+          VA_CARD_GLOW,
+          "relative overflow-hidden border border-[#D4AF8C]/20 bg-gradient-to-br from-white/[0.07] via-[#151315] to-[#0D0B0D] p-6 md:p-8"
         )}
       >
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-4">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-pink-500/25 text-pink-200 ring-1 ring-pink-400/30">
+        <div
+          className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full bg-[#FF1493]/15 blur-3xl"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute -bottom-24 left-8 h-40 w-40 rounded-full bg-[#D4AF8C]/12 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/85">
+            {formatHeaderDate(now)}
+          </p>
+          <div className="mt-3 flex items-start gap-4">
+            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-[#FF1493]/20 text-[#FFB6DE] ring-1 ring-[#FF1493]/35">
               <Sparkles className="h-7 w-7" aria-hidden />
             </span>
-            <div>
-              <p className="text-sm font-medium uppercase tracking-wider text-pink-200/85">{t("home.welcomeBack")}</p>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[#FFB6DE]/90">
+                {t(`home.greeting.${greetingKey}`)}
+              </p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight text-white md:text-3xl">
                 {displayName}
               </h1>
-              {userEmail ? <p className="mt-2 text-xs text-white/40">{userEmail}</p> : null}
-              <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/55">{t("home.subtitle")}</p>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/55">{t("home.subtitle")}</p>
+              {userEmail ? <p className="mt-1.5 text-xs text-white/35">{userEmail}</p> : null}
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/80">
+                {t("home.heroMonthEarnings")}
+              </p>
+              {hero.earningsLinked && hero.monthEarnings != null ? (
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-white">
+                  <CountUp value={hero.monthEarnings} format={(n) => money(n, 0)} />
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-white/45">{t("home.earningsNotLinked")}</p>
+              )}
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/80">
+                {t("home.heroIgFollowers")}
+              </p>
+              {hero.igLinked && hero.igFollowers != null ? (
+                <p className="mt-2 text-2xl font-semibold tracking-tight text-white">
+                  <CountUp
+                    value={hero.igFollowers}
+                    format={(n) => Math.round(n).toLocaleString()}
+                  />
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-white/45">{t("home.igNotLinked")}</p>
+              )}
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/80">
+                {t("home.heroNextShoot")}
+              </p>
+              {hero.nextShootLabel ? (
+                <p className="mt-2 text-sm font-medium leading-snug text-white">{hero.nextShootLabel}</p>
+              ) : (
+                <p className="mt-2 text-sm text-white/45">{t("home.noUpcomingShoot")}</p>
+              )}
             </div>
           </div>
         </div>
       </motion.section>
 
+      {/* —— Live status (flagship control) —— */}
       <motion.section
         initial={reduceMotion ? false : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
@@ -583,9 +698,191 @@ export function ModelHomeClient({
         </div>
       </motion.section>
 
+      {/* —— Earnings + Instagram snapshots —— */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.38, delay: reduceMotion ? 0 : 0.12 }}
+          className={cn(VA_CARD, "relative overflow-hidden border border-white/10 bg-gradient-to-br from-[#151315] to-[#0D0B0D] p-5")}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#FF1493]/15 text-[#FFB6DE] ring-1 ring-[#FF1493]/25">
+                <DollarSign className="h-5 w-5" aria-hidden />
+              </span>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/80">
+                  {t("home.earningsSnapshot")}
+                </p>
+                <h3 className="mt-0.5 text-base font-semibold text-white">{t("home.thisMonthRevenue")}</h3>
+              </div>
+            </div>
+          </div>
+          {earnings.linked ? (
+            <>
+              <p className="mt-4 text-3xl font-semibold tracking-tight text-white">
+                <CountUp value={earnings.monthGross} format={(n) => money(n, 0)} />
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                {earnings.pctChange != null && earnings.direction !== "na" ? (
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                      trendUp && "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+                      trendDown && "border-white/10 bg-white/5 text-white/55",
+                      earnings.direction === "flat" && "border-white/10 bg-white/5 text-white/45"
+                    )}
+                  >
+                    <TrendIcon className="h-3 w-3" aria-hidden />
+                    {earnings.pctChange > 0 ? "+" : ""}
+                    {earnings.pctChange.toFixed(0)}% {t("home.vsLastPeriod")}
+                  </span>
+                ) : (
+                  <span className="text-xs text-white/40">{t("home.trendUnavailable")}</span>
+                )}
+                {earnings.activeFans != null ? (
+                  <span className="text-xs text-white/45">
+                    {earnings.activeFans.toLocaleString()} {t("home.activeFans")}
+                  </span>
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <p className="mt-4 text-sm leading-relaxed text-white/50">{t("home.earningsEmpty")}</p>
+          )}
+          <Link
+            href={ROUTES.model.myEarnings}
+            className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-[#FFB6DE] transition hover:text-white"
+          >
+            {t("home.viewFullEarnings")}
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        </motion.div>
+
+        <motion.div
+          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.38, delay: reduceMotion ? 0 : 0.16 }}
+          className={cn(VA_CARD, "relative overflow-hidden border border-white/10 bg-gradient-to-br from-[#151315] to-[#0D0B0D] p-5")}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#D4AF8C]/12 text-[#D4AF8C] ring-1 ring-[#D4AF8C]/30">
+                <Instagram className="h-5 w-5" aria-hidden />
+              </span>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/80">
+                  {t("home.igSnapshot")}
+                </p>
+                <h3 className="mt-0.5 text-base font-semibold text-white">{t("home.igPerformance")}</h3>
+              </div>
+            </div>
+            {instagram.topPostThumbUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={instagram.topPostThumbUrl}
+                alt=""
+                className="h-14 w-14 rounded-xl object-cover ring-1 ring-white/15"
+              />
+            ) : null}
+          </div>
+          {instagram.linked ? (
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                  {t("home.followers")}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-white">
+                  {instagram.followers != null ? (
+                    <CountUp
+                      value={instagram.followers}
+                      format={(n) => Math.round(n).toLocaleString()}
+                    />
+                  ) : (
+                    "—"
+                  )}
+                </p>
+                {instagram.followerDelta != null && instagram.followerDelta !== 0 ? (
+                  <p className="mt-0.5 text-xs text-white/45">
+                    {instagram.followerDelta > 0 ? "+" : ""}
+                    {instagram.followerDelta.toLocaleString()} {t("home.thisMonth")}
+                  </p>
+                ) : null}
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                  {t("home.engagement")}
+                </p>
+                <p className="mt-1 text-xl font-semibold text-white">
+                  {instagram.engagementRate != null
+                    ? `${instagram.engagementRate.toFixed(1)}%`
+                    : "—"}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm leading-relaxed text-white/50">{t("home.igEmpty")}</p>
+          )}
+          <Link
+            href={`${ROUTES.model.myEarnings}?tab=instagram`}
+            className="mt-5 inline-flex items-center gap-1.5 text-sm font-semibold text-[#D4AF8C] transition hover:text-white"
+          >
+            {t("home.viewFullInsights")}
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
+        </motion.div>
+      </div>
+
+      {/* —— Upcoming filming —— */}
+      {upcomingShoot ? (
+        <motion.section
+          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.38, delay: reduceMotion ? 0 : 0.18 }}
+          className={cn(
+            VA_CARD,
+            "relative overflow-hidden border border-[#D4AF8C]/25 bg-gradient-to-br from-[#D4AF8C]/10 via-[#151315] to-[#0D0B0D] p-5 md:p-6"
+          )}
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D4AF8C]/15 text-[#D4AF8C] ring-1 ring-[#D4AF8C]/30">
+                <Clapperboard className="h-5 w-5" aria-hidden />
+              </span>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/85">
+                  {t("home.upcomingFilming")}
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-white">
+                  {formatShootLabel({
+                    scheduleDate: upcomingShoot.scheduleDate,
+                    startTime: upcomingShoot.startTime,
+                    location: upcomingShoot.location,
+                  })}
+                </h3>
+                {upcomingShoot.isSoon ? (
+                  <p className="mt-1 text-sm text-white/50">{t("home.shootComingUp")}</p>
+                ) : (
+                  <p className="mt-1 text-sm text-white/50">{t("home.shootOnCalendar")}</p>
+                )}
+              </div>
+            </div>
+            <Link
+              href={ROUTES.model.contentCalendar}
+              className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-[#D4AF8C]/35 px-4 text-sm font-semibold text-[#D4AF8C] transition hover:bg-[#D4AF8C]/10"
+            >
+              {t("home.viewSchedule")}
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </div>
+        </motion.section>
+      ) : null}
+
+      {/* —— Pending work —— */}
       <div>
         <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-white/45">{t("home.overview")}</h2>
-        <div className="mb-4 flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <Link
             href={ROUTES.model.customs}
             className={cn(
@@ -633,40 +930,14 @@ export function ModelHomeClient({
             </div>
           </Link>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
-          {comingSoonCards.map(({ key, title, Icon }, i) => (
-            <motion.div
-              key={key}
-              custom={i}
-              initial={reduceMotion ? false : "hidden"}
-              animate={reduceMotion ? false : "show"}
-              variants={reduceMotion ? undefined : cardVariants}
-              className={cn(
-                "relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl",
-                "transition-[border-color,transform] duration-300 hover:-translate-y-0.5 hover:border-pink-400/25"
-              )}
-            >
-              <div className="relative flex items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pink-500/15 text-pink-200 ring-1 ring-pink-400/20">
-                  <Icon className="h-5 w-5" aria-hidden />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-white/90">{title}</p>
-                  <p className="mt-2 inline-flex rounded-full border border-pink-400/25 bg-pink-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-pink-200/95">
-                    {t("home.comingSoon")}
-                  </p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
       </div>
 
+      {/* —— Recent activity —— */}
       <motion.section
         initial={reduceMotion ? false : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: reduceMotion ? 0 : 0.28, ease: [0.22, 1, 0.36, 1] }}
-        className="rounded-2xl border border-white/10 bg-black/35 p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl"
+        transition={{ duration: 0.4, delay: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+        className={cn(VA_CARD, "border border-white/10 bg-black/35 p-5 md:p-6")}
       >
         <div className="flex items-center gap-2.5">
           <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.06] text-white/50 ring-1 ring-white/10">
@@ -674,8 +945,56 @@ export function ModelHomeClient({
           </span>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-white/55">{t("home.recentActivity")}</h2>
         </div>
-        <p className="mt-6 text-center text-sm leading-relaxed text-white/45">{t("home.noRecentActivity")}</p>
+        {activity.length === 0 ? (
+          <p className="mt-6 text-center text-sm leading-relaxed text-white/45">{t("home.noRecentActivity")}</p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {activity.map((item) => {
+              const Icon = activityIcon(item.kind);
+              return (
+                <li
+                  key={item.id}
+                  className="flex items-start gap-3 rounded-xl border border-white/[0.06] bg-black/30 px-3 py-3"
+                >
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FF1493]/12 text-[#FFB6DE] ring-1 ring-[#FF1493]/20">
+                    <Icon className="h-4 w-4" aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-white">{item.title}</p>
+                    <p className="mt-0.5 truncate text-xs text-white/45">{item.subtitle}</p>
+                  </div>
+                  <span className="shrink-0 text-[10px] font-medium uppercase tracking-wider text-white/35">
+                    {formatRelativeTime(item.atIso)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </motion.section>
+
+      {/* —— Quick links —— */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { href: ROUTES.model.myEarnings, label: t("home.quickEarnings"), Icon: DollarSign },
+          { href: ROUTES.model.contentCalendar, label: t("home.quickSchedule"), Icon: CalendarDays },
+          { href: ROUTES.model.liveStreams, label: t("home.quickLive"), Icon: Radio },
+        ].map(({ href, label, Icon }) => (
+          <Link
+            key={href}
+            href={href}
+            className={cn(
+              "flex flex-col items-center gap-2 rounded-2xl border border-white/10 bg-black/40 px-3 py-4 text-center transition",
+              "hover:-translate-y-0.5 hover:border-[#D4AF8C]/35"
+            )}
+          >
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D4AF8C]/10 text-[#D4AF8C] ring-1 ring-[#D4AF8C]/25">
+              <Icon className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="text-xs font-semibold text-white/80">{label}</span>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

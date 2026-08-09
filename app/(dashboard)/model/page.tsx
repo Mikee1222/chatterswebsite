@@ -12,6 +12,37 @@ import { getActiveLiveStreamForModel } from "@/services/model-live-streams";
 import { getCurrentPeriod, getUpcomingPeriod } from "@/services/model-periods";
 import { listModelContentRequestsForModel } from "@/services/model-content-requests";
 import { countPendingVAContentAssignmentsForModel } from "@/services/va-content-assignments";
+import { loadModelHomeDashboardData } from "@/services/model-home-dashboard";
+import type { ModelHomeDashboardData } from "@/services/model-home-dashboard";
+
+const EMPTY_DASHBOARD: ModelHomeDashboardData = {
+  earnings: {
+    linked: false,
+    monthGross: 0,
+    previousGross: 0,
+    pctChange: null,
+    direction: "na",
+    activeFans: null,
+  },
+  instagram: {
+    linked: false,
+    followers: null,
+    engagementRate: null,
+    followerDelta: null,
+    topPostThumbUrl: null,
+    topPostPermalink: null,
+  },
+  upcomingShoot: null,
+  hero: {
+    monthEarnings: null,
+    earningsLinked: false,
+    igFollowers: null,
+    igLinked: false,
+    nextShootLabel: null,
+  },
+  activity: [],
+};
+
 export default async function ModelHomePage() {
   let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
   let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
@@ -58,8 +89,17 @@ export default async function ModelHomePage() {
   let pendingCustomRequestsCount = 0;
   let pendingVaAssignmentsCount = 0;
   let contentRequests = [] as Awaited<ReturnType<typeof listModelContentRequestsForModel>>;
-  [currentPeriod, upcomingPeriod, activeLiveRecord, pendingCustomRequestsCount, pendingVaAssignmentsCount, contentRequests] =
-    await Promise.all([
+  let dashboard: ModelHomeDashboardData = EMPTY_DASHBOARD;
+
+  [
+    currentPeriod,
+    upcomingPeriod,
+    activeLiveRecord,
+    pendingCustomRequestsCount,
+    pendingVaAssignmentsCount,
+    contentRequests,
+    dashboard,
+  ] = await Promise.all([
     getCurrentPeriod(linkedModelId, modelRecord).catch((error) => {
       console.error("[model/home] getCurrentPeriod failed; using null fallback", error);
       return null;
@@ -84,6 +124,10 @@ export default async function ModelHomePage() {
       console.error("[model/home] listModelContentRequestsForModel failed; using [] fallback", error);
       return [];
     }),
+    loadModelHomeDashboardData(linkedModelId, modelRecord).catch((error) => {
+      console.error("[model/home] loadModelHomeDashboardData failed; using empty fallback", error);
+      return EMPTY_DASHBOARD;
+    }),
   ]);
 
   const activeLive = activeLiveRecord
@@ -103,26 +147,27 @@ export default async function ModelHomePage() {
   return (
     <MobileDashboardLayout>
       <RouterRefreshInterval intervalMs={60_000}>
-      <div className="space-y-10 pb-6 md:space-y-12 md:pb-8">
-        <ModelHomeClient
-          displayName={displayName}
-          userEmail={user.email}
-          activeLive={activeLive}
-          pendingCustomRequestsCount={pendingCustomRequestsCount}
-          pendingVaAssignmentsCount={pendingVaAssignmentsCount}
-        />
-
-        {modelRecord.period_tracking_enabled === true ? (
-          <ModelPeriodHomeStatusCard
-            periodTrackingEnabled
-            isInPeriod={currentPeriod != null}
-            dayNumber={currentPeriod?.day_number ?? null}
-            nextExpected={upcomingPeriod?.predicted_start ?? null}
+        <div className="space-y-10 pb-6 md:space-y-12 md:pb-8">
+          <ModelHomeClient
+            displayName={displayName}
+            userEmail={user.email}
+            activeLive={activeLive}
+            pendingCustomRequestsCount={pendingCustomRequestsCount}
+            pendingVaAssignmentsCount={pendingVaAssignmentsCount}
+            dashboard={dashboard}
           />
-        ) : null}
-        <ModelContentRequestsSection initialRequests={contentRequests} />
-        <ModelExpenseRequestsSection />
-      </div>
+
+          {modelRecord.period_tracking_enabled === true ? (
+            <ModelPeriodHomeStatusCard
+              periodTrackingEnabled
+              isInPeriod={currentPeriod != null}
+              dayNumber={currentPeriod?.day_number ?? null}
+              nextExpected={upcomingPeriod?.predicted_start ?? null}
+            />
+          ) : null}
+          <ModelContentRequestsSection initialRequests={contentRequests} />
+          <ModelExpenseRequestsSection />
+        </div>
       </RouterRefreshInterval>
     </MobileDashboardLayout>
   );
