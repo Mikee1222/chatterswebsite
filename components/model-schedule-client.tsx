@@ -4,8 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Calendar, Clock, Gauge, Layers, ListChecks, Palmtree, Plus, StickyNote, Timer, X } from "lucide-react";
-import { addDays, getThisWeekMonday, formatWeekLabel, WEEKLY_PROGRAM_DAY_OPTIONS, normalizeWeekStart } from "@/lib/weekly-program";
+import { useReducedMotion, motion } from "framer-motion";
+import { Calendar, Clock, Gauge, Layers, ListChecks, MapPin, Palmtree, Plus, StickyNote, Timer, X } from "lucide-react";
+import { addDays, getThisWeekMonday, formatWeekLabel, WEEKLY_PROGRAM_DAY_OPTIONS, normalizeWeekStart, getTodayYmd } from "@/lib/weekly-program";
 import { formatTimeRange, formatDateLong, formatScheduleWeekdayDateLine, formatScheduleItemTypeForDisplay } from "@/lib/format";
 import { adminModelScheduleUrl, modelScheduleUrl } from "@/lib/routes";
 import type {
@@ -27,6 +28,7 @@ import {
 } from "@/components/forms";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import { gradientClassForScheduleItemType } from "@/lib/detail-modal-gradients";
+import { extractScheduleLocation, scheduleItemVisual } from "@/lib/schedule-item-visuals";
 import { useLanguage } from "@/lib/language-provider";
 import { useTranslations } from "@/lib/use-translations";
 import { cn } from "@/lib/utils";
@@ -85,6 +87,10 @@ export function ModelScheduleClient({
   const { t } = useTranslations();
   const { language } = useLanguage();
   const locale = language === "es" ? "es" : "en-GB";
+  const reduceMotion = useReducedMotion();
+  const todayYmd = getTodayYmd();
+  const [focusDayYmd, setFocusDayYmd] = React.useState(todayYmd);
+  const daySectionRefs = React.useRef<Record<string, HTMLElement | null>>({});
 
   const itemTypeLabel = React.useCallback(
     (itemType: string) => {
@@ -137,6 +143,18 @@ export function ModelScheduleClient({
     () => (showProgramGrid ? Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)) : []),
     [weekStart, showProgramGrid]
   );
+
+  React.useEffect(() => {
+    if (!showProgramGrid || weekDates.length === 0) return;
+    if (!weekDates.includes(focusDayYmd)) {
+      setFocusDayYmd(weekDates.includes(todayYmd) ? todayYmd : weekDates[0]!);
+    }
+  }, [weekDates, focusDayYmd, showProgramGrid, todayYmd]);
+
+  function scrollToDay(ymd: string) {
+    setFocusDayYmd(ymd);
+    daySectionRefs.current[ymd]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   const itemsByDate = React.useMemo(() => {
     if (!showProgramGrid) return new Map<string, ModelScheduleItem[]>();
@@ -291,135 +309,333 @@ export function ModelScheduleClient({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl">
+      <motion.div
+        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/40 p-3 backdrop-blur-xl sm:p-4"
+      >
         <div className="flex flex-wrap items-center gap-2">
           <Link
             href={scheduleHref(prevWeek)}
-            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 transition hover:bg-white/10"
           >
             ← {t("common.previous")}
           </Link>
           <Link
             href={scheduleHref(getThisWeekMonday())}
-            className="rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)]"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)]"
           >
             {t("common.thisWeek")}
           </Link>
           <Link
             href={scheduleHref(nextWeek)}
-            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10"
+            className="inline-flex min-h-[44px] items-center rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 transition hover:bg-white/10"
           >
             {t("common.next")} →
           </Link>
         </div>
         <span className="text-sm font-medium text-white/80">{formatWeekLabel(weekStart)}</span>
-      </div>
+      </motion.div>
 
       {showProgramGrid ? (
-      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {weekDates.map((date, idx) => {
-          const dayItems = itemsByDate.get(date) ?? [];
-            const weekday = WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Monday";
-            const availRows = availabilityByDay.get(weekday) ?? [];
-            const offRows = dateInTimeOff(date);
-            const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
-            const activePeriodDay = periodDateSet.has(date);
-          return (
-              <div
-                key={date}
-                className={cn(
-                  "rounded-2xl border p-4 backdrop-blur-xl",
-                  activePeriodDay
-                    ? "border-rose-400/35 bg-rose-500/10"
-                    : predictedDay
-                      ? "border-amber-300/45 border-dashed bg-amber-500/[0.06]"
-                      : "border-white/10 bg-black/40"
-                )}
-              >
-                {activePeriodDay && (
-                  <div className="mb-2 flex items-center gap-1">
-                    <div className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                    <span className="text-xs text-red-400">{t("schedule.periodDay")}</span>
-                  </div>
-                )}
-                {predictedDay && !activePeriodDay && (
-                  <div className="mb-2 flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full bg-amber-400" />
-                    <span className="text-xs text-amber-300">{t("schedule.predictedPeriod")}</span>
-                  </div>
-                )}
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">{formatScheduleWeekdayDateLine(date, locale)}</p>
-                {offRows.length > 0 && (
-                  <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-                    <span className="font-medium">{t("schedule.timeOff")}</span>
-                    {offRows.map((o) => (
-                      <p key={o.id} className="mt-1 text-white/70">
-                        {o.reason.slice(0, 80)}
-                        {o.reason.length > 80 ? "…" : ""}
-                      </p>
-                    ))}
-                </div>
-              )}
-                {availRows.length > 0 && (
-                  <ul className="mb-3 space-y-1.5 border-b border-white/10 pb-3">
-                    {availRows.map((r) => (
-                      <li key={r.id} className="text-xs text-[hsl(330,90%,78%)]/90">
-                        <span className="font-medium text-white/80">{r.entry_type}</span>
-                        {r.time_windows.length > 0 ? (
-                          <span className="ml-1 text-white/60">{formatModelAvailabilityWindows(r.time_windows)}</span>
-                        ) : r.start_time && r.end_time ? (
-                          <span className="ml-1 text-white/60">{formatTimeRange(r.start_time, r.end_time)}</span>
-                        ) : null}
-                        {r.notes?.trim() ? <span className="mt-0.5 block text-white/45">{r.notes}</span> : null}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              {dayItems.length === 0 ? (
-                  <p className="py-4 text-sm text-white/40">{t("schedule.noScheduleItems")}</p>
-              ) : (
-                <ul className="space-y-2">
-                  {dayItems.map((item) => {
-                    const locationLine =
-                      item.item_type === "content_shoot"
-                        ? (item.details?.match(/^Location:\s*(.+)$/m)?.[1]?.trim() || "")
-                        : "";
-                    return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedItem(item)}
-                          className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.1]"
+        <>
+          {/* Mobile: week strip + vertical day list */}
+          <div className="space-y-4 md:hidden">
+            <div className="rounded-2xl border border-white/10 bg-black/40 p-2 backdrop-blur-xl">
+              <div className="grid grid-cols-7 gap-1">
+                {weekDates.map((date, idx) => {
+                  const dayItems = itemsByDate.get(date) ?? [];
+                  const isToday = date === todayYmd;
+                  const isFocus = date === focusDayYmd;
+                  const activePeriodDay = periodDateSet.has(date);
+                  return (
+                    <button
+                      key={date}
+                      type="button"
+                      onClick={() => scrollToDay(date)}
+                      className={cn(
+                        "flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 transition",
+                        isFocus && "bg-pink-500/25 ring-1 ring-pink-400/40",
+                        !isFocus && "active:bg-white/[0.08]"
+                      )}
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-white/45">
+                        {(WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Mon").slice(0, 3)}
+                      </span>
+                      <span
+                        className={cn(
+                          "flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold tabular-nums",
+                          isToday ? "bg-pink-500 text-white" : activePeriodDay ? "text-rose-300" : "text-white"
+                        )}
                       >
-                          <div className="flex items-start justify-between gap-2">
-                            <span className="min-w-0 flex-1 font-semibold capitalize text-white">
-                              {item.title?.trim() || itemTypeLabel(item.item_type)}
-                            </span>
-                        {(item.start_time || item.end_time) && (
-                              <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-white/50">
-                            {formatTimeRange(item.start_time, item.end_time)}
-                          </span>
-                        )}
-                          </div>
-                        {item.item_type === "content_shoot" ? (
-                          <p className="mt-1 text-xs text-emerald-300/80">
-                            {itemTypeLabel(item.item_type)}
-                            {locationLine ? ` · ${locationLine}` : ""}
-                          </p>
-                        ) : null}
-                        {item.duration_minutes != null && (
-                            <p className="mt-1 text-xs text-white/50">{item.duration_minutes} min</p>
-                        )}
-                      </button>
-                    </li>
-                    );
-                  })}
-                </ul>
-              )}
+                        {Number(date.slice(8, 10))}
+                      </span>
+                      <span className="h-1.5 w-1.5 rounded-full" aria-hidden>
+                        {dayItems.length > 0 ? <span className="block h-1.5 w-1.5 rounded-full bg-white/55" /> : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          );
-        })}
-      </div>
+
+            <div className="space-y-3">
+              {weekDates.map((date, idx) => {
+                const dayItems = itemsByDate.get(date) ?? [];
+                const weekday = WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Monday";
+                const availRows = availabilityByDay.get(weekday) ?? [];
+                const offRows = dateInTimeOff(date);
+                const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
+                const activePeriodDay = periodDateSet.has(date);
+                const isToday = date === todayYmd;
+                return (
+                  <section
+                    key={date}
+                    ref={(el) => {
+                      daySectionRefs.current[date] = el;
+                    }}
+                    className={cn(
+                      "scroll-mt-24 rounded-2xl border p-4 backdrop-blur-xl",
+                      activePeriodDay
+                        ? "border-rose-400/35 bg-rose-500/10"
+                        : predictedDay
+                          ? "border-amber-300/45 border-dashed bg-amber-500/[0.06]"
+                          : "border-white/10 bg-black/40",
+                      focusDayYmd === date && "ring-1 ring-pink-400/30"
+                    )}
+                  >
+                    {activePeriodDay && (
+                      <div className="mb-2 flex items-center gap-1">
+                        <div className={cn("h-2 w-2 rounded-full bg-red-500", !reduceMotion && "animate-pulse")} />
+                        <span className="text-xs text-red-400">{t("schedule.periodDay")}</span>
+                      </div>
+                    )}
+                    {predictedDay && !activePeriodDay && (
+                      <div className="mb-2 flex items-center gap-1">
+                        <div className="h-2 w-2 rounded-full bg-amber-400" />
+                        <span className="text-xs text-amber-300">{t("schedule.predictedPeriod")}</span>
+                      </div>
+                    )}
+                    <p className="mb-3 text-sm font-semibold text-white">
+                      {formatScheduleWeekdayDateLine(date, locale)}
+                      {isToday ? (
+                        <span className="ml-2 rounded-full bg-pink-500/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-pink-100">
+                          Today
+                        </span>
+                      ) : null}
+                    </p>
+                    {offRows.length > 0 && (
+                      <div className="mb-3 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100/90">
+                        <span className="font-medium">{t("schedule.timeOff")}</span>
+                        {offRows.map((o) => (
+                          <p key={o.id} className="mt-1 text-white/70">
+                            {o.reason.slice(0, 80)}
+                            {o.reason.length > 80 ? "…" : ""}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                    {availRows.length > 0 && (
+                      <ul className="mb-3 space-y-1.5 border-b border-white/10 pb-3">
+                        {availRows.map((r) => (
+                          <li key={r.id} className="text-xs text-[hsl(330,90%,78%)]/90">
+                            <span className="font-medium text-white/80">{r.entry_type}</span>
+                            {r.time_windows.length > 0 ? (
+                              <span className="ml-1 text-white/60">{formatModelAvailabilityWindows(r.time_windows)}</span>
+                            ) : r.start_time && r.end_time ? (
+                              <span className="ml-1 text-white/60">{formatTimeRange(r.start_time, r.end_time)}</span>
+                            ) : null}
+                            {r.notes?.trim() ? <span className="mt-0.5 block text-white/45">{r.notes}</span> : null}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {dayItems.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
+                        <p className="text-sm text-white/40">{t("schedule.noScheduleItems")}</p>
+                      </div>
+                    ) : (
+                      <ul className="space-y-2">
+                        {dayItems.map((item) => {
+                          const visual = scheduleItemVisual(item.item_type);
+                          const { Icon } = visual;
+                          const locationLine =
+                            item.item_type === "content_shoot" ? extractScheduleLocation(item.details) : "";
+                          const isShoot = item.item_type === "content_shoot";
+                          return (
+                            <li key={item.id}>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedItem(item)}
+                                className={cn(
+                                  "flex min-h-[44px] w-full gap-3 rounded-2xl border px-3.5 py-3 text-left transition active:scale-[0.99]",
+                                  visual.surface,
+                                  visual.ring
+                                )}
+                              >
+                                <span
+                                  className={cn(
+                                    "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/25",
+                                    visual.accent
+                                  )}
+                                >
+                                  <Icon className="h-[18px] w-[18px]" aria-hidden />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex items-start justify-between gap-2">
+                                    <span className="truncate font-semibold capitalize text-inherit">
+                                      {item.title?.trim() || itemTypeLabel(item.item_type)}
+                                    </span>
+                                    {(item.start_time || item.end_time) && (
+                                      <span className="shrink-0 whitespace-nowrap text-xs tabular-nums opacity-80">
+                                        {formatTimeRange(item.start_time, item.end_time)}
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] opacity-80">
+                                    <span>{itemTypeLabel(item.item_type)}</span>
+                                    {isShoot && locationLine ? (
+                                      <span className="inline-flex items-center gap-1 font-medium text-emerald-200/90">
+                                        <MapPin className="h-3 w-3 shrink-0" aria-hidden />
+                                        {locationLine}
+                                      </span>
+                                    ) : null}
+                                    {item.duration_minutes != null ? (
+                                      <span className="opacity-70">{item.duration_minutes} min</span>
+                                    ) : null}
+                                  </span>
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Desktop: multi-column week cards */}
+          <div className="hidden gap-4 md:grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {weekDates.map((date, idx) => {
+              const dayItems = itemsByDate.get(date) ?? [];
+              const weekday = WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Monday";
+              const availRows = availabilityByDay.get(weekday) ?? [];
+              const offRows = dateInTimeOff(date);
+              const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
+              const activePeriodDay = periodDateSet.has(date);
+              const isToday = date === todayYmd;
+              return (
+                <div
+                  key={date}
+                  className={cn(
+                    "rounded-2xl border p-4 backdrop-blur-xl",
+                    activePeriodDay
+                      ? "border-rose-400/35 bg-rose-500/10"
+                      : predictedDay
+                        ? "border-amber-300/45 border-dashed bg-amber-500/[0.06]"
+                        : "border-white/10 bg-black/40",
+                    isToday && "ring-1 ring-pink-400/35"
+                  )}
+                >
+                  {activePeriodDay && (
+                    <div className="mb-2 flex items-center gap-1">
+                      <div className={cn("h-2 w-2 rounded-full bg-red-500", !reduceMotion && "animate-pulse")} />
+                      <span className="text-xs text-red-400">{t("schedule.periodDay")}</span>
+                    </div>
+                  )}
+                  {predictedDay && !activePeriodDay && (
+                    <div className="mb-2 flex items-center gap-1">
+                      <div className="h-2 w-2 rounded-full bg-amber-400" />
+                      <span className="text-xs text-amber-300">{t("schedule.predictedPeriod")}</span>
+                    </div>
+                  )}
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">
+                    {formatScheduleWeekdayDateLine(date, locale)}
+                    {isToday ? <span className="ml-1 text-pink-300">· Today</span> : null}
+                  </p>
+                  {offRows.length > 0 && (
+                    <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                      <span className="font-medium">{t("schedule.timeOff")}</span>
+                      {offRows.map((o) => (
+                        <p key={o.id} className="mt-1 text-white/70">
+                          {o.reason.slice(0, 80)}
+                          {o.reason.length > 80 ? "…" : ""}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  {availRows.length > 0 && (
+                    <ul className="mb-3 space-y-1.5 border-b border-white/10 pb-3">
+                      {availRows.map((r) => (
+                        <li key={r.id} className="text-xs text-[hsl(330,90%,78%)]/90">
+                          <span className="font-medium text-white/80">{r.entry_type}</span>
+                          {r.time_windows.length > 0 ? (
+                            <span className="ml-1 text-white/60">{formatModelAvailabilityWindows(r.time_windows)}</span>
+                          ) : r.start_time && r.end_time ? (
+                            <span className="ml-1 text-white/60">{formatTimeRange(r.start_time, r.end_time)}</span>
+                          ) : null}
+                          {r.notes?.trim() ? <span className="mt-0.5 block text-white/45">{r.notes}</span> : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {dayItems.length === 0 ? (
+                    <p className="py-4 text-sm text-white/40">{t("schedule.noScheduleItems")}</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {dayItems.map((item) => {
+                        const visual = scheduleItemVisual(item.item_type);
+                        const { Icon } = visual;
+                        const locationLine =
+                          item.item_type === "content_shoot" ? extractScheduleLocation(item.details) : "";
+                        return (
+                          <li key={item.id}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedItem(item)}
+                              className={cn(
+                                "w-full rounded-xl border px-3 py-2.5 text-left transition-colors hover:brightness-110",
+                                visual.surface,
+                                visual.ring
+                              )}
+                            >
+                              <div className="flex items-start gap-2">
+                                <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", visual.accent)} aria-hidden />
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className="min-w-0 flex-1 font-semibold capitalize text-inherit">
+                                      {item.title?.trim() || itemTypeLabel(item.item_type)}
+                                    </span>
+                                    {(item.start_time || item.end_time) && (
+                                      <span className="shrink-0 whitespace-nowrap text-xs tabular-nums opacity-70">
+                                        {formatTimeRange(item.start_time, item.end_time)}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="mt-1 text-xs opacity-75">
+                                    {itemTypeLabel(item.item_type)}
+                                    {locationLine ? ` · ${locationLine}` : ""}
+                                  </p>
+                                  {item.duration_minutes != null && (
+                                    <p className="mt-0.5 text-xs opacity-55">{item.duration_minutes} min</p>
+                                  )}
+                                </div>
+                              </div>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
       ) : null}
 
       <div ref={availabilityFormRef} className="scroll-mt-24 space-y-4 rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur-xl">
@@ -591,7 +807,11 @@ export function ModelScheduleClient({
             : ""
         }
         badge={
-          selectedItem?.item_type === "live_stream" ? t("schedule.liveStreamDetails") : t("schedule.scheduleDetail")
+          selectedItem?.item_type === "content_shoot"
+            ? itemTypeLabel("content_shoot")
+            : selectedItem?.item_type === "live_stream"
+              ? t("schedule.liveStreamDetails")
+              : t("schedule.scheduleDetail")
         }
         headerGradientClass={selectedItem ? gradientClassForScheduleItemType(selectedItem.item_type) : undefined}
         stats={
@@ -631,12 +851,30 @@ export function ModelScheduleClient({
             : []
         }
         description={selectedItem ? getDetails(selectedItem, language) || undefined : undefined}
+        shootWindow={
+          selectedItem?.item_type === "content_shoot" && extractScheduleLocation(selectedItem.details) ? (
+            <div className="flex items-start gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
+              <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" aria-hidden />
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200/70">Location</p>
+                <p className="mt-1 text-sm font-medium text-emerald-50">
+                  {extractScheduleLocation(selectedItem.details)}
+                </p>
+                {(selectedItem.start_time || selectedItem.end_time) && (
+                  <p className="mt-1 text-xs tabular-nums text-emerald-100/70">
+                    {formatTimeRange(selectedItem.start_time, selectedItem.end_time)}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : undefined
+        }
         footer={
           <div className="flex justify-end">
             <button
               type="button"
               onClick={() => setSelectedItem(null)}
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10"
+              className="inline-flex min-h-[44px] items-center rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10"
             >
               {t("common.close")}
             </button>

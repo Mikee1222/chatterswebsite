@@ -185,7 +185,8 @@
         "meeting": "Meeting",
         "rest": "Rest",
         "other": "Other",
-        "time_off": "Time off"
+        "time_off": "Time off",
+        "va_content": "Chatting content"
       }
     },
     "availability": {

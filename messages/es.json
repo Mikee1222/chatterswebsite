@@ -185,7 +185,8 @@
         "meeting": "Reunión",
         "rest": "Descanso",
         "other": "Otro",
-        "time_off": "Tiempo libre"
+        "time_off": "Tiempo libre",
+        "va_content": "Contenido de chat"
       }
     },
     "availability": {

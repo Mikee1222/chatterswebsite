@@ -10,11 +10,29 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { Calendar, CalendarClock, ChevronLeft, ChevronRight, Clock, Plus, X, Droplet } from "lucide-react";
+import {
+  Calendar,
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  ListTodo,
+  Palette,
+  Plus,
+  Sparkles,
+  X,
+  Droplet,
+} from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { formatDateEuropean, formatScheduleItemTypeForDisplay, formatTimeRange } from "@/lib/format";
 import { addDays, addWeeks, getMondayOfWeek } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
+import {
+  extractScheduleLocation,
+  sanitizeScheduleDetailsForDisplay,
+  scheduleItemVisual,
+  MapPin,
+} from "@/lib/schedule-item-visuals";
 import type {
   CustomRequest,
   ModelPersonalEvent,
@@ -108,18 +126,18 @@ function isCalendarDueSoon(deadline: string, todayYmdStr: string): boolean {
   return days >= 0 && days <= 3;
 }
 
-/** Tailwind pill + badge classes by event kind / status */
+/** Tailwind pill + badge classes by event kind / status / schedule item_type */
 function getContentEventStyle(ev: ContentCalendarEvent, todayYmdStr: string): string {
   const st = normalizeCalendarStatus(ev.status);
   if (ev.kind === "va") {
-    if (st === "completed") return "bg-green-500/20 border-green-500/30 text-green-400";
-    if (st === "scheduled") return "bg-blue-500/20 border-blue-500/30 text-blue-400";
-    if (st === "cancelled" || st === "canceled") return "bg-red-500/20 border-red-500/30 text-red-400";
-    if (st === "pending") return "bg-indigo-500/20 border-indigo-500/30 text-indigo-400";
-    return "bg-indigo-500/20 border-indigo-500/30 text-indigo-400";
+    if (st === "completed") return "border-green-500/30 bg-green-500/20 text-green-400";
+    if (st === "scheduled") return "border-blue-500/30 bg-blue-500/20 text-blue-400";
+    if (st === "cancelled" || st === "canceled") return "border-red-500/30 bg-red-500/20 text-red-400";
+    if (st === "pending") return "border-indigo-500/30 bg-indigo-500/20 text-indigo-400";
+    return "border-indigo-500/30 bg-indigo-500/20 text-indigo-400";
   }
   if (ev.kind === "custom") {
-    if (st === "completed" || st === "uploaded") return "bg-green-500/20 border-green-500/30 text-green-400";
+    if (st === "completed" || st === "uploaded") return "border-green-500/30 bg-green-500/20 text-green-400";
     if (
       st === "scheduled" ||
       st === "in_progress" ||
@@ -127,48 +145,33 @@ function getContentEventStyle(ev: ContentCalendarEvent, todayYmdStr: string): st
       st === "accepted" ||
       st === "delivered"
     ) {
-      return "bg-blue-500/20 border-blue-500/30 text-blue-400";
+      return "border-blue-500/30 bg-blue-500/20 text-blue-400";
     }
-    if (st === "declined" || st === "rejected") return "bg-red-500/20 border-red-500/30 text-red-400";
-    return "bg-orange-500/20 border-orange-500/30 text-orange-400";
+    if (st === "declined" || st === "rejected") return "border-red-500/30 bg-red-500/20 text-red-400";
+    return "border-orange-500/30 bg-orange-500/20 text-orange-400";
   }
   if (ev.kind === "schedule") {
-    if (st === "completed" || st === "done") return "bg-green-500/20 border-green-500/30 text-green-400";
-    if (st === "cancelled" || st === "canceled") return "bg-red-500/20 border-red-500/30 text-red-400";
-    return "bg-emerald-500/20 border-emerald-500/30 text-emerald-400";
+    if (st === "completed" || st === "done") return "border-green-500/30 bg-green-500/20 text-green-400";
+    if (st === "cancelled" || st === "canceled") return "border-red-500/30 bg-red-500/20 text-red-400";
+    const v = scheduleItemVisual(ev.schedule?.item_type);
+    return cn(v.surface, v.ring);
   }
   const dueYmd = ev.task?.due_date ? toYmd(ev.task.due_date) : null;
   const open = st !== "done" && st !== "skipped" && st !== "completed";
   const overdueByDue = Boolean(dueYmd && dueYmd < todayYmdStr && open);
-  if (st === "done" || st === "completed") return "bg-green-500/20 border-green-500/30 text-green-400";
-  if (overdueByDue || st === "overdue" || st === "blocked") return "bg-red-500/20 border-red-500/30 text-red-400";
-  return "bg-teal-500/20 border-teal-500/30 text-teal-400";
+  if (st === "done" || st === "completed") return "border-green-500/30 bg-green-500/20 text-green-400";
+  if (overdueByDue || st === "overdue" || st === "blocked") return "border-red-500/30 bg-red-500/20 text-red-400";
+  return "border-teal-500/30 bg-teal-500/20 text-teal-400";
 }
 
-function getStatusDot(statusRaw: string | undefined | null): string {
-  const s = normalizeCalendarStatus(statusRaw);
-  switch (s) {
-    case "completed":
-    case "done":
-    case "uploaded":
-    case "delivered":
-      return "";
-    case "scheduled":
-    case "in_progress":
-    case "recording":
-      return "";
-    case "pending":
-    case "waiting_schedule":
-      return "";
-    case "cancelled":
-    case "canceled":
-    case "declined":
-    case "rejected":
-    case "blocked":
-      return "";
-    default:
-      return "";
+function EventKindIcon({ ev, className }: { ev: ContentCalendarEvent; className?: string }) {
+  if (ev.kind === "schedule") {
+    const { Icon } = scheduleItemVisual(ev.schedule?.item_type);
+    return <Icon className={cn("h-4 w-4 shrink-0", className)} aria-hidden />;
   }
+  if (ev.kind === "va") return <Palette className={cn("h-4 w-4 shrink-0", className)} aria-hidden />;
+  if (ev.kind === "custom") return <Sparkles className={cn("h-4 w-4 shrink-0", className)} aria-hidden />;
+  return <ListTodo className={cn("h-4 w-4 shrink-0", className)} aria-hidden />;
 }
 
 function buildEvents(
@@ -301,9 +304,12 @@ function contentTimeSnippet(ev: ContentCalendarEvent): string | null {
 function EventPill({
   slot,
   onClick,
+  variant = "compact",
 }: {
   slot: CalendarDaySlot;
   onClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** compact = grid cell; card = mobile day list */
+  variant?: "compact" | "card";
 }) {
   if (slot.kind === "personal") {
     const { pe } = slot;
@@ -311,13 +317,34 @@ function EventPill({
       typeof pe.event_type === "string" && pe.event_type in personalStyles
         ? personalStyles[pe.event_type as ModelPersonalEventType]
         : personalPillFallbackClasses();
+    if (variant === "card") {
+      return (
+        <button
+          type="button"
+          onClick={onClick}
+          title={personalEventLabel(pe)}
+          className={cn(
+            "flex min-h-[44px] w-full items-center gap-3 rounded-2xl border px-3.5 py-3 text-left transition active:scale-[0.99]",
+            sty
+          )}
+        >
+          <span className="text-lg" aria-hidden>
+            {personalEventEmoji(pe.event_type)}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-sm font-semibold">{personalEventLabel(pe)}</span>
+            {pe.event_time ? <span className="mt-0.5 block text-xs opacity-70">{pe.event_time}</span> : null}
+          </span>
+        </button>
+      );
+    }
     return (
       <button
         type="button"
         onClick={onClick}
         title={personalEventLabel(pe)}
         className={cn(
-          "w-full cursor-pointer truncate rounded-lg border px-2 py-1 text-left text-[11px] font-medium transition-all hover:opacity-80",
+          "flex min-h-[32px] w-full cursor-pointer items-center truncate rounded-lg border px-2 py-1.5 text-left text-[11px] font-medium transition-all hover:opacity-80",
           sty
         )}
       >
@@ -330,21 +357,74 @@ function EventPill({
   const { ev } = slot;
   const todayStr = todayLocalYmd();
   const pillClass = getContentEventStyle(ev, todayStr);
-  const dot = getStatusDot(ev.status);
   const timeBit = contentTimeSnippet(ev);
+  const isShoot = ev.kind === "schedule" && ev.schedule?.item_type === "content_shoot";
+  const location = isShoot ? extractScheduleLocation(ev.schedule?.details) : "";
+  const visual = ev.kind === "schedule" ? scheduleItemVisual(ev.schedule?.item_type) : null;
+
+  if (variant === "card") {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title={ev.title}
+        className={cn(
+          "flex min-h-[44px] w-full gap-3 rounded-2xl border px-3.5 py-3 text-left transition active:scale-[0.99]",
+          pillClass,
+          isShoot && "py-3.5"
+        )}
+      >
+        <span
+          className={cn(
+            "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/25",
+            visual?.accent
+          )}
+        >
+          <EventKindIcon ev={ev} className="h-[18px] w-[18px]" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-start justify-between gap-2">
+            <span className="truncate text-sm font-semibold leading-snug text-inherit">{ev.title}</span>
+            {timeBit ? (
+              <span className="shrink-0 text-xs font-medium tabular-nums opacity-80">{timeBit}</span>
+            ) : null}
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] opacity-75">
+            <span>{ev.sublabel}</span>
+            {isShoot && location ? (
+              <span className="inline-flex items-center gap-1 font-medium text-emerald-200/90">
+                <MapPin className="h-3 w-3 shrink-0" aria-hidden />
+                <span className="truncate">{location}</span>
+              </span>
+            ) : null}
+          </span>
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
       onClick={onClick}
       title={ev.title}
       className={cn(
-        "w-full cursor-pointer truncate rounded-lg border px-2 py-1 text-left text-[11px] font-medium transition-all hover:opacity-80",
-        pillClass
+        "flex min-h-[32px] w-full cursor-pointer flex-col gap-0.5 rounded-lg border px-2 py-1.5 text-left text-[11px] font-medium transition-all hover:opacity-80",
+        pillClass,
+        isShoot && "ring-1 ring-emerald-400/20"
       )}
     >
-      <span className="mr-0.5">{dot}</span>
-      <span className="font-medium">{ev.title}</span>
-      {timeBit ? <span className="ml-1 opacity-60">{timeBit}</span> : null}
+      <span className="flex items-center gap-1 truncate">
+        <EventKindIcon ev={ev} className="h-3 w-3 opacity-90" />
+        <span className="truncate font-medium">{ev.title}</span>
+        {timeBit ? <span className="ml-auto shrink-0 opacity-70">{timeBit}</span> : null}
+      </span>
+      {isShoot && location ? (
+        <span className="flex items-center gap-0.5 truncate text-[10px] font-normal text-emerald-200/85">
+          <MapPin className="h-2.5 w-2.5 shrink-0" aria-hidden />
+          {location}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -360,18 +440,28 @@ function CalendarEventPopover(props: {
   const { open, anchorEl, slot, onClose, onDeletePersonal, deletingPersonalId } = props;
   const ref = React.useRef<HTMLDivElement>(null);
   const [pos, setPos] = React.useState({ top: 0, left: 0 });
+  const [isMobile, setIsMobile] = React.useState(false);
   const todayStr = todayLocalYmd();
+  const reduceMotion = useReducedMotion();
 
   React.useEffect(() => {
-    if (!open || !anchorEl) return;
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  React.useEffect(() => {
+    if (!open || !anchorEl || isMobile) return;
     const rect = anchorEl.getBoundingClientRect();
-    const w = 288;
+    const w = 320;
     const left = Math.max(12, Math.min(rect.left, window.innerWidth - w - 12));
     const spaceBelow = window.innerHeight - rect.bottom;
-    const estimated = 400;
+    const estimated = 420;
     const top = spaceBelow >= estimated ? rect.bottom + 8 : Math.max(12, rect.top - estimated - 8);
     setPos({ top, left });
-  }, [open, anchorEl]);
+  }, [open, anchorEl, isMobile]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -380,8 +470,15 @@ function CalendarEventPopover(props: {
       if (p?.contains(e.target as Node) || anchorEl?.contains(e.target as Node)) return;
       onClose();
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [open, onClose, anchorEl]);
 
   if (!open || !slot || typeof document === "undefined") return null;
@@ -390,6 +487,8 @@ function CalendarEventPopover(props: {
   let deadlineRaw: string | null = null;
   let descriptionText: string | null = null;
   let contentTypeChip: string | null = null;
+  let locationLine: string | null = null;
+  let timeRangeLabel: string | null = null;
   let pillStyle = "";
   let typeBadge = "";
 
@@ -421,17 +520,12 @@ function CalendarEventPopover(props: {
         ev.schedule?.item_type === "content_shoot"
           ? "FILMING SHOOT"
           : formatScheduleItemTypeForDisplay(ev.schedule?.item_type).toUpperCase() || "SCHEDULE";
-      scheduledRaw = ev.schedule?.start_time ?? ev.schedule?.date ?? null;
+      scheduledRaw = ev.schedule?.date ?? null;
+      const range = formatTimeRange(ev.schedule?.start_time, ev.schedule?.end_time);
+      timeRangeLabel = range === "—" ? null : range;
       deadlineRaw = null;
-      const details = ev.schedule?.details?.trim() || null;
-      // Strip internal filming_schedule:id marker from details shown to models
-      descriptionText = details
-        ? details
-            .split("\n")
-            .filter((line) => !/^filming_schedule:/i.test(line.trim()))
-            .join("\n")
-            .trim() || null
-        : null;
+      descriptionText = sanitizeScheduleDetailsForDisplay(ev.schedule?.details) || null;
+      locationLine = extractScheduleLocation(ev.schedule?.details) || null;
       contentTypeChip = formatScheduleItemTypeForDisplay(ev.schedule?.item_type);
     } else {
       typeBadge = "TASK";
@@ -441,120 +535,131 @@ function CalendarEventPopover(props: {
     }
   }
 
-  const portal =
-    slot.kind === "personal" ? (
-      <div
-        ref={ref}
-        style={{
-          top: pos.top,
-          left: pos.left,
-          boxShadow: "0 0 0 1px rgba(255,255,255,0.08), 0 20px 50px rgba(0,0,0,0.55)",
-        }}
-        className="fixed z-[200] w-72 overflow-y-auto rounded-2xl border border-white/15 bg-[#0f0f1a] p-4 shadow-2xl"
-      >
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <span
-            className={cn(
-              "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
-              pillStyle
-            )}
+  const shellClass = isMobile
+    ? "fixed inset-x-0 bottom-0 z-[200] max-h-[min(88vh,40rem)] w-full overflow-y-auto rounded-t-3xl border border-white/15 bg-[#0f0f1a] p-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] shadow-2xl"
+    : "fixed z-[200] max-h-[min(72vh,28rem)] w-80 overflow-y-auto rounded-2xl border border-white/15 bg-[#0f0f1a] p-4 shadow-2xl";
+
+  const shellStyle = isMobile
+    ? ({ boxShadow: "0 -12px 40px rgba(0,0,0,0.55)" } as React.CSSProperties)
+    : ({
+        top: pos.top,
+        left: pos.left,
+        boxShadow: "0 0 0 1px rgba(255,255,255,0.08), 0 20px 50px rgba(0,0,0,0.55)",
+      } as React.CSSProperties);
+
+  const panel = (
+    <motion.div
+      ref={ref}
+      role="dialog"
+      aria-modal="true"
+      initial={reduceMotion ? false : isMobile ? { y: 40, opacity: 0 } : { opacity: 0, scale: 0.98 }}
+      animate={isMobile ? { y: 0, opacity: 1 } : { opacity: 1, scale: 1 }}
+      transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+      style={shellStyle}
+      className={shellClass}
+    >
+      {isMobile ? <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" aria-hidden /> : null}
+      {slot.kind === "personal" ? (
+        <>
+          <div className="mb-3 flex items-start justify-between gap-2">
+            <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide", pillStyle)}>
+              {typeBadge}
+            </span>
+            <button
+              type="button"
+              onClick={() => onClose()}
+              className="flex h-11 w-11 items-center justify-center rounded-xl text-white/40 transition hover:bg-white/10 hover:text-white"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <h3 className="mb-3 text-lg font-bold leading-tight text-white">
+            <span className="mr-1">{personalEventEmoji(slot.pe.event_type)}</span>
+            {personalEventLabel(slot.pe)}
+          </h3>
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <CalendarClock className="h-3.5 w-3.5 text-white/35" />
+            <span className="text-sm text-white/70">
+              {formatCalendarDisplayDate(slot.pe.event_date)}
+              {slot.pe.event_time ? ` · ${slot.pe.event_time}` : ""}
+            </span>
+          </div>
+          {slot.pe.notes ? (
+            <p className="mb-3 whitespace-pre-wrap text-sm leading-relaxed text-white/55">{slot.pe.notes}</p>
+          ) : null}
+          <button
+            type="button"
+            disabled={deletingPersonalId === slot.pe.id}
+            onClick={() => onDeletePersonal(slot.pe.id)}
+            className="flex min-h-[44px] w-full items-center justify-center rounded-xl border border-red-500/30 bg-red-500/20 text-sm font-medium text-red-400 transition hover:bg-red-500/30 disabled:opacity-45"
           >
-            {typeBadge}
-          </span>
-          <button type="button" onClick={() => onClose()} className="text-white/30 transition hover:text-white" aria-label="Close">
-            <X className="h-4 w-4" />
+            Delete event
           </button>
-        </div>
-        <h3 className="mb-3 text-base font-bold leading-tight text-white">
-          <span className="mr-1">{personalEventEmoji(slot.pe.event_type)}</span>
-          {personalEventLabel(slot.pe)}
-        </h3>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          <CalendarClock className="h-3.5 w-3.5 text-white/35" />
-          <span className="text-xs text-white/70">
-            {formatCalendarDisplayDate(slot.pe.event_date)}
-            {slot.pe.event_time ? ` · ${slot.pe.event_time}` : ""}
-          </span>
-        </div>
-        {slot.pe.notes ? (
-          <p className="mb-3 line-clamp-3 text-xs leading-relaxed text-white/50">{slot.pe.notes}</p>
-        ) : null}
-        <button
-          type="button"
-          disabled={deletingPersonalId === slot.pe.id}
-          onClick={() => onDeletePersonal(slot.pe.id)}
-          className="w-full rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/30 disabled:opacity-45"
-        >
-          Delete event
-        </button>
-      </div>
-    ) : (
-      <div
-        ref={ref}
-        style={{
-          top: pos.top,
-          left: pos.left,
-          boxShadow: "0 0 0 1px rgba(255,255,255,0.08), 0 20px 50px rgba(0,0,0,0.55)",
-        }}
-        className="fixed z-[200] max-h-[min(72vh,28rem)] w-72 overflow-y-auto rounded-2xl border border-white/15 bg-[#0f0f1a] p-4 shadow-2xl"
-      >
-        {(() => {
+        </>
+      ) : (
+        (() => {
           const ev = slot.ev;
           const sched = scheduledRaw?.trim();
           const ded = deadlineRaw?.trim();
-
           let deadlinePast = false;
           let deadlineSoon = false;
           if (ded) {
             deadlinePast = isCalendarPastDeadline(ded, todayStr);
             deadlineSoon = isCalendarDueSoon(ded, todayStr) && !deadlinePast;
           }
-
           return (
             <>
               <div className="mb-3 flex items-start justify-between gap-2">
-                <span
-                  className={cn(
-                    "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
-                    pillStyle
-                  )}
-                >
+                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide", pillStyle)}>
                   {typeBadge}
                 </span>
-                <button type="button" onClick={() => onClose()} className="text-white/30 transition hover:text-white" aria-label="Close">
+                <button
+                  type="button"
+                  onClick={() => onClose()}
+                  className="flex h-11 w-11 items-center justify-center rounded-xl text-white/40 transition hover:bg-white/10 hover:text-white"
+                  aria-label="Close"
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
-
-              <h3 className="mb-2 text-base font-bold leading-tight text-white">{ev.title}</h3>
-
+              <h3 className="mb-2 text-lg font-bold leading-tight text-white">{ev.title}</h3>
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold uppercase", pillStyle)}>
                   {(ev.status ?? "pending").replace(/-/g, "").toUpperCase()}
                 </span>
                 {contentTypeChip ? (
-                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/50">
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/50">
                     {contentTypeChip}
                   </span>
                 ) : null}
               </div>
-
-              <div className="mb-3 space-y-1.5">
-                {sched ? (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Calendar className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-                    <span className="text-white/40">{ev.kind === "task" ? "Due / calendar" : "Scheduled"}</span>
-                    <span className="font-medium text-white/70">{formatCalendarDisplayDate(sched)}</span>
-                    {/\d{1,2}:\d{2}/.test(sched) ? (
+              <div className="mb-3 space-y-2">
+                {sched || timeRangeLabel ? (
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5 text-sm">
+                    <Calendar className="h-4 w-4 shrink-0 text-blue-400" />
+                    <span className="text-white/40">{ev.kind === "task" ? "Due" : "When"}</span>
+                    {sched ? <span className="font-medium text-white/80">{formatCalendarDisplayDate(sched)}</span> : null}
+                    {timeRangeLabel ? (
+                      <span className="font-semibold tabular-nums text-white">{timeRangeLabel}</span>
+                    ) : sched && /\d{1,2}:\d{2}/.test(sched) ? (
                       <span className="text-white/35">{formatDateEuropean(sched)}</span>
                     ) : null}
                   </div>
                 ) : null}
-
+                {locationLine ? (
+                  <div className="flex items-start gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 py-2.5 text-sm">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" aria-hidden />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-200/70">Location</p>
+                      <p className="font-medium text-emerald-50">{locationLine}</p>
+                    </div>
+                  </div>
+                ) : null}
                 {ded ? (
                   <div
                     className={cn(
-                      "flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1 text-xs",
+                      "flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2.5 text-sm",
                       deadlinePast && "border-red-500/20 bg-red-500/10",
                       deadlineSoon && !deadlinePast && "border-amber-500/20 bg-amber-500/10",
                       !deadlinePast && !deadlineSoon && "border-white/10 bg-white/5"
@@ -562,7 +667,7 @@ function CalendarEventPopover(props: {
                   >
                     <Clock
                       className={cn(
-                        "h-3.5 w-3.5 shrink-0",
+                        "h-4 w-4 shrink-0",
                         deadlinePast && "text-red-400",
                         deadlineSoon && !deadlinePast && "text-amber-400",
                         !deadlinePast && !deadlineSoon && "text-white/40"
@@ -588,26 +693,23 @@ function CalendarEventPopover(props: {
                       {formatCalendarDisplayDate(ded)}
                     </span>
                     {deadlinePast ? <span className="ml-auto text-red-400">Overdue</span> : null}
-                    {deadlineSoon && !deadlinePast ? <span className="ml-auto text-amber-400">⏰ Soon</span> : null}
+                    {deadlineSoon && !deadlinePast ? <span className="ml-auto text-amber-400">Soon</span> : null}
                   </div>
                 ) : null}
-
-                <div className="flex items-center gap-2 border-t border-white/5 pt-1.5 text-[11px] text-white/40">
+                <div className="flex items-center gap-2 border-t border-white/5 pt-2 text-xs text-white/40">
                   <span>Listed day</span>
                   <span className="font-medium text-white/60">{formatCalendarDisplayDate(ev.dateYmd)}</span>
                   <span className="truncate text-white/30">({ev.sublabel})</span>
                 </div>
               </div>
-
               {descriptionText ? (
-                <p className="mb-3 line-clamp-3 text-xs leading-relaxed text-white/50">{descriptionText}</p>
+                <p className="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-white/55">{descriptionText}</p>
               ) : null}
-
               <div className="flex flex-col gap-2">
                 {ev.kind === "va" ? (
                   <Link
                     href={ROUTES.model.contentAssignments}
-                    className="inline-flex w-full items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20 py-2 text-sm font-medium text-indigo-400 transition-all hover:bg-indigo-500/30"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20 text-sm font-medium text-indigo-400 transition-all hover:bg-indigo-500/30"
                     onClick={onClose}
                   >
                     Open Chatting Assignments →
@@ -616,7 +718,7 @@ function CalendarEventPopover(props: {
                 {ev.kind === "custom" ? (
                   <Link
                     href={ROUTES.model.customs}
-                    className="inline-flex w-full items-center justify-center rounded-xl border border-orange-500/30 bg-orange-500/20 py-2 text-sm font-medium text-orange-400 transition-all hover:bg-orange-500/30"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-orange-500/30 bg-orange-500/20 text-sm font-medium text-orange-400 transition-all hover:bg-orange-500/30"
                     onClick={onClose}
                   >
                     Open custom request →
@@ -625,14 +727,14 @@ function CalendarEventPopover(props: {
                 {ev.kind === "task" ? (
                   <Link
                     href={ROUTES.model.tasks}
-                    className="inline-flex w-full items-center justify-center rounded-xl border border-teal-500/30 bg-teal-500/20 py-2 text-sm font-medium text-teal-300 transition hover:bg-teal-500/30"
+                    className="inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-teal-500/30 bg-teal-500/20 text-sm font-medium text-teal-300 transition hover:bg-teal-500/30"
                     onClick={onClose}
                   >
                     Open tasks →
                   </Link>
                 ) : null}
                 {ev.kind === "schedule" ? (
-                  <p className="text-center text-[11px] text-white/35">
+                  <p className="text-center text-xs text-white/35">
                     {ev.schedule?.item_type === "content_shoot"
                       ? "Filming shoot from your schedule"
                       : "From your model schedule"}
@@ -641,11 +743,25 @@ function CalendarEventPopover(props: {
               </div>
             </>
           );
-        })()}
-      </div>
-    );
+        })()
+      )}
+    </motion.div>
+  );
 
-  return createPortal(portal, document.body);
+  return createPortal(
+    <>
+      {isMobile ? (
+        <button
+          type="button"
+          aria-label="Dismiss"
+          className="fixed inset-0 z-[199] bg-black/55 backdrop-blur-[2px]"
+          onClick={onClose}
+        />
+      ) : null}
+      {panel}
+    </>,
+    document.body
+  );
 }
 
 function ymdInLoggedPeriod(ymd: string, periods: { start_date: string; end_date: string }[]): boolean {
@@ -705,6 +821,8 @@ export function ModelContentCalendarClient({
   const reduceMotion = useReducedMotion();
   const [view, setView] = React.useState<"week" | "month">("week");
   const [weekStartYmd, setWeekStartYmd] = React.useState(() => getMondayOfWeek(todayLocalYmd()));
+  const [focusDayYmd, setFocusDayYmd] = React.useState(() => todayLocalYmd());
+  const daySectionRefs = React.useRef<Record<string, HTMLElement | null>>({});
   const [cursor, setCursor] = React.useState(() => new Date());
   const [typeFilter, setTypeFilter] = React.useState<"all" | "va" | "custom" | "task" | "schedule">("all");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
@@ -775,6 +893,13 @@ export function ModelContentCalendarClient({
 
   const weekDaysYmd = React.useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStartYmd, i)), [weekStartYmd]);
 
+  React.useEffect(() => {
+    if (!weekDaysYmd.includes(focusDayYmd)) {
+      const today = todayLocalYmd();
+      setFocusDayYmd(weekDaysYmd.includes(today) ? today : weekDaysYmd[0]!);
+    }
+  }, [weekDaysYmd, focusDayYmd]);
+
   const year = cursor.getFullYear();
   const monthIndex0 = cursor.getMonth();
   const monthMatrix = React.useMemo(() => monthMatrixMondayFirst(year, monthIndex0), [year, monthIndex0]);
@@ -814,7 +939,16 @@ export function ModelContentCalendarClient({
     const today = todayLocalYmd();
     const monday = getMondayOfWeek(today);
     setWeekStartYmd(monday);
+    setFocusDayYmd(today);
     setCursor(parseLocalYmd(monday));
+  }
+
+  function scrollToDay(ymd: string) {
+    setFocusDayYmd(ymd);
+    const el = daySectionRefs.current[ymd];
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   async function submitPersonalEvent() {
@@ -931,7 +1065,7 @@ export function ModelContentCalendarClient({
                 type="button"
                 aria-label={view === "week" ? "Previous week" : "Previous month"}
                 onClick={goPrev}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/75 transition hover:bg-white/10"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/75 transition hover:bg-white/10"
               >
                 <ChevronLeft className="h-5 w-5" />
               </button>
@@ -948,7 +1082,7 @@ export function ModelContentCalendarClient({
                 type="button"
                 aria-label={view === "week" ? "Next week" : "Next month"}
                 onClick={goNext}
-                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/75 transition hover:bg-white/10"
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white/75 transition hover:bg-white/10"
               >
                 <ChevronRight className="h-5 w-5" />
               </button>
@@ -956,7 +1090,7 @@ export function ModelContentCalendarClient({
             <button
               type="button"
               onClick={() => setAddEventOpen(true)}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-pink-500/35 bg-pink-500/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-pink-100 transition hover:bg-pink-500/30"
+              className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-pink-500/35 bg-pink-500/20 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-pink-100 transition hover:bg-pink-500/30"
             >
               <Plus className="h-4 w-4" />
               Add personal event
@@ -973,7 +1107,7 @@ export function ModelContentCalendarClient({
               type="button"
               onClick={() => setTypeFilter(k)}
               className={cn(
-                "rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wide transition-colors",
+                "min-h-[44px] rounded-xl px-3 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors",
                 typeFilter === k
                   ? "bg-pink-500/25 text-pink-100 ring-1 ring-pink-400/40"
                   : "bg-white/[0.06] text-white/55 hover:bg-white/10 hover:text-white/85"
@@ -1011,70 +1145,205 @@ export function ModelContentCalendarClient({
         <p className="rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2 text-center text-sm text-white/80">{notice}</p>
       ) : null}
 
+
       {view === "week" ? (
         <motion.div
           initial={reduceMotion ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mt-4 overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch]"
+          className="mt-2 space-y-4"
         >
-          <div className="grid min-w-[44rem] grid-cols-7 gap-1 md:min-w-0 md:gap-2">
-          {weekDaysYmd.map((ymd, i) => {
-            const d = parseLocalYmd(ymd);
-            const isTodayDay = todayLocalYmd() === ymd;
-            const slots = slotsForDay(ymd);
-            const isPeriodDay =
-              ymdInLoggedPeriod(ymd, loggedPeriodSpans) || ymdInActiveWindow(ymd, activePeriodWindow ?? undefined);
-            const isPredictedDay = Boolean(predictedNextStart && ymd === predictedNextStart);
-            return (
-              <div key={ymd} className="flex min-w-0 flex-col gap-1">
-                <div className="text-center">
-                  <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{WEEKDAYS_MON[i]}</div>
-                  <div className={cn("mt-0.5 flex min-h-[14px] items-center justify-center", isPeriodDay && "text-rose-400")}>
-                    {isPeriodDay ? <Droplet className="h-3 w-3 text-rose-400" aria-hidden /> : null}
+          {/* Mobile: compact week strip + vertical day list */}
+          <div className="space-y-4 md:hidden">
+            <div className="rounded-2xl border border-white/10 bg-black/40 p-2 backdrop-blur-xl">
+              <div className="grid grid-cols-7 gap-1">
+                {weekDaysYmd.map((ymd, i) => {
+                  const d = parseLocalYmd(ymd);
+                  const isTodayDay = todayLocalYmd() === ymd;
+                  const isFocus = focusDayYmd === ymd;
+                  const count = slotsForDay(ymd).length;
+                  const isPeriodDay =
+                    ymdInLoggedPeriod(ymd, loggedPeriodSpans) ||
+                    ymdInActiveWindow(ymd, activePeriodWindow ?? undefined);
+                  return (
+                    <button
+                      key={ymd}
+                      type="button"
+                      onClick={() => scrollToDay(ymd)}
+                      aria-label={`${WEEKDAYS_MON[i]} ${d.getDate()}`}
+                      aria-current={isTodayDay ? "date" : undefined}
+                      className={cn(
+                        "flex min-h-[52px] flex-col items-center justify-center gap-0.5 rounded-xl px-0.5 py-1.5 transition",
+                        isFocus && "bg-pink-500/25 ring-1 ring-pink-400/40",
+                        !isFocus && "hover:bg-white/[0.06]",
+                        isTodayDay && !isFocus && "ring-1 ring-pink-500/50"
+                      )}
+                    >
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-white/45">
+                        {WEEKDAYS_MON[i]}
+                      </span>
+                      <span
+                        className={cn(
+                          "flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold tabular-nums",
+                          isTodayDay ? "bg-pink-500 text-white" : isPeriodDay ? "text-rose-300" : "text-white"
+                        )}
+                      >
+                        {d.getDate()}
+                      </span>
+                      <span className="flex h-1.5 items-center justify-center gap-0.5">
+                        {count > 0 ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-white/55" aria-hidden />
+                        ) : (
+                          <span className="h-1.5 w-1.5" aria-hidden />
+                        )}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {weekDaysYmd.map((ymd, i) => {
+                const d = parseLocalYmd(ymd);
+                const isTodayDay = todayLocalYmd() === ymd;
+                const slots = slotsForDay(ymd);
+                const isPeriodDay =
+                  ymdInLoggedPeriod(ymd, loggedPeriodSpans) ||
+                  ymdInActiveWindow(ymd, activePeriodWindow ?? undefined);
+                const isPredictedDay = Boolean(predictedNextStart && ymd === predictedNextStart);
+                const dayLabel = d.toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                });
+                return (
+                  <section
+                    key={ymd}
+                    id={`cal-day-${ymd}`}
+                    ref={(el) => {
+                      daySectionRefs.current[ymd] = el;
+                    }}
+                    className={cn(
+                      "scroll-mt-24 rounded-2xl border p-3.5 backdrop-blur-xl",
+                      isPeriodDay && "border-rose-500/25 bg-rose-500/10",
+                      !isPeriodDay && isPredictedDay && "border-amber-500/25 border-dashed bg-amber-500/[0.07]",
+                      !isPeriodDay && !isPredictedDay && "border-white/10 bg-black/40",
+                      focusDayYmd === ymd && "ring-1 ring-pink-400/30"
+                    )}
+                  >
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white">
+                          {WEEKDAYS_MON[i]}
+                          {isTodayDay ? (
+                            <span className="ml-2 rounded-full bg-pink-500/25 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-pink-100">
+                              Today
+                            </span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-white/45">{dayLabel}</p>
+                      </div>
+                      {isPeriodDay ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-rose-300">
+                          <Droplet className="h-3 w-3" aria-hidden /> Period
+                        </span>
+                      ) : null}
+                    </div>
+                    {slots.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-6 text-center">
+                        <p className="text-sm text-white/35">Nothing scheduled</p>
+                        <p className="mt-1 text-xs text-white/25">Free day — enjoy the quiet</p>
+                      </div>
+                    ) : (
+                      <ul className="space-y-2">
+                        {slots.map((slot) => (
+                          <li key={slot.kind + slot.id}>
+                            <EventPill
+                              slot={slot}
+                              variant="card"
+                              onClick={(e) =>
+                                setPopover({
+                                  slot,
+                                  anchor: e.currentTarget,
+                                })
+                              }
+                            />
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Desktop: rich 7-column week grid */}
+          <div className="hidden gap-2 md:grid md:grid-cols-7">
+            {weekDaysYmd.map((ymd, i) => {
+              const d = parseLocalYmd(ymd);
+              const isTodayDay = todayLocalYmd() === ymd;
+              const slots = slotsForDay(ymd);
+              const isPeriodDay =
+                ymdInLoggedPeriod(ymd, loggedPeriodSpans) ||
+                ymdInActiveWindow(ymd, activePeriodWindow ?? undefined);
+              const isPredictedDay = Boolean(predictedNextStart && ymd === predictedNextStart);
+              return (
+                <div key={ymd} className="flex min-w-0 flex-col gap-1.5">
+                  <div className="text-center">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                      {WEEKDAYS_MON[i]}
+                    </div>
+                    <div className={cn("mt-0.5 flex min-h-[14px] items-center justify-center", isPeriodDay && "text-rose-400")}>
+                      {isPeriodDay ? <Droplet className="h-3 w-3 text-rose-400" aria-hidden /> : null}
+                    </div>
+                    <div
+                      className={cn(
+                        "mx-auto mt-1 flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold tabular-nums",
+                        isTodayDay
+                          ? "bg-pink-500 text-white shadow-[0_0_20px_-4px_rgba(236,72,153,0.7)]"
+                          : isPeriodDay
+                            ? "text-rose-400"
+                            : "text-white"
+                      )}
+                    >
+                      {d.getDate()}
+                    </div>
                   </div>
                   <div
                     className={cn(
-                      "mx-auto mt-1 flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold tabular-nums",
-                      isTodayDay ? "bg-pink-500 text-white" : isPeriodDay ? "text-rose-400" : "text-white"
+                      "min-h-[10rem] flex-1 space-y-1.5 rounded-2xl border p-2",
+                      isPeriodDay && "border-rose-500/20 bg-rose-500/10 ring-1 ring-rose-500/15",
+                      !isPeriodDay &&
+                        isPredictedDay &&
+                        "border-amber-500/20 bg-amber-500/10 ring-1 ring-amber-500/15",
+                      !isPeriodDay && !isPredictedDay && "border-white/[0.08] bg-white/[0.03]"
                     )}
                   >
-                    {d.getDate()}
+                    {slots.length === 0 ? (
+                      <p className="pt-6 text-center text-[11px] text-white/25">Free</p>
+                    ) : (
+                      slots.map((slot) => (
+                        <EventPill
+                          key={slot.kind + slot.id}
+                          slot={slot}
+                          onClick={(e) =>
+                            setPopover({
+                              slot,
+                              anchor: e.currentTarget,
+                            })
+                          }
+                        />
+                      ))
+                    )}
                   </div>
                 </div>
-                <div
-                  className={cn(
-                    "min-h-[8rem] flex-1 space-y-1 rounded-xl border p-2",
-                    isPeriodDay && "border-rose-500/20 bg-rose-500/10 ring-1 ring-rose-500/15",
-                    !isPeriodDay &&
-                      isPredictedDay &&
-                      "border-amber-500/20 bg-amber-500/10 ring-1 ring-amber-500/15",
-                    !isPeriodDay && !isPredictedDay && "border-white/[0.08] bg-white/[0.03]"
-                  )}
-                >
-                  {slots.length === 0 ? (
-                    <p className="pt-4 text-center text-[10px] text-white/20">—</p>
-                  ) : (
-                    slots.map((slot) => (
-                      <EventPill
-                        key={slot.kind + slot.id}
-                        slot={slot}
-                        onClick={(e) =>
-                          setPopover({
-                            slot,
-                            anchor: e.currentTarget,
-                          })
-                        }
-                      />
-                    ))
-                  )}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
           </div>
         </motion.div>
       ) : (
-        <motion.div
+<motion.div
           initial={reduceMotion ? false : { opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.38, delay: 0.04, ease: [0.22, 1, 0.36, 1] }}

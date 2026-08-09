@@ -114,10 +114,11 @@ export default async function ModelSchedulePage({
   const scheduleCurrentDay = currentPeriod?.day_number ?? null;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-white md:text-2xl">Availability</h1>
-        <p className="mt-1 text-sm text-white/60">
+    <div className="space-y-6 pb-8">
+      <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] via-black/40 to-pink-500/[0.08] p-5 backdrop-blur-xl sm:p-6">
+        <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-pink-500/15 blur-3xl" aria-hidden />
+        <h1 className="relative text-2xl font-bold tracking-tight text-white md:text-3xl">Availability</h1>
+        <p className="relative mt-1.5 max-w-xl text-sm leading-relaxed text-white/60">
           Submit weekly availability and request time off. Scheduled program items and tasks are on Calendar.
         </p>
       </div>

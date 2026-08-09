@@ -24,7 +24,11 @@ export function gradientClassForContentType(raw: string | null | undefined): str
 export function gradientClassForScheduleItemType(itemType: string | null | undefined): string {
   const t = (itemType || "").toLowerCase();
   if (t === "live_stream") return "from-rose-500 via-pink-600 to-fuchsia-700";
-  if (t === "custom" || t === "content_shoot") return "from-emerald-500 via-teal-600 to-cyan-700";
+  if (t === "content_shoot") return "from-emerald-500 via-teal-500 to-cyan-600";
+  if (t === "custom") return "from-pink-500 via-fuchsia-600 to-purple-700";
+  if (t === "script") return "from-violet-500 via-purple-600 to-indigo-700";
+  if (t === "mass_message") return "from-sky-500 via-cyan-500 to-blue-600";
+  if (t === "va_content") return "from-indigo-500 via-blue-600 to-violet-700";
   if (t === "meeting" || t === "promo") return "from-blue-500 via-indigo-600 to-violet-700";
   if (t === "time_off" || t === "rest") return "from-zinc-500 to-slate-700";
   return "from-pink-500 via-purple-600 to-indigo-700";
