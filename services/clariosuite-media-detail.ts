@@ -11,6 +11,8 @@ import {
   logClarioSuiteFailure,
 } from "@/lib/clariosuite-api";
 import { classifyIgPost } from "@/lib/instagram-insights-ui";
+import { fetchClarioSuiteStoriesPayload } from "@/lib/instagram-stories-map";
+import type { IgStoriesPayload } from "@/components/instagram-stories-ui";
 import type { ClarioSuiteCarouselChild, ClarioSuiteIgProfile } from "@/types/clariosuite";
 import {
   getClarioSuiteTopPostByMediaId,
@@ -170,6 +172,7 @@ export type ClarioSuiteProfileSimulatorPayload = {
   profile: ClarioSuiteIgProfile;
   highlightsAvailable: false;
   highlightsNote: string;
+  stories: IgStoriesPayload;
   posts: Array<{
     media_id: string;
     permalink: string | null;
@@ -194,9 +197,10 @@ export async function getClarioSuiteProfileSimulator(
       status: 404,
     });
   }
-  const [{ data: media }, syncedTopPosts] = await Promise.all([
+  const [{ data: media }, syncedTopPosts, stories] = await Promise.all([
     listClarioSuiteMedia(igUserId, 30),
     queryClarioSuiteTopPosts({ igUserId, limit: 50 }).catch(() => []),
+    fetchClarioSuiteStoriesPayload(igUserId),
   ]);
   const viewsByMediaId = new Map(
     syncedTopPosts.map((p) => [p.media_id, p.views > 0 ? p.views : null] as const)
@@ -227,6 +231,7 @@ export async function getClarioSuiteProfileSimulator(
     highlightsAvailable: false,
     highlightsNote:
       "Instagram highlights are not available from the ClarioSuite API — omitted from the simulator.",
+    stories,
     posts,
   };
 }

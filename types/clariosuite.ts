@@ -75,6 +75,8 @@ export type ClarioSuiteMediaItem = {
   mediaProductType: string | null;
   permalink: string | null;
   imageUrl: string;
+  /** Present on some story / carousel responses for video playback. */
+  mediaUrl?: string | null;
   timestamp: string;
   likeCount: number | null;
   commentsCount: number | null;

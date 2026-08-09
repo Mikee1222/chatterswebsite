@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { bestTimeToPostUtc, listClarioSuiteStories } from "@/lib/clariosuite-api";
+import { bestTimeToPostUtc } from "@/lib/clariosuite-api";
+import { fetchClarioSuiteStoriesPayload } from "@/lib/instagram-stories-map";
 import { buildBestTimeRecommendation } from "@/lib/instagram-insights-ui";
 import {
   buildCompareCallouts,
@@ -273,53 +274,7 @@ export async function GET(request: Request) {
   const contentTypes = contentTypePerformance(topPosts);
 
   // Stories — live list; metrics only if API attaches them
-  let stories: {
-    active: Array<{
-      id: string;
-      media_type: string | null;
-      permalink: string | null;
-      image_url: string | null;
-      posted_at: string | null;
-      reach: number | null;
-      views: number | null;
-    }>;
-    has_metrics: boolean;
-    error: string | null;
-  } = { active: [], has_metrics: false, error: null };
-  try {
-    const { data: storyRows } = await listClarioSuiteStories(selected.igUserId);
-    const active = (storyRows ?? []).map((s) => {
-      const insight = s.insight;
-      const reach =
-        insight?.reach != null && Number.isFinite(insight.reach) ? Math.round(insight.reach) : null;
-      const views =
-        insight?.views != null && Number.isFinite(insight.views)
-          ? Math.round(insight.views)
-          : insight?.videoViews != null && Number.isFinite(insight.videoViews)
-            ? Math.round(insight.videoViews)
-            : null;
-      return {
-        id: String(s.id),
-        media_type: s.mediaType ?? null,
-        permalink: s.permalink ?? null,
-        image_url: s.imageUrl || null,
-        posted_at: s.timestamp || null,
-        reach,
-        views,
-      };
-    });
-    stories = {
-      active,
-      has_metrics: active.some((a) => a.reach != null || a.views != null),
-      error: null,
-    };
-  } catch (err) {
-    stories = {
-      active: [],
-      has_metrics: false,
-      error: err instanceof Error ? err.message : "Stories unavailable",
-    };
-  }
+  const stories = await fetchClarioSuiteStoriesPayload(selected.igUserId);
 
   const online = asOnlineHours(audienceRow?.online_followers_by_hour);
   const countries = asBuckets(audienceRow?.countries);

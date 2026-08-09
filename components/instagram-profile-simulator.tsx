@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { fmtCompact, type IgPostGroup } from "@/lib/instagram-insights-ui";
 import { InstagramPostDetailModal } from "@/components/instagram-post-detail-modal";
 import { IgSkeleton } from "@/components/instagram-insights-shared";
+import { InstagramStoryViewer } from "@/components/instagram-story-viewer";
+import type { IgStoriesPayload } from "@/components/instagram-stories-ui";
 
 type ProfileTab = "posts" | "reels" | "carousels";
 
@@ -24,6 +26,7 @@ type ProfilePayload = {
   };
   highlightsAvailable: boolean;
   highlightsNote?: string;
+  stories?: IgStoriesPayload;
   posts: Array<{
     media_id: string;
     permalink: string | null;
@@ -182,7 +185,11 @@ export function InstagramProfileSimulator({
   const [data, setData] = React.useState<ProfilePayload | null>(null);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [activeTab, setActiveTab] = React.useState<ProfileTab>("posts");
+  const [storiesOpen, setStoriesOpen] = React.useState(false);
   const selectedPost = data?.posts.find((p) => p.media_id === selectedId) ?? null;
+
+  const activeStories = data?.stories?.active ?? [];
+  const hasActiveStories = activeStories.length > 0;
 
   const tabCounts = React.useMemo(() => {
     const posts = data?.posts ?? [];
@@ -202,6 +209,7 @@ export function InstagramProfileSimulator({
 
   React.useEffect(() => {
     setActiveTab("posts");
+    setStoriesOpen(false);
   }, [profileUrl]);
 
   React.useEffect(() => {
@@ -310,9 +318,39 @@ export function InstagramProfileSimulator({
                     </div>
 
                     <div className="flex items-center gap-4">
-                      <div className="relative h-[76px] w-[76px] shrink-0">
-                        <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] p-[2.5px]">
-                          <div className="h-full w-full overflow-hidden rounded-full border-2 border-white bg-neutral-100">
+                      <button
+                        type="button"
+                        disabled={!hasActiveStories}
+                        aria-label={hasActiveStories ? "View stories" : undefined}
+                        onClick={() => {
+                          if (hasActiveStories) setStoriesOpen(true);
+                        }}
+                        className={cn(
+                          "relative h-[76px] w-[76px] shrink-0 rounded-full",
+                          hasActiveStories
+                            ? "cursor-pointer active:scale-[0.97] motion-reduce:active:scale-100"
+                            : "cursor-default"
+                        )}
+                      >
+                        {hasActiveStories ? (
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-[#f9ce34] via-[#ee2a7b] to-[#6228d7] p-[2.5px]">
+                            <div className="h-full w-full overflow-hidden rounded-full border-2 border-white bg-neutral-100">
+                              {profile.profilePictureUrl ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={profile.profilePictureUrl}
+                                  alt=""
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <div className="flex h-full w-full items-center justify-center text-xs font-semibold text-black/30">
+                                  {(profile.username || "?").slice(0, 1).toUpperCase()}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 overflow-hidden rounded-full border border-black/10 bg-neutral-100">
                             {profile.profilePictureUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
@@ -326,8 +364,8 @@ export function InstagramProfileSimulator({
                               </div>
                             )}
                           </div>
-                        </div>
-                      </div>
+                        )}
+                      </button>
                       <div className="grid flex-1 grid-cols-3 text-center">
                         <div>
                           <p className="text-[15px] font-bold tabular-nums leading-tight">
@@ -462,6 +500,16 @@ export function InstagramProfileSimulator({
 
             {/* Home indicator */}
             <div className="pointer-events-none absolute bottom-1.5 left-1/2 z-30 h-1 w-28 -translate-x-1/2 rounded-full bg-black/25" />
+
+            {storiesOpen && hasActiveStories && profile ? (
+              <InstagramStoryViewer
+                stories={activeStories}
+                username={profile.username}
+                profilePictureUrl={profile.profilePictureUrl}
+                hasMetrics={data?.stories?.has_metrics ?? false}
+                onClose={() => setStoriesOpen(false)}
+              />
+            ) : null}
           </div>
         </div>
       </div>

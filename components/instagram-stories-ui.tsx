@@ -12,6 +12,8 @@ export type IgStory = {
   media_type: string | null;
   permalink: string | null;
   image_url: string | null;
+  /** Video playback URL when media_type is video (thumbnail stays in image_url). */
+  media_url: string | null;
   posted_at: string | null;
   reach: number | null;
   views: number | null;
@@ -23,7 +25,7 @@ export type IgStoriesPayload = {
   error: string | null;
 };
 
-function storyMediaKind(mediaType: string | null): "video" | "photo" | "unknown" {
+export function storyMediaKind(mediaType: string | null): "video" | "photo" | "unknown" {
   const t = (mediaType ?? "").trim().toUpperCase();
   if (t.includes("VIDEO")) return "video";
   if (t.includes("IMAGE") || t.includes("PHOTO")) return "photo";

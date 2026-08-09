@@ -27,6 +27,7 @@ import {
   TopPostsLeaderboard,
 } from "@/components/instagram-insights-shared";
 import { IgStoriesSection } from "@/components/instagram-stories-ui";
+import type { IgStoriesPayload } from "@/components/instagram-stories-ui";
 import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { ModelIgToOfCard } from "@/components/cross-platform-insights";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
@@ -138,19 +139,7 @@ type Payload = {
     posting_reach_correlation: number | null;
     content_type_performance: ContentTypeRow[];
   } | null;
-  stories?: {
-    active: Array<{
-      id: string;
-      media_type: string | null;
-      permalink: string | null;
-      image_url: string | null;
-      posted_at: string | null;
-      reach: number | null;
-      views: number | null;
-    }>;
-    has_metrics: boolean;
-    error: string | null;
-  };
+  stories?: IgStoriesPayload;
   crossPlatformCard?: ModelCrossPlatformCard | null;
   error?: string;
 };

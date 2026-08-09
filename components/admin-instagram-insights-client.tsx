@@ -42,6 +42,7 @@ import {
 } from "@/components/instagram-insights-shared";
 import { FilterBar } from "@/components/manager-review-ui";
 import { IgStoriesSection } from "@/components/instagram-stories-ui";
+import type { IgStoriesPayload } from "@/components/instagram-stories-ui";
 import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
@@ -225,19 +226,7 @@ type InsightsPayload = {
       avg_reach: number | null;
     }>;
   } | null;
-  stories?: {
-    active: Array<{
-      id: string;
-      media_type: string | null;
-      permalink: string | null;
-      image_url: string | null;
-      posted_at: string | null;
-      reach: number | null;
-      views: number | null;
-    }>;
-    has_metrics: boolean;
-    error: string | null;
-  };
+  stories?: IgStoriesPayload;
   lastSyncedAt: string | null;
   crossPlatform?: import("@/services/cross-platform-analytics").CrossPlatformAnalytics | null;
   error?: string;
