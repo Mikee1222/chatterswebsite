@@ -309,3 +309,105 @@ export function formatIgPostedAt(iso: string | null | undefined): string | null 
     day: "numeric",
   });
 }
+
+/** Model-facing tips — warm, observational, never report-card language. */
+
+export function modelGrowthTip(params: {
+  growthRatePct: number | null;
+  momentum: "accelerating" | "decelerating" | "steady" | null;
+}): string | null {
+  const { growthRatePct: rate, momentum } = params;
+  if (rate == null) {
+    return "We’ll show your growth pace once follower history fills in for this range.";
+  }
+  if (momentum === "accelerating") {
+    return rate >= 0
+      ? `Your growth is accelerating — ${fmtPct(rate, 1)} this period and picking up vs last. Keep riding that wave.`
+      : `You’re recovering faster than last period — room to grow, and the pace is improving.`;
+  }
+  if (momentum === "decelerating") {
+    return rate >= 0
+      ? `You’re still growing (+${fmtPct(rate, 1)}), just a bit slower than last period — room to grow with cadence and your best formats.`
+      : `This stretch cooled a little vs last period — room to grow. Try leaning into what’s already resonating.`;
+  }
+  if (momentum === "steady") {
+    return rate >= 0
+      ? `Steady growth at ${fmtPct(rate, 1)} — consistent progress you can build on.`
+      : `Your pace is steady for now — small tweaks to posting rhythm can open room to grow.`;
+  }
+  return rate >= 0
+    ? `Follower growth of ${fmtPct(rate, 1)} this range — nice progress.`
+    : `Follower change of ${fmtPct(rate, 1)} this range — room to grow from here.`;
+}
+
+export function modelConsistencyTip(score: number | null): string | null {
+  if (score == null) {
+    return "A few more days of reach data will unlock your consistency vibe.";
+  }
+  if (score >= 70) {
+    return "Beautiful steadiness — your reach is showing up day after day. That’s a strength.";
+  }
+  if (score >= 45) {
+    return "Some natural swings — room to grow into an even smoother rhythm. You’re already in a good place.";
+  }
+  return "Reach varies a bit day to day — room to grow. A steady posting habit can smooth the curve without chasing every spike.";
+}
+
+export function modelPostingFrequencyTip(params: {
+  postsPerWeek: number | null;
+  postsInRange: number;
+  correlation: number | null;
+}): string | null {
+  const { postsPerWeek, postsInRange, correlation } = params;
+  if (!postsInRange || postsPerWeek == null) {
+    return "Once more posts sync, we’ll suggest a gentle cadence tip from your own data.";
+  }
+  const cadence =
+    postsPerWeek >= 5
+      ? `You’re posting about ${postsPerWeek.toFixed(1)}× per week — strong presence.`
+      : postsPerWeek >= 2
+        ? `You’re around ${postsPerWeek.toFixed(1)} posts per week — a solid base with room to grow if you want more visibility.`
+        : `You’re at about ${postsPerWeek.toFixed(1)} posts per week — room to grow with a slightly fuller cadence when it feels right.`;
+  if (correlation != null && correlation >= 0.35) {
+    return `${cadence} On days you post, reach often looks warmer too (observational — not a guarantee).`;
+  }
+  if (correlation != null && correlation <= -0.25) {
+    return `${cadence} Reach doesn’t always line up with posting days here — quality and timing may matter more than volume.`;
+  }
+  return cadence;
+}
+
+export function modelContentTypeTip(
+  rows: Array<{
+    group: IgPostGroup;
+    label: string;
+    count: number;
+    avg_engagement: number | null;
+  }>
+): string | null {
+  const withEng = rows.filter(
+    (r) => r.count > 0 && r.avg_engagement != null && Number.isFinite(r.avg_engagement)
+  );
+  if (withEng.length < 2) {
+    if (withEng.length === 1) {
+      return `Your synced spotlight so far leans ${withEng[0]!.label} — keep building that library and we’ll compare formats soon.`;
+    }
+    return null;
+  }
+  const sorted = [...withEng].sort(
+    (a, b) => (b.avg_engagement ?? 0) - (a.avg_engagement ?? 0)
+  );
+  const best = sorted[0]!;
+  const second = sorted[1]!;
+  const be = best.avg_engagement ?? 0;
+  const se = second.avg_engagement ?? 0;
+  if (!(se > 0) || !(be > 0)) return null;
+  const ratio = be / se;
+  if (ratio >= 1.25) {
+    return `Your ${best.label} get about ${ratio.toFixed(1)}× the engagement of your ${second.label} — lean into ${best.label.toLowerCase()} when you can.`;
+  }
+  if (ratio >= 1.1) {
+    return `${best.label} are edging ahead of ${second.label} right now — a gentle nudge toward more ${best.label.toLowerCase()}.`;
+  }
+  return `Your formats are neck-and-neck — mix what feels natural; ${best.label.toLowerCase()} have a slight edge.`;
+}

@@ -1,12 +1,23 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getModelContext } from "@/lib/model-context-server";
-import { bestTimeToPostUtc } from "@/lib/clariosuite-api";
+import { bestTimeToPostUtc, listClarioSuiteStories } from "@/lib/clariosuite-api";
 import {
   buildBestTimeRecommendation,
   warmAudienceSummary,
 } from "@/lib/instagram-insights-ui";
-import { resolveEngagementRate, summarizeIgDaily } from "@/lib/instagram-insights-stats";
+import {
+  contentTypePerformance,
+  followerGrowthRatePct,
+  growthMomentum,
+  igConsistencyScore,
+  pearsonCorrelation,
+  postingFrequency,
+  postingVsReachSeries,
+  priorEqualLengthRange,
+  resolveEngagementRate,
+  summarizeIgDaily,
+} from "@/lib/instagram-insights-stats";
 import {
   resolveInflowwStatsRange,
   type InflowwStatsPreset,
@@ -79,6 +90,8 @@ export async function GET(request: Request) {
       audienceSummary: null,
       bestTime: null,
       topPosts: [],
+      modelStats: null,
+      stories: { active: [], has_metrics: false, error: null },
       crossPlatformCard: null,
       message:
         "Your Instagram account isn’t linked yet. Ask an admin to connect it in Accounts → Models.",
@@ -90,12 +103,19 @@ export async function GET(request: Request) {
   const customFrom = url.searchParams.get("from") ?? undefined;
   const customTo = url.searchParams.get("to") ?? undefined;
   const range = resolveInflowwStatsRange(preset, customFrom, customTo);
+  const priorRange = priorEqualLengthRange(range.startYmd, range.endYmd);
 
-  const [daily, audienceRow, topPosts, crossPlatform] = await Promise.all([
+  // All queries scoped to this session's modelRecord.id / igUserId only.
+  const [daily, priorDaily, audienceRow, topPosts, crossPlatform] = await Promise.all([
     queryClarioSuiteDailyInsights({
       modelRecordId: modelRecord.id,
       startYmd: range.startYmd,
       endYmd: range.endYmd,
+    }),
+    queryClarioSuiteDailyInsights({
+      modelRecordId: modelRecord.id,
+      startYmd: priorRange.startYmd,
+      endYmd: priorRange.endYmd,
     }),
     getClarioSuiteAudienceSnapshot({ modelRecordId: modelRecord.id }),
     queryClarioSuiteTopPosts({ modelRecordId: modelRecord.id, limit: 25 }),
@@ -109,12 +129,80 @@ export async function GET(request: Request) {
   const crossPlatformCard = toModelCrossPlatformCard(crossPlatform);
 
   const dailyTotals = summarizeIgDaily(daily);
+  const priorTotals = summarizeIgDaily(priorDaily);
   const avgEr = resolveEngagementRate(dailyTotals.avg_engagement_rate, topPosts, {
     startYmd: range.startYmd,
     endYmd: range.endYmd,
   });
-  const { reach, views, total_interactions: interactions, follower_delta: followerDelta, follower_end: followerEnd } =
-    dailyTotals;
+  const {
+    reach,
+    views,
+    total_interactions: interactions,
+    follower_delta: followerDelta,
+    follower_end: followerEnd,
+    follower_start: followerStart,
+  } = dailyTotals;
+
+  const growthRate = followerGrowthRatePct(followerStart, followerDelta);
+  const priorGrowthRate = followerGrowthRatePct(
+    priorTotals.follower_start,
+    priorTotals.follower_delta
+  );
+  const freq = postingFrequency(topPosts, range.startYmd, range.endYmd);
+  const series = postingVsReachSeries(topPosts, daily, range.startYmd, range.endYmd);
+  const corr = pearsonCorrelation(
+    series.map((r) => r.posts),
+    series.map((r) => r.reach)
+  );
+  const contentTypes = contentTypePerformance(topPosts);
+
+  let stories: {
+    active: Array<{
+      id: string;
+      media_type: string | null;
+      permalink: string | null;
+      image_url: string | null;
+      posted_at: string | null;
+      reach: number | null;
+      views: number | null;
+    }>;
+    has_metrics: boolean;
+    error: string | null;
+  } = { active: [], has_metrics: false, error: null };
+  try {
+    const { data: storyRows } = await listClarioSuiteStories(igUserId);
+    const active = (storyRows ?? []).map((s) => {
+      const insight = s.insight;
+      const storyReach =
+        insight?.reach != null && Number.isFinite(insight.reach) ? Math.round(insight.reach) : null;
+      const storyViews =
+        insight?.views != null && Number.isFinite(insight.views)
+          ? Math.round(insight.views)
+          : insight?.videoViews != null && Number.isFinite(insight.videoViews)
+            ? Math.round(insight.videoViews)
+            : null;
+      return {
+        id: String(s.id),
+        media_type: s.mediaType ?? null,
+        permalink: s.permalink ?? null,
+        image_url: s.imageUrl || null,
+        posted_at: s.timestamp || null,
+        reach: storyReach,
+        views: storyViews,
+      };
+    });
+    stories = {
+      active,
+      has_metrics: active.some((a) => a.reach != null || a.views != null),
+      error: null,
+    };
+  } catch (err) {
+    stories = {
+      active: [],
+      has_metrics: false,
+      error: err instanceof Error ? err.message : "Stories unavailable",
+    };
+  }
 
   const online = asOnlineHours(audienceRow?.online_followers_by_hour);
   const ageRanges = asBuckets(audienceRow?.age_ranges);
@@ -140,6 +228,7 @@ export async function GET(request: Request) {
     linked: true,
     modelName: modelRecord.model_name,
     range,
+    priorRange,
     daily,
     totals: {
       reach,
@@ -148,6 +237,7 @@ export async function GET(request: Request) {
       avg_engagement_rate: avgEr,
       follower_delta: followerDelta,
       follower_end: followerEnd,
+      follower_start: followerStart,
     },
     audience: audienceRow
       ? {
@@ -167,6 +257,17 @@ export async function GET(request: Request) {
         }
       : null,
     topPosts,
+    modelStats: {
+      growth_rate_pct: growthRate,
+      prior_growth_rate_pct: priorGrowthRate,
+      growth_momentum: growthMomentum(growthRate, priorGrowthRate),
+      consistency_score: igConsistencyScore(daily),
+      posting_frequency: freq,
+      posting_vs_reach: series,
+      posting_reach_correlation: corr,
+      content_type_performance: contentTypes,
+    },
+    stories,
     crossPlatformCard,
   });
 }
