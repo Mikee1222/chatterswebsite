@@ -4,7 +4,9 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   assignCreativeToBunch,
+  deleteVideoBunch,
   getVideoBunch,
+  getVideoBunchDeleteImpact,
   listSlotsForBunch,
   submitResearcherBunchFind,
   updateVideoBunchStatus,
@@ -15,7 +17,7 @@ import { coerceBunchStatus, coerceSlotVideoType } from "@/lib/winner-sourcing-he
 import { listFoldersForBunch } from "@/services/icloud";
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const session = await getSessionFromCookies();
@@ -26,6 +28,15 @@ export async function GET(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await params;
+  const wantImpact = new URL(req.url).searchParams.get("delete_impact") === "1";
+  if (wantImpact) {
+    if (!canManage) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const impact = await getVideoBunchDeleteImpact(id);
+    if (!impact) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    return NextResponse.json({ impact });
+  }
   const [bunch, slots, folders] = await Promise.all([
     getVideoBunch(id),
     listSlotsForBunch(id),
@@ -33,6 +44,26 @@ export async function GET(
   ]);
   if (!bunch) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return NextResponse.json({ bunch, slots, folders });
+}
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSessionFromCookies();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const { id } = await params;
+  try {
+    const impact = await deleteVideoBunch(id);
+    return NextResponse.json({ ok: true, impact });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Failed";
+    const status = message === "Bunch not found" ? 404 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
 }
 
 export async function PATCH(

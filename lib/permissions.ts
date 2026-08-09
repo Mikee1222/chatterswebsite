@@ -235,7 +235,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   pdf_maker: "PDF Maker",
   spotcheck: "Spot checks",
   winner_videos: "Winner videos",
-  winner_sourcing: "Winner sourcing",
+  winner_sourcing: "Approved Ideas",
   creative_scripts: "Creative scripts",
   filming: "Filming",
   editing: "Editing",
@@ -356,7 +356,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "winner_videos:manage": "Διαχείριση και έγκριση winner video submissions",
 
   "winner_sourcing:submit": "Υποβολή Winner/Super Winner και συμπλήρωση recreate slots σε bunches",
-  "winner_sourcing:manage": "Διαχείριση Winner sourcing hub, queue και video bunches",
+  "winner_sourcing:manage": "Διαχείριση Approved Ideas hub, queue και video bunches",
 
   "creative_scripts:submit": "Συγγραφή scripts για approved winner videos",
   "creative_scripts:manage": "Έλεγχος, επεξεργασία και έγκριση creative scripts",

@@ -628,6 +628,160 @@ export async function updateVideoBunchStatus(
   return mapBunch(data as Record<string, unknown>);
 }
 
+export type VideoBunchDeleteImpact = {
+  bunch_id: string;
+  bunch_name: string;
+  recreate_video_slots: number;
+  winner_videos: number;
+  filming_filmed_slots: number;
+  filming_edited_slots: number;
+  icloud_folder_entries: number;
+  recreation_queue_items: number;
+  /** Scripts past Needs Script / Not Applicable (written or reviewed). */
+  scripts_with_progress: number;
+  /**
+   * True when the bunch has in-progress valuable work (scripts written, filming/editing done,
+   * or pipeline already past sourcing). UI should require a stronger confirm.
+   */
+  has_valuable_work: boolean;
+  valuable_work_reasons: string[];
+};
+
+async function countEq(table: string, col: string, value: string): Promise<number> {
+  const sb = getSupabaseServiceClient();
+  const { count, error } = await sb
+    .from(table)
+    .select("id", { count: "exact", head: true })
+    .eq(col, value);
+  if (error) throw new Error(`count ${table}: ${error.message}`);
+  return count ?? 0;
+}
+
+/** Preview cascade counts before permanently deleting a video bunch. */
+export async function getVideoBunchDeleteImpact(
+  bunchId: string,
+): Promise<VideoBunchDeleteImpact | null> {
+  const sb = getSupabaseServiceClient();
+  const { data: row, error } = await sb
+    .from("video_bunches")
+    .select("id, name, filming_status, editing_status, icloud_status, uploaded_at, edited_uploaded_at")
+    .eq("id", bunchId)
+    .maybeSingle();
+  if (error) throw new Error(`getVideoBunchDeleteImpact: ${error.message}`);
+  if (!row) return null;
+
+  const [
+    recreate_video_slots,
+    winner_videos,
+    icloud_folder_entries,
+    recreation_queue_items,
+    { data: slotRows },
+  ] = await Promise.all([
+    countEq("recreate_video_slots", "bunch_id", bunchId),
+    countEq("winner_videos", "bunch_id", bunchId),
+    countEq("icloud_folder_entries", "bunch_id", bunchId),
+    countEq("recreation_queue_items", "bunch_id", bunchId),
+    sb
+      .from("recreate_video_slots")
+      .select("status, filmed, edited")
+      .eq("bunch_id", bunchId),
+  ]);
+
+  const slots = (slotRows ?? []) as Array<{
+    status?: string;
+    filmed?: boolean;
+    edited?: boolean;
+  }>;
+  const filming_filmed_slots = slots.filter((s) => Boolean(s.filmed)).length;
+  const filming_edited_slots = slots.filter((s) => Boolean(s.edited)).length;
+  const scripts_with_progress = slots.filter((s) => {
+    const st = String(s.status ?? "");
+    return st === "Pending Review" || st === "Approved" || st === "Rejected";
+  }).length;
+
+  const filmingStatus = coerceFilmingStatus(row.filming_status);
+  const editingStatus = coerceEditingStatus(row.editing_status);
+  const icloudStatus = coerceIcloudStatus(row.icloud_status);
+
+  const valuable_work_reasons: string[] = [];
+  if (scripts_with_progress > 0) {
+    valuable_work_reasons.push(
+      `${scripts_with_progress} script${scripts_with_progress === 1 ? "" : "s"} already written/reviewed`,
+    );
+  }
+  if (filming_filmed_slots > 0 || filmingStatus === "uploaded" || row.uploaded_at) {
+    valuable_work_reasons.push(
+      filming_filmed_slots > 0
+        ? `${filming_filmed_slots} slot${filming_filmed_slots === 1 ? "" : "s"} marked filmed`
+        : "filming upload already recorded",
+    );
+  }
+  if (filming_edited_slots > 0 || editingStatus === "uploaded" || row.edited_uploaded_at) {
+    valuable_work_reasons.push(
+      filming_edited_slots > 0
+        ? `${filming_edited_slots} slot${filming_edited_slots === 1 ? "" : "s"} marked edited`
+        : "editing upload already recorded",
+    );
+  }
+  if (icloudStatus === "organized") {
+    valuable_work_reasons.push("iCloud organization already complete");
+  }
+
+  return {
+    bunch_id: String(row.id),
+    bunch_name: String(row.name ?? ""),
+    recreate_video_slots,
+    winner_videos,
+    filming_filmed_slots,
+    filming_edited_slots,
+    icloud_folder_entries,
+    recreation_queue_items,
+    scripts_with_progress,
+    has_valuable_work: valuable_work_reasons.length > 0,
+    valuable_work_reasons,
+  };
+}
+
+/**
+ * Permanently delete a video bunch and all linked pipeline rows.
+ * Explicit deletes for tables with ON DELETE SET NULL so nothing is left orphaned.
+ * `recreate_video_slots` / `icloud_folder_entries` also CASCADE from the bunch row.
+ */
+export async function deleteVideoBunch(bunchId: string): Promise<VideoBunchDeleteImpact> {
+  const impact = await getVideoBunchDeleteImpact(bunchId);
+  if (!impact) throw new Error("Bunch not found");
+
+  const sb = getSupabaseServiceClient();
+
+  // 1) Slots first (text link to winner_videos; no FK blocking).
+  {
+    const { error } = await sb.from("recreate_video_slots").delete().eq("bunch_id", bunchId);
+    if (error) throw new Error(`delete recreate_video_slots: ${error.message}`);
+  }
+  // 2) Scripts / research finds linked to this bunch (FK would only SET NULL).
+  {
+    const { error } = await sb.from("winner_videos").delete().eq("bunch_id", bunchId);
+    if (error) throw new Error(`delete winner_videos: ${error.message}`);
+  }
+  // 3) Queue items assigned to this bunch (FK would only SET NULL).
+  {
+    const { error } = await sb.from("recreation_queue_items").delete().eq("bunch_id", bunchId);
+    if (error) throw new Error(`delete recreation_queue_items: ${error.message}`);
+  }
+  // 4) iCloud folders (also CASCADE, delete explicitly for clarity).
+  {
+    const { error } = await sb.from("icloud_folder_entries").delete().eq("bunch_id", bunchId);
+    if (error) throw new Error(`delete icloud_folder_entries: ${error.message}`);
+  }
+  // 5) Bunch row.
+  {
+    const { error } = await sb.from("video_bunches").delete().eq("id", bunchId);
+    if (error) throw new Error(`delete video_bunches: ${error.message}`);
+  }
+
+  return impact;
+}
+
 async function countSlotsForBunch(bunchId: string): Promise<number> {
   const sb = getSupabaseServiceClient();
   const { count, error } = await sb

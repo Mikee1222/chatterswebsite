@@ -14,6 +14,7 @@ import {
   RefreshCw,
   Search,
   Sparkles,
+  Trash2,
   UserRound,
   Users,
 } from "lucide-react";
@@ -25,6 +26,7 @@ import {
 } from "@/components/content-pipeline-ui";
 import { FilterBar, FilterChip, ReviewEmptyState } from "@/components/manager-review-ui";
 import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -55,7 +57,11 @@ import {
   type SlotVideoType,
 } from "@/lib/winner-sourcing-helpers";
 import { ROUTES } from "@/lib/routes";
-import type { RecreateVideoSlot, VideoBunch } from "@/services/winner-sourcing";
+import type {
+  RecreateVideoSlot,
+  VideoBunch,
+  VideoBunchDeleteImpact,
+} from "@/services/winner-sourcing";
 import type { IcloudFolderEntry, ModelMaterialRunway } from "@/services/icloud";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +104,22 @@ function ymdFromIso(iso: string | undefined): string | null {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+function formatBunchDeleteDescription(impact: VideoBunchDeleteImpact | null, loading: boolean): string {
+  if (loading || !impact) return "Checking linked records…";
+  const lines = [
+    `${impact.recreate_video_slots} recreate slot${impact.recreate_video_slots === 1 ? "" : "s"}`,
+    `${impact.winner_videos} script/winner video${impact.winner_videos === 1 ? "" : "s"}`,
+    `${impact.filming_filmed_slots} filmed slot${impact.filming_filmed_slots === 1 ? "" : "s"}`,
+    `${impact.icloud_folder_entries} iCloud folder${impact.icloud_folder_entries === 1 ? "" : "s"}`,
+    `${impact.recreation_queue_items} recreation queue item${impact.recreation_queue_items === 1 ? "" : "s"}`,
+  ];
+  let text = `This will permanently delete “${impact.bunch_name}” and: ${lines.join(", ")}. Deleting cannot be undone.`;
+  if (impact.has_valuable_work) {
+    text += ` Warning: this bunch has valuable in-progress work (${impact.valuable_work_reasons.join("; ")}). Type the bunch name to confirm.`;
+  }
+  return text;
 }
 
 function icloudStageLabel(
@@ -173,6 +195,11 @@ export function AdminBunchesClient({
   const [showAssignPicker, setShowAssignPicker] = React.useState(false);
   const [showFilmerPicker, setShowFilmerPicker] = React.useState(false);
   const [showEditorPicker, setShowEditorPicker] = React.useState(false);
+
+  const [deleteTarget, setDeleteTarget] = React.useState<VideoBunch | null>(null);
+  const [deleteImpact, setDeleteImpact] = React.useState<VideoBunchDeleteImpact | null>(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = React.useState(false);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
   const [modelFilter, setModelFilter] = React.useState("all");
@@ -583,6 +610,90 @@ export function AdminBunchesClient({
       await refreshAll();
     } finally {
       setBusyId(null);
+    }
+  }
+
+  function closeDeleteConfirm() {
+    setDeleteTarget(null);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(false);
+  }
+
+  async function openDeleteConfirm(bunch: VideoBunch) {
+    setDeleteTarget(bunch);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(true);
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/bunches/${encodeURIComponent(bunch.id)}?delete_impact=1`,
+        { credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        impact?: VideoBunchDeleteImpact;
+        error?: string;
+      };
+      if (!res.ok || !data.impact) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-del-impact-${Date.now()}`,
+            "Could not load delete impact",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        closeDeleteConfirm();
+        return;
+      }
+      setDeleteImpact(data.impact);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  }
+
+  async function confirmDeleteBunch() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/bunches/${encodeURIComponent(deleteTarget.id)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-del-err-${Date.now()}`,
+            "Delete failed",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        return;
+      }
+      const deletedId = deleteTarget.id;
+      const deletedName = deleteTarget.name;
+      setBunches((prev) => prev.filter((b) => b.id !== deletedId));
+      setFoldersByBunch((prev) => {
+        const next = { ...prev };
+        delete next[deletedId];
+        return next;
+      });
+      if (selectedBunchId === deletedId) {
+        setSelectedBunchId(null);
+        setSlots([]);
+      }
+      closeDeleteConfirm();
+      addToast(
+        winnerVideoLocalToast(
+          `ws-del-ok-${Date.now()}`,
+          "Bunch deleted",
+          `“${deletedName}” and linked records removed.`,
+          "normal",
+        ),
+      );
+      void refreshAll();
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -1134,13 +1245,20 @@ export function AdminBunchesClient({
                 const editSt = EDITING_STATUS_STYLES[b.editing_status] ?? EDITING_STATUS_STYLES.unassigned;
                 return (
                   <li key={b.id}>
-                    <button
-                      type="button"
+                    <div
+                      role="button"
+                      tabIndex={0}
                       onClick={() => void loadBunchSlots(b.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void loadBunchSlots(b.id);
+                        }
+                      }}
                       className={cn(
                         VA_CARD,
                         VA_CARD_GLOW,
-                        "w-full space-y-3 p-4 text-left transition",
+                        "w-full cursor-pointer space-y-3 p-4 text-left transition",
                         selectedBunchId === b.id && "border-[#FF1493]/35 ring-1 ring-[#FF1493]/20",
                         outstanding && selectedBunchId !== b.id && "border-amber-500/25",
                       )}
@@ -1159,9 +1277,23 @@ export function AdminBunchesClient({
                             Filled {provided} · Pending {pending} · Needed {remaining}
                           </p>
                         </div>
-                        <span className="shrink-0 text-xs tabular-nums text-[#D4AF8C]">
-                          {occupied}/{b.target_video_count}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <span className="text-xs tabular-nums text-[#D4AF8C]">
+                            {occupied}/{b.target_video_count}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`Delete bunch ${b.name}`}
+                            title="Delete bunch"
+                            className="rounded-lg border border-red-500/20 bg-red-500/10 p-1.5 text-red-300/80 transition hover:bg-red-500/20 hover:text-red-200"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void openDeleteConfirm(b);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
                       </div>
                       <PipelineStageStepper active={stageIdx} outstanding={outstanding} compact />
                       <div className="flex flex-wrap items-center gap-2 text-[11px]">
@@ -1197,7 +1329,7 @@ export function AdminBunchesClient({
                           style={{ width: `${pct}%` }}
                         />
                       </div>
-                    </button>
+                    </div>
                   </li>
                 );
               })}
@@ -1330,6 +1462,15 @@ export function AdminBunchesClient({
                     }
                   >
                     {selectedBunch.status === "open" ? "Close bunch" : "Reopen bunch"}
+                  </button>
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/15 px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-red-300 hover:bg-red-500/25 disabled:opacity-40"
+                    onClick={() => void openDeleteConfirm(selectedBunch)}
+                    disabled={deleteLoading || busyId === selectedBunch.id}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
                   </button>
                 </div>
               </div>
@@ -1738,6 +1879,19 @@ export function AdminBunchesClient({
       </div>
       </>
       ) : null}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => void confirmDeleteBunch()}
+        title={deleteTarget ? `Delete “${deleteTarget.name}”?` : "Delete bunch?"}
+        description={formatBunchDeleteDescription(deleteImpact, deleteImpactLoading)}
+        confirmLabel="Delete bunch"
+        confirmVariant="danger"
+        loading={deleteLoading || deleteImpactLoading}
+        requireNameConfirmation={Boolean(deleteImpact?.has_valuable_work)}
+        nameToConfirm={deleteImpact?.bunch_name || deleteTarget?.name || ""}
+      />
     </div>
   );
 }
