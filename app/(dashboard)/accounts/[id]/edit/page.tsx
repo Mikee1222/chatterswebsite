@@ -60,7 +60,7 @@ export default async function EditAccountPage({
         </Link>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white">Edit user</h1>
         <p className="mt-1 text-sm text-white/55">
-          {record.full_name} · {record.email}
+          Update role, access, compensation, and profile settings
         </p>
       </div>
       <EditAccountForm

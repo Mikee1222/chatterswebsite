@@ -33,7 +33,11 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { AccountCompensationSection } from "@/components/account-compensation-section";
 import { AccountReviewHistorySection } from "@/components/account-review-history-section";
 import type { VaReviewHistorySummary } from "@/services/marketing-reviews";
+import { StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { cn } from "@/lib/utils";
+
+const INFLOWW_EMPLOYEE_TOOLTIP =
+  "Numeric employee ID from Infloww — links this user's sales and chat performance sync. Find it in Infloww under employee settings.";
 
 const STATUSES = ["active", "inactive", "suspended"] as const;
 const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
@@ -108,6 +112,14 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
 
       <form action={updateAccount} encType="multipart/form-data" className={`${formSpace} mx-auto max-w-2xl space-y-5`}>
         <input type="hidden" name="recordId" value={user.id} />
+
+        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-pink-500/[0.03] px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-2">
+            {selectedRole ? <RoleColorDot color={selectedRole.color || "gray"} /> : null}
+            <span className="text-sm font-semibold text-white/90">{user.full_name}</span>
+            <span className="text-xs text-white/45">{user.email}</span>
+          </div>
+        </div>
 
         <SopFormSection title="Basic info" description="Name and email">
           <FormField label="Full name" icon={<User />} htmlFor="full_name" required>
@@ -281,7 +293,12 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
             role === "admin" ||
             role === "manager") && (
             <FormField
-              label="Infloww employee ID"
+              label={
+                <span className="inline-flex items-center gap-1.5">
+                  Infloww employee ID
+                  <StatInfoTooltip text={INFLOWW_EMPLOYEE_TOOLTIP} />
+                </span>
+              }
               icon={<Hash />}
               htmlFor="infloww_employee_id"
               description="Numeric employee ID from Infloww — links sales & chat performance sync."

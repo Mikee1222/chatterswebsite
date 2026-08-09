@@ -28,21 +28,7 @@ type Props = {
   error?: string;
 };
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div
-      className={cn(
-        "rounded-2xl border px-4 py-3",
-        accent
-          ? "border-pink-500/25 bg-gradient-to-br from-pink-500/10 to-fuchsia-500/5"
-          : "border-white/10 bg-white/[0.04]"
-      )}
-    >
-      <p className="text-[11px] font-medium uppercase tracking-wider text-white/45">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</p>
-    </div>
-  );
-}
+import { AdminStatCard } from "@/components/admin-list-primitives";
 
 export function AccountsView({ users, modelss, roles, stats, canCreate, success, error }: Props) {
   const router = useRouter();
@@ -86,10 +72,10 @@ export function AccountsView({ users, modelss, roles, stats, canCreate, success,
 
       {section === "users" && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard label="Total" value={stats.total} accent />
-          <StatCard label="Chatters" value={stats.chatters} />
-          <StatCard label="VAs" value={stats.vas} />
-          <StatCard label="Custom roles" value={stats.customRoles} />
+          <AdminStatCard label="Total" value={stats.total} accent />
+          <AdminStatCard label="Chatters" value={stats.chatters} />
+          <AdminStatCard label="VAs" value={stats.vas} />
+          <AdminStatCard label="Custom roles" value={stats.customRoles} />
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
-import { requireAdminRoute } from "@/lib/rbac";
+import { hasPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
@@ -16,7 +16,9 @@ export const revalidate = 30;
 const stagger = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export default async function AdminModelsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MODELS_VIEW);
+  const session = await getSessionFromCookies();
+  const user = await requireAdminRoute(session, PERMISSIONS.MODELS_VIEW);
+  const canCreate = session ? await hasPermission(session, PERMISSIONS.ACCOUNTS_CREATE) : false;
 
   const modelss = await getCachedModelss();
   await stagger(150);
@@ -82,6 +84,7 @@ export default async function AdminModelsPage() {
       modelss={modelsWithAccountStatus as (ModelRecord & { hasLinkedAccount: boolean })[]}
       modelIdToVaNames={modelIdToVaNames}
       periodSummaryByModelId={periodSummaryByModelId}
+      canCreate={canCreate}
     />
   );
 }

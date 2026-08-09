@@ -10,7 +10,8 @@ import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { formatDateEuropean } from "@/lib/format";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { AdminRowAvatar, RecordStatusBadge } from "@/components/admin-list-primitives";
+import { AdminRowAvatar, AdminStatCard, IntegrationLinkBadge, RecordStatusBadge } from "@/components/admin-list-primitives";
+import { ListPagination, useClientPagination } from "@/components/earnings-filter-list";
 import { toggleModelStatus, deleteModelAction } from "@/app/actions/modelss";
 
 const PRIORITY_OPTIONS = ["low", "medium", "high"] as const;
@@ -81,12 +82,7 @@ function avgPriorityLabel(models: ModelRecord[]): string {
 }
 
 function StatPill({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold tabular-nums text-white">{value}</p>
-    </div>
-  );
+  return <AdminStatCard label={label} value={value} />;
 }
 
 export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
@@ -167,6 +163,12 @@ export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
       return (m.model_name || "").toLowerCase().includes(q);
     });
   }, [modelss, activeStatus, platformFilter, priorityFilter, debouncedSearch]);
+
+  const { page, setPage, totalPages, pageItems, reset, total } = useClientPagination(filtered, 12);
+
+  React.useEffect(() => {
+    reset();
+  }, [activeStatus, platformFilter, priorityFilter, debouncedSearch, reset]);
 
   const hasActiveFilters =
     activeStatus !== "all" || Boolean(platformFilter) || Boolean(priorityFilter) || search.trim().length > 0;
@@ -307,8 +309,9 @@ export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {filtered.map((m, index) => {
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
+          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2">
+          {pageItems.map((m, index) => {
             const inactive = isInactiveStatus(m.status);
             const isOccupied = m.current_status === "occupied";
             const payment = paymentPill(m);
@@ -380,6 +383,8 @@ export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
                         </span>
                       ) : null}
                       <RecordStatusBadge status={m.status} />
+                      <IntegrationLinkBadge kind="infloww" linked={Boolean(m.infloww_creator_id?.trim())} />
+                      <IntegrationLinkBadge kind="instagram" linked={Boolean(m.clariosuite_ig_user_id?.trim())} />
                     </div>
                   </div>
                   <div className="inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-white/[0.08] bg-black/25 p-0.5">
@@ -509,6 +514,8 @@ export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
               </motion.article>
             );
           })}
+          </div>
+          <ListPagination page={page} totalPages={totalPages} total={total} pageSize={12} onPageChange={setPage} />
         </div>
       )}
     </>

@@ -10,13 +10,15 @@ import { toggleCanLogin, deleteUserAction } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { AdminRowAvatar, RecordStatusBadge, UserRoleBadge } from "@/components/admin-list-primitives";
+import { AdminRowAvatar, AdminStatCard, RecordStatusBadge, UserRoleBadge } from "@/components/admin-list-primitives";
+import { ListPagination, useClientPagination } from "@/components/earnings-filter-list";
 import { SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
 import { formatDateEuropean } from "@/lib/format";
 
 const KNOWN_USER_ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model", "client"];
 
 type RoleTabId = "all" | "chatter" | "virtual_assistant" | "other" | string;
+type AccountStatusTab = "all" | "active" | "inactive" | "suspended";
 
 type RoleTab = { id: RoleTabId; label: string; count: number };
 
@@ -117,6 +119,26 @@ function AccountRoleBadge({ role, roles }: { role: string; roles: RoleRecord[] }
   );
 }
 
+function matchesAccountStatusTab(status: string, tab: AccountStatusTab): boolean {
+  const s = (status || "").trim().toLowerCase();
+  if (tab === "all") return true;
+  if (tab === "active") return s === "active" || s === "enabled" || s === "live";
+  if (tab === "inactive") return s === "inactive" || s === "disabled" || s === "paused" || s === "off";
+  if (tab === "suspended") return s === "suspended";
+  return true;
+}
+
+function buildAccountStatusTabs(users: UserRecord[]): { id: AccountStatusTab; label: string; count: number }[] {
+  const countFor = (tab: AccountStatusTab) =>
+    users.filter((u) => matchesAccountStatusTab(u.status ?? "", tab)).length;
+  return [
+    { id: "all", label: "All status", count: users.length },
+    { id: "active", label: "Active", count: countFor("active") },
+    { id: "inactive", label: "Inactive", count: countFor("inactive") },
+    { id: "suspended", label: "Suspended", count: countFor("suspended") },
+  ];
+}
+
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = React.useState(value);
   React.useEffect(() => {
@@ -139,9 +161,14 @@ export function AccountsTable({ users, roles }: { users: UserRecord[]; roles: Ro
     [roles]
   );
   const tabs = React.useMemo(() => buildRoleTabs(users, roles), [users, roles]);
+  const statusTabs = React.useMemo(() => buildAccountStatusTabs(users), [users]);
 
   const roleParam = searchParams.get("role") ?? "all";
   const activeTab: RoleTabId = tabs.some((t) => t.id === roleParam) ? roleParam : "all";
+
+  const statusParam = searchParams.get("ustatus") ?? "all";
+  const activeStatusTab: AccountStatusTab =
+    statusTabs.some((t) => t.id === statusParam) ? (statusParam as AccountStatusTab) : "all";
 
   function setRoleTab(tab: RoleTabId) {
     const params = new URLSearchParams(searchParams.toString());
@@ -151,14 +178,29 @@ export function AccountsTable({ users, roles }: { users: UserRecord[]; roles: Ro
     router.push(`${ROUTES.admin.accounts}${q ? `?${q}` : ""}`);
   }
 
+  function setStatusTab(tab: AccountStatusTab) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "all") params.delete("ustatus");
+    else params.set("ustatus", tab);
+    const q = params.toString();
+    router.push(`${ROUTES.admin.accounts}${q ? `?${q}` : ""}`);
+  }
+
   const filtered = React.useMemo(() => {
     const q = debouncedSearch.trim().toLowerCase();
     return users.filter((u) => {
       if (!userMatchesRoleTab(u, activeTab, customRoleIds)) return false;
+      if (!matchesAccountStatusTab(u.status ?? "", activeStatusTab)) return false;
       if (!q) return true;
-      return `${u.full_name} ${u.email}`.toLowerCase().includes(q);
+      return `${u.full_name} ${u.email} ${u.role}`.toLowerCase().includes(q);
     });
-  }, [users, activeTab, customRoleIds, debouncedSearch]);
+  }, [users, activeTab, activeStatusTab, customRoleIds, debouncedSearch]);
+
+  const { page, setPage, totalPages, pageItems, reset, total } = useClientPagination(filtered, 20);
+
+  React.useEffect(() => {
+    reset();
+  }, [activeTab, activeStatusTab, debouncedSearch, reset]);
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
@@ -224,15 +266,43 @@ export function AccountsTable({ users, roles }: { users: UserRecord[]; roles: Ro
         ))}
       </div>
 
+      <div className="mb-4 flex flex-wrap gap-2">
+        {statusTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setStatusTab(tab.id)}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
+              activeStatusTab === tab.id
+                ? "border-emerald-500/35 bg-emerald-500/12 text-emerald-100"
+                : "border-white/10 bg-white/[0.03] text-white/65 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/90"
+            )}
+          >
+            {tab.label}
+            <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[11px] font-semibold text-white/70">
+              {tab.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <AdminStatCard label="Showing" value={total} accent />
+        <AdminStatCard label="Active" value={statusTabs.find((t) => t.id === "active")?.count ?? 0} />
+        <AdminStatCard label="Login off" value={users.filter((u) => !u.can_login).length} />
+        <AdminStatCard label="Suspended" value={statusTabs.find((t) => t.id === "suspended")?.count ?? 0} />
+      </div>
+
       <div className="space-y-4 md:hidden">
-        {filtered.length === 0 ? (
+        {pageItems.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-white/12 bg-white/[0.02] p-8 text-center">
             <UserRound className="mx-auto h-8 w-8 text-white/25" aria-hidden />
             <p className="mt-3 text-sm font-medium text-white/70">No users found</p>
             <p className="mt-1 text-xs text-white/45">Try a different filter or search term.</p>
           </div>
         ) : (
-          filtered.map((u, index) => (
+          pageItems.map((u, index) => (
             <motion.div
               key={u.id}
               initial={{ opacity: 0, y: 12 }}
@@ -308,6 +378,7 @@ export function AccountsTable({ users, roles }: { users: UserRecord[]; roles: Ro
             </motion.div>
           ))
         )}
+        <ListPagination page={page} totalPages={totalPages} total={total} pageSize={20} onPageChange={setPage} />
       </div>
 
       <div className="hidden overflow-x-auto md:block">
@@ -323,7 +394,7 @@ export function AccountsTable({ users, roles }: { users: UserRecord[]; roles: Ro
             </tr>
           </thead>
           <tbody className="divide-y divide-white/[0.06]">
-            {filtered.length === 0 ? (
+            {pageItems.length === 0 ? (
               <tr>
                 <td colSpan={6} className="p-10 text-center">
                   <UserRound className="mx-auto h-8 w-8 text-white/25" aria-hidden />
@@ -331,7 +402,7 @@ export function AccountsTable({ users, roles }: { users: UserRecord[]; roles: Ro
                 </td>
               </tr>
             ) : (
-              filtered.map((u, index) => (
+              pageItems.map((u, index) => (
                 <motion.tr
                   key={u.id}
                   initial={{ opacity: 0, y: 12 }}
@@ -416,6 +487,7 @@ export function AccountsTable({ users, roles }: { users: UserRecord[]; roles: Ro
             )}
           </tbody>
         </table>
+        <ListPagination page={page} totalPages={totalPages} total={total} pageSize={20} onPageChange={setPage} />
       </div>
     </>
   );

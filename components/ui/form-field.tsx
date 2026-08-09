@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export interface FormFieldProps {
-  label: string;
+  label: React.ReactNode;
   icon: React.ReactNode;
   children: React.ReactNode;
   required?: boolean;

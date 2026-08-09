@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, Pencil, Search, Settings2, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Plus, Search, Settings2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
@@ -13,7 +13,8 @@ import { Label, Textarea } from "@/components/ui/form";
 import { FormInput } from "@/components/ui/form-input";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { AdminRowAvatar, RecordStatusBadge } from "@/components/admin-list-primitives";
+import { AdminRowAvatar, AdminStatCard, IntegrationLinkBadge, RecordStatusBadge } from "@/components/admin-list-primitives";
+import { ListPagination, useClientPagination } from "@/components/earnings-filter-list";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { logPeriodAction, deletePeriodAction } from "@/app/actions/model-periods";
@@ -46,6 +47,7 @@ type Props = {
   modelss: (ModelRecord & { hasLinkedAccount?: boolean })[];
   modelIdToVaNames: Record<string, string[]>;
   periodSummaryByModelId: Record<string, ModelPeriodSummary>;
+  canCreate?: boolean;
 };
 
 function useDebouncedValue<T>(value: T, delayMs: number): T {
@@ -79,13 +81,9 @@ function isInactiveStatus(status: string): boolean {
   return s === "inactive" || s === "suspended" || s === "disabled" || s === "paused";
 }
 
-function StatPill({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
-      <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold tabular-nums text-white">{value}</p>
-    </div>
-  );
+function isActiveStatus(status: string): boolean {
+  const s = status.trim().toLowerCase();
+  return s === "active" || s === "enabled" || s === "live";
 }
 
 function PeriodSection({
@@ -190,7 +188,7 @@ function PeriodSection({
   );
 }
 
-export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByModelId }: Props) {
+export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByModelId, canCreate = false }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const [localModelss, setLocalModelss] = React.useState(modelss);
@@ -198,7 +196,10 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
   const [filterStatus, setFilterStatus] = React.useState("");
   const [filterPriority, setFilterPriority] = React.useState("");
   const [filterChatter, setFilterChatter] = React.useState("");
+  const [filterSearch, setFilterSearch] = React.useState("");
+  const [recordStatusFilter, setRecordStatusFilter] = React.useState<"all" | "active" | "inactive">("all");
   const debouncedFilterChatter = useDebouncedValue(filterChatter, 300);
+  const debouncedFilterSearch = useDebouncedValue(filterSearch, 300);
   const [viewFilter, setViewFilter] = React.useState<"all" | "free" | "taken">("all");
   const [modelPendingDelete, setModelPendingDelete] = React.useState<ModelRecord | null>(null);
   const [confirmingModelDelete, setConfirmingModelDelete] = React.useState(false);
@@ -268,10 +269,43 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
       list = list.filter((m) =>
         (m.current_chatter_name ?? "").toLowerCase().includes(debouncedFilterChatter.toLowerCase())
       );
+    if (recordStatusFilter === "active") list = list.filter((m) => isActiveStatus(m.status ?? ""));
+    if (recordStatusFilter === "inactive") list = list.filter((m) => isInactiveStatus(m.status ?? ""));
     if (viewFilter === "free") list = list.filter((m) => m.current_status === "free");
     if (viewFilter === "taken") list = list.filter((m) => m.current_status === "occupied");
+    const q = debouncedFilterSearch.trim().toLowerCase();
+    if (q) {
+      list = list.filter((m) => {
+        const hay = `${m.model_name ?? ""} ${m.platform ?? ""} ${m.current_chatter_name ?? ""}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
     return list;
-  }, [localModelss, filterPlatform, filterStatus, filterPriority, debouncedFilterChatter, viewFilter]);
+  }, [
+    localModelss,
+    filterPlatform,
+    filterStatus,
+    filterPriority,
+    debouncedFilterChatter,
+    debouncedFilterSearch,
+    recordStatusFilter,
+    viewFilter,
+  ]);
+
+  const { page, setPage, totalPages, pageItems, reset, total } = useClientPagination(filtered, 12);
+
+  React.useEffect(() => {
+    reset();
+  }, [
+    filterPlatform,
+    filterStatus,
+    filterPriority,
+    debouncedFilterChatter,
+    debouncedFilterSearch,
+    recordStatusFilter,
+    viewFilter,
+    reset,
+  ]);
 
   const platforms = React.useMemo(() => [...new Set(localModelss.map((m) => m.platform).filter(Boolean))].sort(), [localModelss]);
   const statuses = React.useMemo(() => [...new Set(localModelss.map((m) => m.status).filter(Boolean))].sort(), [localModelss]);
@@ -301,6 +335,8 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
 
   const freeCount = localModelss.filter((m) => m.current_status === "free").length;
   const takenCount = localModelss.length - freeCount;
+  const activeCount = localModelss.filter((m) => isActiveStatus(m.status ?? "")).length;
+  const inactiveCount = localModelss.length - activeCount;
   const inPeriodCount = React.useMemo(
     () => localModelss.filter((m) => periodSummaryByModelId[m.id]?.current != null).length,
     [localModelss, periodSummaryByModelId]
@@ -308,17 +344,21 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
 
   const hasActiveFilters =
     viewFilter !== "all" ||
+    recordStatusFilter !== "all" ||
     Boolean(filterPlatform) ||
     Boolean(filterStatus) ||
     Boolean(filterPriority) ||
-    filterChatter.trim().length > 0;
+    filterChatter.trim().length > 0 ||
+    filterSearch.trim().length > 0;
 
   const clearFilters = () => {
     setViewFilter("all");
+    setRecordStatusFilter("all");
     setFilterPlatform("");
     setFilterStatus("");
     setFilterPriority("");
     setFilterChatter("");
+    setFilterSearch("");
   };
 
   const handleConfirmDeleteModel = React.useCallback(async () => {
@@ -350,13 +390,30 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
     { id: "taken", label: "Taken", count: takenCount },
   ];
 
+  const recordStatusTabs: { id: "all" | "active" | "inactive"; label: string; count: number }[] = [
+    { id: "all", label: "All status", count: localModelss.length },
+    { id: "active", label: "Active", count: activeCount },
+    { id: "inactive", label: "Inactive", count: inactiveCount },
+  ];
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Models</h1>
-        <p className="mt-1 text-sm text-white/60">
-          {localModelss.length} models · {freeCount} free · {takenCount} occupied
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Models</h1>
+          <p className="mt-1 text-sm text-white/60">
+            {localModelss.length} models · {freeCount} free · {takenCount} occupied
+          </p>
+        </div>
+        {canCreate ? (
+          <Link
+            href={ROUTES.accountsModelssNew}
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 self-start rounded-xl bg-[hsl(330,80%,55%)] px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_28px_-8px_rgba(236,72,153,0.45)] transition hover:bg-[hsl(330,80%,50%)]"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            New model
+          </Link>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] pb-4">
@@ -369,6 +426,25 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
               "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
               viewFilter === tab.id
                 ? "border-pink-500/40 bg-pink-500/15 text-pink-100 shadow-[0_0_20px_-8px_rgba(236,72,153,0.35)]"
+                : "border-white/10 bg-white/[0.03] text-white/65 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/90"
+            )}
+          >
+            {tab.label}
+            <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[11px] font-semibold text-white/70">
+              {tab.count}
+            </span>
+          </button>
+        ))}
+
+        {recordStatusTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setRecordStatusFilter(tab.id)}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
+              recordStatusFilter === tab.id
+                ? "border-emerald-500/35 bg-emerald-500/12 text-emerald-100"
                 : "border-white/10 bg-white/[0.03] text-white/65 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/90"
             )}
           >
@@ -404,6 +480,21 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
             aria-hidden
           />
           <FormInput
+            type="search"
+            placeholder="Search models…"
+            value={filterSearch}
+            onChange={(e) => setFilterSearch(e.target.value)}
+            className="!min-h-11 !py-3 pl-10"
+            aria-label="Search models"
+          />
+        </div>
+
+        <div className="relative w-full min-w-[160px] max-w-[220px] sm:w-52">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-white/35"
+            aria-hidden
+          />
+          <FormInput
             type="text"
             placeholder="Filter by chatter…"
             value={filterChatter}
@@ -413,11 +504,12 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <StatPill label="Total" value={localModelss.length} />
-        <StatPill label="Free" value={freeCount} />
-        <StatPill label="Occupied" value={takenCount} />
-        <StatPill label="In period" value={inPeriodCount} />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <AdminStatCard label="Total" value={localModelss.length} accent />
+        <AdminStatCard label="Active" value={activeCount} />
+        <AdminStatCard label="Inactive" value={inactiveCount} />
+        <AdminStatCard label="Free" value={freeCount} />
+        <AdminStatCard label="In period" value={inPeriodCount} />
       </div>
 
       {filtered.length === 0 ? (
@@ -434,9 +526,10 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="glass-card overflow-hidden">
+          <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 md:p-5">
           <AnimatePresence mode="popLayout">
-            {filtered.map((m, index) => {
+            {pageItems.map((m, index) => {
               const vaNames = modelIdToVaNames[m.id] ?? [];
               const summary = periodSummaryByModelId[m.id] ?? {
                 current: null,
@@ -497,6 +590,8 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                             No account linked
                           </span>
                         ) : null}
+                        <IntegrationLinkBadge kind="infloww" linked={Boolean(m.infloww_creator_id?.trim())} />
+                        <IntegrationLinkBadge kind="instagram" linked={Boolean(m.clariosuite_ig_user_id?.trim())} />
                       </div>
                     </div>
                     <div className="inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-white/[0.08] bg-black/25 p-0.5">
@@ -612,6 +707,14 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
               );
             })}
           </AnimatePresence>
+          </div>
+          <ListPagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={12}
+            onPageChange={setPage}
+          />
         </div>
       )}
 

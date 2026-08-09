@@ -3,7 +3,20 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Building2, CreditCard, Gauge, Hash, Info, Layers, Link2, Sparkles, StickyNote, User, Users } from "lucide-react";
+import {
+  Activity,
+  Building2,
+  CreditCard,
+  Gauge,
+  Hash,
+  Info,
+  Layers,
+  Link2,
+  Sparkles,
+  StickyNote,
+  User,
+  Users,
+} from "lucide-react";
 import { updateModel } from "@/services/modelss";
 import { relinkModelUserForModelProfile } from "@/services/users";
 import type { ClientModelRecord } from "@/types/client-portal";
@@ -15,6 +28,8 @@ import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { SopFormSection } from "@/components/sop/sop-form-section";
+import { StatInfoTooltip } from "@/components/infloww-performance-ui";
 
 const PLATFORMS = ["onlyfans", "fanvue", "other"] as const;
 const STATUS_OPTIONS = ["active", "inactive"] as const;
@@ -23,6 +38,12 @@ const TEAM_OPTIONS = [
   { value: "gunzo_team", label: "Gunzo Team" },
   { value: "chatting_agency", label: "Chatting Agency" },
 ] as const;
+
+const INFLOWW_CREATOR_TOOLTIP =
+  "Stable Infloww creator ID from Earnings → Creator ID lookup. Used to sync creator revenue and performance — distinct from this app's model record ID.";
+
+const CLARIOSUITE_IG_TOOLTIP =
+  "Instagram account ID from Marketing → Instagram Insights → IG account lookup. Links this model to ClarioSuite analytics.";
 
 type LinkedUserOption = {
   id: string;
@@ -36,6 +57,15 @@ type ClientOption = {
   id: string;
   label: string;
 };
+
+function IntegrationFieldLabel({ label, tooltip }: { label: string; tooltip: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {label}
+      <StatInfoTooltip text={tooltip} />
+    </span>
+  );
+}
 
 export function EditModelForm({
   model,
@@ -165,172 +195,186 @@ export function EditModelForm({
   }
 
   return (
-    <form onSubmit={submit} className={`${formSpace} space-y-4`}>
-      <FormField label="Model name" icon={<Sparkles />} htmlFor="model_name" required>
-        <FormInput
-          id="model_name"
-          value={modelName}
-          onChange={(e) => setModelName(e.target.value)}
-          required
-        />
-      </FormField>
-      <FormField label="Platform" icon={<Layers />} htmlFor="platform">
-        <FormSelect
-          id="platform"
-          value={platform}
-          onChange={(e) => setPlatform(e.target.value as ModelRecord["platform"])}
-        >
-          {PLATFORMS.map((p) => (
-            <option key={p} value={p} className={selectOptionClass}>
-              {p}
-            </option>
-          ))}
-        </FormSelect>
-      </FormField>
-      <FormField label="Team" icon={<Users />} htmlFor="team">
-        <FormSelect
-          id="team"
-          value={team}
-          onChange={(e) => setTeam(e.target.value as ModelRecord["team"])}
-        >
-          {TEAM_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value} className={selectOptionClass}>
-              {option.label}
-            </option>
-          ))}
-        </FormSelect>
-      </FormField>
-      {team === "chatting_agency" && (
-        <FormField
-          label="Client"
-          icon={<Building2 />}
-          htmlFor="client_id"
-          description="Assign this model to a B2B client for billing and portal access."
-        >
+    <form onSubmit={submit} className={`${formSpace} mx-auto max-w-2xl space-y-5`}>
+      <SopFormSection title="Basic info" description="Name, platform, team, and operational settings">
+        <FormField label="Model name" icon={<Sparkles />} htmlFor="model_name" required>
+          <FormInput
+            id="model_name"
+            value={modelName}
+            onChange={(e) => setModelName(e.target.value)}
+            required
+          />
+        </FormField>
+        <FormField label="Platform" icon={<Layers />} htmlFor="platform">
           <FormSelect
-            id="client_id"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            disabled={clientsLoading}
+            id="platform"
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value as ModelRecord["platform"])}
           >
-            <option value="" className={selectOptionClass}>
-              {clientsLoading ? "Loading clients…" : "— Select client —"}
-            </option>
-            {clientOptions.map((c) => (
-              <option key={c.id} value={c.id} className={selectOptionClass}>
-                {c.label}
+            {PLATFORMS.map((p) => (
+              <option key={p} value={p} className={selectOptionClass}>
+                {p}
               </option>
             ))}
           </FormSelect>
         </FormField>
-      )}
-      <FormField label="Status" icon={<Activity />} htmlFor="status">
-        <FormSelect id="status" value={status} onChange={(e) => setStatus(e.target.value)}>
-          {STATUS_OPTIONS.map((s) => (
-            <option key={s} value={s} className={selectOptionClass}>
-              {s}
-            </option>
-          ))}
-        </FormSelect>
-      </FormField>
-      <FormField label="Priority" icon={<Gauge />} htmlFor="priority">
-        <FormSelect id="priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
-          {PRIORITY_OPTIONS.map((p) => (
-            <option key={p} value={p} className={selectOptionClass}>
-              {p}
-            </option>
-          ))}
-        </FormSelect>
-      </FormField>
-      <FormField
-        label="Linked user account"
-        icon={<Link2 />}
-        htmlFor="linked_user_id"
-        description="The login account that belongs to this model."
-      >
-        <FormSelect
-          id="linked_user_id"
-          name="linked_user_id"
-          value={linkedUserId}
-          onChange={(e) => setLinkedUserId(e.target.value)}
-        >
-          <option value="" className={selectOptionClass}>
-            — No account linked —
-          </option>
-          {userOptions.map((u) => (
-            <option
-              key={u.id}
-              value={u.id}
-              disabled={u.alreadyLinked && !u.linkedToThisModel}
-              className={selectOptionClass}
+        <FormField label="Team" icon={<Users />} htmlFor="team">
+          <FormSelect
+            id="team"
+            value={team}
+            onChange={(e) => setTeam(e.target.value as ModelRecord["team"])}
+          >
+            {TEAM_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value} className={selectOptionClass}>
+                {option.label}
+              </option>
+            ))}
+          </FormSelect>
+        </FormField>
+        {team === "chatting_agency" && (
+          <FormField
+            label="Client"
+            icon={<Building2 />}
+            htmlFor="client_id"
+            description="Assign this model to a B2B client for billing and portal access."
+          >
+            <FormSelect
+              id="client_id"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              disabled={clientsLoading}
             >
-              {u.name} ({u.email})
-              {u.alreadyLinked && !u.linkedToThisModel ? "(linked to other model)" : ""}
+              <option value="" className={selectOptionClass}>
+                {clientsLoading ? "Loading clients…" : "— Select client —"}
+              </option>
+              {clientOptions.map((c) => (
+                <option key={c.id} value={c.id} className={selectOptionClass}>
+                  {c.label}
+                </option>
+              ))}
+            </FormSelect>
+          </FormField>
+        )}
+        <FormField label="Status" icon={<Activity />} htmlFor="status">
+          <FormSelect id="status" value={status} onChange={(e) => setStatus(e.target.value)}>
+            {STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s} className={selectOptionClass}>
+                {s}
+              </option>
+            ))}
+          </FormSelect>
+        </FormField>
+        <FormField label="Priority" icon={<Gauge />} htmlFor="priority">
+          <FormSelect id="priority" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            {PRIORITY_OPTIONS.map((p) => (
+              <option key={p} value={p} className={selectOptionClass}>
+                {p}
+              </option>
+            ))}
+          </FormSelect>
+        </FormField>
+        <FormField label="Notes" icon={<StickyNote />} htmlFor="notes">
+          <FormTextarea
+            id="notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Optional"
+          />
+        </FormField>
+      </SopFormSection>
+
+      <SopFormSection title="Role & account link" description="Login account and live scheduling state">
+        <FormField
+          label="Linked user account"
+          icon={<Link2 />}
+          htmlFor="linked_user_id"
+          description="The login account that belongs to this model."
+        >
+          <FormSelect
+            id="linked_user_id"
+            name="linked_user_id"
+            value={linkedUserId}
+            onChange={(e) => setLinkedUserId(e.target.value)}
+          >
+            <option value="" className={selectOptionClass}>
+              — No account linked —
             </option>
-          ))}
-        </FormSelect>
-      </FormField>
-      <FormField
-        label="Infloww creator ID"
-        icon={<Hash />}
-        htmlFor="infloww_creator_id"
-        description="Stable Infloww creator id from Earnings → Creator ID lookup. Distinct from the app model_* id."
-      >
-        <FormInput
-          id="infloww_creator_id"
-          name="infloww_creator_id"
-          type="text"
-          inputMode="numeric"
-          value={inflowwCreatorId}
-          onChange={(e) => setInflowwCreatorId(e.target.value)}
-          placeholder="e.g. 2243348022951978"
-          autoComplete="off"
-        />
-      </FormField>
-      <FormField
-        label="ClarioSuite IG user ID"
-        icon={<Hash />}
-        htmlFor="clariosuite_ig_user_id"
-        description="Instagram account id from Marketing → Instagram Insights → IG account lookup."
-      >
-        <FormInput
-          id="clariosuite_ig_user_id"
-          name="clariosuite_ig_user_id"
-          type="text"
-          inputMode="numeric"
-          value={clariosuiteIgUserId}
-          onChange={(e) => setClariosuiteIgUserId(e.target.value)}
-          placeholder="e.g. 17841400000000000"
-          autoComplete="off"
-        />
-      </FormField>
-      <FormField label="Current status" icon={<Info />} description="Live state from scheduling (read-only).">
-        <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white/90">
-          {model.current_status}
-        </p>
-      </FormField>
-      {model.current_status === "occupied" && model.current_chatter_name && (
-        <FormField label="Current chatter" icon={<User />} description="Who is on this model right now.">
+            {userOptions.map((u) => (
+              <option
+                key={u.id}
+                value={u.id}
+                disabled={u.alreadyLinked && !u.linkedToThisModel}
+                className={selectOptionClass}
+              >
+                {u.name} ({u.email})
+                {u.alreadyLinked && !u.linkedToThisModel ? "(linked to other model)" : ""}
+              </option>
+            ))}
+          </FormSelect>
+        </FormField>
+        <FormField label="Current status" icon={<Info />} description="Live state from scheduling (read-only).">
           <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white/90">
-            {model.current_chatter_name}
+            {model.current_status}
           </p>
         </FormField>
-      )}
-      <FormField label="Notes" icon={<StickyNote />} htmlFor="notes">
-        <FormTextarea
-          id="notes"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          rows={3}
-          placeholder="Optional"
-        />
-      </FormField>
+        {model.current_status === "occupied" && model.current_chatter_name && (
+          <FormField label="Current chatter" icon={<User />} description="Who is on this model right now.">
+            <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white/90">
+              {model.current_chatter_name}
+            </p>
+          </FormField>
+        )}
+      </SopFormSection>
 
-      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <CreditCard className="h-4 w-4 text-pink-300" aria-hidden />
-          Payment Methods
-        </div>
+      <SopFormSection
+        title="Integrations"
+        description="External IDs for earnings and marketing analytics sync"
+        defaultOpen={Boolean(inflowwCreatorId || clariosuiteIgUserId)}
+      >
+        <FormField
+          label={<IntegrationFieldLabel label="Infloww creator ID" tooltip={INFLOWW_CREATOR_TOOLTIP} />}
+          icon={<Hash />}
+          htmlFor="infloww_creator_id"
+          description="Numeric creator ID from Infloww — links creator earnings sync."
+        >
+          <FormInput
+            id="infloww_creator_id"
+            name="infloww_creator_id"
+            type="text"
+            inputMode="numeric"
+            value={inflowwCreatorId}
+            onChange={(e) => setInflowwCreatorId(e.target.value)}
+            placeholder="e.g. 2243348022951978"
+            autoComplete="off"
+          />
+        </FormField>
+        <FormField
+          label={<IntegrationFieldLabel label="ClarioSuite IG user ID" tooltip={CLARIOSUITE_IG_TOOLTIP} />}
+          icon={<Hash />}
+          htmlFor="clariosuite_ig_user_id"
+          description="Instagram account ID from ClarioSuite — links IG insights."
+        >
+          <FormInput
+            id="clariosuite_ig_user_id"
+            name="clariosuite_ig_user_id"
+            type="text"
+            inputMode="numeric"
+            value={clariosuiteIgUserId}
+            onChange={(e) => setClariosuiteIgUserId(e.target.value)}
+            placeholder="e.g. 17841400000000000"
+            autoComplete="off"
+          />
+        </FormField>
+      </SopFormSection>
+
+      <SopFormSection
+        title="Compensation & payment"
+        description="PayPal, Revolut, and payout thresholds for this model"
+        defaultOpen={Boolean(
+          paypalEmail || paypalLink || revolutTag || paymentNotes || model.payment_threshold_eur
+        )}
+      >
         <FormField label="PayPal Email" icon={<CreditCard />} htmlFor="paypal_email">
           <FormInput
             id="paypal_email"
@@ -391,15 +435,18 @@ export function EditModelForm({
             onChange={(e) => setPaymentThreshold(e.target.value)}
           />
         </FormField>
-      </div>
+      </SopFormSection>
 
-      <div className="flex flex-col gap-3 pt-2">
-        <FormSubmitButton disabled={pending} loading={pending} className="w-full">
-          {pending ? "Saving…" : "Save changes"}
-        </FormSubmitButton>
-        <Link href={ROUTES.accountsModelss} className={`${btnSecondaryClass} flex min-h-[52px] w-full items-center justify-center`}>
+      <div className="flex flex-col-reverse gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <Link
+          href={ROUTES.accountsModelss}
+          className={`${btnSecondaryClass} flex min-h-[52px] w-full items-center justify-center sm:w-auto sm:px-8`}
+        >
           Cancel
         </Link>
+        <FormSubmitButton disabled={pending} loading={pending} className="w-full sm:w-auto sm:min-w-[180px]">
+          {pending ? "Saving…" : "Save changes"}
+        </FormSubmitButton>
       </div>
     </form>
   );

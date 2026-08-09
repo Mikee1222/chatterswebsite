@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Layers, Moon, Sun } from "lucide-react";
+import { BarChart3, Check, Instagram, Layers, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UserRole } from "@/types";
 
@@ -116,6 +116,71 @@ export function ShiftTypeBadge({
 }
 
 /** Coverage matrix cell segment (covered / gap / uncovered). */
+/** Infloww / ClarioSuite integration link status for model rows. */
+export function IntegrationLinkBadge({
+  kind,
+  linked,
+  className,
+}: {
+  kind: "infloww" | "instagram";
+  linked: boolean;
+  className?: string;
+}) {
+  const isInfloww = kind === "infloww";
+  const Icon = isInfloww ? BarChart3 : Instagram;
+  const label = isInfloww ? "Infloww" : "IG";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        linked
+          ? isInfloww
+            ? "border-sky-500/35 bg-sky-500/12 text-sky-200"
+            : "border-fuchsia-500/35 bg-fuchsia-500/12 text-fuchsia-200"
+          : "border-white/10 bg-white/[0.03] text-white/35",
+        className
+      )}
+      title={
+        linked
+          ? isInfloww
+            ? "Infloww creator ID linked"
+            : "ClarioSuite IG user ID linked"
+          : isInfloww
+            ? "No Infloww creator ID"
+            : "No ClarioSuite IG user ID"
+      }
+    >
+      <Icon className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+      {label}
+      <span className="sr-only">{linked ? "linked" : "not linked"}</span>
+    </span>
+  );
+}
+
+export function AdminStatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: string | number;
+  accent?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border px-4 py-3",
+        accent
+          ? "border-pink-500/25 bg-gradient-to-br from-pink-500/10 to-fuchsia-500/5"
+          : "border-white/10 bg-white/[0.04]"
+      )}
+    >
+      <p className="text-[11px] font-medium uppercase tracking-wider text-white/45">{label}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</p>
+    </div>
+  );
+}
+
 export function CoverageSlotChip({
   tone,
   text,

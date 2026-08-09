@@ -39,24 +39,25 @@ export default async function EditModelPage({
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="max-w-md space-y-6">
-      <div className="flex items-center gap-3">
+    <div className="space-y-6">
+      <div>
         <Link
           href={ROUTES.accountsModelss}
-          className="text-sm text-white/60 hover:text-white"
+          className="text-sm text-white/50 transition hover:text-pink-300"
         >
-          ← Accounts
+          ← Back to accounts
         </Link>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white">Edit model</h1>
+        <p className="mt-1 text-sm text-white/55">
+          {model.model_name} · {model.platform} · {model.status}
+        </p>
       </div>
-      <h1 className="text-xl font-semibold text-white">Edit model</h1>
-      <div className="glass-card p-6">
-        <EditModelForm
-          model={model}
-          userOptions={userOptions}
-          currentLinkedUserId={currentLinkedUser?.id ?? ""}
-          clientAssignments={clientAssignments}
-        />
-      </div>
+      <EditModelForm
+        model={model}
+        userOptions={userOptions}
+        currentLinkedUserId={currentLinkedUser?.id ?? ""}
+        clientAssignments={clientAssignments}
+      />
     </div>
   );
 }
