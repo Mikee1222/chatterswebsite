@@ -185,17 +185,17 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
             aria-selected={tab === "earnings"}
             onClick={() => setTab("earnings")}
             className={cn(
-              "group relative inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-sm font-semibold tracking-wide",
-              "motion-safe:transition-[transform,box-shadow,background-color,color,border-color,opacity] motion-safe:duration-300 motion-safe:ease-out",
+              "group relative inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 tracking-wide",
+              "motion-safe:transition-[transform,box-shadow,background-color,color,border-color,opacity,font-size] motion-safe:duration-300 motion-safe:ease-out",
               "motion-reduce:transition-none",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#151315]",
               tab === "earnings"
                 ? cn(
-                    "z-[1] scale-[1.02] border border-[#FF1493]/55 bg-gradient-to-br from-[#FF1493]/35 via-[#FF1493]/18 to-[#D4AF8C]/20",
-                    "text-white shadow-[0_12px_40px_-12px_rgba(255,20,147,0.65),0_0_0_1px_rgba(212,175,140,0.25),inset_0_1px_0_rgba(255,255,255,0.18)]",
+                    "z-[1] scale-[1.03] border border-[#FF1493]/55 bg-gradient-to-br from-[#FF1493]/35 via-[#FF1493]/18 to-[#D4AF8C]/20",
+                    "text-[15px] font-bold text-white shadow-[0_12px_40px_-12px_rgba(255,20,147,0.65),0_0_0_1px_rgba(212,175,140,0.25),inset_0_1px_0_rgba(255,255,255,0.18)]",
                     "motion-reduce:scale-100"
                   )
-                : "scale-100 border border-white/8 bg-white/[0.04] text-white/45 hover:border-[#FF1493]/25 hover:bg-white/[0.07] hover:text-white/70"
+                : "scale-100 border border-white/8 bg-white/[0.04] text-sm font-semibold text-white/45 hover:border-[#FF1493]/25 hover:bg-white/[0.07] hover:text-white/70"
             )}
           >
             {tab === "earnings" ? (
@@ -221,18 +221,18 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
             aria-selected={tab === "instagram"}
             onClick={() => setTab("instagram")}
             className={cn(
-              "group relative inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 text-sm font-semibold tracking-wide",
-              "motion-safe:transition-[transform,box-shadow,background-color,color,border-color,opacity] motion-safe:duration-300 motion-safe:ease-out",
+              "group relative inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 overflow-hidden rounded-2xl px-4 tracking-wide",
+              "motion-safe:transition-[transform,box-shadow,background-color,color,border-color,opacity,font-size] motion-safe:duration-300 motion-safe:ease-out",
               "motion-reduce:transition-none",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#151315]",
               tab === "instagram"
                 ? cn(
-                    "z-[1] scale-[1.02] border border-transparent text-white",
+                    "z-[1] scale-[1.03] border border-transparent text-[15px] font-bold text-white",
                     "bg-[linear-gradient(135deg,rgba(253,29,29,0.45)_0%,rgba(199,54,168,0.42)_42%,rgba(131,58,180,0.48)_100%)]",
                     "shadow-[0_12px_40px_-12px_rgba(199,54,168,0.6),0_0_0_1px_rgba(253,29,29,0.25),inset_0_1px_0_rgba(255,255,255,0.16)]",
                     "motion-reduce:scale-100"
                   )
-                : "scale-100 border border-white/8 bg-white/[0.04] text-white/45 hover:border-[#C736A8]/30 hover:bg-white/[0.07] hover:text-white/70"
+                : "scale-100 border border-white/8 bg-white/[0.04] text-sm font-semibold text-white/45 hover:border-[#C736A8]/30 hover:bg-white/[0.07] hover:text-white/70"
             )}
           >
             {tab === "instagram" ? (
