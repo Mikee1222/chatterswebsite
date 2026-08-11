@@ -88,7 +88,7 @@ export async function createWhaleAction(input: {
       status: "Active",
       spend_level: "low",
       total_spent: 0,
-      created_by: chatterName,
+      created_by: chatterRecordId,
     };
 
     const rec = await createWhale(fields);
@@ -177,7 +177,7 @@ export async function createWhaleWithModelAction(input: {
       relationship_status: rs,
       notes: input.notes.trim(),
       status: "Active",
-      created_by: chatterName,
+      created_by: chatterId,
     });
 
     const chatterSubmitted = whaleSubmittedAwaitingAssignmentChatter(u);
