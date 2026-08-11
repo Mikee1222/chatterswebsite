@@ -4,6 +4,7 @@ import {
   occurrenceDueForAthensYmd,
   shouldSpawnRecurring,
   vaTaskSeriesKey,
+  buildRecurringSpawnKey,
 } from "@/lib/recurrence";
 import {
   getVaTasksViewTodayYmd,
@@ -16,7 +17,7 @@ import {
 const spawnLocks = new Map<string, Promise<VaTaskRecord | null>>();
 
 function spawnLockKey(seriesKey: string, ymd: string): string {
-  return `${seriesKey}\0${ymd}`;
+  return buildRecurringSpawnKey(seriesKey, ymd);
 }
 import {
   createVaTask,
@@ -137,6 +138,7 @@ function buildSpawnInput(
   anchor: VaTaskRecord,
   dueIso: string,
   models?: { assigned_model_ids: string[]; assigned_model_names: string[] },
+  spawnKey?: string,
 ): VaTaskCreateInput {
   return {
     title: anchor.title,
@@ -155,7 +157,16 @@ function buildSpawnInput(
     recurrence_end_date: anchor.recurrence_end_date,
     recurrence_skipped_dates: [...(anchor.recurrence_skipped_dates ?? [])],
     reminder_minutes_before: anchor.reminder_minutes_before,
+    recurring_spawn_key: spawnKey,
   };
+}
+
+async function resolveExistingBySpawnKey(spawnKey: string): Promise<VaTaskRecord | undefined> {
+  const { isSupabaseBackend } = await import("@/lib/data-backend");
+  if (!isSupabaseBackend()) return undefined;
+  const { getVaTaskByRecurringSpawnKey } = await import("@/services/va-tasks-supabase");
+  const row = await getVaTaskByRecurringSpawnKey(spawnKey);
+  return row ?? undefined;
 }
 
 /**
@@ -204,10 +215,13 @@ async function spawnRecurringOccurrenceIfMissingLocked(
 ): Promise<VaTaskRecord | null> {
   if (recurrenceSkipsAthensYmd(anchor, targetYmd)) return null;
 
+  const spawnKey = buildRecurringSpawnKey(series, targetYmd);
   const { clonePhasesToTask, getPhasesByTask } = await import("@/services/task-phases");
   const { updateVaTask } = await import("@/services/va-tasks");
 
   const resolveExisting = async (): Promise<VaTaskRecord | undefined> => {
+    const byKey = await resolveExistingBySpawnKey(spawnKey);
+    if (byKey) return byKey;
     const fromMemory = findExistingRowForDueIso(allTasks, series, dueIso);
     if (fromMemory) return fromMemory;
     const fresh = await getAllVaTasks();
@@ -228,6 +242,9 @@ async function spawnRecurringOccurrenceIfMissingLocked(
         console.error("[va-task-recurring-spawn] backfill task models failed", err),
       );
     }
+    // Re-check after model patch — concurrent backfill may have finished first.
+    const phasesAfter = await getPhasesByTask(existing.id);
+    if (phasesAfter.length > 0) return null;
     await clonePhasesToTask(sourceId, existing).catch((err) =>
       console.error("[va-task-recurring-spawn] backfill phases failed", err),
     );
@@ -235,7 +252,13 @@ async function spawnRecurringOccurrenceIfMissingLocked(
     return existing;
   }
 
-  // Re-check Airtable immediately before insert (closes concurrent spawn race).
+  // DB unique key + fresh fetch closes cross-instance race (in-process mutex is per-instance only).
+  const racedByKey = await resolveExistingBySpawnKey(spawnKey);
+  if (racedByKey) {
+    allTasks.push(racedByKey);
+    return racedByKey;
+  }
+
   const freshBeforeInsert = await getAllVaTasks();
   if (recurringRealRowExistsForAthensYmd(freshBeforeInsert, series, targetYmd)) {
     const raced = findExistingRowForDueIso(freshBeforeInsert, series, dueIso);
@@ -248,7 +271,7 @@ async function spawnRecurringOccurrenceIfMissingLocked(
 
   const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
   const models = await resolveSpawnModelFields(anchor, sourceId);
-  const spawned = await createVaTask(buildSpawnInput(anchor, dueIso, models));
+  const spawned = await createVaTask(buildSpawnInput(anchor, dueIso, models, spawnKey));
   await clonePhasesToTask(sourceId, spawned).catch((err) =>
     console.error("[va-task-recurring-spawn] clone phases failed", err),
   );

@@ -254,13 +254,17 @@ Model live streams filter active rows in JS for this reason.
 
 ## 12. Concurrent recurring task spawn
 
-Shift start + day-boundary cron can race to create duplicate rows for the same series + Athens day.
+Shift start + day-boundary cron + page load can race to create duplicate rows for the same series + Athens day across **separate serverless instances** (in-process mutex is per-instance only).
 
 Mitigations in `services/va-task-recurring-spawn.ts`:
 
-- In-process `spawnLocks` mutex
-- Fresh Airtable fetch before insert
+- Supabase `recurring_spawn_key` unique partial index (DB-level idempotency)
+- `getVaTaskByRecurringSpawnKey()` lookup before insert + unique-violation fallback
+- In-process `spawnLocks` mutex (same-instance concurrency)
+- Fresh fetch before insert
 - `recurringRealRowExistsForAthensYmd()` check
+- `dedupeRecurringRealRowsOnDay()` in date expand (display-side safety net)
+- `clonePhasesToTask()` skips when target already has phases
 
 If duplicates appear, run `npx tsx scripts/cleanup-duplicate-recurring-tasks.ts`.
 

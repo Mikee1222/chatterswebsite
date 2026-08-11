@@ -194,6 +194,15 @@ export function vaTaskSeriesKey(task: {
   return `${task.title.trim()}\0${assignees.join(",")}\0${models.join(",")}`;
 }
 
+/** Separator safe for Postgres text columns (null byte is rejected in UTF-8 text). */
+const SPAWN_KEY_SEP = "\u001e";
+
+/** DB + in-process lock key for one recurring occurrence (series + Athens due day). */
+export function buildRecurringSpawnKey(seriesKey: string, athensYmd: string): string {
+  const ymd = athensYmd.trim().slice(0, 10);
+  return `${seriesKey.replace(/\0/g, SPAWN_KEY_SEP)}${SPAWN_KEY_SEP}${ymd}`;
+}
+
 export function isVirtualVaTaskId(id: string | null | undefined): boolean {
   return Boolean(id?.startsWith("virt_"));
 }

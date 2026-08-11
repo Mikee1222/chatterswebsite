@@ -56,6 +56,7 @@ type Row = SbRow & {
   completed_notes?: string | null;
   overdue_notified_at?: string | null;
   created_at?: string | null;
+  recurring_spawn_key?: string | null;
 };
 
 function parseStatus(raw: unknown): VaTaskStatus {
@@ -281,6 +282,22 @@ export async function getAllVaTasks(options?: VaTasksFetchRangeOptions): Promise
   return mapRows(filtered);
 }
 
+/** Lookup by idempotent recurring spawn key (Supabase recurring occurrence de-dupe). */
+export async function getVaTaskByRecurringSpawnKey(spawnKey: string): Promise<VaTaskRecord | null> {
+  const key = spawnKey.trim();
+  if (!key) return null;
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.from(TABLE).select("*").eq("recurring_spawn_key", key).maybeSingle();
+  if (error) throw new Error(`getVaTaskByRecurringSpawnKey: ${error.message}`);
+  if (!data) return null;
+  return mapRow(data as Row);
+}
+
+function isUniqueViolationError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("duplicate key") || msg.includes("unique constraint") || msg.includes("23505");
+}
+
 export async function getRecurringTaskHistory(title: string): Promise<VaTaskRecord[]> {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
@@ -317,6 +334,8 @@ export type VaTaskCreateInput = {
   recurrence_end_date?: string | null;
   recurrence_skipped_dates?: string[] | null;
   reminder_minutes_before?: number | null;
+  /** Supabase-only: idempotent recurring occurrence key (series + Athens due day). */
+  recurring_spawn_key?: string | null;
 };
 
 export type VaTaskUpdateInput = Partial<
@@ -356,8 +375,21 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
   if (data.recurrence_skipped_dates !== undefined) {
     payload.recurrence_skipped_dates = parseSkippedDates(data.recurrence_skipped_dates);
   }
+  if (data.recurring_spawn_key?.trim()) {
+    payload.recurring_spawn_key = data.recurring_spawn_key.trim();
+  }
 
-  const row = await sbInsert<Row>(TABLE, payload);
+  let row: Row;
+  try {
+    row = await sbInsert<Row>(TABLE, payload);
+  } catch (err) {
+    const spawnKey = data.recurring_spawn_key?.trim();
+    if (spawnKey && isUniqueViolationError(err)) {
+      const existing = await getVaTaskByRecurringSpawnKey(spawnKey);
+      if (existing) return existing;
+    }
+    throw err;
+  }
   await Promise.all([
     syncVaTaskAssignees(row.id, data.assigned_to_ids),
     syncVaTaskModels(row.id, data.assigned_model_ids ?? []),

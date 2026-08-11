@@ -2,7 +2,7 @@ import { ymdInAthens } from "@/lib/airtable-datetime";
 import { materializeVirtualOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
 import { groupRecurringTasks, type RecurringSeriesGroup } from "@/lib/recurring-utils";
 import { flattenDateViewTasks } from "@/lib/va-tasks-progress";
-import type { VaTaskRecord } from "@/types";
+import type { VaTaskRecord, VaTaskStatus } from "@/types";
 
 const DATE_VIEW_GROUP_OPTS = { forDateView: true as const };
 
@@ -43,6 +43,40 @@ export function recurrenceSkipsAthensYmd(
   return (task?.recurrence_skipped_dates ?? []).some((d) => d.trim().slice(0, 10) === target);
 }
 
+const STATUS_RANK: Record<VaTaskStatus, number> = {
+  in_progress: 4,
+  pending: 3,
+  done: 2,
+  skipped: 1,
+};
+
+/** When cross-instance spawn races created duplicate real rows, keep the best one for display. */
+function dedupeRecurringRealRowsOnDay(tasks: VaTaskRecord[], ymd: string): VaTaskRecord[] {
+  const nonRecurring = tasks.filter((t) => !t.is_recurring);
+  const recurring = tasks.filter((t) => t.is_recurring);
+  const bestBySeries = new Map<string, VaTaskRecord>();
+
+  for (const task of recurring) {
+    const key = vaTaskSeriesKey(task);
+    const prev = bestBySeries.get(key);
+    if (!prev) {
+      bestBySeries.set(key, task);
+      continue;
+    }
+    const rankA = STATUS_RANK[task.status] ?? 0;
+    const rankB = STATUS_RANK[prev.status] ?? 0;
+    if (rankA !== rankB) {
+      if (rankA > rankB) bestBySeries.set(key, task);
+      continue;
+    }
+    const createdA = task.created_at ? new Date(task.created_at).getTime() : Number.POSITIVE_INFINITY;
+    const createdB = prev.created_at ? new Date(prev.created_at).getTime() : Number.POSITIVE_INFINITY;
+    if (createdA < createdB) bestBySeries.set(key, task);
+  }
+
+  return [...nonRecurring, ...bestBySeries.values()];
+}
+
 /**
  * Expand recurring series so every Athens calendar day in range has a visible instance.
  *
@@ -54,7 +88,10 @@ export function expandTasksForAthensYmd(tasks: VaTaskRecord[], ymd: string): VaT
   const target = ymd.trim().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(target)) return tasks;
 
-  const realOnDay = tasks.filter((t) => taskMatchesAthensYmd(t, target));
+  const realOnDay = dedupeRecurringRealRowsOnDay(
+    tasks.filter((t) => taskMatchesAthensYmd(t, target)),
+    target,
+  );
 
   // Prefer the earliest-due active recurring row per series as the recurrence "anchor".
   // Skip stale rows whose recurrence has ended — they must not win over today's spawned row.

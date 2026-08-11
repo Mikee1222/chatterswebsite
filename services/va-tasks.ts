@@ -310,6 +310,8 @@ export type VaTaskCreateInput = {
   recurrence_end_date?: string | null;
   recurrence_skipped_dates?: string[] | null;
   reminder_minutes_before?: number | null;
+  /** Supabase-only: idempotent recurring occurrence key (series + Athens due day). */
+  recurring_spawn_key?: string | null;
 };
 
 export type VaTaskUpdateInput = Partial<

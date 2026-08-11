@@ -509,6 +509,9 @@ export async function clonePhasesToTask(
   sourceTaskId: string,
   targetTask: { id: string; title: string },
 ): Promise<number> {
+  const existing = await getPhasesByTask(targetTask.id);
+  if (existing.length > 0) return 0;
+
   const phases = dedupePhasesForClone(await getPhasesByTask(sourceTaskId));
   let cloned = 0;
   for (const phase of phases) {
