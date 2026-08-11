@@ -122,7 +122,7 @@ type SubmissionRow = SbRow & {
   reference_id?: string | null;
   note?: string | null;
   proof_url?: string | null;
-  proof_attachment?: Array<{ url?: string; filename?: string }> | null;
+  proof_attachment?: Array<{ url?: string; filename?: string } | string> | null;
   status?: string | null;
   admin_note?: string | null;
 };
@@ -282,17 +282,43 @@ function mapMethod(row: MethodRow): PaymentMethodRecord {
   };
 }
 
+function normalizeProofAttachments(
+  raw: SubmissionRow["proof_attachment"]
+): Array<{ url: string; filename?: string }> | undefined {
+  if (!Array.isArray(raw) || !raw.length) return undefined;
+  const out: Array<{ url: string; filename?: string }> = [];
+  for (const item of raw) {
+    if (typeof item === "string") {
+      const value = item.trim();
+      if (!value) continue;
+      if (value.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(value) as { url?: string; filename?: string };
+          if (typeof parsed.url === "string" && parsed.url.trim()) {
+            out.push({ url: parsed.url.trim(), filename: parsed.filename });
+          }
+        } catch {
+          out.push({ url: value });
+        }
+      } else {
+        out.push({ url: value });
+      }
+      continue;
+    }
+    if (item && typeof item === "object" && typeof item.url === "string" && item.url.trim()) {
+      out.push({ url: item.url.trim(), filename: item.filename });
+    }
+  }
+  return out.length ? out : undefined;
+}
+
 function mapSubmissionSync(
   row: SubmissionRow,
   cycleAt: Map<string, string>,
   clientAt: Map<string, string>,
   methodAt: Map<string, string>
 ): PaymentSubmissionRecord {
-  const proofAttachment = Array.isArray(row.proof_attachment)
-    ? row.proof_attachment
-        .filter((a) => typeof a.url === "string")
-        .map((a) => ({ url: a.url as string, filename: a.filename }))
-    : undefined;
+  const proofAttachment = normalizeProofAttachments(row.proof_attachment);
   return {
     id: publicId(row),
     billing_cycle: mapLinkedIds(row.billing_cycle, cycleAt),
@@ -317,12 +343,15 @@ async function mapSubmissions(rows: SubmissionRow[]): Promise<PaymentSubmissionR
     sbResolveUuidToAirtableMap(CLIENTS, rows.map((r) => r.client)),
     sbResolveUuidToAirtableMap(METHODS, rows.map((r) => r.selected_payment_method)),
   ]);
-  const { resolveStorageUrl } = await import("@/lib/supabase-signed-url");
+  const { resolveStorageUrl, resolveAttachmentUrls } = await import("@/lib/supabase-signed-url");
   return Promise.all(
     rows.map(async (r) => {
       const mapped = mapSubmissionSync(r, cycleAt, clientAt, methodAt);
       if (mapped.proof_url) {
         mapped.proof_url = await resolveStorageUrl(mapped.proof_url);
+      }
+      if (mapped.proof_attachment?.length) {
+        mapped.proof_attachment = await resolveAttachmentUrls(mapped.proof_attachment);
       }
       return mapped;
     })
@@ -779,7 +808,14 @@ export async function createPaymentSubmission(
     status: data.status,
   };
   if (data.proof_attachment?.length) {
-    insert.proof_attachment = data.proof_attachment.map((a) => ({ url: a.url, filename: a.filename }));
+    const urls = [
+      ...new Set(
+        data.proof_attachment
+          .map((a) => a.url?.trim())
+          .filter((url): url is string => Boolean(url))
+      ),
+    ];
+    if (urls.length) insert.proof_attachment = urls;
   }
   const row = await sbInsert<SubmissionRow>(SUBMISSIONS, insert);
   return mapSubmission(row);

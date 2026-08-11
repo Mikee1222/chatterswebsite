@@ -19,6 +19,7 @@ import {
   type CreatorDailyStatsRow,
   type CreatorTransactionRow,
 } from "@/services/infloww-creator-earnings";
+import { sbResolveUuidToAirtableMap } from "@/lib/supabase-data";
 import { resolveInflowwStatsRange, type InflowwStatsPreset } from "@/services/infloww-performance";
 import { getClientModels } from "@/services/client-portal";
 
@@ -131,8 +132,18 @@ export async function resolveClientPartnershipModelIds(clientId: string): Promis
   modelNames: string[];
 }> {
   const assignments = await getClientModels(clientId);
+  // client_models.model stores Supabase UUIDs; infloww_* tables use Airtable rec ids in model_record_id.
+  const modelAt = await sbResolveUuidToAirtableMap(
+    "modelss",
+    assignments.map((a) => a.model)
+  );
   const modelRecordIds = Array.from(
-    new Set(assignments.flatMap((a) => a.model).filter(Boolean))
+    new Set(
+      assignments
+        .flatMap((a) => a.model)
+        .filter(Boolean)
+        .map((uuid) => modelAt.get(uuid) ?? uuid)
+    )
   );
   const modelNames = Array.from(
     new Set(
