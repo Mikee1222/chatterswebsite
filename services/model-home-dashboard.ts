@@ -16,7 +16,7 @@ import {
   type ModelHomeUpcomingShoot,
 } from "@/lib/model-home-dashboard";
 import {
-  resolveEngagementRate,
+  computeModelEngagementRate,
   summarizeIgDaily,
 } from "@/lib/instagram-insights-stats";
 import { previousPeriodRange, computePctChange } from "@/services/infloww-analytics";
@@ -135,7 +135,7 @@ async function loadInstagramSnapshot(
   ]);
 
   const totals = summarizeIgDaily(daily);
-  const engagementRate = resolveEngagementRate(totals.avg_engagement_rate, topPosts, {
+  const engagementRate = computeModelEngagementRate(daily, topPosts, {
     startYmd: range.startYmd,
     endYmd: range.endYmd,
   });

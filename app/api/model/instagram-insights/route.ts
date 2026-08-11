@@ -8,6 +8,7 @@ import {
   warmAudienceSummary,
 } from "@/lib/instagram-insights-ui";
 import {
+  computeModelEngagementTotals,
   contentTypePerformance,
   followerGrowthRatePct,
   growthMomentum,
@@ -16,7 +17,6 @@ import {
   postingFrequency,
   postingVsReachSeries,
   priorEqualLengthRange,
-  resolveEngagementRate,
   summarizeIgDaily,
 } from "@/lib/instagram-insights-stats";
 import {
@@ -129,12 +129,9 @@ export async function GET(request: Request) {
   ]);
   const crossPlatformCard = toModelCrossPlatformCard(crossPlatform);
 
-  const dailyTotals = summarizeIgDaily(daily);
+  const rangeOpts = { startYmd: range.startYmd, endYmd: range.endYmd };
+  const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts);
   const priorTotals = summarizeIgDaily(priorDaily);
-  const avgEr = resolveEngagementRate(dailyTotals.avg_engagement_rate, topPosts, {
-    startYmd: range.startYmd,
-    endYmd: range.endYmd,
-  });
   const {
     reach,
     views,
@@ -142,7 +139,8 @@ export async function GET(request: Request) {
     follower_delta: followerDelta,
     follower_end: followerEnd,
     follower_start: followerStart,
-  } = dailyTotals;
+    avg_engagement_rate: avgEr,
+  } = totals;
 
   const growthRate = followerGrowthRatePct(followerStart, followerDelta);
   const priorGrowthRate = followerGrowthRatePct(

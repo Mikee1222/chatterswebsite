@@ -3,7 +3,7 @@
  * Pure derive + thin loader — no sync logic. Correlation ≠ causation in all copy.
  */
 
-import { resolveEngagementRate, summarizeIgDaily } from "@/lib/instagram-insights-stats";
+import { computeModelEngagementRate } from "@/lib/instagram-insights-stats";
 import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
@@ -464,16 +464,11 @@ export function deriveCrossPlatformAnalytics(input: {
 
   // ── 5. Combined Growth Score (same ER path as Instagram Insights stats) ─
   const prevRange = previousPeriodRange(startYmd, endYmd);
-  const curAvgEr = resolveEngagementRate(
-    summarizeIgDaily(igDaily).avg_engagement_rate,
-    topPosts,
-    { startYmd, endYmd }
-  );
-  const prevAvgEr = resolveEngagementRate(
-    summarizeIgDaily(prevIgDaily).avg_engagement_rate,
-    topPosts,
-    { startYmd: prevRange.startYmd, endYmd: prevRange.endYmd }
-  );
+  const curAvgEr = computeModelEngagementRate(igDaily, topPosts, { startYmd, endYmd });
+  const prevAvgEr = computeModelEngagementRate(prevIgDaily, topPosts, {
+    startYmd: prevRange.startYmd,
+    endYmd: prevRange.endYmd,
+  });
 
   const igEngagementScore =
     curAvgEr == null

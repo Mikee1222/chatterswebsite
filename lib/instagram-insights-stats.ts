@@ -122,6 +122,124 @@ export function resolveEngagementRate(
   return averagePostEngagementScore(posts, opts);
 }
 
+export type IgEngagementRange = { startYmd: string; endYmd: string };
+
+/** Account totals with engagement rate resolved through the shared path above. */
+export function computeModelEngagementTotals(
+  daily: IgDailyRow[],
+  posts: IgPostRow[],
+  range?: IgEngagementRange
+) {
+  const summary = summarizeIgDaily(daily);
+  return {
+    ...summary,
+    avg_engagement_rate: resolveEngagementRate(summary.avg_engagement_rate, posts, range),
+  };
+}
+
+/** Shorthand for the resolved account engagement rate % in a date range. */
+export function computeModelEngagementRate(
+  daily: IgDailyRow[],
+  posts: IgPostRow[],
+  range?: IgEngagementRange
+): number | null {
+  return computeModelEngagementTotals(daily, posts, range).avg_engagement_rate;
+}
+
+export type LinkedIgModel = {
+  modelRecordId: string;
+  modelName: string;
+  igUserId: string;
+};
+
+export type IgDailyInsightRow = IgDailyRow & {
+  ig_user_id?: string;
+  model_record_id?: string | null;
+};
+
+export type ModelComparisonRow = {
+  modelId: string;
+  modelName: string;
+  reach: number;
+  views: number | null;
+  avg_engagement_rate: number | null;
+  follower_start: number | null;
+  follower_end: number | null;
+  follower_delta: number | null;
+  growth_rate_pct: number | null;
+  top_post_engagement: number | null;
+  consistency_score: number | null;
+  days: number;
+};
+
+/**
+ * Per-model leaderboard rows — buckets daily rows by ig_user_id (canonical ClarioSuite key)
+ * with model_record_id fallback, then uses computeModelEngagementTotals for every ER cell.
+ */
+export function buildModelComparisonRows(
+  linked: LinkedIgModel[],
+  allDaily: IgDailyInsightRow[],
+  postsByModel: Map<string, IgPostRow[]>,
+  range?: IgEngagementRange
+): ModelComparisonRow[] {
+  const byIgUserId = new Map(linked.map((m) => [m.igUserId, m]));
+  const byModelRecordId = new Map(linked.map((m) => [m.modelRecordId, m]));
+  const buckets = new Map<string, { model: LinkedIgModel; rows: IgDailyRow[] }>();
+
+  for (const m of linked) {
+    buckets.set(m.modelRecordId, { model: m, rows: [] });
+  }
+
+  for (const row of allDaily) {
+    const match =
+      (row.ig_user_id ? byIgUserId.get(row.ig_user_id) : undefined) ??
+      (row.model_record_id ? byModelRecordId.get(row.model_record_id) : undefined);
+    if (!match) continue;
+    buckets.get(match.modelRecordId)!.rows.push(row);
+  }
+
+  return [...buckets.values()].map(({ model, rows }) => {
+    const posts = postsByModel.get(model.modelRecordId) ?? [];
+    const totals = computeModelEngagementTotals(rows, posts, range);
+    const topEng =
+      posts.reduce<number | null>((best, p) => {
+        if (p.engagement_score == null) return best;
+        if (best == null || p.engagement_score > best) return p.engagement_score;
+        return best;
+      }, null) ?? null;
+    return {
+      modelId: model.modelRecordId,
+      modelName: model.modelName,
+      reach: totals.reach,
+      views: totals.views,
+      avg_engagement_rate: totals.avg_engagement_rate,
+      follower_start: totals.follower_start,
+      follower_end: totals.follower_end,
+      follower_delta: totals.follower_delta,
+      growth_rate_pct: followerGrowthRatePct(totals.follower_start, totals.follower_delta),
+      top_post_engagement: topEng,
+      consistency_score: igConsistencyScore(rows),
+      days: rows.length,
+    };
+  });
+}
+
+/** Agency Overview “Avg Engagement” — mean of per-model resolved rates, never a parallel formula. */
+export function computeAgencyAvgEngagementRate(
+  comparison: Array<{ avg_engagement_rate: number | null }>,
+  agencyDaily: IgDailyRow[],
+  allPosts: IgPostRow[],
+  range: IgEngagementRange
+): number | null {
+  const erModels = comparison.filter(
+    (c) => c.avg_engagement_rate != null && c.avg_engagement_rate > 0
+  );
+  if (erModels.length > 0) {
+    return erModels.reduce((s, c) => s + (c.avg_engagement_rate ?? 0), 0) / erModels.length;
+  }
+  return computeModelEngagementRate(agencyDaily, allPosts, range);
+}
+
 /** Follower growth rate % over the period (requires start > 0). */
 export function followerGrowthRatePct(
   followerStart: number | null | undefined,
