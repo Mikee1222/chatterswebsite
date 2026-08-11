@@ -230,18 +230,37 @@ function mapBillingCycle(row: CycleRow): BillingCycleRecord {
   };
 }
 
-function mapRevenue(row: RevenueRow): BillingCycleRevenueRecord {
+function mapRevenueSync(
+  row: RevenueRow,
+  cycleAt: Map<string, string>,
+  clientAt: Map<string, string>,
+  modelAt: Map<string, string>
+): BillingCycleRevenueRecord {
+  const turnover_usd = typeof row.turnover_usd === "number" ? row.turnover_usd : 0;
+  const fee_percent = typeof row.fee_percent === "number" ? row.fee_percent : 0;
+  const fee_usd =
+    typeof row.fee_usd === "number" ? row.fee_usd : turnover_usd * (fee_percent / 100);
   return {
     id: publicId(row),
-    billing_cycle: (row.billing_cycle ?? []) as string[],
-    client: (row.client ?? []) as string[],
-    model: (row.model ?? []) as string[],
-    turnover_usd: typeof row.turnover_usd === "number" ? row.turnover_usd : 0,
-    fee_percent: typeof row.fee_percent === "number" ? row.fee_percent : 0,
-    fee_usd: typeof row.fee_usd === "number" ? row.fee_usd : undefined,
+    billing_cycle: mapLinkedIds(row.billing_cycle, cycleAt),
+    client: mapLinkedIds(row.client, clientAt),
+    model: mapLinkedIds(row.model, modelAt),
+    turnover_usd,
+    fee_percent,
+    fee_usd,
     status: typeof row.status === "string" ? (row.status as BillingCycleRevenueStatus) : undefined,
     created_at: typeof row.created_at === "string" ? row.created_at : undefined,
   };
+}
+
+async function mapRevenues(rows: RevenueRow[]): Promise<BillingCycleRevenueRecord[]> {
+  if (!rows.length) return [];
+  const [cycleAt, clientAt, modelAt] = await Promise.all([
+    sbResolveUuidToAirtableMap(CYCLES, rows.map((r) => r.billing_cycle)),
+    sbResolveUuidToAirtableMap(CLIENTS, rows.map((r) => r.client)),
+    sbResolveUuidToAirtableMap(BILLING_MODELS, rows.map((r) => r.model)),
+  ]);
+  return rows.map((r) => mapRevenueSync(r, cycleAt, clientAt, modelAt));
 }
 
 function mapMethod(row: MethodRow): PaymentMethodRecord {
@@ -354,6 +373,15 @@ function mapCalendar(row: CalendarRow): CalendarEventRecord {
 
 function recordIncludesClient(clientField: string[] | null | undefined, clientId: string): boolean {
   return (clientField ?? []).includes(clientId);
+}
+
+/** cycleId may be an Airtable rec id or a uuid; resolve to linked-field values used in tables. */
+async function resolveCycleLinkedIds(cycleId: string): Promise<string[]> {
+  const trimmed = cycleId.trim();
+  if (!trimmed) return [];
+  const row = await sbSelectByPublicId<CycleRow>(CYCLES, trimmed);
+  if (!row) return [trimmed];
+  return Array.from(new Set([row.id, ...(row.airtable_id ? [row.airtable_id] : []), trimmed]));
 }
 
 /** clientId may be an Airtable rec id or a uuid; resolve to the linked-field value used in tables. */
@@ -707,10 +735,13 @@ export async function getLatestSubmissionForCycle(
   cycleId: string,
   clientId?: string
 ): Promise<PaymentSubmissionRecord | null> {
-  const linked = clientId ? await resolveClientLinkedIds(clientId) : [];
+  const [linked, cycleLinked] = await Promise.all([
+    clientId ? resolveClientLinkedIds(clientId) : Promise.resolve([] as string[]),
+    resolveCycleLinkedIds(cycleId),
+  ]);
   const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
   const filtered = rows
-    .filter((r) => (r.billing_cycle ?? []).includes(cycleId))
+    .filter((r) => (r.billing_cycle ?? []).some((c) => cycleLinked.includes(c)))
     .filter((r) => !clientId || (r.client ?? []).some((c) => linked.includes(c)))
     .sort((a, b) => ((a.submitted_datetime ?? "") < (b.submitted_datetime ?? "") ? 1 : -1));
   return filtered[0] ? await mapSubmission(filtered[0]) : null;
@@ -845,13 +876,12 @@ async function listBillingCycleRevenuesForClientAndCycle(
 async function listPayableRevenuesForClient(clientId: string): Promise<BillingCycleRevenueRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
   const rows = await sbSelectAll<RevenueRow>(REVENUES);
-  return rows
-    .map(mapRevenue)
-    .filter(
-      (r) =>
-        r.client.some((c) => linked.includes(c)) &&
-        (r.status === "announced" || r.status === "overdue" || r.status === "pending_review")
-    );
+  const filtered = rows.filter(
+    (r) =>
+      (r.client ?? []).some((c) => linked.includes(c)) &&
+      (r.status === "announced" || r.status === "overdue" || r.status === "pending_review")
+  );
+  return mapRevenues(filtered);
 }
 
 export async function getBillingCycleById(cycleId: string): Promise<BillingCycleRecord | null> {
