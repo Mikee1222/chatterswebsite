@@ -228,6 +228,10 @@ async function upsertTopPosts(link: LinkedClarioSuiteModel): Promise<number> {
       const saved = Math.round(insight.saved ?? 0);
       const reach = Math.round(insight.reach ?? insight.carouselAlbumReach ?? 0);
       const views = Math.round(insight.views ?? insight.videoViews ?? 0);
+      const totalInteractions =
+        insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)
+          ? Math.round(insight.totalInteractions)
+          : undefined;
       scored.push({
         media_id: item.id,
         permalink: item.permalink,
@@ -235,7 +239,15 @@ async function upsertTopPosts(link: LinkedClarioSuiteModel): Promise<number> {
         media_product_type: item.mediaProductType ?? null,
         caption: item.caption,
         image_url: item.imageUrl || null,
-        engagement_score: computePostEngagementScore({ likes, comments, shares, saved, reach }),
+        engagement_score: computePostEngagementScore({
+          likes,
+          comments,
+          shares,
+          saved,
+          reach,
+          views,
+          totalInteractions,
+        }),
         reach,
         likes,
         comments,

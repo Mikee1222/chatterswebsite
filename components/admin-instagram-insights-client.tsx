@@ -21,7 +21,6 @@ import {
   WifiOff,
 } from "lucide-react";
 import {
-  ConsistencyRing,
   CountUp,
   DatePresetBar,
   InflowwCustomDateRange,
@@ -32,6 +31,7 @@ import {
 import { AdminClarioSuiteAccountsLookup } from "@/components/admin-clariosuite-accounts-lookup";
 import {
   GenderDonut,
+  IgConsistencyRing,
   IgContentTypeChips,
   IgEmptyState,
   IgModelPicker,
@@ -57,6 +57,10 @@ import {
   IG_STAT_INFO,
 } from "@/lib/instagram-insights-ui";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
+import {
+  buildFollowerTrendSeries,
+  IG_MIN_FOLLOWER_TREND_POINTS,
+} from "@/lib/instagram-insights-stats";
 
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
@@ -133,7 +137,7 @@ type InsightsPayload = {
   }>;
   totals: {
     reach: number;
-    views: number;
+    views: number | null;
     total_interactions: number;
     avg_engagement_rate: number | null;
     follower_start: number | null;
@@ -382,7 +386,18 @@ export function AdminInstagramInsightsClient() {
       })),
     [data?.daily]
   );
-  const followerTrend = trend.filter((d) => d.follower_count != null);
+  const followerTrendMeta = React.useMemo(
+    () => buildFollowerTrendSeries(data?.daily ?? []),
+    [data?.daily]
+  );
+  const followerTrend = React.useMemo(
+    () =>
+      followerTrendMeta.points.map((d) => ({
+        ...d,
+        dateLabel: shortDate(d.date),
+      })),
+    [followerTrendMeta.points]
+  );
   const ages = (data?.audience?.age_ranges ?? []).slice(0, 8);
   const countries = (data?.audience?.countries ?? []).slice(0, 8);
   const genders = data?.audience?.gender_split ?? [];
@@ -931,7 +946,18 @@ export function AdminInstagramInsightsClient() {
                   />
                   <LuxuryStatCard
                     label="Views"
-                    value={<CountUp value={data?.totals.views ?? 0} />}
+                    value={
+                      data?.totals.views != null ? (
+                        <CountUp value={data.totals.views} />
+                      ) : (
+                        "—"
+                      )
+                    }
+                    hint={
+                      data?.totals.views == null && (data?.totals.reach ?? 0) > 0
+                        ? "Views not reported yet for this range"
+                        : undefined
+                    }
                     tooltip={IG_STAT_INFO.views}
                     accent="champagne"
                   />
@@ -945,9 +971,11 @@ export function AdminInstagramInsightsClient() {
                       )
                     }
                     hint={
-                      data?.totals.total_interactions != null
-                        ? `${fmtNum(data.totals.total_interactions)} interactions`
-                        : undefined
+                      (data?.totals.total_interactions ?? 0) > 0
+                        ? `${fmtNum(data?.totals.total_interactions)} interactions`
+                        : erValue == null
+                          ? "Interactions not synced yet"
+                          : undefined
                     }
                     tooltip={IG_STAT_INFO.engagement_rate}
                     accent="pink"
@@ -991,7 +1019,7 @@ export function AdminInstagramInsightsClient() {
                     <StatInfoTooltip text={IG_STAT_INFO.consistency} />
                   </div>
                   <div className="mt-3 [&_.text-white\/50]:text-white/50">
-                    <ConsistencyRing
+                    <IgConsistencyRing
                       score={modelStats?.consistency_score ?? null}
                       className="border-0 bg-transparent p-0 shadow-none"
                     />
@@ -1052,7 +1080,7 @@ export function AdminInstagramInsightsClient() {
                     </span>
                   ) : (
                     <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/40">
-                      Need ~5+ days with variance for correlation
+                      Not enough data yet (~2 weeks + varied posting days)
                     </span>
                   )}
                 </div>
@@ -1234,7 +1262,7 @@ export function AdminInstagramInsightsClient() {
                   <StatInfoTooltip text={IG_STAT_INFO.follower_trend} />
                 </div>
                 <div className="mt-3 h-48">
-                  {followerTrend.length ? (
+                  {followerTrend.length >= IG_MIN_FOLLOWER_TREND_POINTS ? (
                     <ResponsiveContainer width="100%" height="100%">
                       <AreaChart data={followerTrend}>
                         <defs>
@@ -1268,7 +1296,11 @@ export function AdminInstagramInsightsClient() {
                     </ResponsiveContainer>
                   ) : (
                     <p className="flex h-full items-center justify-center text-sm text-white/35">
-                      {loading ? "Loading…" : "Follower series not available for this range."}
+                      {loading
+                        ? "Loading…"
+                        : followerTrendMeta.buildingHistory
+                          ? "Building follower history — check back after a few more daily syncs."
+                          : "Follower series not available for this range."}
                     </p>
                   )}
                 </div>

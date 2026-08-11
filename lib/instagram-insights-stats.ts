@@ -6,6 +6,15 @@ import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { classifyIgPost, type IgPostGroup } from "@/lib/instagram-insights-ui";
 import { computeConsistencyScore } from "@/services/infloww-analytics";
 
+/** Minimum days with reach before showing consistency (avoids misleading scores on new links). */
+export const IG_MIN_CONSISTENCY_DAYS = 14;
+/** Minimum calendar days before posting↔reach correlation is shown. */
+export const IG_MIN_CORRELATION_DAYS = 14;
+/** Minimum days with at least one post before correlation is shown. */
+export const IG_MIN_CORRELATION_POST_DAYS = 5;
+/** Minimum positive follower points before rendering follower trend chart. */
+export const IG_MIN_FOLLOWER_TREND_POINTS = 2;
+
 export type IgDailyRow = {
   date: string;
   reach: number;
@@ -32,7 +41,8 @@ export type IgPostRow = {
  */
 export function summarizeIgDaily(daily: IgDailyRow[]) {
   const reach = daily.reduce((s, d) => s + d.reach, 0);
-  const views = daily.reduce((s, d) => s + d.views, 0);
+  const viewsRaw = daily.reduce((s, d) => s + d.views, 0);
+  const views = resolveViewsTotal(daily);
   const interactions = daily.reduce((s, d) => s + d.total_interactions, 0);
   // Prefer days with a real positive rate; treat 0% with 0 interactions as "missing".
   const erDays = daily.filter(
@@ -48,7 +58,7 @@ export function summarizeIgDaily(daily: IgDailyRow[]) {
   if (avgEr == null && reach > 0 && interactions > 0) {
     avgEr = (interactions / reach) * 100;
   }
-  const withFollowers = daily.filter((d) => d.follower_count != null);
+  const withFollowers = daily.filter((d) => d.follower_count != null && d.follower_count > 0);
   const followerStart = withFollowers[0]?.follower_count ?? null;
   const followerEnd = withFollowers[withFollowers.length - 1]?.follower_count ?? null;
   const followerDelta =
@@ -56,12 +66,23 @@ export function summarizeIgDaily(daily: IgDailyRow[]) {
   return {
     reach,
     views,
+    views_raw: viewsRaw,
     total_interactions: interactions,
     avg_engagement_rate: avgEr,
     follower_start: followerStart,
     follower_end: followerEnd,
     follower_delta: followerDelta,
   };
+}
+
+/** Sum views, or null when Meta/ClarioSuite hasn't reported views yet (reach exists, all views 0). */
+export function resolveViewsTotal(daily: IgDailyRow[]): number | null {
+  if (!daily.length) return null;
+  const total = daily.reduce((s, d) => s + d.views, 0);
+  if (total > 0) return total;
+  const reach = daily.reduce((s, d) => s + d.reach, 0);
+  if (reach > 0) return null;
+  return 0;
 }
 
 /** Mean post engagement score % (likes+comments+shares+saved ÷ reach × 100). */
@@ -144,7 +165,31 @@ export function growthMomentum(
 
 /** Consistency of daily reach (same CV→0–100 formula as Chatter Performance). */
 export function igConsistencyScore(daily: IgDailyRow[]): number | null {
-  return computeConsistencyScore(daily.map((d) => d.reach));
+  const activeDays = daily.filter((d) => d.reach > 0);
+  if (activeDays.length < IG_MIN_CONSISTENCY_DAYS) return null;
+  return computeConsistencyScore(activeDays.map((d) => d.reach));
+}
+
+/** Follower trend points for charts — excludes reconstructed 0 placeholders before history exists. */
+export function buildFollowerTrendSeries(
+  daily: IgDailyRow[]
+): { points: IgDailyRow[]; buildingHistory: boolean } {
+  const points = daily.filter((d) => d.follower_count != null && d.follower_count > 0);
+  const buildingHistory = points.length > 0 && points.length < IG_MIN_FOLLOWER_TREND_POINTS;
+  return { points, buildingHistory };
+}
+
+export function postInRangeYmd(
+  postedAt: string | null | undefined,
+  startYmd: string,
+  endYmd: string
+): boolean {
+  if (!postedAt) return false;
+  const ymd = postedAt.slice(0, 10);
+  if (!ymd) return false;
+  const start = startYmd.slice(0, 10);
+  const end = endYmd.slice(0, 10);
+  return ymd >= start && ymd <= end;
 }
 
 export type ContentTypePerf = {
@@ -155,17 +200,24 @@ export type ContentTypePerf = {
   avg_reach: number | null;
 };
 
-export function contentTypePerformance(posts: IgPostRow[]): ContentTypePerf[] {
-  const buckets: Record<IgPostGroup, { scores: number[]; reaches: number[] }> = {
-    reels: { scores: [], reaches: [] },
-    carousels: { scores: [], reaches: [] },
-    posts: { scores: [], reaches: [] },
+export function contentTypePerformance(
+  posts: IgPostRow[],
+  opts?: { startYmd?: string; endYmd?: string }
+): ContentTypePerf[] {
+  const buckets: Record<IgPostGroup, { postCount: number; scores: number[]; reaches: number[] }> = {
+    reels: { postCount: 0, scores: [], reaches: [] },
+    carousels: { postCount: 0, scores: [], reaches: [] },
+    posts: { postCount: 0, scores: [], reaches: [] },
   };
+  const start = opts?.startYmd?.slice(0, 10);
+  const end = opts?.endYmd?.slice(0, 10);
   for (const p of posts) {
+    if (start && end && !postInRangeYmd(p.posted_at, start, end)) continue;
     const g = classifyIgPost({
       mediaType: p.media_type,
       mediaProductType: p.media_product_type,
     });
+    buckets[g].postCount += 1;
     if (p.engagement_score != null && Number.isFinite(p.engagement_score)) {
       buckets[g].scores.push(p.engagement_score);
     }
@@ -185,7 +237,7 @@ export function contentTypePerformance(posts: IgPostRow[]): ContentTypePerf[] {
     return {
       group,
       label: labels[group],
-      count: Math.max(b.scores.length, b.reaches.length),
+      count: b.postCount,
       avg_engagement: avg(b.scores),
       avg_reach: avg(b.reaches),
     };
@@ -264,7 +316,11 @@ export function postingVsReachSeries(
 /** Pearson r for paired series; null if insufficient variance / points. */
 export function pearsonCorrelation(xs: number[], ys: number[]): number | null {
   const n = Math.min(xs.length, ys.length);
-  if (n < 5) return null;
+  if (n < IG_MIN_CORRELATION_DAYS) return null;
+  const postDays = xs.filter((x) => x > 0).length;
+  if (postDays < IG_MIN_CORRELATION_POST_DAYS) return null;
+  const reachDays = ys.filter((y) => y > 0).length;
+  if (reachDays < IG_MIN_CONSISTENCY_DAYS) return null;
   let sx = 0;
   let sy = 0;
   for (let i = 0; i < n; i++) {

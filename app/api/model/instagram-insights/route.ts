@@ -155,7 +155,10 @@ export async function GET(request: Request) {
     series.map((r) => r.posts),
     series.map((r) => r.reach)
   );
-  const contentTypes = contentTypePerformance(topPosts);
+  const contentTypes = contentTypePerformance(topPosts, {
+    startYmd: range.startYmd,
+    endYmd: range.endYmd,
+  });
 
   const stories = await fetchClarioSuiteStoriesPayload(igUserId);
 

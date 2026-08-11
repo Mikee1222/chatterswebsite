@@ -396,9 +396,22 @@ export async function listClarioSuiteMedia(
 }
 
 /** GET /media/:id/insights */
+/** GET /media/:id/insights — unwrap `{ data, meta }` envelope from live API. */
+function parseMediaInsightPayload(payload: unknown): ClarioSuiteMediaInsight {
+  if (payload && typeof payload === "object") {
+    const o = payload as Record<string, unknown>;
+    const data = o["data"];
+    if (data && typeof data === "object") {
+      return data as ClarioSuiteMediaInsight;
+    }
+  }
+  return (payload ?? {}) as ClarioSuiteMediaInsight;
+}
+
 export async function getClarioSuiteMediaInsights(mediaId: string): Promise<ClarioSuiteMediaInsight> {
   const id = encodeURIComponent(mediaId.trim());
-  return clariosuiteFetchJson<ClarioSuiteMediaInsight>(`/media/${id}/insights`);
+  const payload = await clariosuiteFetchJson<unknown>(`/media/${id}/insights`);
+  return parseMediaInsightPayload(payload);
 }
 
 /**
@@ -489,10 +502,22 @@ export function computePostEngagementScore(params: {
   shares: number;
   saved: number;
   reach: number;
+  views?: number;
+  totalInteractions?: number;
 }): number | null {
-  if (!(params.reach > 0)) return null;
-  const interactions = params.likes + params.comments + params.shares + params.saved;
-  return (interactions / params.reach) * 100;
+  const interactions =
+    params.totalInteractions != null && Number.isFinite(params.totalInteractions) && params.totalInteractions > 0
+      ? params.totalInteractions
+      : params.likes + params.comments + params.shares + params.saved;
+  if (!(interactions > 0)) return null;
+  const denom =
+    params.reach > 0
+      ? params.reach
+      : (params.views ?? 0) > 0
+        ? params.views!
+        : null;
+  if (denom == null || !(denom > 0)) return null;
+  return (interactions / denom) * 100;
 }
 
 /** Best posting hour (UTC) from onlineFollowers — highest value. */

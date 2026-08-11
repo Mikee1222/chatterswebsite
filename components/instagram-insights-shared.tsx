@@ -33,6 +33,68 @@ export function IgSkeleton({ className }: { className?: string }) {
   return <div className={cn("animate-pulse rounded-xl bg-white/5", className)} />;
 }
 
+export function IgConsistencyRing({
+  score,
+  className,
+}: {
+  score: number | null;
+  className?: string;
+}) {
+  const v = score ?? 0;
+  const r = 36;
+  const c = 2 * Math.PI * r;
+  const offset = c - (v / 100) * c;
+  const tone =
+    score == null
+      ? "text-white/40"
+      : score >= 70
+        ? "text-emerald-400"
+        : score >= 45
+          ? "text-[#D4AF8C]"
+          : "text-amber-300";
+
+  return (
+    <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5", className)}>
+      <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+        Consistency
+      </p>
+      <div className="mt-3 flex items-center gap-4">
+        <div className="relative h-24 w-24 shrink-0">
+          <svg viewBox="0 0 88 88" className="h-full w-full -rotate-90">
+            <circle cx="44" cy="44" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+            <circle
+              cx="44"
+              cy="44"
+              r={r}
+              fill="none"
+              stroke="#FF1493"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={c}
+              strokeDashoffset={score == null ? c : offset}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className={cn("text-xl font-semibold tabular-nums", tone)}>
+              {score == null ? "—" : score}
+            </span>
+          </div>
+        </div>
+        <p className="text-sm leading-relaxed text-white/50">
+          {score == null
+            ? "Not enough data yet — need about two weeks of daily reach before this score is meaningful."
+            : score >= 70
+              ? "Steady daily reach — your audience sees you consistently."
+              : score >= 45
+                ? "Some day-to-day swings — normal while cadence settles in."
+                : "Reach swings a lot day to day — common for newer or ramping accounts."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+
 export function IgEmptyState({ title, detail }: { title: string; detail: string }) {
   return (
     <div className={cn(VA_CARD, "flex flex-col items-center justify-center px-6 py-12 text-center")}>

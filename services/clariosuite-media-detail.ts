@@ -120,6 +120,8 @@ export async function getClarioSuiteMediaDetail(params: {
       shares: shares ?? 0,
       saved: saved ?? 0,
       reach: reach ?? 0,
+      views: views ?? 0,
+      totalInteractions: n(insight.totalInteractions) ?? undefined,
     }) ?? n(cached?.engagement_score);
 
   return {

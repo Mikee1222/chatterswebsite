@@ -271,7 +271,10 @@ export async function GET(request: Request) {
     series.map((r) => r.posts),
     series.map((r) => r.reach)
   );
-  const contentTypes = contentTypePerformance(topPosts);
+  const contentTypes = contentTypePerformance(topPosts, {
+    startYmd: range.startYmd,
+    endYmd: range.endYmd,
+  });
 
   // Stories — live list; metrics only if API attaches them
   const stories = await fetchClarioSuiteStoriesPayload(selected.igUserId);

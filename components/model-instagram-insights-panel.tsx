@@ -435,7 +435,18 @@ export function ModelInstagramInsightsPanel() {
               />
               <LuxuryStatCard
                 label="Your views"
-                value={<CountUp value={data?.totals?.views ?? 0} />}
+                value={
+                  data?.totals?.views != null ? (
+                    <CountUp value={data.totals.views} />
+                  ) : (
+                    "—"
+                  )
+                }
+                hint={
+                  data?.totals?.views == null && (data?.totals?.reach ?? 0) > 0
+                    ? "Views not reported yet"
+                    : undefined
+                }
                 tooltip="Total views across your Instagram content."
                 accent="champagne"
               />
@@ -688,7 +699,7 @@ export function ModelInstagramInsightsPanel() {
                 </span>
               ) : (
                 <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/40">
-                  Tip unlocks with ~5+ varied days
+                  Not enough data yet (~2 weeks + varied posting days)
                 </span>
               )}
             </div>
