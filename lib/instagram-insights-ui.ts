@@ -119,9 +119,11 @@ export function fmtNum(n: number | null | undefined): string {
   return Math.round(n).toLocaleString();
 }
 
-export function fmtPct(n: number | null | undefined, digits = 2): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n.toFixed(digits)}%`;
+export function fmtPct(n: number | string | null | undefined, digits = 2): string {
+  if (n == null || n === "") return "—";
+  const v = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(v)) return "—";
+  return `${v.toFixed(digits)}%`;
 }
 
 export function fmtDelta(n: number | null | undefined): string {

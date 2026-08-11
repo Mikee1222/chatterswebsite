@@ -19,6 +19,7 @@ import {
   postingVsReachSeries,
   priorEqualLengthRange,
   summarizeIgDaily,
+  toFiniteRate,
 } from "@/lib/instagram-insights-stats";
 import {
   resolveInflowwStatsRange,
@@ -153,7 +154,11 @@ export async function GET(request: Request) {
       Promise.all(
         linked.map(async (m) => ({
           modelId: m.modelRecordId,
-          posts: await queryClarioSuiteTopPosts({ modelRecordId: m.modelRecordId, limit: 25 }),
+          igUserId: m.igUserId,
+          posts: await queryClarioSuiteTopPosts({
+            igUserId: m.igUserId,
+            limit: 25,
+          }),
         }))
       ),
       getCrossPlatformAnalytics({
@@ -164,7 +169,11 @@ export async function GET(request: Request) {
       }),
     ]);
 
-  const postsByModel = new Map(allTopPosts.map((r) => [r.modelId, r.posts]));
+  const postsByModel = new Map<string, Awaited<ReturnType<typeof queryClarioSuiteTopPosts>>>();
+  for (const row of allTopPosts) {
+    postsByModel.set(row.modelId, row.posts);
+    if (row.igUserId) postsByModel.set(row.igUserId, row.posts);
+  }
   const rangeOpts = { startYmd: range.startYmd, endYmd: range.endYmd };
   const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts);
   const comparison = buildModelComparisonRows(linked, allDaily, postsByModel, rangeOpts).sort(
@@ -231,69 +240,79 @@ export async function GET(request: Request) {
       ? (topPosts[0] as { synced_at?: string }).synced_at!
       : null);
 
-  return NextResponse.json({
-    range,
-    priorRange,
-    models,
-    selectedModelId: selected.modelRecordId,
-    selectedIgUserId: selected.igUserId,
-    selectedModelName: selected.modelName,
-    linked: true,
-    daily,
-    totals,
-    audience: audienceRow
-      ? {
-          followers_count: audienceRow.followers_count ?? null,
-          age_ranges: asBuckets(audienceRow.age_ranges),
-          countries,
-          gender_split: asBuckets(audienceRow.gender_split),
-          online_followers_by_hour: online,
-          synced_at: audienceRow.synced_at ?? null,
-        }
-      : null,
-    bestTime: bestRec
-      ? {
-          hourUtc: bestRec.hourUtc,
-          value: bestRec.value,
-          label: bestRec.windowLabel,
-          recommendation: bestRec.recommendation,
-          athensHint: bestRec.athensHint,
-          peakHourUtc: peak?.hour ?? bestRec.hourUtc,
-        }
-      : null,
-    topPosts,
-    comparison,
-    priorComparison,
-    callouts,
-    overview: {
-      total_reach: agency.reach,
-      total_views: agency.views,
-      total_interactions: agency.total_interactions,
-      total_followers: hasFollowerEnds ? totalFollowers : audienceRow?.followers_count ?? null,
-      avg_engagement_rate: overviewAvgEr,
-      top_model: topModel
+  return NextResponse.json(
+    {
+      range,
+      priorRange,
+      models,
+      selectedModelId: selected.modelRecordId,
+      selectedIgUserId: selected.igUserId,
+      selectedModelName: selected.modelName,
+      linked: true,
+      daily,
+      totals: {
+        ...totals,
+        avg_engagement_rate: toFiniteRate(totals.avg_engagement_rate),
+      },
+      audience: audienceRow
         ? {
-            modelId: topModel.modelId,
-            modelName: topModel.modelName,
-            reach: topModel.reach,
-            avg_engagement_rate: topModel.avg_engagement_rate,
-            follower_delta: topModel.follower_delta,
+            followers_count: audienceRow.followers_count ?? null,
+            age_ranges: asBuckets(audienceRow.age_ranges),
+            countries,
+            gender_split: asBuckets(audienceRow.gender_split),
+            online_followers_by_hour: online,
+            synced_at: audienceRow.synced_at ?? null,
           }
         : null,
-      models_with_data: comparison.filter((c) => c.days > 0).length,
+      bestTime: bestRec
+        ? {
+            hourUtc: bestRec.hourUtc,
+            value: bestRec.value,
+            label: bestRec.windowLabel,
+            recommendation: bestRec.recommendation,
+            athensHint: bestRec.athensHint,
+            peakHourUtc: peak?.hour ?? bestRec.hourUtc,
+          }
+        : null,
+      topPosts,
+      comparison,
+      priorComparison,
+      callouts,
+      overview: {
+        total_reach: agency.reach,
+        total_views: agency.views,
+        total_interactions: agency.total_interactions,
+        total_followers: hasFollowerEnds ? totalFollowers : audienceRow?.followers_count ?? null,
+        avg_engagement_rate: toFiniteRate(overviewAvgEr),
+        top_model: topModel
+          ? {
+              modelId: topModel.modelId,
+              modelName: topModel.modelName,
+              reach: topModel.reach,
+              avg_engagement_rate: toFiniteRate(topModel.avg_engagement_rate),
+              follower_delta: topModel.follower_delta,
+            }
+          : null,
+        models_with_data: comparison.filter((c) => c.days > 0).length,
+      },
+      modelStats: {
+        growth_rate_pct: growthRate,
+        prior_growth_rate_pct: priorGrowthRate,
+        growth_momentum: growthMomentum(growthRate, priorGrowthRate),
+        consistency_score: igConsistencyScore(daily),
+        posting_frequency: freq,
+        posting_vs_reach: series,
+        posting_reach_correlation: corr,
+        content_type_performance: contentTypes,
+      },
+      stories,
+      lastSyncedAt,
+      crossPlatform,
     },
-    modelStats: {
-      growth_rate_pct: growthRate,
-      prior_growth_rate_pct: priorGrowthRate,
-      growth_momentum: growthMomentum(growthRate, priorGrowthRate),
-      consistency_score: igConsistencyScore(daily),
-      posting_frequency: freq,
-      posting_vs_reach: series,
-      posting_reach_correlation: corr,
-      content_type_performance: contentTypes,
-    },
-    stories,
-    lastSyncedAt,
-    crossPlatform,
-  });
+    {
+      headers: {
+        "Cache-Control": "no-store, max-age=0",
+      },
+    }
+  );
 }

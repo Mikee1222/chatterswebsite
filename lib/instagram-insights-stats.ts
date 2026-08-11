@@ -6,6 +6,13 @@ import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { classifyIgPost, type IgPostGroup } from "@/lib/instagram-insights-ui";
 import { computeConsistencyScore } from "@/services/infloww-analytics";
 
+/** Coerce Postgres numeric / JSON string rates to a finite number, else null. */
+export function toFiniteRate(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Minimum days with reach before showing consistency (avoids misleading scores on new links). */
 export const IG_MIN_CONSISTENCY_DAYS = 14;
 /** Minimum calendar days before posting↔reach correlation is shown. */
@@ -45,15 +52,13 @@ export function summarizeIgDaily(daily: IgDailyRow[]) {
   const views = resolveViewsTotal(daily);
   const interactions = daily.reduce((s, d) => s + d.total_interactions, 0);
   // Prefer days with a real positive rate; treat 0% with 0 interactions as "missing".
-  const erDays = daily.filter(
-    (d) =>
-      d.engagement_rate != null &&
-      Number.isFinite(d.engagement_rate) &&
-      (d.engagement_rate > 0 || d.total_interactions > 0)
-  );
+  const erDays = daily.filter((d) => {
+    const rate = toFiniteRate(d.engagement_rate);
+    return rate != null && (rate > 0 || d.total_interactions > 0);
+  });
   let avgEr: number | null =
     erDays.length > 0
-      ? erDays.reduce((s, d) => s + (d.engagement_rate ?? 0), 0) / erDays.length
+      ? erDays.reduce((s, d) => s + (toFiniteRate(d.engagement_rate) ?? 0), 0) / erDays.length
       : null;
   if (avgEr == null && reach > 0 && interactions > 0) {
     avgEr = (interactions / reach) * 100;
@@ -118,7 +123,8 @@ export function resolveEngagementRate(
   posts: Array<{ engagement_score: number | null | undefined; posted_at?: string | null }>,
   opts?: { startYmd?: string; endYmd?: string }
 ): number | null {
-  if (dailyAvg != null && Number.isFinite(dailyAvg) && dailyAvg > 0) return dailyAvg;
+  const rate = toFiniteRate(dailyAvg);
+  if (rate != null && rate > 0) return rate;
   return averagePostEngagementScore(posts, opts);
 }
 
@@ -195,11 +201,17 @@ export function buildModelComparisonRows(
       (row.ig_user_id ? byIgUserId.get(row.ig_user_id) : undefined) ??
       (row.model_record_id ? byModelRecordId.get(row.model_record_id) : undefined);
     if (!match) continue;
-    buckets.get(match.modelRecordId)!.rows.push(row);
+    buckets.get(match.modelRecordId)!.rows.push({
+      ...row,
+      engagement_rate: toFiniteRate(row.engagement_rate),
+    });
   }
 
   return [...buckets.values()].map(({ model, rows }) => {
-    const posts = postsByModel.get(model.modelRecordId) ?? [];
+    const posts =
+      postsByModel.get(model.modelRecordId) ??
+      postsByModel.get(model.igUserId) ??
+      [];
     const totals = computeModelEngagementTotals(rows, posts, range);
     const topEng =
       posts.reduce<number | null>((best, p) => {
@@ -212,7 +224,7 @@ export function buildModelComparisonRows(
       modelName: model.modelName,
       reach: totals.reach,
       views: totals.views,
-      avg_engagement_rate: totals.avg_engagement_rate,
+      avg_engagement_rate: toFiniteRate(totals.avg_engagement_rate),
       follower_start: totals.follower_start,
       follower_end: totals.follower_end,
       follower_delta: totals.follower_delta,
