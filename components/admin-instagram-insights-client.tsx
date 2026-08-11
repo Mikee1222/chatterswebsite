@@ -343,13 +343,29 @@ export function AdminInstagramInsightsClient() {
   async function runSync() {
     setSyncing(true);
     try {
+      // Always sync every linked model — scoped sync skipped newly linked accounts
+      // when another model was selected in the picker / leaderboard.
       const res = await fetch("/api/admin/instagram-insights/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelId: modelId || undefined }),
+        body: JSON.stringify({}),
       });
-      const json = await res.json();
+      const json = (await res.json()) as {
+        error?: string;
+        modelsTargeted?: number;
+        dailyRowsUpserted?: number;
+        errors?: Array<{ modelName?: string; message: string }>;
+      };
       if (!res.ok) throw new Error(json.error || "Sync failed");
+      if (json.errors?.length) {
+        const names = json.errors
+          .map((e) => e.modelName || "model")
+          .slice(0, 3)
+          .join(", ");
+        setError(
+          `Sync finished with errors for ${names}${json.errors.length > 3 ? "…" : ""}. Check logs.`
+        );
+      }
       await Promise.all([load(), loadHealth()]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed");
