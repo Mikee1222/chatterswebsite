@@ -4,6 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getClientAirtableId } from "@/lib/client-session";
 import { ROUTES } from "@/lib/routes";
 import { ClientGunzoPartnershipView } from "@/components/client-portal/gunzo-partnership-client-view";
+import { getClientPartnershipInflowwStats } from "@/services/client-partnership-infloww";
 import { getClientById, getClientPartnershipAnalytics } from "@/services/client-portal";
 
 export const dynamic = "force-dynamic";
@@ -24,13 +25,18 @@ export default async function ClientGunzoPartnershipPage({
   const requestedMonth =
     params.month || (currentMonthUtc.startsWith("2026") ? currentMonthUtc : "2026-01");
 
-  const data = await getClientPartnershipAnalytics(clientId, requestedMonth);
+  const [data, inflowwStats] = await Promise.all([
+    getClientPartnershipAnalytics(clientId, requestedMonth),
+    getClientPartnershipInflowwStats(clientId, "this_month"),
+  ]);
 
   return (
     <div className="space-y-8 pb-20 md:pb-0">
       <div>
         <h1 className="text-3xl font-bold text-white">Gunzo Partnership</h1>
-        <p className="text-gray-400">Your partnership performance at a glance.</p>
+        <p className="text-gray-400">
+          How your account is performing — plus partnership billing and fees.
+        </p>
       </div>
       <Suspense
         fallback={
@@ -39,6 +45,7 @@ export default async function ClientGunzoPartnershipPage({
       >
         <ClientGunzoPartnershipView
           data={data}
+          inflowwStats={inflowwStats}
           selectedMonth={requestedMonth}
           availableMonths2026={data.availableMonths2026}
           clientName={client?.display_name || client?.company_name}

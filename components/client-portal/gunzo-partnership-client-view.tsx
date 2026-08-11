@@ -2,6 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import type { GunzoPartnershipData } from "@/types/client-portal";
+import type { ClientPartnershipInflowwStats } from "@/services/client-partnership-infloww";
+import { ClientGunzoPartnershipInflowwSection } from "@/components/client-portal/gunzo-partnership-infloww-section";
 import { formatDateEuropean } from "@/lib/format";
 import { BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,6 +16,7 @@ const formatMoney = (n: number) => numberFormatter.format(Number(n) || 0);
 
 type Props = {
   data: GunzoPartnershipData;
+  inflowwStats: ClientPartnershipInflowwStats;
   selectedMonth: string;
   availableMonths2026: string[];
   clientName?: string;
@@ -26,8 +29,10 @@ function formatMonthLabel(monthKey: string) {
 
 export function ClientGunzoPartnershipView({
   data,
+  inflowwStats,
   selectedMonth,
   availableMonths2026,
+  clientName,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -60,7 +65,19 @@ export function ClientGunzoPartnershipView({
     data.monthlyTotals.crmUsd > 0;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
+      <ClientGunzoPartnershipInflowwSection
+        initial={inflowwStats}
+        accountLabel={clientName ?? inflowwStats.modelNames[0]}
+      />
+
+      <div className="border-t border-white/10 pt-8">
+        <p className="text-xs uppercase tracking-[0.3em] text-pink-300/80">Partnership billing</p>
+        <p className="mt-1 text-sm text-gray-400">
+          Weekly and monthly fee summaries for your Gunzo partnership agreement.
+        </p>
+      </div>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-[0.3em] text-pink-300/80">Client dashboard</p>
