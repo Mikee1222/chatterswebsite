@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import {
+  Banknote,
   CheckCircle2,
   Copy,
+  CreditCard,
   Loader2,
   Send,
   Upload,
@@ -20,6 +22,7 @@ import {
 } from "@/lib/chatter-attachment-constants";
 import { uploadScreenshotToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { postFormData } from "@/lib/post-form-data";
+import { cn } from "@/lib/utils";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import type { FineBonusPaymentMethod } from "@/services/fines-bonuses";
 
@@ -32,6 +35,8 @@ export type ModelPaymentInfo = {
   payment_notes?: string;
   payment_threshold_eur?: number;
 };
+
+const PAYMENT_METHODS: FineBonusPaymentMethod[] = ["PayPal", "Revolut", "Other"];
 
 function CopyButton({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = React.useState(false);
@@ -107,6 +112,45 @@ function ModelPaymentInfoBox({ model }: { model: ModelPaymentInfo }) {
   );
 }
 
+function SectionHeader({ icon: Icon, title, description }: { icon: React.ElementType; title: string; description?: string }) {
+  return (
+    <div className="mb-3 flex items-start gap-3">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-pink-500/20 bg-pink-500/10">
+        <Icon className="h-4 w-4 text-pink-300" aria-hidden />
+      </div>
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        {description ? <p className="mt-0.5 text-xs text-white/45">{description}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+function PaymentMethodChip({
+  method,
+  selected,
+  onSelect,
+}: {
+  method: FineBonusPaymentMethod;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        "inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border px-4 py-2.5 text-sm font-medium transition duration-200 motion-reduce:transition-none",
+        selected
+          ? "border-pink-500/50 bg-pink-500/20 text-pink-100 shadow-[0_0_20px_-8px_rgba(236,72,153,0.45)]"
+          : "border-white/12 bg-white/[0.04] text-white/70 hover:border-pink-400/30 hover:bg-pink-500/[0.06] hover:text-white"
+      )}
+    >
+      {method}
+    </button>
+  );
+}
+
 export function ExtraRevenueModal({
   open,
   onClose,
@@ -143,6 +187,7 @@ export function ExtraRevenueModal({
   }, [open]);
 
   const selectedModel = modelss.find((m) => m.id === modelId);
+  const noModels = modelss.length === 0;
 
   function setScreenshotFile(file: File | null) {
     if (!file) {
@@ -160,10 +205,28 @@ export function ExtraRevenueModal({
     setScreenshot(file);
   }
 
+  function clearScreenshot() {
+    setScreenshot(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (noModels) {
+      toast.error("No active models available");
+      return;
+    }
     if (!modelId || !selectedModel) {
       toast.error("Select a model");
+      return;
+    }
+    const parsedAmount = Number.parseFloat(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      toast.error("Enter a valid EUR amount");
+      return;
+    }
+    if (paymentMethod === "Other" && !paymentSource.trim()) {
+      toast.error("Describe the payment source");
       return;
     }
     if (!screenshot) {
@@ -177,7 +240,7 @@ export function ExtraRevenueModal({
       fd.set("model_name", selectedModel.model_name);
       fd.set("amount", amount);
       fd.set("payment_method", paymentMethod);
-      if (paymentMethod === "Other") fd.set("payment_source", paymentSource);
+      if (paymentMethod === "Other") fd.set("payment_source", paymentSource.trim());
       if (notes.trim()) fd.set("notes", notes.trim());
       if (isSupabase) {
         const { sbUrl } = await uploadScreenshotToSupabaseStorage(screenshot, "extra-revenue");
@@ -186,7 +249,9 @@ export function ExtraRevenueModal({
         fd.set("screenshot", screenshot);
       }
 
-      const res = await postFormData("/api/chatter/extra-revenue", fd);
+      const res = await postFormData("/api/chatter/extra-revenue", fd, {
+        credentials: "include",
+      });
       const data = (await res.json()) as { error?: string; success?: boolean };
       if (!res.ok) {
         toast.error(data.error || "Submit failed");
@@ -211,61 +276,76 @@ export function ExtraRevenueModal({
       subtitle="Log a payment received outside the usual flow"
       className="md:max-w-lg"
     >
-      <form onSubmit={submit} className="space-y-5 px-4 py-4 md:px-5 md:py-5">
-        {/* Section 1: Model & Amount */}
-        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-            Model
-            <FormSelect
-              value={modelId}
-              onChange={(e) => setModelId(e.target.value)}
-              className="mt-1.5"
-              required
-            >
-              <option value="">— Select model —</option>
-              {modelss.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.model_name}
-                </option>
-              ))}
-            </FormSelect>
-          </label>
+      <form onSubmit={submit} className="space-y-6 px-4 py-4 md:px-5 md:py-5">
+        {/* Section 1: Model & amount */}
+        <section className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+          <SectionHeader
+            icon={Banknote}
+            title="Payment details"
+            description="Select the model and amount received in EUR."
+          />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+              Model
+              <FormSelect
+                value={modelId}
+                onChange={(e) => setModelId(e.target.value)}
+                className="mt-1.5"
+                required
+                disabled={noModels}
+              >
+                <option value="">{noModels ? "No active models" : "— Select model —"}</option>
+                {modelss.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.model_name}
+                  </option>
+                ))}
+              </FormSelect>
+            </label>
 
-          <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-            Amount (EUR)
-            <FormInput
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="mt-1.5"
-              placeholder="0.00"
-              required
-            />
-          </label>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+              Amount (EUR)
+              <div className="relative mt-1.5">
+                <span className="pointer-events-none absolute left-4 top-1/2 z-[1] -translate-y-1/2 text-[15px] font-medium text-white/55">
+                  €
+                </span>
+                <FormInput
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="!pl-9"
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+            </label>
+          </div>
         </section>
 
-        {/* Section 2: Model payment info */}
-        {selectedModel ? <ModelPaymentInfoBox model={selectedModel} /> : null}
+        {selectedModel ? (
+          <section>
+            <ModelPaymentInfoBox model={selectedModel} />
+          </section>
+        ) : null}
 
-        {/* Section 3: Payment method & other source */}
-        <section className="space-y-4">
-          <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-            Payment method
-            <FormSelect
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value as FineBonusPaymentMethod)}
-              className="mt-1.5"
-            >
-              <option value="PayPal">PayPal</option>
-              <option value="Revolut">Revolut</option>
-              <option value="Other">Other</option>
-            </FormSelect>
-          </label>
+        {/* Section 2: Payment method */}
+        <section className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+          <SectionHeader icon={CreditCard} title="Payment method" description="How was this payment received?" />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {PAYMENT_METHODS.map((method) => (
+              <PaymentMethodChip
+                key={method}
+                method={method}
+                selected={paymentMethod === method}
+                onSelect={() => setPaymentMethod(method)}
+              />
+            ))}
+          </div>
 
-          {paymentMethod === "Other" && (
-            <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+          {paymentMethod === "Other" ? (
+            <label className="mt-4 block text-xs font-semibold uppercase tracking-wider text-white/40">
               Other payment source
               <FormInput
                 value={paymentSource}
@@ -275,61 +355,66 @@ export function ExtraRevenueModal({
                 required
               />
             </label>
-          )}
+          ) : null}
         </section>
 
-        {/* Section 4: Screenshot upload */}
-        <section>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/40">Screenshot</p>
+        {/* Section 3: Screenshot */}
+        <section className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+          <SectionHeader
+            icon={Upload}
+            title="Screenshot"
+            description={`Proof of payment — PNG or JPG, max ${CHATTER_ATTACHMENT_MAX_MB}MB.`}
+          />
           <input
             ref={fileRef}
             type="file"
             accept="image/*"
             className="hidden"
-            onChange={(e) => setScreenshotFile(e.target.files?.[0] ?? null)}
+            onChange={(e) => {
+              setScreenshotFile(e.target.files?.[0] ?? null);
+              e.target.value = "";
+            }}
           />
           <div
             role="button"
             tabIndex={0}
+            aria-label="Upload payment screenshot"
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") fileRef.current?.click();
             }}
             onClick={() => fileRef.current?.click()}
+            onDragEnter={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(true);
             }}
-            onDragLeave={() => setDragOver(false)}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+            }}
             onDrop={(e) => {
               e.preventDefault();
               setDragOver(false);
               const file = e.dataTransfer.files?.[0];
               if (file) setScreenshotFile(file);
             }}
-            className={`flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition ${
+            className={cn(
+              "flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border border-dashed px-4 py-6 text-center transition duration-200 motion-reduce:transition-none",
               dragOver
-                ? "border-pink-400/50 bg-pink-500/10"
+                ? "border-pink-400/50 bg-pink-500/10 shadow-[0_0_24px_-8px_rgba(236,72,153,0.35)]"
                 : screenshot
                   ? "border-green-500/30 bg-green-500/[0.06]"
-                  : "border-white/20 bg-white/[0.03] hover:bg-white/[0.05]"
-            }`}
+                  : "border-white/20 bg-black/30 hover:border-pink-400/35 hover:bg-pink-500/[0.03]"
+            )}
           >
             {screenshot ? (
               <>
                 <CheckCircle2 className="h-8 w-8 text-green-400" />
                 <p className="text-sm font-medium text-white">{screenshot.name}</p>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setScreenshot(null);
-                    if (fileRef.current) fileRef.current.value = "";
-                  }}
-                  className="inline-flex items-center gap-1 text-xs text-white/50 hover:text-white/80"
-                >
-                  <X className="h-3 w-3" />
-                  Remove
-                </button>
+                <p className="text-xs text-white/45">Click or drop to replace</p>
               </>
             ) : (
               <>
@@ -339,10 +424,22 @@ export function ExtraRevenueModal({
               </>
             )}
           </div>
+          {screenshot ? (
+            <div className="mt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={clearScreenshot}
+                className="inline-flex items-center gap-1 text-xs text-white/50 transition hover:text-white/80"
+              >
+                <X className="h-3 w-3" />
+                Remove screenshot
+              </button>
+            </div>
+          ) : null}
         </section>
 
-        {/* Section 5: Notes */}
-        <section>
+        {/* Section 4: Notes */}
+        <section className="rounded-2xl border border-white/8 bg-white/[0.02] p-4">
           <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
             Notes (optional)
             <FormTextarea
@@ -355,8 +452,15 @@ export function ExtraRevenueModal({
           </label>
         </section>
 
-        <div className="flex gap-2 pt-1">
-          <ButtonPrimary type="submit" disabled={pending} className="flex flex-1 items-center justify-center gap-2">
+        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row">
+          <ButtonSecondary type="button" onClick={onClose} disabled={pending} className="sm:flex-1">
+            Cancel
+          </ButtonSecondary>
+          <ButtonPrimary
+            type="submit"
+            disabled={pending || noModels}
+            className="flex flex-1 items-center justify-center gap-2 sm:flex-[2]"
+          >
             {pending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -369,9 +473,6 @@ export function ExtraRevenueModal({
               </>
             )}
           </ButtonPrimary>
-          <ButtonSecondary type="button" onClick={onClose} disabled={pending}>
-            Cancel
-          </ButtonSecondary>
         </div>
       </form>
     </GlassModal>

@@ -4,6 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getFinesBonusesForUser } from "@/services/fines-bonuses";
+import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
 import { getCachedModelss } from "@/lib/modelss-cache";
 import { FinesBonusesClient } from "@/components/fines-bonuses-client";
 
@@ -22,7 +23,7 @@ export default async function FinesBonusesPage() {
 
   const [initialEntries, modelss] = await Promise.all([
     getFinesBonusesForUser(userId).catch(() => []),
-    getCachedModelss().then((all) => all.filter((m) => m.status === "active")).catch(() => []),
+    getCachedModelss().then((all) => filterActiveModelsForAssignment(all)).catch(() => []),
   ]);
 
   const isChatter = role === "chatter";

@@ -14,16 +14,19 @@ import {
   isChatterExtraRevenueSubmission,
   isPendingExtraRevenueReview,
   isSpinWheelFineBonus,
+  type FineBonusPaymentMethod,
   type FineBonusRecord,
   type FineBonusType,
   type FineBonusUserRole,
 } from "@/services/fines-bonuses";
 
 type UserOpt = { id: string; name: string; user_role: FineBonusUserRole };
+type ModelOpt = { id: string; name: string };
 
 type Props = {
   initialEntries: FineBonusRecord[];
   userOptions: UserOpt[];
+  modelOptions?: ModelOpt[];
   isAdmin?: boolean;
 };
 
@@ -108,6 +111,7 @@ function entrySourceBadge(entry: FineBonusRecord) {
 }
 
 type SourceFilter = "all" | "manual" | "spin_wheel" | "chatter_submission";
+type MethodFilter = "all" | FineBonusPaymentMethod;
 
 type MonthGroup = {
   month: string;
@@ -129,9 +133,16 @@ function groupByMonth(entries: FineBonusRecord[]): MonthGroup[] {
     }));
 }
 
-export function AdminFinesBonusesClient({ initialEntries, userOptions, isAdmin = false }: Props) {
+export function AdminFinesBonusesClient({
+  initialEntries,
+  userOptions,
+  modelOptions = [],
+  isAdmin = false,
+}: Props) {
   const [rows, setRows] = React.useState(initialEntries);
   const [userFilter, setUserFilter] = React.useState("all");
+  const [modelFilter, setModelFilter] = React.useState("all");
+  const [methodFilter, setMethodFilter] = React.useState<MethodFilter>("all");
   const [roleFilter, setRoleFilter] = React.useState<"all" | FineBonusUserRole>("all");
   const [typeFilter, setTypeFilter] = React.useState<"all" | FineBonusType>("all");
   const [sourceFilter, setSourceFilter] = React.useState<SourceFilter>("all");
@@ -256,6 +267,8 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions, isAdmin =
     return rows
       .filter((r) => {
         if (userFilter !== "all" && r.user_id !== userFilter) return false;
+        if (modelFilter !== "all" && r.model_id !== modelFilter) return false;
+        if (methodFilter !== "all" && r.payment_method !== methodFilter) return false;
         if (roleFilter !== "all" && r.user_role !== roleFilter) return false;
         if (typeFilter !== "all" && r.type !== typeFilter) return false;
         if (sourceFilter === "spin_wheel" && !isSpinWheelFineBonus(r)) return false;
@@ -266,7 +279,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions, isAdmin =
         return true;
       })
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }, [rows, userFilter, roleFilter, typeFilter, sourceFilter, monthFilter, search]);
+  }, [rows, userFilter, modelFilter, methodFilter, roleFilter, typeFilter, sourceFilter, monthFilter, search]);
 
   const {
     page,
@@ -278,7 +291,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions, isAdmin =
 
   React.useEffect(() => {
     reset();
-  }, [userFilter, roleFilter, typeFilter, sourceFilter, monthFilter, search, reset]);
+  }, [userFilter, modelFilter, methodFilter, roleFilter, typeFilter, sourceFilter, monthFilter, search, reset]);
 
   const groupedPage = React.useMemo(() => groupByMonth(paginatedEntries), [paginatedEntries]);
 
@@ -436,12 +449,34 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions, isAdmin =
           onChange={(e) => setUserFilter(e.target.value)}
           className="min-h-10 min-w-[140px] rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
         >
-          <option value="all">All users</option>
+          <option value="all">All chatters</option>
           {userOptions.map((u) => (
             <option key={u.id} value={u.id}>
               {u.name}
             </option>
           ))}
+        </select>
+        <select
+          value={modelFilter}
+          onChange={(e) => setModelFilter(e.target.value)}
+          className="min-h-10 min-w-[140px] rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
+        >
+          <option value="all">All models</option>
+          {modelOptions.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={methodFilter}
+          onChange={(e) => setMethodFilter(e.target.value as MethodFilter)}
+          className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
+        >
+          <option value="all">All methods</option>
+          <option value="PayPal">PayPal</option>
+          <option value="Revolut">Revolut</option>
+          <option value="Other">Other</option>
         </select>
         <select
           value={roleFilter}

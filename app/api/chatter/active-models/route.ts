@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
 import { listAllModelss } from "@/services/modelss";
 
 type ModelOption = { id: string; name: string };
@@ -20,7 +21,7 @@ export async function GET() {
   if (!(await hasPermission(session, "shifts:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const modelss = await listAllModelss('{status} = "active"');
+    const modelss = filterActiveModelsForAssignment(await listAllModelss());
     const models: ModelOption[] = modelss
       .map((m) => ({
         id: m.id,
