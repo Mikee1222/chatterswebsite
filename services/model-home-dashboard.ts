@@ -16,6 +16,7 @@ import {
   type ModelHomeUpcomingShoot,
 } from "@/lib/model-home-dashboard";
 import {
+  aggregateIgDailyByDate,
   computeModelEngagementRate,
   summarizeIgDaily,
 } from "@/lib/instagram-insights-stats";
@@ -31,6 +32,10 @@ import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
 } from "@/services/clariosuite-sync";
+import {
+  listClarioSuiteModelAccounts,
+  resolvePrimaryIgUserId,
+} from "@/services/clariosuite-model-accounts";
 import { listCustomRequestsByModel } from "@/services/custom-requests";
 import { listFilmingSchedule } from "@/services/filming";
 import { listModelLiveStreams } from "@/services/model-live-streams";
@@ -111,8 +116,9 @@ async function loadEarningsSnapshot(modelRecordId: string): Promise<{
 async function loadInstagramSnapshot(
   modelRecord: ModelRecord
 ): Promise<ModelHomeInstagramSnapshot> {
-  const igUserId = modelRecord.clariosuite_ig_user_id?.trim() || null;
-  if (!igUserId) {
+  const accountRows = await listClarioSuiteModelAccounts(modelRecord.id).catch(() => []);
+  const primaryIg = resolvePrimaryIgUserId(modelRecord, accountRows);
+  if (!primaryIg) {
     return {
       linked: false,
       followers: null,
@@ -124,15 +130,23 @@ async function loadInstagramSnapshot(
   }
 
   const range = resolveInflowwStatsRange("this_month");
-  const [daily, audience, topPosts] = await Promise.all([
+  const [dailyRaw, audience, topPostsRaw] = await Promise.all([
     queryClarioSuiteDailyInsights({
       modelRecordId: modelRecord.id,
       startYmd: range.startYmd,
       endYmd: range.endYmd,
     }),
-    getClarioSuiteAudienceSnapshot({ modelRecordId: modelRecord.id }),
+    getClarioSuiteAudienceSnapshot({
+      modelRecordId: modelRecord.id,
+      igUserId: primaryIg,
+    }),
     queryClarioSuiteTopPosts({ modelRecordId: modelRecord.id, limit: 3 }),
   ]);
+
+  const daily = aggregateIgDailyByDate(dailyRaw);
+  const topPosts = [...topPostsRaw].sort(
+    (a, b) => (b.engagement_score ?? -1) - (a.engagement_score ?? -1)
+  );
 
   const totals = summarizeIgDaily(daily);
   const engagementRate = computeModelEngagementRate(daily, topPosts, {

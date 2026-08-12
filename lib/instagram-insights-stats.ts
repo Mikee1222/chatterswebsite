@@ -156,6 +156,7 @@ export type LinkedIgModel = {
   modelRecordId: string;
   modelName: string;
   igUserId: string;
+  accountCount?: number;
 };
 
 export type IgDailyInsightRow = IgDailyRow & {
@@ -163,9 +164,41 @@ export type IgDailyInsightRow = IgDailyRow & {
   model_record_id?: string | null;
 };
 
+/** Combine daily rows from multiple IG accounts (same model) by date — sums reach/views/interactions. */
+export function aggregateIgDailyByDate(rows: IgDailyInsightRow[]): IgDailyRow[] {
+  const byDate = new Map<string, IgDailyRow>();
+  for (const row of rows) {
+    const date = row.date.slice(0, 10);
+    const hit = byDate.get(date);
+    if (!hit) {
+      byDate.set(date, {
+        date,
+        reach: row.reach,
+        views: row.views,
+        total_interactions: row.total_interactions,
+        follower_count: row.follower_count,
+        engagement_rate: toFiniteRate(row.engagement_rate),
+      });
+      continue;
+    }
+    hit.reach += row.reach;
+    hit.views += row.views;
+    hit.total_interactions += row.total_interactions;
+    if (row.follower_count != null) {
+      hit.follower_count = (hit.follower_count ?? 0) + row.follower_count;
+    }
+    hit.engagement_rate =
+      hit.reach > 0 && hit.total_interactions > 0
+        ? (hit.total_interactions / hit.reach) * 100
+        : hit.engagement_rate;
+  }
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export type ModelComparisonRow = {
   modelId: string;
   modelName: string;
+  accountCount: number;
   reach: number;
   views: number | null;
   avg_engagement_rate: number | null;
@@ -175,6 +208,7 @@ export type ModelComparisonRow = {
   growth_rate_pct: number | null;
   top_post_engagement: number | null;
   consistency_score: number | null;
+  posting_frequency: number | null;
   days: number;
 };
 
@@ -188,9 +222,13 @@ export function buildModelComparisonRows(
   postsByModel: Map<string, IgPostRow[]>,
   range?: IgEngagementRange
 ): ModelComparisonRow[] {
-  const byIgUserId = new Map(linked.map((m) => [m.igUserId, m]));
+  const byIgUserId = new Map<string, LinkedIgModel>();
   const byModelRecordId = new Map(linked.map((m) => [m.modelRecordId, m]));
-  const buckets = new Map<string, { model: LinkedIgModel; rows: IgDailyRow[] }>();
+  for (const m of linked) {
+    byIgUserId.set(m.igUserId, m);
+  }
+  // Also index secondary accounts when caller passes expanded ig ids via linked list
+  const buckets = new Map<string, { model: LinkedIgModel; rows: IgDailyInsightRow[] }>();
 
   for (const m of linked) {
     buckets.set(m.modelRecordId, { model: m, rows: [] });
@@ -208,11 +246,13 @@ export function buildModelComparisonRows(
   }
 
   return [...buckets.values()].map(({ model, rows }) => {
+    const aggregated = aggregateIgDailyByDate(rows);
     const posts =
       postsByModel.get(model.modelRecordId) ??
       postsByModel.get(model.igUserId) ??
       [];
-    const totals = computeModelEngagementTotals(rows, posts, range);
+    const totals = computeModelEngagementTotals(aggregated, posts, range);
+    const freq = postingFrequency(posts, range?.startYmd ?? "", range?.endYmd ?? "");
     const topEng =
       posts.reduce<number | null>((best, p) => {
         if (p.engagement_score == null) return best;
@@ -222,6 +262,7 @@ export function buildModelComparisonRows(
     return {
       modelId: model.modelRecordId,
       modelName: model.modelName,
+      accountCount: (model as LinkedIgModel & { accountCount?: number }).accountCount ?? 1,
       reach: totals.reach,
       views: totals.views,
       avg_engagement_rate: toFiniteRate(totals.avg_engagement_rate),
@@ -230,8 +271,9 @@ export function buildModelComparisonRows(
       follower_delta: totals.follower_delta,
       growth_rate_pct: followerGrowthRatePct(totals.follower_start, totals.follower_delta),
       top_post_engagement: topEng,
-      consistency_score: igConsistencyScore(rows),
-      days: rows.length,
+      consistency_score: igConsistencyScore(aggregated),
+      posting_frequency: freq.posts_per_week,
+      days: aggregated.length,
     };
   });
 }

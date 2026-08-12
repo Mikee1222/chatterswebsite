@@ -25,6 +25,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const modelId = url.searchParams.get("modelId")?.trim() || "";
+  const igUserIdParam = url.searchParams.get("igUserId")?.trim() || "";
   const linked = await listLinkedClarioSuiteModels();
   const selected =
     (modelId && linked.find((l) => l.modelRecordId === modelId)) || linked[0] || null;
@@ -32,8 +33,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No linked Instagram model" }, { status: 404 });
   }
 
+  const igUserId =
+    igUserIdParam && selected.accounts.some((a) => a.igUserId === igUserIdParam)
+      ? igUserIdParam
+      : selected.igUserId;
+
   try {
-    const payload = await getClarioSuiteProfileSimulator(selected.igUserId);
+    const payload = await getClarioSuiteProfileSimulator(igUserId);
     return NextResponse.json({
       ...payload,
       modelId: selected.modelRecordId,

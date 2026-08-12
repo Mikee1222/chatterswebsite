@@ -637,6 +637,12 @@ export function AdminFinesBonusesClient({
                 <dd className="mt-0.5 font-medium text-white">{reviewEntry.model_name || "—"}</dd>
               </div>
               <div>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Sub username</dt>
+                <dd className="mt-0.5 font-medium text-white">
+                  {reviewEntry.sub_username ? `@${reviewEntry.sub_username}` : "—"}
+                </dd>
+              </div>
+              <div>
                 <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Amount (EUR)</dt>
                 <dd className="mt-0.5 text-lg font-bold tabular-nums text-green-400">€{reviewEntry.amount.toFixed(2)}</dd>
               </div>

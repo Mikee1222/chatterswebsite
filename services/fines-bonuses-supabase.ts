@@ -44,6 +44,7 @@ type FineBonusRecord = {
   model_id?: string;
   model_name?: string;
   screenshot_url?: string;
+  sub_username?: string;
 };
 
 type FinesBonusesListFilters = {
@@ -78,6 +79,7 @@ type CreateExtraRevenueInput = {
   screenshot_url: string;
   notes?: string;
   month: string;
+  sub_username: string;
 };
 
 type CreateSpinWheelCashBonusInput = {
@@ -120,6 +122,7 @@ type Row = SbRow & {
   model_id?: string | null;
   model_name?: string | null;
   screenshot_url?: string | null;
+  sub_username?: string | null;
 };
 
 const TABLE = "fines_and_bonuses";
@@ -166,6 +169,7 @@ function mapRow(row: Row): FineBonusRecord {
     model_id: typeof row.model_id === "string" ? row.model_id : "",
     model_name: typeof row.model_name === "string" ? row.model_name : "",
     screenshot_url: typeof row.screenshot_url === "string" ? row.screenshot_url : "",
+    sub_username: typeof row.sub_username === "string" ? row.sub_username : "",
   };
 }
 
@@ -230,6 +234,7 @@ export async function createFineBonus(
     model_id?: string;
     model_name?: string;
     screenshot_url?: string;
+    sub_username?: string;
   }
 ): Promise<{ id: string; record: FineBonusRecord }> {
   const entry_id = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -257,6 +262,7 @@ export async function createFineBonus(
   if (data.model_id?.trim()) payload.model_id = data.model_id.trim();
   if (data.model_name?.trim()) payload.model_name = data.model_name.trim();
   if (data.screenshot_url?.trim()) payload.screenshot_url = data.screenshot_url.trim();
+  if (data.sub_username?.trim()) payload.sub_username = data.sub_username.trim();
 
   const created = await sbInsert<Row>(TABLE, payload);
   const record = mapRow(created);
@@ -310,6 +316,7 @@ export async function createExtraRevenueSubmission(
     payment_source: data.payment_source?.trim() ?? "",
     model_id: data.model_id,
     model_name: data.model_name,
+    sub_username: data.sub_username,
     screenshot_url: data.screenshot_url,
   });
 }

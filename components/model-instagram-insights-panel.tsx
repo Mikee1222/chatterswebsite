@@ -76,6 +76,9 @@ type Payload = {
   linked: boolean;
   message?: string;
   modelName?: string;
+  igAccounts?: Array<{ id: string; igUserId: string; label: string; isPrimary: boolean }>;
+  selectedIgUserId?: string | null;
+  selectedAccountFilter?: "all" | "single";
   range: { startYmd: string; endYmd: string; preset: InflowwStatsPreset } | null;
   daily: Array<{
     date: string;
@@ -224,14 +227,17 @@ export function ModelInstagramInsightsPanel() {
   const [data, setData] = React.useState<Payload | null>(null);
   const [subTab, setSubTab] = React.useState<SubTab>("spotlight");
   const [viewAsProfile, setViewAsProfile] = React.useState(false);
+  const [igUserId, setIgUserId] = React.useState("");
 
   const load = React.useCallback(
-    async (opts?: { preset?: InflowwStatsPreset; from?: string; to?: string }) => {
+    async (opts?: { preset?: InflowwStatsPreset; from?: string; to?: string; igUserId?: string }) => {
       setLoading(true);
       setError(null);
       try {
         const p = opts?.preset ?? preset;
         const params = new URLSearchParams({ preset: p });
+        const ig = opts?.igUserId ?? igUserId;
+        if (ig) params.set("igUserId", ig);
         if (p === "custom") {
           const from = opts?.from ?? customFrom;
           const to = opts?.to ?? customTo;
@@ -242,6 +248,8 @@ export function ModelInstagramInsightsPanel() {
         const json = (await res.json()) as Payload;
         if (!res.ok && res.status !== 404) throw new Error(json.error ?? "Failed to load");
         setData(json);
+        if (json.selectedIgUserId) setIgUserId(json.selectedIgUserId);
+        else if (json.selectedAccountFilter === "all") setIgUserId("");
         if (json.range?.preset) setPreset(json.range.preset);
         if (json.range?.preset === "custom") {
           setCustomFrom(json.range.startYmd);
@@ -253,7 +261,7 @@ export function ModelInstagramInsightsPanel() {
         setLoading(false);
       }
     },
-    [preset, customFrom, customTo]
+    [preset, customFrom, customTo, igUserId]
   );
 
   React.useEffect(() => {
@@ -344,6 +352,32 @@ export function ModelInstagramInsightsPanel() {
               }}
             />
           </div>
+          {(data?.igAccounts?.length ?? 0) > 1 ? (
+            <div className="mt-3 max-w-xs">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                Instagram account
+              </p>
+              <select
+                value={igUserId}
+                disabled={loading}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setIgUserId(next);
+                  setViewAsProfile(false);
+                  void load({ igUserId: next });
+                }}
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-[#FF1493]/50"
+              >
+                <option value="">All accounts (combined)</option>
+                {(data?.igAccounts ?? []).map((a) => (
+                  <option key={a.igUserId} value={a.igUserId}>
+                    {a.label}
+                    {a.isPrimary ? " · Primary" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : null}
           {preset === "custom" ? (
             <div className="mt-3">
               <InflowwCustomDateRange
@@ -898,7 +932,7 @@ export function ModelInstagramInsightsPanel() {
               <div className="relative flex justify-center py-2">
                 <InstagramProfileSimulator
                   compact
-                  profileUrl="/api/model/instagram-insights/profile"
+                  profileUrl={`/api/model/instagram-insights/profile${igUserId ? `?igUserId=${encodeURIComponent(igUserId)}` : ""}`}
                   detailUrlFor={detailUrlFor}
                 />
               </div>

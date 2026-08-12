@@ -13,6 +13,12 @@ import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-ty
 import { formatMoney } from "@/lib/notification-copy";
 import { readRequestFormData } from "@/lib/request-form-data";
 
+function normalizeSubUsername(raw: string): string {
+  let s = raw.trim();
+  while (s.startsWith("@")) s = s.slice(1).trim();
+  return s;
+}
+
 const PAYMENT_METHODS = new Set<FineBonusPaymentMethod>(["PayPal", "Revolut", "Other"]);
 
 export async function POST(req: Request) {
@@ -29,6 +35,7 @@ export async function POST(req: Request) {
   const formData = formDataOrErr;
   const model_id = String(formData.get("model_id") ?? "").trim();
   const model_name = String(formData.get("model_name") ?? "").trim();
+  const sub_username = normalizeSubUsername(String(formData.get("sub_username") ?? ""));
   const amountRaw = String(formData.get("amount") ?? "").trim();
   const payment_method = String(formData.get("payment_method") ?? "").trim() as FineBonusPaymentMethod;
   const payment_source = String(formData.get("payment_source") ?? "").trim();
@@ -38,6 +45,9 @@ export async function POST(req: Request) {
 
   if (!model_id || !model_name) {
     return NextResponse.json({ error: "Model is required" }, { status: 400 });
+  }
+  if (!sub_username) {
+    return NextResponse.json({ error: "Subscriber username is required" }, { status: 400 });
   }
   if (!PAYMENT_METHODS.has(payment_method)) {
     return NextResponse.json({ error: "Invalid payment method" }, { status: 400 });
@@ -89,6 +99,7 @@ export async function POST(req: Request) {
       user_name: userName,
       model_id,
       model_name,
+      sub_username,
       amount,
       payment_method,
       payment_source: payment_method === "Other" ? payment_source : undefined,
@@ -101,7 +112,7 @@ export async function POST(req: Request) {
       event_type: NOTIFICATION_EVENT.EXTRA_REVENUE_SUBMITTED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "💰 Extra revenue submitted",
-      body: `${userName} submitted ${formatMoney(amount, "EUR")} of extra revenue for ${model_name}.`,
+      body: `${userName} submitted ${formatMoney(amount, "EUR")} of extra revenue for ${model_name} — @${sub_username}.`,
       entity_type: "fine_bonus",
       entity_id: id,
       actor_user_id: userId,

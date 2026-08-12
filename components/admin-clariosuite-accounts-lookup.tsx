@@ -11,7 +11,15 @@ type SortKey = "username" | "igUserId" | "followers";
 type SortDir = "asc" | "desc";
 type EmptyReason = "missing_api_key" | "no_ig_accounts" | "api_error" | null;
 
-export function AdminClarioSuiteAccountsLookup() {
+export function AdminClarioSuiteAccountsLookup({
+  linkMode = false,
+  onLinkPrimary,
+  onLinkSecondary,
+}: {
+  linkMode?: boolean;
+  onLinkPrimary?: (account: ClarioSuiteIgProfile) => void;
+  onLinkSecondary?: (account: ClarioSuiteIgProfile) => void;
+} = {}) {
   const [accounts, setAccounts] = React.useState<ClarioSuiteIgProfile[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -135,8 +143,9 @@ export function AdminClarioSuiteAccountsLookup() {
             IG account lookup
           </p>
           <p className="mt-1 text-sm text-white/55">
-            Live ClarioSuite accounts — copy the IG user ID into Accounts → Models → ClarioSuite IG
-            user ID.
+            {linkMode
+              ? "Pick an account to link as primary or secondary on this model."
+              : "Live ClarioSuite accounts — copy the IG user ID or link from Accounts → Edit Model."}
           </p>
         </div>
         <button
@@ -230,6 +239,7 @@ export function AdminClarioSuiteAccountsLookup() {
                   </button>
                 </th>
                 <th className="px-4 py-3 font-medium">Copy</th>
+                {linkMode ? <th className="px-4 py-3 font-medium">Link</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -253,6 +263,26 @@ export function AdminClarioSuiteAccountsLookup() {
                       {copiedId === a.igUserId ? "Copied" : "Copy"}
                     </button>
                   </td>
+                  {linkMode ? (
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-1">
+                        <button
+                          type="button"
+                          onClick={() => onLinkPrimary?.(a)}
+                          className="rounded-lg border border-[#D4AF8C]/40 bg-[#D4AF8C]/10 px-2 py-1 text-[10px] font-semibold text-[#D4AF8C] hover:bg-[#D4AF8C]/15"
+                        >
+                          Primary
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onLinkSecondary?.(a)}
+                          className="rounded-lg border border-white/10 px-2 py-1 text-[10px] font-semibold text-white/60 hover:bg-white/5"
+                        >
+                          Secondary
+                        </button>
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

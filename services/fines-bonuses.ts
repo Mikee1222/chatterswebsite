@@ -42,6 +42,7 @@ export interface FineBonusRecord {
   model_id?: string;
   model_name?: string;
   screenshot_url?: string;
+  sub_username?: string;
 }
 
 export type FinesBonusesListFilters = {
@@ -93,6 +94,7 @@ function mapRecord(rec: AirtableRecord<Record<string, unknown>>): FineBonusRecor
     model_id: typeof f.model_id === "string" ? f.model_id : "",
     model_name: typeof f.model_name === "string" ? f.model_name : "",
     screenshot_url: typeof f.screenshot_url === "string" ? f.screenshot_url : "",
+    sub_username: typeof f.sub_username === "string" ? f.sub_username : "",
   };
 }
 
@@ -186,6 +188,7 @@ export type CreateExtraRevenueInput = {
   user_name: string;
   model_id: string;
   model_name: string;
+  sub_username: string;
   amount: number;
   payment_method: FineBonusPaymentMethod;
   payment_source?: string;
@@ -272,6 +275,7 @@ export async function createFineBonus(
     model_id?: string;
     model_name?: string;
     screenshot_url?: string;
+    sub_username?: string;
   }
 ): Promise<{ id: string; record: FineBonusRecord }> {
   if (isSupabaseBackend()) {
@@ -302,6 +306,7 @@ export async function createFineBonus(
   if (data.model_id?.trim()) payload.model_id = data.model_id.trim();
   if (data.model_name?.trim()) payload.model_name = data.model_name.trim();
   if (data.screenshot_url?.trim()) payload.screenshot_url = data.screenshot_url.trim();
+  if (data.sub_username?.trim()) payload.sub_username = data.sub_username.trim();
 
   const created = await createRecord<Record<string, unknown>>(TABLE, payload);
   return { id: created.id, record: mapRecord(created as AirtableRecord<Record<string, unknown>>) };
@@ -335,6 +340,7 @@ export async function createExtraRevenueSubmission(
     payment_source: data.payment_source?.trim() ?? "",
     model_id: data.model_id,
     model_name: data.model_name,
+    sub_username: data.sub_username,
     screenshot_url: data.screenshot_url,
   });
 }

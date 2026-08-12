@@ -100,16 +100,20 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
 
 type CompareSortKey =
   | "reach"
+  | "views"
   | "followers"
   | "engagement"
   | "growth_rate"
+  | "posting_frequency"
+  | "consistency"
   | "top_post_engagement";
 
 type ComparisonRow = {
   modelId: string;
   modelName: string;
+  accountCount?: number;
   reach: number;
-  views: number;
+  views: number | null;
   avg_engagement_rate: number | null;
   follower_start: number | null;
   follower_end: number | null;
@@ -117,15 +121,26 @@ type ComparisonRow = {
   growth_rate_pct: number | null;
   top_post_engagement: number | null;
   consistency_score: number | null;
+  posting_frequency: number | null;
   days: number;
+};
+
+type IgAccountOption = {
+  id: string;
+  igUserId: string;
+  label: string;
+  isPrimary: boolean;
 };
 
 type InsightsPayload = {
   range: { startYmd: string; endYmd: string; preset: InflowwStatsPreset };
   priorRange?: { startYmd: string; endYmd: string; days: number };
-  models: Array<{ id: string; name: string; igUserId: string }>;
+  models: Array<{ id: string; name: string; igUserId: string; accountCount?: number }>;
   selectedModelId: string | null;
   selectedModelName?: string | null;
+  selectedIgUserId?: string | null;
+  selectedAccountFilter?: "all" | "single";
+  igAccounts?: IgAccountOption[];
   linked: boolean;
   daily: Array<{
     date: string;
@@ -258,9 +273,12 @@ function shortDate(ymd: string): string {
 
 function sortValue(row: ComparisonRow, key: CompareSortKey): number {
   if (key === "reach") return row.reach;
+  if (key === "views") return row.views ?? -1;
   if (key === "followers") return row.follower_end ?? -1;
   if (key === "engagement") return row.avg_engagement_rate ?? -1;
   if (key === "growth_rate") return row.growth_rate_pct ?? -Infinity;
+  if (key === "posting_frequency") return row.posting_frequency ?? -1;
+  if (key === "consistency") return row.consistency_score ?? -1;
   return row.top_post_engagement ?? -1;
 }
 
@@ -270,6 +288,7 @@ export function AdminInstagramInsightsClient() {
   const [customFrom, setCustomFrom] = React.useState("");
   const [customTo, setCustomTo] = React.useState("");
   const [modelId, setModelId] = React.useState<string>("");
+  const [igUserId, setIgUserId] = React.useState<string>("");
   const [loading, setLoading] = React.useState(true);
   const [syncing, setSyncing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -296,6 +315,7 @@ export function AdminInstagramInsightsClient() {
     async (opts?: {
       preset?: InflowwStatsPreset;
       modelId?: string;
+      igUserId?: string;
       from?: string;
       to?: string;
     }) => {
@@ -304,8 +324,10 @@ export function AdminInstagramInsightsClient() {
       try {
         const p = opts?.preset ?? preset;
         const mid = opts?.modelId ?? modelId;
+        const ig = opts?.igUserId ?? igUserId;
         const params = new URLSearchParams({ preset: p });
         if (mid) params.set("modelId", mid);
+        if (ig) params.set("igUserId", ig);
         if (p === "custom") {
           const from = opts?.from ?? customFrom;
           const to = opts?.to ?? customTo;
@@ -318,6 +340,8 @@ export function AdminInstagramInsightsClient() {
         setData(json);
         setPreset(json.range.preset);
         if (json.selectedModelId) setModelId(json.selectedModelId);
+        if (json.selectedIgUserId) setIgUserId(json.selectedIgUserId);
+        else if (json.selectedAccountFilter === "all") setIgUserId("");
         if (json.range.preset === "custom") {
           setCustomFrom(json.range.startYmd);
           setCustomTo(json.range.endYmd);
@@ -335,7 +359,7 @@ export function AdminInstagramInsightsClient() {
         setLoading(false);
       }
     },
-    [preset, modelId, customFrom, customTo]
+    [preset, modelId, igUserId, customFrom, customTo]
   );
 
   React.useEffect(() => {
@@ -602,10 +626,38 @@ export function AdminInstagramInsightsClient() {
                       loading={loading}
                       onChange={(next) => {
                         setModelId(next);
+                        setIgUserId("");
                         setViewAsProfile(false);
-                        void load({ modelId: next });
+                        void load({ modelId: next, igUserId: "" });
                       }}
                     />
+                  </div>
+                ) : null}
+
+                {showModelFilter && (data?.igAccounts?.length ?? 0) > 1 ? (
+                  <div className="min-w-0 space-y-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                      Instagram account
+                    </p>
+                    <select
+                      value={igUserId}
+                      disabled={loading}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setIgUserId(next);
+                        setViewAsProfile(false);
+                        void load({ igUserId: next });
+                      }}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none focus:border-[#FF1493]/50"
+                    >
+                      <option value="">All accounts (combined)</option>
+                      {(data?.igAccounts ?? []).map((a) => (
+                        <option key={a.igUserId} value={a.igUserId}>
+                          {a.label}
+                          {a.isPrimary ? " · Primary" : ""}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 ) : null}
 
@@ -1432,7 +1484,7 @@ export function AdminInstagramInsightsClient() {
                   <div className="relative flex justify-center py-2">
                     <InstagramProfileSimulator
                       key={data.selectedModelId}
-                      profileUrl={`/api/admin/instagram-insights/profile?modelId=${encodeURIComponent(data.selectedModelId)}`}
+                      profileUrl={`/api/admin/instagram-insights/profile?modelId=${encodeURIComponent(data.selectedModelId)}${igUserId ? `&igUserId=${encodeURIComponent(igUserId)}` : ""}`}
                       detailUrlFor={(mediaId) =>
                         `/api/admin/instagram-insights/media/${encodeURIComponent(mediaId)}?modelId=${encodeURIComponent(data.selectedModelId!)}`
                       }
@@ -1661,7 +1713,7 @@ export function AdminInstagramInsightsClient() {
                 </div>
                 {comparisonSorted.length ? (
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-left text-sm">
+                    <table className="w-full min-w-[960px] text-left text-sm">
                       <thead className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
                         <tr>
                           <th className="px-4 py-3 font-medium">#</th>
@@ -1669,9 +1721,12 @@ export function AdminInstagramInsightsClient() {
                           {(
                             [
                               ["reach", "Reach"],
+                              ["views", "Views"],
                               ["followers", "Followers"],
                               ["engagement", "Engagement"],
                               ["growth_rate", "Growth %"],
+                              ["posting_frequency", "Posts/wk"],
+                              ["consistency", "Consistency"],
                               ["top_post_engagement", "Top post"],
                             ] as const
                           ).map(([key, label]) => (
@@ -1717,13 +1772,26 @@ export function AdminInstagramInsightsClient() {
                                   }}
                                 >
                                   {row.modelName}
+                                  {(row.accountCount ?? 0) > 1 ? (
+                                    <span className="ml-1.5 text-[10px] font-normal text-white/35">
+                                      ({row.accountCount} accounts)
+                                    </span>
+                                  ) : null}
                                 </button>
                               </td>
                               <td className="px-4 py-3 tabular-nums text-white/80">
                                 {fmtNum(row.reach)}
                               </td>
+                              <td className="px-4 py-3 tabular-nums text-white/75">
+                                {row.views == null ? "—" : fmtNum(row.views)}
+                              </td>
                               <td className="px-4 py-3 tabular-nums text-white/70">
                                 {fmtNum(row.follower_end)}
+                                {row.follower_delta != null ? (
+                                  <span className="ml-1 text-[10px] text-white/35">
+                                    {fmtDelta(row.follower_delta)}
+                                  </span>
+                                ) : null}
                               </td>
                               <td className="px-4 py-3 tabular-nums text-[#D4AF8C]">
                                 {fmtPct(row.avg_engagement_rate)}
@@ -1739,6 +1807,16 @@ export function AdminInstagramInsightsClient() {
                                 )}
                               >
                                 {fmtPct(row.growth_rate_pct)}
+                              </td>
+                              <td className="px-4 py-3 tabular-nums text-white/70">
+                                {row.posting_frequency != null
+                                  ? row.posting_frequency.toFixed(1)
+                                  : "—"}
+                              </td>
+                              <td className="px-4 py-3 tabular-nums text-white/70">
+                                {row.consistency_score != null
+                                  ? Math.round(row.consistency_score)
+                                  : "—"}
                               </td>
                               <td className="px-4 py-3 tabular-nums text-white/70">
                                 {fmtPct(row.top_post_engagement)}

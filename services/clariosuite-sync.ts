@@ -15,6 +15,11 @@ import {
 } from "@/lib/clariosuite-api";
 import { publicId } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
+import {
+  listAllClarioSuiteModelAccounts,
+  resolvePrimaryIgUserId,
+  type ClarioSuiteModelAccount,
+} from "@/services/clariosuite-model-accounts";
 import { listAllModelss } from "@/services/modelss";
 import type { ClarioSuiteTimeSeriesPoint } from "@/types/clariosuite";
 import type { ModelRecord } from "@/types";
@@ -24,11 +29,20 @@ const MEDIA_FETCH_LIMIT = 25;
 /** Trailing days to refresh on each daily sync (late Meta updates). */
 const DEFAULT_INSIGHTS_RANGE = 14;
 
+export type LinkedClarioSuiteAccount = {
+  accountId: string;
+  igUserId: string;
+  label: string;
+  isPrimary: boolean;
+};
+
 export type LinkedClarioSuiteModel = {
   modelRecordId: string;
   modelStableId: string;
   modelName: string;
+  /** @deprecated Use accounts — kept for callers that need a single primary id */
   igUserId: string;
+  accounts: LinkedClarioSuiteAccount[];
 };
 
 export type ClarioSuiteSyncResult = {
@@ -88,26 +102,72 @@ function dimResults(
   return Array.isArray(hit?.results) ? hit.results : [];
 }
 
-export async function listLinkedClarioSuiteModels(): Promise<LinkedClarioSuiteModel[]> {
-  const models = await listAllModelss();
+type SyncLink = LinkedClarioSuiteModel & LinkedClarioSuiteAccount;
+
+function buildModelLinks(
+  models: ModelRecord[],
+  accountRows: ClarioSuiteModelAccount[]
+): LinkedClarioSuiteModel[] {
+  const byModel = new Map<string, ClarioSuiteModelAccount[]>();
+  for (const a of accountRows) {
+    const list = byModel.get(a.model_id) ?? [];
+    list.push(a);
+    byModel.set(a.model_id, list);
+  }
+
   const out: LinkedClarioSuiteModel[] = [];
   for (const m of models) {
-    const ig = (m.clariosuite_ig_user_id ?? "").trim();
-    if (!ig) continue;
+    const rows = byModel.get(m.id) ?? [];
+    const accounts: LinkedClarioSuiteAccount[] = rows.map((a) => ({
+      accountId: a.id,
+      igUserId: a.clariosuite_ig_user_id,
+      label: a.account_label,
+      isPrimary: a.is_primary,
+    }));
+
+    // Legacy fallback when accounts table empty but column set
+    if (!accounts.length) {
+      const ig = (m.clariosuite_ig_user_id ?? "").trim();
+      if (!ig) continue;
+      accounts.push({
+        accountId: "",
+        igUserId: ig,
+        label: "Main",
+        isPrimary: true,
+      });
+    }
+
+    const primaryIg = resolvePrimaryIgUserId(m, rows) ?? accounts[0]!.igUserId;
     out.push({
       modelRecordId: m.id,
       modelStableId: m.model_id,
       modelName: m.model_name,
-      igUserId: ig,
+      igUserId: primaryIg,
+      accounts,
     });
   }
   return out;
 }
 
-async function upsertDailyInsights(
-  link: LinkedClarioSuiteModel,
-  rangeDays: number
-): Promise<number> {
+function flattenSyncLinks(linked: LinkedClarioSuiteModel[]): SyncLink[] {
+  const out: SyncLink[] = [];
+  for (const m of linked) {
+    for (const a of m.accounts) {
+      out.push({ ...m, ...a });
+    }
+  }
+  return out;
+}
+
+export async function listLinkedClarioSuiteModels(): Promise<LinkedClarioSuiteModel[]> {
+  const [models, accountRows] = await Promise.all([
+    listAllModelss(),
+    listAllClarioSuiteModelAccounts().catch(() => [] as ClarioSuiteModelAccount[]),
+  ]);
+  return buildModelLinks(models, accountRows);
+}
+
+async function upsertDailyInsights(link: SyncLink, rangeDays: number): Promise<number> {
   const insights = await getClarioSuiteAccountInsights(link.igUserId, rangeDays);
   const reach = seriesMap(insights.series?.reach);
   const views = seriesMap(insights.series?.views);
@@ -147,6 +207,7 @@ async function upsertDailyInsights(
     const er = hasInteractions ? computeEngagementRate(ti, r) : null;
     return {
       ig_user_id: link.igUserId,
+      clariosuite_model_account_id: link.accountId || null,
       model_record_id: link.modelRecordId,
       model_stable_id: link.modelStableId,
       model_name: link.modelName,
@@ -170,12 +231,13 @@ async function upsertDailyInsights(
   return count ?? payload.length;
 }
 
-async function upsertAudienceSnapshot(link: LinkedClarioSuiteModel): Promise<number> {
+async function upsertAudienceSnapshot(link: SyncLink): Promise<number> {
   const audience = await getClarioSuiteAudience(link.igUserId);
   const demos = Array.isArray(audience.demographics) ? audience.demographics : [];
   const now = new Date().toISOString();
   const payload = {
     ig_user_id: link.igUserId,
+    clariosuite_model_account_id: link.accountId || null,
     model_record_id: link.modelRecordId,
     model_stable_id: link.modelStableId,
     model_name: link.modelName,
@@ -199,7 +261,7 @@ async function upsertAudienceSnapshot(link: LinkedClarioSuiteModel): Promise<num
   return 1;
 }
 
-async function upsertTopPosts(link: LinkedClarioSuiteModel): Promise<number> {
+async function upsertTopPosts(link: SyncLink): Promise<number> {
   const { data: media } = await listClarioSuiteMedia(link.igUserId, MEDIA_FETCH_LIMIT);
   const scored: Array<{
     media_id: string;
@@ -280,6 +342,7 @@ async function upsertTopPosts(link: LinkedClarioSuiteModel): Promise<number> {
   const now = new Date().toISOString();
   const payload = top.map((row, idx) => ({
     ig_user_id: link.igUserId,
+    clariosuite_model_account_id: link.accountId || null,
     model_record_id: link.modelRecordId,
     model_stable_id: link.modelStableId,
     model_name: link.modelName,
@@ -321,17 +384,18 @@ export async function syncClarioSuiteInsights(opts?: {
   if (opts?.modelRecordId) {
     linked = linked.filter((l) => l.modelRecordId === opts.modelRecordId);
   }
+  const syncLinks = flattenSyncLinks(linked);
 
   const result: ClarioSuiteSyncResult = {
     skipped: false,
-    modelsTargeted: linked.length,
+    modelsTargeted: syncLinks.length,
     dailyRowsUpserted: 0,
     audienceUpserted: 0,
     topPostsUpserted: 0,
     errors: [],
   };
 
-  for (const link of linked) {
+  for (const link of syncLinks) {
     try {
       result.dailyRowsUpserted += await upsertDailyInsights(link, rangeDays);
     } catch (err) {

@@ -30,6 +30,11 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { SopFormSection } from "@/components/sop/sop-form-section";
 import { StatInfoTooltip } from "@/components/infloww-performance-ui";
+import {
+  ClarioSuiteAccountsEditor,
+  draftAccountsForSave,
+  type ClarioSuiteAccountDraft,
+} from "@/components/clariosuite-accounts-editor";
 
 const PLATFORMS = ["onlyfans", "fanvue", "other"] as const;
 const STATUS_OPTIONS = ["active", "inactive"] as const;
@@ -95,9 +100,10 @@ export function EditModelForm({
   const [inflowwCreatorId, setInflowwCreatorId] = React.useState(
     model.infloww_creator_id?.trim() ? model.infloww_creator_id.trim() : ""
   );
-  const [clariosuiteIgUserId, setClariosuiteIgUserId] = React.useState(
-    model.clariosuite_ig_user_id?.trim() ? model.clariosuite_ig_user_id.trim() : ""
+  const [clariosuiteAccounts, setClariosuiteAccounts] = React.useState<ClarioSuiteAccountDraft[]>(
+    []
   );
+  const [accountsLoaded, setAccountsLoaded] = React.useState(false);
   const [linkedUserId, setLinkedUserId] = React.useState(currentLinkedUserId);
   const [clientId, setClientId] = React.useState(
     () => clientAssignments.find((a) => a.client[0])?.client[0] ?? ""
@@ -105,6 +111,32 @@ export function EditModelForm({
   const [clientOptions, setClientOptions] = React.useState<ClientOption[]>([]);
   const [clientsLoading, setClientsLoading] = React.useState(false);
   const [pending, setPending] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/models/${encodeURIComponent(model.id)}/clariosuite-accounts`)
+      .then((res) => res.json())
+      .then((data: { accounts?: ClarioSuiteAccountDraft[] }) => {
+        if (cancelled) return;
+        const rows = data.accounts ?? [];
+        if (rows.length) {
+          setClariosuiteAccounts(rows);
+        } else if (model.clariosuite_ig_user_id?.trim()) {
+          setClariosuiteAccounts([
+            {
+              clariosuite_ig_user_id: model.clariosuite_ig_user_id.trim(),
+              account_label: "Main",
+              is_primary: true,
+            },
+          ]);
+        }
+        setAccountsLoaded(true);
+      })
+      .catch(() => setAccountsLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [model.id, model.clariosuite_ig_user_id]);
 
   React.useEffect(() => {
     if (team !== "chatting_agency") return;
@@ -178,13 +210,20 @@ export function EditModelForm({
         notes: notes.trim(),
         team,
         infloww_creator_id: inflowwCreatorId.trim() || null,
-        clariosuite_ig_user_id: clariosuiteIgUserId.trim() || null,
         paypal_email: paypalEmail.trim() || undefined,
         paypal_link: paypalLink.trim() || undefined,
         revolut_tag: revolutTag.trim() || undefined,
         payment_notes: paymentNotes.trim() || undefined,
         payment_threshold_eur: Number.parseInt(paymentThreshold, 10) || 200,
       });
+      if (accountsLoaded) {
+        const toSave = draftAccountsForSave(clariosuiteAccounts);
+        await fetch(`/api/admin/models/${encodeURIComponent(model.id)}/clariosuite-accounts`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accounts: toSave }),
+        });
+      }
       await relinkModelUserForModelProfile(model.id, linkedUserId || null);
       await syncClientAssignments();
       router.push(`${ROUTES.accounts}?section=modelss&success=model_updated`);
@@ -330,7 +369,7 @@ export function EditModelForm({
       <SopFormSection
         title="Integrations"
         description="External IDs for earnings and marketing analytics sync"
-        defaultOpen={Boolean(inflowwCreatorId || clariosuiteIgUserId)}
+        defaultOpen={Boolean(inflowwCreatorId || clariosuiteAccounts.some((a) => a.clariosuite_ig_user_id))}
       >
         <FormField
           label={<IntegrationFieldLabel label="Infloww creator ID" tooltip={INFLOWW_CREATOR_TOOLTIP} />}
@@ -350,21 +389,21 @@ export function EditModelForm({
           />
         </FormField>
         <FormField
-          label={<IntegrationFieldLabel label="ClarioSuite IG user ID" tooltip={CLARIOSUITE_IG_TOOLTIP} />}
+          label={
+            <IntegrationFieldLabel label="Instagram accounts (ClarioSuite)" tooltip={CLARIOSUITE_IG_TOOLTIP} />
+          }
           icon={<Hash />}
-          htmlFor="clariosuite_ig_user_id"
-          description="Instagram account ID from ClarioSuite — links IG insights."
+          description="Link one primary and optional secondary IG accounts. Daily sync runs for every linked account."
         >
-          <FormInput
-            id="clariosuite_ig_user_id"
-            name="clariosuite_ig_user_id"
-            type="text"
-            inputMode="numeric"
-            value={clariosuiteIgUserId}
-            onChange={(e) => setClariosuiteIgUserId(e.target.value)}
-            placeholder="e.g. 17841400000000000"
-            autoComplete="off"
-          />
+          {accountsLoaded ? (
+            <ClarioSuiteAccountsEditor
+              modelId={model.id}
+              initialAccounts={clariosuiteAccounts}
+              onChange={setClariosuiteAccounts}
+            />
+          ) : (
+            <p className="text-sm text-white/40">Loading linked accounts…</p>
+          )}
         </FormField>
       </SopFormSection>
 

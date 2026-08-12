@@ -6,6 +6,7 @@ import { bestTimeToPostUtc } from "@/lib/clariosuite-api";
 import { fetchClarioSuiteStoriesPayload } from "@/lib/instagram-stories-map";
 import { buildBestTimeRecommendation } from "@/lib/instagram-insights-ui";
 import {
+  aggregateIgDailyByDate,
   buildCompareCallouts,
   buildModelComparisonRows,
   computeAgencyAvgEngagementRate,
@@ -82,6 +83,7 @@ export async function GET(request: Request) {
   const customFrom = url.searchParams.get("from") ?? undefined;
   const customTo = url.searchParams.get("to") ?? undefined;
   const modelRecordId = url.searchParams.get("modelId")?.trim() || undefined;
+  const igUserIdFilter = url.searchParams.get("igUserId")?.trim() || undefined;
 
   const range = resolveInflowwStatsRange(preset, customFrom, customTo);
   const priorRange = priorEqualLengthRange(range.startYmd, range.endYmd);
@@ -90,6 +92,13 @@ export async function GET(request: Request) {
     id: l.modelRecordId,
     name: l.modelName,
     igUserId: l.igUserId,
+    accountCount: l.accounts.length,
+    accounts: l.accounts.map((a) => ({
+      id: a.accountId,
+      igUserId: a.igUserId,
+      label: a.label,
+      isPrimary: a.isPrimary,
+    })),
   }));
 
   const emptyTotals = {
@@ -134,15 +143,29 @@ export async function GET(request: Request) {
   const selected =
     (modelRecordId && linked.find((l) => l.modelRecordId === modelRecordId)) || linked[0]!;
 
-  const [daily, audienceRow, topPosts, allDaily, priorDaily, allTopPosts, crossPlatform] =
+  const selectedIgUserId =
+    igUserIdFilter &&
+    selected.accounts.some((a) => a.igUserId === igUserIdFilter)
+      ? igUserIdFilter
+      : undefined;
+
+  const [dailyRaw, audienceRow, topPostsRaw, allDaily, priorDaily, allTopPosts, crossPlatform] =
     await Promise.all([
       queryClarioSuiteDailyInsights({
         modelRecordId: selected.modelRecordId,
+        igUserId: selectedIgUserId,
         startYmd: range.startYmd,
         endYmd: range.endYmd,
       }),
-      getClarioSuiteAudienceSnapshot({ modelRecordId: selected.modelRecordId }),
-      queryClarioSuiteTopPosts({ modelRecordId: selected.modelRecordId, limit: 25 }),
+      getClarioSuiteAudienceSnapshot({
+        modelRecordId: selected.modelRecordId,
+        igUserId: selectedIgUserId ?? selected.igUserId,
+      }),
+      queryClarioSuiteTopPosts({
+        modelRecordId: selected.modelRecordId,
+        igUserId: selectedIgUserId,
+        limit: 25,
+      }),
       queryClarioSuiteDailyInsights({
         startYmd: range.startYmd,
         endYmd: range.endYmd,
@@ -152,14 +175,21 @@ export async function GET(request: Request) {
         endYmd: priorRange.endYmd,
       }),
       Promise.all(
-        linked.map(async (m) => ({
-          modelId: m.modelRecordId,
-          igUserId: m.igUserId,
-          posts: await queryClarioSuiteTopPosts({
+        linked.map(async (m) => {
+          const posts: Awaited<ReturnType<typeof queryClarioSuiteTopPosts>> = [];
+          for (const a of m.accounts) {
+            const chunk = await queryClarioSuiteTopPosts({
+              igUserId: a.igUserId,
+              limit: 25,
+            });
+            posts.push(...chunk);
+          }
+          return {
+            modelId: m.modelRecordId,
             igUserId: m.igUserId,
-            limit: 25,
-          }),
-        }))
+            posts,
+          };
+        })
       ),
       getCrossPlatformAnalytics({
         modelRecordId: selected.modelRecordId,
@@ -169,6 +199,13 @@ export async function GET(request: Request) {
       }),
     ]);
 
+  const daily = selectedIgUserId ? dailyRaw : aggregateIgDailyByDate(dailyRaw);
+  const topPosts = selectedIgUserId
+    ? topPostsRaw
+    : [...topPostsRaw].sort(
+        (a, b) => (b.engagement_score ?? -1) - (a.engagement_score ?? -1)
+      );
+
   const postsByModel = new Map<string, Awaited<ReturnType<typeof queryClarioSuiteTopPosts>>>();
   for (const row of allTopPosts) {
     postsByModel.set(row.modelId, row.posts);
@@ -176,10 +213,19 @@ export async function GET(request: Request) {
   }
   const rangeOpts = { startYmd: range.startYmd, endYmd: range.endYmd };
   const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts);
-  const comparison = buildModelComparisonRows(linked, allDaily, postsByModel, rangeOpts).sort(
-    (a, b) => b.reach - a.reach
-  );
-  const priorComparison = buildModelComparisonRows(linked, priorDaily, postsByModel, {
+  const linkedForCompare = linked.map((l) => ({
+    modelRecordId: l.modelRecordId,
+    modelName: l.modelName,
+    igUserId: l.igUserId,
+    accountCount: l.accounts.length,
+  }));
+  const comparison = buildModelComparisonRows(
+    linkedForCompare,
+    allDaily,
+    postsByModel,
+    rangeOpts
+  ).sort((a, b) => b.reach - a.reach);
+  const priorComparison = buildModelComparisonRows(linkedForCompare, priorDaily, postsByModel, {
     startYmd: priorRange.startYmd,
     endYmd: priorRange.endYmd,
   });
@@ -204,7 +250,9 @@ export async function GET(request: Request) {
 
   // Selected-model extras
   const priorSelected = summarizeIgDaily(
-    priorDaily.filter((d) => d.model_record_id === selected.modelRecordId)
+    aggregateIgDailyByDate(
+      priorDaily.filter((d) => d.model_record_id === selected.modelRecordId)
+    )
   );
   const growthRate = followerGrowthRatePct(totals.follower_start, totals.follower_delta);
   const priorGrowthRate = followerGrowthRatePct(
@@ -223,7 +271,9 @@ export async function GET(request: Request) {
   });
 
   // Stories — live list; metrics only if API attaches them
-  const stories = await fetchClarioSuiteStoriesPayload(selected.igUserId);
+  const stories = await fetchClarioSuiteStoriesPayload(
+    selectedIgUserId ?? selected.igUserId
+  );
 
   const online = asOnlineHours(audienceRow?.online_followers_by_hour);
   const countries = asBuckets(audienceRow?.countries);
@@ -246,7 +296,14 @@ export async function GET(request: Request) {
       priorRange,
       models,
       selectedModelId: selected.modelRecordId,
-      selectedIgUserId: selected.igUserId,
+      selectedIgUserId: selectedIgUserId ?? null,
+      selectedAccountFilter: selectedIgUserId ? "single" : "all",
+      igAccounts: selected.accounts.map((a) => ({
+        id: a.accountId,
+        igUserId: a.igUserId,
+        label: a.label,
+        isPrimary: a.isPrimary,
+      })),
       selectedModelName: selected.modelName,
       linked: true,
       daily,

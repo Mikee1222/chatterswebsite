@@ -22,6 +22,7 @@ import {
 } from "@/lib/chatter-attachment-constants";
 import { uploadScreenshotToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { postFormData } from "@/lib/post-form-data";
+import { SubscriberUsernameInput, rememberSubscriberUsername } from "@/components/subscriber-username-input";
 import { cn } from "@/lib/utils";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import type { FineBonusPaymentMethod } from "@/services/fines-bonuses";
@@ -164,6 +165,7 @@ export function ExtraRevenueModal({
 }) {
   const isSupabase = useIsSupabaseBackend();
   const [modelId, setModelId] = React.useState("");
+  const [subUsername, setSubUsername] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState<FineBonusPaymentMethod>("PayPal");
   const [paymentSource, setPaymentSource] = React.useState("");
@@ -176,6 +178,7 @@ export function ExtraRevenueModal({
   React.useEffect(() => {
     if (!open) {
       setModelId("");
+      setSubUsername("");
       setAmount("");
       setPaymentMethod("PayPal");
       setPaymentSource("");
@@ -220,6 +223,10 @@ export function ExtraRevenueModal({
       toast.error("Select a model");
       return;
     }
+    if (!subUsername.trim()) {
+      toast.error("Enter the subscriber username");
+      return;
+    }
     const parsedAmount = Number.parseFloat(amount);
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       toast.error("Enter a valid EUR amount");
@@ -238,6 +245,7 @@ export function ExtraRevenueModal({
       const fd = new FormData();
       fd.set("model_id", modelId);
       fd.set("model_name", selectedModel.model_name);
+      fd.set("sub_username", subUsername.trim());
       fd.set("amount", amount);
       fd.set("payment_method", paymentMethod);
       if (paymentMethod === "Other") fd.set("payment_source", paymentSource.trim());
@@ -258,6 +266,7 @@ export function ExtraRevenueModal({
         return;
       }
       toast.success("Payment submitted for review");
+      rememberSubscriberUsername(subUsername);
       onSubmitted?.();
       onClose();
     } catch (err) {
@@ -322,6 +331,12 @@ export function ExtraRevenueModal({
               </div>
             </label>
           </div>
+          <label className="mt-4 block text-xs font-semibold uppercase tracking-wider text-white/40">
+            Subscriber username
+            <div className="mt-1.5">
+              <SubscriberUsernameInput value={subUsername} onChange={setSubUsername} required />
+            </div>
+          </label>
         </section>
 
         {selectedModel ? (

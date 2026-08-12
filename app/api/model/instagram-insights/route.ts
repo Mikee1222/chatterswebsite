@@ -8,6 +8,7 @@ import {
   warmAudienceSummary,
 } from "@/lib/instagram-insights-ui";
 import {
+  aggregateIgDailyByDate,
   computeModelEngagementTotals,
   contentTypePerformance,
   followerGrowthRatePct,
@@ -28,6 +29,10 @@ import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
 } from "@/services/clariosuite-sync";
+import {
+  listClarioSuiteModelAccounts,
+  resolvePrimaryIgUserId,
+} from "@/services/clariosuite-model-accounts";
 import {
   getCrossPlatformAnalytics,
   toModelCrossPlatformCard,
@@ -79,8 +84,9 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Model profile not linked", linked: false }, { status: 404 });
   }
 
-  const igUserId = modelRecord.clariosuite_ig_user_id?.trim() || null;
-  if (!igUserId) {
+  const accountRows = await listClarioSuiteModelAccounts(modelRecord.id).catch(() => []);
+  const primaryIg = resolvePrimaryIgUserId(modelRecord, accountRows);
+  if (!primaryIg && !accountRows.length) {
     return NextResponse.json({
       linked: false,
       modelName: modelRecord.model_name,
@@ -94,6 +100,7 @@ export async function GET(request: Request) {
       modelStats: null,
       stories: { active: [], has_metrics: false, error: null },
       crossPlatformCard: null,
+      igAccounts: [],
       message:
         "Your Instagram account isn’t linked yet. Ask an admin to connect it in Accounts → Models.",
     });
@@ -103,23 +110,43 @@ export async function GET(request: Request) {
   const preset = (url.searchParams.get("preset") || "this_month") as InflowwStatsPreset;
   const customFrom = url.searchParams.get("from") ?? undefined;
   const customTo = url.searchParams.get("to") ?? undefined;
+  const igUserIdParam = url.searchParams.get("igUserId")?.trim() || undefined;
+  const igAccounts = accountRows.map((a) => ({
+    id: a.id,
+    igUserId: a.clariosuite_ig_user_id,
+    label: a.account_label,
+    isPrimary: a.is_primary,
+  }));
+  const selectedIgUserId =
+    igUserIdParam && igAccounts.some((a) => a.igUserId === igUserIdParam)
+      ? igUserIdParam
+      : undefined;
+
   const range = resolveInflowwStatsRange(preset, customFrom, customTo);
   const priorRange = priorEqualLengthRange(range.startYmd, range.endYmd);
 
-  // All queries scoped to this session's modelRecord.id / igUserId only.
-  const [daily, priorDaily, audienceRow, topPosts, crossPlatform] = await Promise.all([
+  const [dailyRaw, priorDailyRaw, audienceRow, topPostsRaw, crossPlatform] = await Promise.all([
     queryClarioSuiteDailyInsights({
       modelRecordId: modelRecord.id,
+      igUserId: selectedIgUserId,
       startYmd: range.startYmd,
       endYmd: range.endYmd,
     }),
     queryClarioSuiteDailyInsights({
       modelRecordId: modelRecord.id,
+      igUserId: selectedIgUserId,
       startYmd: priorRange.startYmd,
       endYmd: priorRange.endYmd,
     }),
-    getClarioSuiteAudienceSnapshot({ modelRecordId: modelRecord.id }),
-    queryClarioSuiteTopPosts({ modelRecordId: modelRecord.id, limit: 25 }),
+    getClarioSuiteAudienceSnapshot({
+      modelRecordId: modelRecord.id,
+      igUserId: selectedIgUserId ?? primaryIg!,
+    }),
+    queryClarioSuiteTopPosts({
+      modelRecordId: modelRecord.id,
+      igUserId: selectedIgUserId,
+      limit: 25,
+    }),
     getCrossPlatformAnalytics({
       modelRecordId: modelRecord.id,
       modelName: modelRecord.model_name,
@@ -128,6 +155,14 @@ export async function GET(request: Request) {
     }),
   ]);
   const crossPlatformCard = toModelCrossPlatformCard(crossPlatform);
+
+  const daily = selectedIgUserId ? dailyRaw : aggregateIgDailyByDate(dailyRaw);
+  const priorDaily = selectedIgUserId ? priorDailyRaw : aggregateIgDailyByDate(priorDailyRaw);
+  const topPosts = selectedIgUserId
+    ? topPostsRaw
+    : [...topPostsRaw].sort(
+        (a, b) => (b.engagement_score ?? -1) - (a.engagement_score ?? -1)
+      );
 
   const rangeOpts = { startYmd: range.startYmd, endYmd: range.endYmd };
   const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts);
@@ -158,7 +193,7 @@ export async function GET(request: Request) {
     endYmd: range.endYmd,
   });
 
-  const stories = await fetchClarioSuiteStoriesPayload(igUserId);
+  const stories = await fetchClarioSuiteStoriesPayload(selectedIgUserId ?? primaryIg!);
 
   const online = asOnlineHours(audienceRow?.online_followers_by_hour);
   const ageRanges = asBuckets(audienceRow?.age_ranges);
@@ -183,6 +218,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     linked: true,
     modelName: modelRecord.model_name,
+    igAccounts,
+    selectedIgUserId: selectedIgUserId ?? null,
+    selectedAccountFilter: selectedIgUserId ? "single" : "all",
     range,
     priorRange,
     daily,
