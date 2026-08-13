@@ -17,8 +17,10 @@ function isCronAuthorized(request: Request): boolean {
 
 /**
  * GET /api/cron/sync-clariosuite
- * Daily sync of ClarioSuite Instagram insights for models with clariosuite_ig_user_id.
- * No-ops when CLARIOSUITE_API_KEY is unset.
+ * Incremental ClarioSuite Instagram insights for linked model accounts (trailing
+ * 14-day daily insights window; audience + top posts refreshed each run).
+ * Cadence: every 2h via GitHub Actions (`sync-clariosuite-2h.yml`); daily
+ * fallback in vercel.json (Hobby max). No-ops when CLARIOSUITE_API_KEY unset.
  */
 export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {
