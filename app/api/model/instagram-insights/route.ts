@@ -191,6 +191,7 @@ export async function GET(request: Request) {
   const contentTypes = contentTypePerformance(topPosts, {
     startYmd: range.startYmd,
     endYmd: range.endYmd,
+    daily,
   });
 
   const stories = await fetchClarioSuiteStoriesPayload(selectedIgUserId ?? primaryIg!);

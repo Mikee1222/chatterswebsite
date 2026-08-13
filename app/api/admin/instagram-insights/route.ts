@@ -239,6 +239,7 @@ export async function GET(request: Request) {
     modelName: l.modelName,
     igUserId: l.igUserId,
     accountCount: l.accounts.length,
+    allIgUserIds: l.accounts.map((a) => a.igUserId),
   }));
   const comparison = buildModelComparisonRows(
     linkedForCompare,
@@ -289,6 +290,7 @@ export async function GET(request: Request) {
   const contentTypes = contentTypePerformance(topPosts, {
     startYmd: range.startYmd,
     endYmd: range.endYmd,
+    daily,
   });
 
   // Stories — live list; metrics only if API attaches them

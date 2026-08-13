@@ -14,6 +14,19 @@ export function toFiniteRate(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Coerce nullable DB metrics to 0 for safe summation (null ≠ “missing views series”). */
+export function coalesceIgMetric(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Mean daily reach on active days — used to estimate post ER when media reach was not synced. */
+export function avgDailyReach(daily: IgDailyRow[]): number | null {
+  const active = daily.filter((d) => coalesceIgMetric(d.reach) > 0);
+  if (!active.length) return null;
+  return active.reduce((s, d) => s + coalesceIgMetric(d.reach), 0) / active.length;
+}
+
 /** Minimum days with reach before showing consistency (avoids misleading scores on new links). */
 export const IG_MIN_CONSISTENCY_DAYS = 14;
 /** Minimum calendar days before posting↔reach correlation is shown. */
@@ -46,17 +59,38 @@ export type IgPostRow = {
 };
 
 /** Engagement score for a post — stored value or derived from likes/comments when reach was missing at sync. */
-export function resolvePostEngagementScore(post: IgPostRow): number | null {
+export function resolvePostEngagementScore(
+  post: IgPostRow,
+  opts?: { estimatedReach?: number | null }
+): number | null {
   const stored = toFiniteRate(post.engagement_score);
   if (stored != null && stored > 0) return stored;
-  return computePostEngagementScore({
-    likes: post.likes ?? 0,
-    comments: post.comments ?? 0,
-    shares: post.shares ?? 0,
-    saved: post.saved ?? 0,
-    reach: post.reach ?? 0,
-    views: post.views,
+  const likes = post.likes ?? 0;
+  const comments = post.comments ?? 0;
+  const shares = post.shares ?? 0;
+  const saved = post.saved ?? 0;
+  const reach = coalesceIgMetric(post.reach);
+  const views = coalesceIgMetric(post.views);
+  const direct = computePostEngagementScore({
+    likes,
+    comments,
+    shares,
+    saved,
+    reach,
+    views: views > 0 ? views : undefined,
   });
+  if (direct != null) return direct;
+  const estimatedReach = opts?.estimatedReach;
+  if (estimatedReach != null && estimatedReach > 0) {
+    return computePostEngagementScore({
+      likes,
+      comments,
+      shares,
+      saved,
+      reach: estimatedReach,
+    });
+  }
+  return null;
 }
 
 /**
@@ -67,21 +101,23 @@ export function resolvePostEngagementScore(post: IgPostRow): number | null {
  * Callers should pass the result through `resolveEngagementRate` for top-post fallback.
  */
 export function summarizeIgDaily(daily: IgDailyRow[]) {
-  const reach = daily.reduce((s, d) => s + d.reach, 0);
-  const viewsRaw = daily.reduce((s, d) => s + d.views, 0);
+  const reach = daily.reduce((s, d) => s + coalesceIgMetric(d.reach), 0);
+  const viewsRaw = daily.reduce((s, d) => s + coalesceIgMetric(d.views), 0);
   const views = resolveViewsTotal(daily);
-  const interactions = daily.reduce((s, d) => s + d.total_interactions, 0);
-  // Prefer days with a real positive rate; treat 0% with 0 interactions as "missing".
-  const erDays = daily.filter((d) => {
-    const rate = toFiniteRate(d.engagement_rate);
-    return rate != null && (rate > 0 || d.total_interactions > 0);
-  });
-  let avgEr: number | null =
-    erDays.length > 0
-      ? erDays.reduce((s, d) => s + (toFiniteRate(d.engagement_rate) ?? 0), 0) / erDays.length
-      : null;
-  if (avgEr == null && reach > 0 && interactions > 0) {
+  const interactions = daily.reduce((s, d) => s + coalesceIgMetric(d.total_interactions), 0);
+  // Period-level ER (Σ interactions ÷ Σ reach) — never average daily rates (Lina Aug 12 spike).
+  let avgEr: number | null = null;
+  if (reach > 0 && interactions > 0) {
     avgEr = (interactions / reach) * 100;
+  } else {
+    const erDays = daily.filter((d) => {
+      const rate = toFiniteRate(d.engagement_rate);
+      return rate != null && (rate > 0 || coalesceIgMetric(d.total_interactions) > 0);
+    });
+    avgEr =
+      erDays.length > 0
+        ? erDays.reduce((s, d) => s + (toFiniteRate(d.engagement_rate) ?? 0), 0) / erDays.length
+        : null;
   }
   const withFollowers = daily.filter((d) => d.follower_count != null && d.follower_count > 0);
   const followerStart = withFollowers[0]?.follower_count ?? null;
@@ -103,9 +139,9 @@ export function summarizeIgDaily(daily: IgDailyRow[]) {
 /** Sum views, or null when Meta/ClarioSuite hasn't reported views yet (reach exists, all views 0). */
 export function resolveViewsTotal(daily: IgDailyRow[]): number | null {
   if (!daily.length) return null;
-  const total = daily.reduce((s, d) => s + d.views, 0);
+  const total = daily.reduce((s, d) => s + coalesceIgMetric(d.views), 0);
   if (total > 0) return total;
-  const reach = daily.reduce((s, d) => s + d.reach, 0);
+  const reach = daily.reduce((s, d) => s + coalesceIgMetric(d.reach), 0);
   if (reach > 0) return null;
   return 0;
 }
@@ -113,13 +149,13 @@ export function resolveViewsTotal(daily: IgDailyRow[]): number | null {
 /** Mean post engagement score % (likes+comments+shares+saved ÷ reach × 100). */
 export function averagePostEngagementScore(
   posts: IgPostRow[],
-  opts?: { startYmd?: string; endYmd?: string }
+  opts?: { startYmd?: string; endYmd?: string; estimatedReach?: number | null }
 ): number | null {
   const start = opts?.startYmd?.slice(0, 10);
   const end = opts?.endYmd?.slice(0, 10);
   const scores: number[] = [];
   for (const p of posts) {
-    const score = resolvePostEngagementScore(p);
+    const score = resolvePostEngagementScore(p, { estimatedReach: opts?.estimatedReach });
     if (score == null || !(score > 0)) continue;
     if (start || end) {
       const ymd = (p.posted_at ?? "").slice(0, 10);
@@ -141,11 +177,29 @@ export function averagePostEngagementScore(
 export function resolveEngagementRate(
   dailyAvg: number | null | undefined,
   posts: IgPostRow[],
-  opts?: { startYmd?: string; endYmd?: string }
+  opts?: { startYmd?: string; endYmd?: string; daily?: IgDailyRow[] }
 ): number | null {
   const rate = toFiniteRate(dailyAvg);
   if (rate != null && rate > 0) return rate;
-  return averagePostEngagementScore(posts, opts);
+  const estimatedReach = opts?.daily ? avgDailyReach(opts.daily) : null;
+  return averagePostEngagementScore(posts, { ...opts, estimatedReach });
+}
+
+/** Best post engagement % in range — shared by Model Leaderboard and Compare Models. */
+export function resolveTopPostEngagementInRange(
+  posts: IgPostRow[],
+  range?: IgEngagementRange,
+  daily?: IgDailyRow[]
+): number | null {
+  const estimatedReach = daily ? avgDailyReach(daily) : null;
+  let best: number | null = null;
+  for (const p of posts) {
+    if (range && !postInRangeYmd(p.posted_at, range.startYmd, range.endYmd)) continue;
+    const score = resolvePostEngagementScore(p, { estimatedReach });
+    if (score == null || !(score > 0)) continue;
+    if (best == null || score > best) best = score;
+  }
+  return best;
 }
 
 export type IgEngagementRange = { startYmd: string; endYmd: string };
@@ -159,7 +213,10 @@ export function computeModelEngagementTotals(
   const summary = summarizeIgDaily(daily);
   return {
     ...summary,
-    avg_engagement_rate: resolveEngagementRate(summary.avg_engagement_rate, posts, range),
+    avg_engagement_rate: resolveEngagementRate(summary.avg_engagement_rate, posts, {
+      ...range,
+      daily,
+    }),
   };
 }
 
@@ -177,6 +234,8 @@ export type LinkedIgModel = {
   modelName: string;
   igUserId: string;
   accountCount?: number;
+  /** Every linked IG user id for this model (multi-account bucket matching). */
+  allIgUserIds?: string[];
 };
 
 export type IgDailyInsightRow = IgDailyRow & {
@@ -189,21 +248,24 @@ export function aggregateIgDailyByDate(rows: IgDailyInsightRow[]): IgDailyRow[] 
   const byDate = new Map<string, IgDailyRow>();
   for (const row of rows) {
     const date = row.date.slice(0, 10);
+    const rowReach = coalesceIgMetric(row.reach);
+    const rowViews = coalesceIgMetric(row.views);
+    const rowInteractions = coalesceIgMetric(row.total_interactions);
     const hit = byDate.get(date);
     if (!hit) {
       byDate.set(date, {
         date,
-        reach: row.reach,
-        views: row.views,
-        total_interactions: row.total_interactions,
+        reach: rowReach,
+        views: rowViews,
+        total_interactions: rowInteractions,
         follower_count: row.follower_count,
         engagement_rate: toFiniteRate(row.engagement_rate),
       });
       continue;
     }
-    hit.reach += row.reach;
-    hit.views += row.views;
-    hit.total_interactions += row.total_interactions;
+    hit.reach += rowReach;
+    hit.views += rowViews;
+    hit.total_interactions += rowInteractions;
     if (row.follower_count != null) {
       hit.follower_count = (hit.follower_count ?? 0) + row.follower_count;
     }
@@ -246,6 +308,9 @@ export function buildModelComparisonRows(
   const byModelRecordId = new Map(linked.map((m) => [m.modelRecordId, m]));
   for (const m of linked) {
     byIgUserId.set(m.igUserId, m);
+    for (const id of m.allIgUserIds ?? []) {
+      byIgUserId.set(id, m);
+    }
   }
   // Also index secondary accounts when caller passes expanded ig ids via linked list
   const buckets = new Map<string, { model: LinkedIgModel; rows: IgDailyInsightRow[] }>();
@@ -273,16 +338,7 @@ export function buildModelComparisonRows(
       [];
     const totals = computeModelEngagementTotals(aggregated, posts, range);
     const freq = postingFrequency(posts, range?.startYmd ?? "", range?.endYmd ?? "");
-    const topEng = (() => {
-      let best: number | null = null;
-      for (const p of posts) {
-        if (range && !postInRangeYmd(p.posted_at, range.startYmd, range.endYmd)) continue;
-        const score = resolvePostEngagementScore(p);
-        if (score == null) continue;
-        if (best == null || score > best) best = score;
-      }
-      return best;
-    })();
+    const topEng = resolveTopPostEngagementInRange(posts, range, aggregated);
     return {
       modelId: model.modelRecordId,
       modelName: model.modelName,
@@ -361,9 +417,12 @@ export function growthMomentum(
 
 /** Consistency of daily reach (same CV→0–100 formula as Chatter Performance). */
 export function igConsistencyScore(daily: IgDailyRow[]): number | null {
-  const activeDays = daily.filter((d) => d.reach > 0);
-  if (activeDays.length < IG_MIN_CONSISTENCY_DAYS) return null;
-  return computeConsistencyScore(activeDays.map((d) => d.reach));
+  const activeDays = daily.filter((d) => coalesceIgMetric(d.reach) > 0);
+  if (!daily.length) return null;
+  // Scale threshold for short presets (e.g. this_month mid-month) but never below 7 days.
+  const threshold = Math.min(IG_MIN_CONSISTENCY_DAYS, Math.max(7, daily.length));
+  if (activeDays.length < threshold) return null;
+  return computeConsistencyScore(activeDays.map((d) => coalesceIgMetric(d.reach)));
 }
 
 /** Follower trend points for charts — excludes reconstructed 0 placeholders before history exists. */
@@ -398,7 +457,7 @@ export type ContentTypePerf = {
 
 export function contentTypePerformance(
   posts: IgPostRow[],
-  opts?: { startYmd?: string; endYmd?: string }
+  opts?: { startYmd?: string; endYmd?: string; daily?: IgDailyRow[] }
 ): ContentTypePerf[] {
   const buckets: Record<IgPostGroup, { postCount: number; scores: number[]; reaches: number[] }> = {
     reels: { postCount: 0, scores: [], reaches: [] },
@@ -407,6 +466,7 @@ export function contentTypePerformance(
   };
   const start = opts?.startYmd?.slice(0, 10);
   const end = opts?.endYmd?.slice(0, 10);
+  const estimatedReach = opts?.daily ? avgDailyReach(opts.daily) : null;
   for (const p of posts) {
     if (start && end && !postInRangeYmd(p.posted_at, start, end)) continue;
     const g = classifyIgPost({
@@ -414,11 +474,13 @@ export function contentTypePerformance(
       mediaProductType: p.media_product_type,
     });
     buckets[g].postCount += 1;
-    if (p.engagement_score != null && Number.isFinite(p.engagement_score)) {
-      buckets[g].scores.push(p.engagement_score);
+    const score = resolvePostEngagementScore(p, { estimatedReach });
+    if (score != null && score > 0) {
+      buckets[g].scores.push(score);
     }
-    if (p.reach != null && Number.isFinite(p.reach) && p.reach > 0) {
-      buckets[g].reaches.push(p.reach);
+    const reach = coalesceIgMetric(p.reach);
+    if (reach > 0) {
+      buckets[g].reaches.push(reach);
     }
   }
   const labels: Record<IgPostGroup, string> = {
