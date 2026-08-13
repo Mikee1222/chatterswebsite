@@ -601,3 +601,132 @@ export function buildCompareCallouts(
   }
   return out;
 }
+
+export type CompareChartMetricId =
+  | "reach"
+  | "engagement"
+  | "growth"
+  | "posting"
+  | "consistency";
+
+export type NormalizedCompareChartRow = {
+  metric: string;
+  metricId: CompareChartMetricId;
+  [modelName: string]: string | number;
+};
+
+/** Grouped bar chart rows — each metric normalized 0–100 across selected models. */
+export function buildNormalizedCompareChartData(
+  rows: ModelComparisonRow[],
+  selectedIds: string[],
+  maxModels = 6
+): NormalizedCompareChartRow[] {
+  const selected = rows.filter((r) => selectedIds.includes(r.modelId)).slice(0, maxModels);
+  if (!selected.length) return [];
+
+  const maxReach = Math.max(...selected.map((r) => r.reach), 1);
+  const maxEr = Math.max(...selected.map((r) => r.avg_engagement_rate ?? 0), 0.01);
+  const maxGrowth = Math.max(...selected.map((r) => Math.abs(r.growth_rate_pct ?? 0)), 0.01);
+  const maxPosting = Math.max(...selected.map((r) => r.posting_frequency ?? 0), 0.01);
+  const maxConsistency = Math.max(...selected.map((r) => r.consistency_score ?? 0), 1);
+
+  const metrics: Array<{
+    metricId: CompareChartMetricId;
+    label: string;
+    pick: (r: ModelComparisonRow) => number | null;
+    max: number;
+    shift?: boolean;
+  }> = [
+    { metricId: "reach", label: "Reach", pick: (r) => r.reach, max: maxReach },
+    { metricId: "engagement", label: "Engagement", pick: (r) => r.avg_engagement_rate, max: maxEr },
+    {
+      metricId: "growth",
+      label: "Growth",
+      pick: (r) => r.growth_rate_pct,
+      max: maxGrowth,
+      shift: true,
+    },
+    {
+      metricId: "posting",
+      label: "Posts/wk",
+      pick: (r) => r.posting_frequency,
+      max: maxPosting,
+    },
+    {
+      metricId: "consistency",
+      label: "Consistency",
+      pick: (r) => r.consistency_score,
+      max: maxConsistency,
+    },
+  ];
+
+  return metrics.map(({ metricId, label, pick, max, shift }) => {
+    const point: NormalizedCompareChartRow = { metric: label, metricId };
+    for (const r of selected) {
+      const raw = pick(r);
+      if (raw == null) {
+        point[r.modelName] = 0;
+        continue;
+      }
+      const v = shift ? raw + max : raw;
+      const denom = shift ? 2 * max : max;
+      point[r.modelName] = Math.round(Math.min(100, Math.max(0, (v / denom) * 100)) * 10) / 10;
+    }
+    return point;
+  });
+}
+
+export type CompareFieldReason =
+  | "no_views"
+  | "no_followers"
+  | "no_growth"
+  | "no_posts"
+  | "insufficient_reach_days"
+  | "no_post_reach";
+
+export function compareFieldReason(
+  row: ModelComparisonRow,
+  field:
+    | "views"
+    | "follower_end"
+    | "follower_delta"
+    | "growth_rate_pct"
+    | "posting_frequency"
+    | "consistency_score"
+    | "top_post_engagement"
+): CompareFieldReason | null {
+  if (field === "views") {
+    if (row.views == null && row.reach > 0) return "no_views";
+    return null;
+  }
+  if (field === "follower_end" || field === "follower_delta") {
+    if (row.follower_end == null) return "no_followers";
+    return null;
+  }
+  if (field === "growth_rate_pct") {
+    if (row.growth_rate_pct == null) return "no_growth";
+    return null;
+  }
+  if (field === "posting_frequency") {
+    if (row.posting_frequency == null) return "no_posts";
+    return null;
+  }
+  if (field === "consistency_score") {
+    if (row.consistency_score == null && row.days > 0) return "insufficient_reach_days";
+    return null;
+  }
+  if (field === "top_post_engagement") {
+    if (row.top_post_engagement == null) return "no_post_reach";
+    return null;
+  }
+  return null;
+}
+
+export const COMPARE_FIELD_REASON_LABELS: Record<CompareFieldReason, string> = {
+  no_views: "Views not reported yet",
+  no_followers: "No follower history",
+  no_growth: "Need start + end followers",
+  no_posts: "No posts in range",
+  insufficient_reach_days: "Need 14+ reach days",
+  no_post_reach: "No post reach in cache",
+};

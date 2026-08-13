@@ -33,6 +33,7 @@ import {
   queryClarioSuiteTopPosts,
 } from "@/services/clariosuite-sync";
 import { getCrossPlatformAnalytics } from "@/services/cross-platform-analytics";
+import { getInstagramWeeklyProgressReport } from "@/services/instagram-weekly-progress";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -79,6 +80,26 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
+  const tab = url.searchParams.get("tab");
+
+  if (tab === "weekly-progress") {
+    const monthParam = url.searchParams.get("month")?.trim();
+    const now = new Date();
+    const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthKey = monthParam && /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : defaultMonth;
+    const [yearS, monthS] = monthKey.split("-");
+    const year = Number(yearS);
+    const month = Number(monthS);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
+      return NextResponse.json({ error: "Invalid month (use YYYY-MM)" }, { status: 400 });
+    }
+    const modelRecordId = url.searchParams.get("modelId")?.trim() || undefined;
+    const report = await getInstagramWeeklyProgressReport(year, month, { modelRecordId });
+    return NextResponse.json(report, {
+      headers: { "Cache-Control": "no-store, max-age=0" },
+    });
+  }
+
   const preset = (url.searchParams.get("preset") || "this_month") as InflowwStatsPreset;
   const customFrom = url.searchParams.get("from") ?? undefined;
   const customTo = url.searchParams.get("to") ?? undefined;

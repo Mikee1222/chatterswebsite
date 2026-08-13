@@ -5,10 +5,9 @@ import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
-  ArrowDownRight,
-  ArrowUpRight,
   CheckCircle2,
   Clock3,
+  CalendarRange,
   GitCompareArrows,
   LayoutDashboard,
   RefreshCw,
@@ -45,6 +44,8 @@ import { IgStoriesSection } from "@/components/instagram-stories-ui";
 import type { IgStoriesPayload } from "@/components/instagram-stories-ui";
 import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
+import { CompareModelsSection } from "@/components/instagram-compare-models";
+import { AdminInstagramWeeklyProgressPanel } from "@/components/admin-instagram-weekly-progress-panel";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import {
@@ -76,37 +77,19 @@ const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: 
 const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
 const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
 const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
-const RadarChart = dynamic(() => import("recharts").then((m) => m.RadarChart), { ssr: false });
-const Radar = dynamic(() => import("recharts").then((m) => m.Radar), { ssr: false });
-const PolarGrid = dynamic(() => import("recharts").then((m) => m.PolarGrid), { ssr: false });
-const PolarAngleAxis = dynamic(() => import("recharts").then((m) => m.PolarAngleAxis), {
-  ssr: false,
-});
-const PolarRadiusAxis = dynamic(() => import("recharts").then((m) => m.PolarRadiusAxis), {
-  ssr: false,
-});
 const ComposedChart = dynamic(() => import("recharts").then((m) => m.ComposedChart), {
   ssr: false,
 });
 
-type TabId = "overview" | "by_model" | "compare" | "cross_platform";
+type TabId = "overview" | "by_model" | "compare" | "weekly_progress" | "cross_platform";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
   { id: "by_model", label: "By Model", icon: <Users className="h-3.5 w-3.5" /> },
   { id: "compare", label: "Compare Models", icon: <GitCompareArrows className="h-3.5 w-3.5" /> },
+  { id: "weekly_progress", label: "Weekly Progress", icon: <CalendarRange className="h-3.5 w-3.5" /> },
   { id: "cross_platform", label: "Cross-Platform", icon: <TrendingUp className="h-3.5 w-3.5" /> },
 ];
-
-type CompareSortKey =
-  | "reach"
-  | "views"
-  | "followers"
-  | "engagement"
-  | "growth_rate"
-  | "posting_frequency"
-  | "consistency"
-  | "top_post_engagement";
 
 type ComparisonRow = {
   modelId: string;
@@ -264,22 +247,9 @@ type HealthPayload = {
   modelsLinked: number;
 };
 
-const COMPARE_COLORS = ["#FF1493", "#D4AF8C", "#34D399", "#60A5FA", "#F472B6"];
-
 function shortDate(ymd: string): string {
   const [, m, d] = ymd.split("-");
   return `${m}/${d}`;
-}
-
-function sortValue(row: ComparisonRow, key: CompareSortKey): number {
-  if (key === "reach") return row.reach;
-  if (key === "views") return row.views ?? -1;
-  if (key === "followers") return row.follower_end ?? -1;
-  if (key === "engagement") return row.avg_engagement_rate ?? -1;
-  if (key === "growth_rate") return row.growth_rate_pct ?? -Infinity;
-  if (key === "posting_frequency") return row.posting_frequency ?? -1;
-  if (key === "consistency") return row.consistency_score ?? -1;
-  return row.top_post_engagement ?? -1;
 }
 
 export function AdminInstagramInsightsClient() {
@@ -294,12 +264,8 @@ export function AdminInstagramInsightsClient() {
   const [error, setError] = React.useState<string | null>(null);
   const [data, setData] = React.useState<InsightsPayload | null>(null);
   const [health, setHealth] = React.useState<HealthPayload | null>(null);
-  const [compareSort, setCompareSort] = React.useState<CompareSortKey>("reach");
-  const [compareSortAsc, setCompareSortAsc] = React.useState(false);
-  const [compareSelected, setCompareSelected] = React.useState<string[]>([]);
   const [contentFilter, setContentFilter] = React.useState<IgContentTypeFilter>("all");
   const [viewAsProfile, setViewAsProfile] = React.useState(false);
-  const [chartMode, setChartMode] = React.useState<"bars" | "radar">("bars");
 
   const loadHealth = React.useCallback(async () => {
     try {
@@ -346,13 +312,6 @@ export function AdminInstagramInsightsClient() {
           setCustomFrom(json.range.startYmd);
           setCustomTo(json.range.endYmd);
         }
-        setCompareSelected((prev) => {
-          const ids = (json.comparison ?? []).map((c) => c.modelId);
-          if (!ids.length) return [];
-          const kept = prev.filter((id) => ids.includes(id));
-          if (kept.length) return kept.slice(0, 5);
-          return ids.slice(0, Math.min(5, ids.length));
-        });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
@@ -445,65 +404,9 @@ export function AdminInstagramInsightsClient() {
     });
   }, [data?.topPosts, contentFilter]);
 
-  const comparisonSorted = React.useMemo(() => {
-    const rows = [...(data?.comparison ?? [])];
-    rows.sort((a, b) => {
-      const av = sortValue(a, compareSort);
-      const bv = sortValue(b, compareSort);
-      return compareSortAsc ? av - bv : bv - av;
-    });
-    return rows;
-  }, [data?.comparison, compareSort, compareSortAsc]);
-
-  const radarData = React.useMemo(() => {
-    const selected = comparisonSorted.filter((r) => compareSelected.includes(r.modelId));
-    if (!selected.length) return [];
-    const maxReach = Math.max(...selected.map((r) => r.reach), 1);
-    const maxFollowers = Math.max(...selected.map((r) => r.follower_end ?? 0), 1);
-    const maxEr = Math.max(...selected.map((r) => r.avg_engagement_rate ?? 0), 0.01);
-    const maxGrowth = Math.max(...selected.map((r) => Math.abs(r.growth_rate_pct ?? 0)), 0.01);
-    const maxTop = Math.max(...selected.map((r) => r.top_post_engagement ?? 0), 0.01);
-
-    const metrics = [
-      { key: "Reach", pick: (r: ComparisonRow) => (r.reach / maxReach) * 100 },
-      {
-        key: "Followers",
-        pick: (r: ComparisonRow) => ((r.follower_end ?? 0) / maxFollowers) * 100,
-      },
-      {
-        key: "Engagement",
-        pick: (r: ComparisonRow) => ((r.avg_engagement_rate ?? 0) / maxEr) * 100,
-      },
-      {
-        key: "Growth %",
-        pick: (r: ComparisonRow) =>
-          (((r.growth_rate_pct ?? 0) + maxGrowth) / (2 * maxGrowth)) * 100,
-      },
-      {
-        key: "Top post",
-        pick: (r: ComparisonRow) => ((r.top_post_engagement ?? 0) / maxTop) * 100,
-      },
-    ];
-
-    return metrics.map((m) => {
-      const point: Record<string, string | number> = { metric: m.key };
-      for (const r of selected) point[r.modelName] = Math.round(m.pick(r) * 10) / 10;
-      return point;
-    });
-  }, [comparisonSorted, compareSelected]);
-
-  const barCompareData = React.useMemo(() => {
-    return comparisonSorted
-      .filter((r) => compareSelected.includes(r.modelId))
-      .map((r) => ({
-        name: r.modelName.length > 14 ? `${r.modelName.slice(0, 12)}…` : r.modelName,
-        fullName: r.modelName,
-        reach: r.reach,
-        engagement: r.avg_engagement_rate ?? 0,
-        growth: r.growth_rate_pct ?? 0,
-        followers: r.follower_end ?? 0,
-      }));
-  }, [comparisonSorted, compareSelected]);
+  const comparisonByReach = React.useMemo(() => {
+    return [...(data?.comparison ?? [])].sort((a, b) => b.reach - a.reach);
+  }, [data?.comparison]);
 
   const postingSeries = React.useMemo(
     () =>
@@ -513,22 +416,6 @@ export function AdminInstagramInsightsClient() {
       })),
     [modelStats?.posting_vs_reach]
   );
-
-  function toggleCompareModel(id: string) {
-    setCompareSelected((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 5) return [...prev.slice(1), id];
-      return [...prev, id];
-    });
-  }
-
-  function onSortHeader(key: CompareSortKey) {
-    if (compareSort === key) setCompareSortAsc((v) => !v);
-    else {
-      setCompareSort(key);
-      setCompareSortAsc(false);
-    }
-  }
 
   const showModelFilter = tab === "by_model" || tab === "cross_platform";
   const showContentFilter = tab === "by_model";
@@ -611,6 +498,12 @@ export function AdminInstagramInsightsClient() {
 
         {/* Filters */}
         <FilterBar className="relative mt-5 border border-white/10 bg-white/[0.03] p-4 md:p-5">
+          {tab === "weekly_progress" ? (
+            <p className="text-sm text-white/45">
+              Weekly Progress uses its own month picker — custom 4-week buckets per calendar month.
+            </p>
+          ) : (
+          <>
           <div className="flex flex-col gap-5">
             {(showModelFilter || showContentFilter) && (
               <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-[minmax(0,240px)_1fr]">
@@ -743,6 +636,8 @@ export function AdminInstagramInsightsClient() {
               ) : null}
             </p>
           ) : null}
+          </>
+          )}
         </FilterBar>
       </div>
 
@@ -890,7 +785,7 @@ export function AdminInstagramInsightsClient() {
                     Open Compare →
                   </button>
                 </div>
-                {comparisonSorted.length ? (
+                {comparisonByReach.length ? (
                   <div className="overflow-x-auto">
                     <table className="w-full min-w-[480px] text-left text-sm">
                       <thead className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
@@ -903,7 +798,7 @@ export function AdminInstagramInsightsClient() {
                         </tr>
                       </thead>
                       <tbody>
-                        {comparisonSorted.slice(0, 8).map((row, idx) => (
+                        {comparisonByReach.slice(0, 8).map((row, idx) => (
                           <tr
                             key={row.modelId}
                             className="border-b border-white/5 transition hover:bg-white/[0.03]"
@@ -1520,322 +1415,25 @@ export function AdminInstagramInsightsClient() {
 
           {/* ── Compare Models ───────────────────────────────────── */}
           {tab === "compare" ? (
-            <>
-              {(data?.callouts?.length ?? 0) > 0 ? (
-                <div className="grid gap-3 md:grid-cols-2">
-                  {data!.callouts!.map((c) => (
-                    <div
-                      key={`${c.kind}-${c.modelId}`}
-                      className={cn(
-                        VA_CARD,
-                        "flex gap-3 p-4",
-                        c.kind === "improved"
-                          ? "border-emerald-500/25 bg-emerald-500/[0.06]"
-                          : "border-amber-500/25 bg-amber-500/[0.06]"
-                      )}
-                    >
-                      {c.kind === "improved" ? (
-                        <ArrowUpRight className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
-                      ) : (
-                        <ArrowDownRight className="mt-0.5 h-5 w-5 shrink-0 text-amber-200" />
-                      )}
-                      <div>
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
-                          {c.kind === "improved" ? "Most improved" : "Needs attention"}
-                        </p>
-                        <p className="mt-1 text-sm leading-relaxed text-white/75">{c.message}</p>
-                        {c.deltaPct != null ? (
-                          <p className="mt-1 text-xs tabular-nums text-white/45">
-                            Δ {c.deltaPct > 0 ? "+" : ""}
-                            {c.deltaPct.toFixed(1)}
-                            {c.metric === "reach" ? "% reach" : " pp growth rate"}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : comparisonSorted.length <= 1 ? (
-                <div
-                  className={cn(
-                    VA_CARD,
-                    "border border-dashed border-white/15 px-4 py-3 text-sm text-white/45"
-                  )}
-                >
-                  Period-over-period callouts need at least two linked models (or enough prior-period
-                  data). Leaderboard and charts still work with one model.
-                </div>
-              ) : null}
-
-              {/* Model multi-select for chart */}
-              <div className={cn(VA_CARD, "p-4")}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <SectionLabel>Visual comparison</SectionLabel>
-                    <StatInfoTooltip text="Pick up to 5 models. Metrics are normalized for the radar; bars show raw reach & engagement." />
-                  </div>
-                  <div className="flex gap-1 rounded-xl border border-white/10 p-1">
-                    <button
-                      type="button"
-                      onClick={() => setChartMode("bars")}
-                      className={cn(
-                        "rounded-lg px-3 py-1 text-xs font-medium",
-                        chartMode === "bars"
-                          ? "bg-[#FF1493]/20 text-[#FFB6DE]"
-                          : "text-white/45 hover:text-white/70"
-                      )}
-                    >
-                      Bars
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setChartMode("radar")}
-                      className={cn(
-                        "rounded-lg px-3 py-1 text-xs font-medium",
-                        chartMode === "radar"
-                          ? "bg-[#FF1493]/20 text-[#FFB6DE]"
-                          : "text-white/45 hover:text-white/70"
-                      )}
-                    >
-                      Radar
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {comparisonSorted.map((row) => {
-                    const on = compareSelected.includes(row.modelId);
-                    return (
-                      <button
-                        key={row.modelId}
-                        type="button"
-                        onClick={() => toggleCompareModel(row.modelId)}
-                        className={cn(
-                          "rounded-full border px-3 py-1 text-xs font-semibold transition",
-                          on
-                            ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FFB6DE]"
-                            : "border-white/10 bg-white/[0.03] text-white/50 hover:bg-white/[0.06]"
-                        )}
-                      >
-                        {row.modelName}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="mt-4 h-64">
-                  {!barCompareData.length ? (
-                    <p className="flex h-full items-center justify-center text-sm text-white/35">
-                      Select at least one model to compare.
-                    </p>
-                  ) : chartMode === "bars" ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={barCompareData}>
-                        <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
-                        <XAxis
-                          dataKey="name"
-                          tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
-                        />
-                        <YAxis
-                          yAxisId="reach"
-                          tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
-                          width={44}
-                        />
-                        <YAxis
-                          yAxisId="er"
-                          orientation="right"
-                          tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
-                          width={36}
-                        />
-                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                        <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
-                        <Bar
-                          yAxisId="reach"
-                          dataKey="reach"
-                          fill="#FF1493"
-                          name="Reach"
-                          radius={[4, 4, 0, 0]}
-                        />
-                        <Bar
-                          yAxisId="er"
-                          dataKey="engagement"
-                          fill="#D4AF8C"
-                          name="Engagement %"
-                          radius={[4, 4, 0, 0]}
-                        />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart data={radarData}>
-                        <PolarGrid stroke="rgba(255,255,255,0.12)" />
-                        <PolarAngleAxis
-                          dataKey="metric"
-                          tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
-                        />
-                        <PolarRadiusAxis
-                          angle={30}
-                          domain={[0, 100]}
-                          tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 9 }}
-                        />
-                        {comparisonSorted
-                          .filter((r) => compareSelected.includes(r.modelId))
-                          .map((r, i) => (
-                            <Radar
-                              key={r.modelId}
-                              name={r.modelName}
-                              dataKey={r.modelName}
-                              stroke={COMPARE_COLORS[i % COMPARE_COLORS.length]}
-                              fill={COMPARE_COLORS[i % COMPARE_COLORS.length]}
-                              fillOpacity={0.15}
-                              strokeWidth={2}
-                            />
-                          ))}
-                        <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
-                        <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
-                      </RadarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
-              </div>
-
-              {/* Sortable leaderboard */}
-              <div className={cn(VA_CARD, "overflow-hidden")}>
-                <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2">
-                    <Trophy className="h-4 w-4 text-[#D4AF8C]" />
-                    <SectionLabel>Model leaderboard</SectionLabel>
-                    <StatInfoTooltip text={IG_STAT_INFO.comparison} />
-                  </div>
-                  {data?.priorRange ? (
-                    <p className="text-[11px] text-white/35">
-                      Prior period {data.priorRange.startYmd} → {data.priorRange.endYmd}
-                    </p>
-                  ) : null}
-                </div>
-                {comparisonSorted.length ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[960px] text-left text-sm">
-                      <thead className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
-                        <tr>
-                          <th className="px-4 py-3 font-medium">#</th>
-                          <th className="px-4 py-3 font-medium">Model</th>
-                          {(
-                            [
-                              ["reach", "Reach"],
-                              ["views", "Views"],
-                              ["followers", "Followers"],
-                              ["engagement", "Engagement"],
-                              ["growth_rate", "Growth %"],
-                              ["posting_frequency", "Posts/wk"],
-                              ["consistency", "Consistency"],
-                              ["top_post_engagement", "Top post"],
-                            ] as const
-                          ).map(([key, label]) => (
-                            <th key={key} className="px-4 py-3 font-medium">
-                              <button
-                                type="button"
-                                onClick={() => onSortHeader(key)}
-                                className={cn(
-                                  "inline-flex items-center gap-1 transition hover:text-white",
-                                  compareSort === key ? "text-[#FFB6DE]" : "text-white/40"
-                                )}
-                              >
-                                {label}
-                                {compareSort === key ? (compareSortAsc ? " ↑" : " ↓") : ""}
-                              </button>
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {comparisonSorted.map((row, idx) => {
-                          const selected = row.modelId === modelId;
-                          return (
-                            <tr
-                              key={row.modelId}
-                              className={cn(
-                                "border-b border-white/5 transition hover:bg-white/[0.03]",
-                                selected && "bg-[#FF1493]/[0.07]"
-                              )}
-                            >
-                              <td className="px-4 py-3 text-white/45">{idx + 1}</td>
-                              <td className="px-4 py-3">
-                                <button
-                                  type="button"
-                                  className={cn(
-                                    "font-medium hover:underline",
-                                    selected ? "text-[#FFB6DE]" : "text-white"
-                                  )}
-                                  onClick={() => {
-                                    setModelId(row.modelId);
-                                    setTab("by_model");
-                                    void load({ modelId: row.modelId });
-                                  }}
-                                >
-                                  {row.modelName}
-                                  {(row.accountCount ?? 0) > 1 ? (
-                                    <span className="ml-1.5 text-[10px] font-normal text-white/35">
-                                      ({row.accountCount} accounts)
-                                    </span>
-                                  ) : null}
-                                </button>
-                              </td>
-                              <td className="px-4 py-3 tabular-nums text-white/80">
-                                {fmtNum(row.reach)}
-                              </td>
-                              <td className="px-4 py-3 tabular-nums text-white/75">
-                                {row.views == null ? "—" : fmtNum(row.views)}
-                              </td>
-                              <td className="px-4 py-3 tabular-nums text-white/70">
-                                {fmtNum(row.follower_end)}
-                                {row.follower_delta != null ? (
-                                  <span className="ml-1 text-[10px] text-white/35">
-                                    {fmtDelta(row.follower_delta)}
-                                  </span>
-                                ) : null}
-                              </td>
-                              <td className="px-4 py-3 tabular-nums text-[#D4AF8C]">
-                                {fmtPct(row.avg_engagement_rate)}
-                              </td>
-                              <td
-                                className={cn(
-                                  "px-4 py-3 tabular-nums",
-                                  (row.growth_rate_pct ?? 0) > 0
-                                    ? "text-emerald-300"
-                                    : (row.growth_rate_pct ?? 0) < 0
-                                      ? "text-amber-200"
-                                      : "text-white/60"
-                                )}
-                              >
-                                {fmtPct(row.growth_rate_pct)}
-                              </td>
-                              <td className="px-4 py-3 tabular-nums text-white/70">
-                                {row.posting_frequency != null
-                                  ? row.posting_frequency.toFixed(1)
-                                  : "—"}
-                              </td>
-                              <td className="px-4 py-3 tabular-nums text-white/70">
-                                {row.consistency_score != null
-                                  ? Math.round(row.consistency_score)
-                                  : "—"}
-                              </td>
-                              <td className="px-4 py-3 tabular-nums text-white/70">
-                                {fmtPct(row.top_post_engagement)}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <IgEmptyState
-                    title={loading ? "Loading comparison…" : "No comparison data"}
-                    detail="Link more models with ClarioSuite IG IDs to compare reach, engagement, and growth."
-                  />
-                )}
-              </div>
-            </>
+            <CompareModelsSection
+              rows={(data?.comparison ?? []).map((r) => ({
+                ...r,
+                accountCount: r.accountCount ?? 1,
+              }))}
+              callouts={data?.callouts}
+              priorRange={data?.priorRange}
+              loading={loading}
+              selectedModelId={modelId}
+              onSelectModel={(id) => {
+                setModelId(id);
+                setTab("by_model");
+                void load({ modelId: id });
+              }}
+            />
           ) : null}
+
+          {/* ── Weekly Progress ──────────────────────────────────── */}
+          {tab === "weekly_progress" ? <AdminInstagramWeeklyProgressPanel /> : null}
 
           {/* ── Cross-Platform ───────────────────────────────────── */}
           {tab === "cross_platform" ? (
