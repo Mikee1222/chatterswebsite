@@ -100,12 +100,12 @@ Folded into **`GET /api/cron/sync-infloww-stats`** (same daily Vercel cron).
 
 | Trigger | Schedule | Where |
 | --- | --- | --- |
-| Vercel (Hobby-safe) | `15 3 * * *` UTC daily | `vercel.json` |
-| More frequent | hourly / every-4h | GHA template / external cron (same route) |
+| Every 2h (intended) | `0 */2 * * *` UTC | `.github/workflows/sync-infloww-2h.yml` |
+| Vercel (Hobby-safe fallback) | `15 3 * * *` UTC daily | `vercel.json` |
 
-**Do not** put hourly schedules in `vercel.json` on Hobby — deploys fail.
+**Do not** put sub-daily schedules in `vercel.json` on Hobby — deploys fail.
 
-Marketing links have 2–4h provider delay; daily sync is enough. Transactions +
+Marketing links have 2–4h provider delay; every-2h sync is sufficient. Transactions +
 creator-report use today+yesterday each run (same as employee section).
 
 Loading transactions: rows with `status=loading` are re-fetched when

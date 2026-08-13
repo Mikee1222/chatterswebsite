@@ -51,32 +51,21 @@ intentionally restored to daily in `e062844` so Weekly Progress could ship.
 
 | Trigger | Schedule | Where |
 | --- | --- | --- |
-| **Hourly (intended)** | `15 * * * *` UTC | GitHub Action **or** any external cron hitting the route |
+| **Every 2h (intended)** | `0 */2 * * *` UTC | `.github/workflows/sync-infloww-2h.yml` **or** external cron |
 | Vercel fallback | `15 3 * * *` UTC (daily) | `vercel.json` (Hobby-safe) |
 
-Do **not** change the Vercel schedule back to hourly unless the team is upgraded
+Do **not** change the Vercel schedule to sub-daily unless the team is upgraded
 to Pro (or a plan that allows more-than-daily crons).
 
 See also: `vercel.cron-notes.md`.
 
-### External hourly setup
+### External every-2h setup
 
 **Option A — GitHub Actions (preferred)**
 
 1. Repo secret `CRON_SECRET` is already set (matches Vercel). Optional variable `APP_URL`.
-2. Copy template into place (OAuth tokens without `workflow` scope cannot push this path):
-
-```bash
-mkdir -p .github/workflows
-cp docs/github-workflows/sync-infloww-hourly.yml .github/workflows/
-git add .github/workflows/sync-infloww-hourly.yml
-git commit -m "ci: enable hourly Infloww sync via GitHub Actions (Hobby-safe)"
-git push
-```
-
-Or: `gh auth refresh -h github.com -s workflow,repo` then move the file under `.github/workflows/` and push.
-
-3. Actions → **Hourly Infloww sync** → Run workflow (manual test).
+2. Workflow: `.github/workflows/sync-infloww-2h.yml` (template in `docs/github-workflows/`).
+3. Actions → **Infloww sync (every 2h)** → Run workflow (manual test).
 
 **Option B — any external cron** (cron-job.org, system crontab, etc.)
 
@@ -85,7 +74,7 @@ APP_URL=https://www.gunzoteam.com CRON_SECRET=<same as Vercel> \
   ./scripts/trigger-infloww-cron.sh
 ```
 
-Schedule: every hour at minute 15 (`15 * * * *`). Auth header: `Authorization: Bearer $CRON_SECRET`.
+Schedule: every 2 hours at minute 0 (`0 */2 * * *`). Auth header: `Authorization: Bearer $CRON_SECRET`.
 
 ### Expected API volume (per run)
 
