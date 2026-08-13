@@ -565,22 +565,28 @@ export async function listVideoBunches(filters?: {
 
   const ids = bunches.map((b) => b.id);
   const [{ data: slots }, { data: pendingRows }] = await Promise.all([
-    sb.from("recreate_video_slots").select("bunch_id").in("bunch_id", ids),
+    sb.from("recreate_video_slots").select("bunch_id, winner_video_id").in("bunch_id", ids),
     sb
       .from("winner_videos")
-      .select("bunch_id")
+      .select("id, bunch_id")
       .in("bunch_id", ids)
       .eq("status", "Pending"),
   ]);
   const slotCounts = new Map<string, number>();
+  const slottedWinnerVideoIds = new Set<string>();
   for (const s of slots ?? []) {
-    const bid = String((s as { bunch_id: string }).bunch_id);
+    const row = s as { bunch_id: string; winner_video_id?: string | null };
+    const bid = String(row.bunch_id);
     slotCounts.set(bid, (slotCounts.get(bid) ?? 0) + 1);
+    const wvId = String(row.winner_video_id ?? "").trim();
+    if (wvId) slottedWinnerVideoIds.add(wvId);
   }
   const pendingCounts = new Map<string, number>();
   for (const p of pendingRows ?? []) {
-    const bid = String((p as { bunch_id: string }).bunch_id);
+    const row = p as { id: string; bunch_id: string };
+    const bid = String(row.bunch_id);
     if (!bid) continue;
+    if (slottedWinnerVideoIds.has(String(row.id))) continue;
     pendingCounts.set(bid, (pendingCounts.get(bid) ?? 0) + 1);
   }
   return bunches.map((b) => {
@@ -794,13 +800,25 @@ async function countSlotsForBunch(bunchId: string): Promise<number> {
 
 async function countPendingReviewsForBunch(bunchId: string): Promise<number> {
   const sb = getSupabaseServiceClient();
-  const { count, error } = await sb
+  const { data: pendingRows, error } = await sb
     .from("winner_videos")
-    .select("id", { count: "exact", head: true })
+    .select("id")
     .eq("bunch_id", bunchId)
     .eq("status", "Pending");
   if (error) throw new Error(error.message);
-  return count ?? 0;
+  if (!pendingRows?.length) return 0;
+
+  const pendingIds = pendingRows.map((r) => String((r as { id: string }).id));
+  const { data: slotted, error: slotErr } = await sb
+    .from("recreate_video_slots")
+    .select("winner_video_id")
+    .in("winner_video_id", pendingIds);
+  if (slotErr) throw new Error(slotErr.message);
+
+  const slottedIds = new Set(
+    (slotted ?? []).map((r) => String((r as { winner_video_id: string }).winner_video_id)),
+  );
+  return pendingIds.filter((id) => !slottedIds.has(id)).length;
 }
 
 export async function getBunchRemaining(bunchId: string): Promise<number> {

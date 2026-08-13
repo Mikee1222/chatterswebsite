@@ -326,7 +326,11 @@ export function AdminWinnerVideosClient({
     return () => window.clearInterval(id);
   }, [isSupabaseBackend]);
 
-  useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
+  useSupabaseRealtimeRefresh(
+    ["winner_videos", "recreate_video_slots", "video_bunches"],
+    () => void reloadRef.current(),
+    { debounceMs: 600 },
+  );
 
   const stats = React.useMemo(() => researchManageStats(videos), [videos]);
   const statusCounts = React.useMemo(() => groupWinnerVideosByStatus(videos), [videos]);
@@ -398,6 +402,13 @@ export function AdminWinnerVideosClient({
         return false;
       }
       setVideos((prev) => prev.map((v) => (v.id === id ? data.video! : v)));
+      if (body.action === "approve" && data.video.bunch_id?.trim()) {
+        const bunchesRes = await fetch("/api/winner-sourcing/bunches", { credentials: "include" });
+        if (bunchesRes.ok) {
+          const bunchesData = (await bunchesRes.json()) as { bunches?: VideoBunch[] };
+          setBunches(bunchesData.bunches ?? []);
+        }
+      }
       return true;
     } finally {
       setPendingId(null);

@@ -494,17 +494,14 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     }
   }
 
-  await persistWinnerVideoFields(id, patch);
-
-  const updated = await getWinnerVideoById(id);
-  if (!updated) throw new Error("Winner video not found after approve");
-
-  // Fill Bunches finds: materialize recreate_video_slot into the bunch on Approve only.
+  // Fill Bunches finds: materialize recreate_video_slot BEFORE flipping to Approved.
+  // winner_videos realtime reloads fire on status change; creating the slot first prevents
+  // a window where pending dropped but provided_count has not incremented yet (stuck N/35).
   if (existing.bunch_id && isSupabaseBackend()) {
     try {
       const { createSlotFromApprovedWinnerVideo } = await import("./winner-sourcing");
       await createSlotFromApprovedWinnerVideo({
-        winner_video: updated,
+        winner_video: existing,
         assigned_creative_id: creativeId,
         assigned_creative_name: creativeName,
       });
@@ -513,6 +510,11 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
       throw err instanceof Error ? err : new Error("Failed to create recreate slot for bunch");
     }
   }
+
+  await persistWinnerVideoFields(id, patch);
+
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after approve");
 
   if (existing.submitted_by_id) {
     const ratingEmoji = qualityRatingEmoji(qualityRating);

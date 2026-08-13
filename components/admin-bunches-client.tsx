@@ -341,11 +341,8 @@ export function AdminBunchesClient({
 
   const refreshAllRef = React.useRef(refreshAll);
   refreshAllRef.current = refreshAll;
-  useSupabaseRealtimeRefresh(
-    ["video_bunches", "recreate_video_slots", "icloud_folder_entries"],
-    () => void refreshAllRef.current(),
-    { debounceMs: 800 },
-  );
+  const selectedBunchIdRef = React.useRef(selectedBunchId);
+  selectedBunchIdRef.current = selectedBunchId;
 
   async function loadBunchSlots(bunchId: string) {
     setSelectedBunchId(bunchId);
@@ -368,6 +365,18 @@ export function AdminBunchesClient({
       setLoadingSlots(false);
     }
   }
+
+  const loadBunchSlotsRef = React.useRef(loadBunchSlots);
+  loadBunchSlotsRef.current = loadBunchSlots;
+  useSupabaseRealtimeRefresh(
+    ["video_bunches", "recreate_video_slots", "icloud_folder_entries", "winner_videos"],
+    () => {
+      void refreshAllRef.current();
+      const openId = selectedBunchIdRef.current;
+      if (openId) void loadBunchSlotsRef.current(openId);
+    },
+    { debounceMs: 800 },
+  );
 
   React.useEffect(() => {
     if (initialSelectedId) void loadBunchSlots(initialSelectedId);
