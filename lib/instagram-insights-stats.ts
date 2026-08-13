@@ -3,6 +3,7 @@
  */
 
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
+import { computePostEngagementScore } from "@/lib/clariosuite-api";
 import { classifyIgPost, type IgPostGroup } from "@/lib/instagram-insights-ui";
 import { computeConsistencyScore } from "@/services/infloww-analytics";
 
@@ -36,8 +37,27 @@ export type IgPostRow = {
   media_product_type?: string | null;
   engagement_score: number | null;
   reach?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  saved?: number;
+  views?: number;
   posted_at?: string | null;
 };
+
+/** Engagement score for a post — stored value or derived from likes/comments when reach was missing at sync. */
+export function resolvePostEngagementScore(post: IgPostRow): number | null {
+  const stored = toFiniteRate(post.engagement_score);
+  if (stored != null && stored > 0) return stored;
+  return computePostEngagementScore({
+    likes: post.likes ?? 0,
+    comments: post.comments ?? 0,
+    shares: post.shares ?? 0,
+    saved: post.saved ?? 0,
+    reach: post.reach ?? 0,
+    views: post.views,
+  });
+}
 
 /**
  * Account-level engagement from daily rows.
@@ -92,15 +112,15 @@ export function resolveViewsTotal(daily: IgDailyRow[]): number | null {
 
 /** Mean post engagement score % (likes+comments+shares+saved ÷ reach × 100). */
 export function averagePostEngagementScore(
-  posts: Array<{ engagement_score: number | null | undefined; posted_at?: string | null }>,
+  posts: IgPostRow[],
   opts?: { startYmd?: string; endYmd?: string }
 ): number | null {
   const start = opts?.startYmd?.slice(0, 10);
   const end = opts?.endYmd?.slice(0, 10);
   const scores: number[] = [];
   for (const p of posts) {
-    const score = p.engagement_score;
-    if (score == null || !Number.isFinite(score) || !(score > 0)) continue;
+    const score = resolvePostEngagementScore(p);
+    if (score == null || !(score > 0)) continue;
     if (start || end) {
       const ymd = (p.posted_at ?? "").slice(0, 10);
       if (!ymd) continue;
@@ -120,7 +140,7 @@ export function averagePostEngagementScore(
  */
 export function resolveEngagementRate(
   dailyAvg: number | null | undefined,
-  posts: Array<{ engagement_score: number | null | undefined; posted_at?: string | null }>,
+  posts: IgPostRow[],
   opts?: { startYmd?: string; endYmd?: string }
 ): number | null {
   const rate = toFiniteRate(dailyAvg);
@@ -253,12 +273,16 @@ export function buildModelComparisonRows(
       [];
     const totals = computeModelEngagementTotals(aggregated, posts, range);
     const freq = postingFrequency(posts, range?.startYmd ?? "", range?.endYmd ?? "");
-    const topEng =
-      posts.reduce<number | null>((best, p) => {
-        if (p.engagement_score == null) return best;
-        if (best == null || p.engagement_score > best) return p.engagement_score;
-        return best;
-      }, null) ?? null;
+    const topEng = (() => {
+      let best: number | null = null;
+      for (const p of posts) {
+        if (range && !postInRangeYmd(p.posted_at, range.startYmd, range.endYmd)) continue;
+        const score = resolvePostEngagementScore(p);
+        if (score == null) continue;
+        if (best == null || score > best) best = score;
+      }
+      return best;
+    })();
     return {
       modelId: model.modelRecordId,
       modelName: model.modelName,
