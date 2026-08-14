@@ -1169,6 +1169,7 @@ export type NotificationEventType =
   | "bunch_assigned_to_editor"
   | "bunch_editing_uploaded"
   | "bunch_icloud_organized"
+  | "recreate_video_slot_deleted"
   | "material_until_approaching"
   | "infloww_performance_alert"
   | "spot_check_logged"

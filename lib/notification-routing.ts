@@ -448,6 +448,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "icloud_management:manage holders when iCloud organization is marked complete.",
   },
+  recreate_video_slot_deleted: {
+    rule: "assigned_party_only",
+    description: "Researcher who submitted the Fill Bunches find when admin removes their approved slot.",
+  },
   material_until_approaching: {
     rule: "admin_only",
     description: "icloud_management:manage holders when material_until_date is within 7 days or past.",

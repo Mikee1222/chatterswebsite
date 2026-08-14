@@ -9,6 +9,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Trash2,
   Trophy,
   UserRound,
   X,
@@ -51,6 +52,7 @@ import {
 } from "@/components/winner-videos-shared";
 import { StaffAssigneePicker, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateOnlyEuropean, formatDateTimeAthens } from "@/lib/format";
 import {
@@ -87,7 +89,8 @@ import { ROUTES } from "@/lib/routes";
 import { VA_BTN_SECONDARY as VA_SECONDARY, VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
-import type { VideoBunch } from "@/services/winner-sourcing";
+import type { RecreateVideoSlotDeleteImpact, VideoBunch } from "@/services/winner-sourcing";
+import { formatRecreateVideoSlotDeleteDescription } from "@/services/winner-sourcing";
 import type { ModelRecord } from "@/types";
 import { AdminCreativeScriptsReview } from "@/components/admin-creative-scripts-review";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
@@ -167,6 +170,13 @@ export function AdminWinnerVideosClient({
   const [creatorId, setCreatorId] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
   const [qualityRating, setQualityRating] = React.useState<WinnerVideoQualityRating | null>(null);
+  const [slotDeleteVideoId, setSlotDeleteVideoId] = React.useState<string | null>(null);
+  const [slotDeleteImpact, setSlotDeleteImpact] = React.useState<RecreateVideoSlotDeleteImpact | null>(
+    null,
+  );
+  const [slotDeleteImpactLoading, setSlotDeleteImpactLoading] = React.useState(false);
+  const [slotDeleteLoading, setSlotDeleteLoading] = React.useState(false);
+  const [slotDeleteSlotId, setSlotDeleteSlotId] = React.useState<string | null>(null);
 
   React.useEffect(() => setVideos(initialVideos), [initialVideos]);
   React.useEffect(() => setBunches(initialBunches), [initialBunches]);
@@ -412,6 +422,103 @@ export function AdminWinnerVideosClient({
       return true;
     } finally {
       setPendingId(null);
+    }
+  }
+
+  function closeSlotDeleteConfirm() {
+    setSlotDeleteVideoId(null);
+    setSlotDeleteSlotId(null);
+    setSlotDeleteImpact(null);
+    setSlotDeleteImpactLoading(false);
+  }
+
+  async function openSlotDeleteForVideo(video: WinnerVideoRecord) {
+    if (!video.bunch_id?.trim()) return;
+    setSlotDeleteVideoId(video.id);
+    setSlotDeleteSlotId(null);
+    setSlotDeleteImpact(null);
+    setSlotDeleteImpactLoading(true);
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/slots/lookup?winner_video_id=${encodeURIComponent(video.id)}`,
+        { credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        slot?: { id: string } | null;
+        impact?: RecreateVideoSlotDeleteImpact | null;
+        error?: string;
+      };
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `wv-slot-impact-${Date.now()}`,
+            "Could not load slot",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        closeSlotDeleteConfirm();
+        return;
+      }
+      if (!data.slot?.id || !data.impact) {
+        addToast(
+          winnerVideoLocalToast(
+            `wv-slot-missing-${Date.now()}`,
+            "No recreate slot",
+            "This approved find has no linked recreate slot to remove.",
+            "high",
+          ),
+        );
+        closeSlotDeleteConfirm();
+        return;
+      }
+      setSlotDeleteSlotId(data.slot.id);
+      setSlotDeleteImpact(data.impact);
+    } finally {
+      setSlotDeleteImpactLoading(false);
+    }
+  }
+
+  async function confirmDeleteSlotFromVideo() {
+    if (!slotDeleteSlotId) return;
+    setSlotDeleteLoading(true);
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/slots/${encodeURIComponent(slotDeleteSlotId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `wv-slot-del-err-${Date.now()}`,
+            "Remove slot failed",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        return;
+      }
+      const removedVideoId = slotDeleteVideoId;
+      if (removedVideoId) {
+        setVideos((prev) => prev.filter((v) => v.id !== removedVideoId));
+      }
+      closeSlotDeleteConfirm();
+      const bunchesRes = await fetch("/api/winner-sourcing/bunches", { credentials: "include" });
+      if (bunchesRes.ok) {
+        const bunchesData = (await bunchesRes.json()) as { bunches?: VideoBunch[] };
+        setBunches(bunchesData.bunches ?? []);
+      }
+      addToast(
+        winnerVideoLocalToast(
+          `wv-slot-del-ok-${Date.now()}`,
+          "Slot removed",
+          "Recreate slot removed — researcher can submit a replacement.",
+          "normal",
+        ),
+      );
+    } finally {
+      setSlotDeleteLoading(false);
     }
   }
 
@@ -992,6 +1099,7 @@ export function AdminWinnerVideosClient({
                             pendingId={pendingId}
                             loading={loading}
                             hideBunchLink
+                            canRemoveSlot={canAssignCreative && isSupabaseBackend}
                             onCopy={() => void copySubmission(v)}
                             onRefresh={() => void reload()}
                             onApprove={() => openApprove(v)}
@@ -999,6 +1107,7 @@ export function AdminWinnerVideosClient({
                               setRejectId(v.id);
                               setRejectReason("");
                             }}
+                            onRemoveSlot={() => void openSlotDeleteForVideo(v)}
                             onMarkPublished={() =>
                               void patchVideo(v.id, { action: "status", status: "Published" })
                             }
@@ -1142,6 +1251,25 @@ export function AdminWinnerVideosClient({
           ) : null}
         </>
       )}
+
+      <ConfirmDialog
+        open={Boolean(slotDeleteVideoId)}
+        onClose={closeSlotDeleteConfirm}
+        onConfirm={() => void confirmDeleteSlotFromVideo()}
+        title={
+          slotDeleteImpact
+            ? `Remove slot #${slotDeleteImpact.sequence_number}?`
+            : "Remove recreate slot?"
+        }
+        description={formatRecreateVideoSlotDeleteDescription(slotDeleteImpact, slotDeleteImpactLoading)}
+        confirmLabel="Remove slot"
+        confirmVariant="danger"
+        loading={slotDeleteLoading || slotDeleteImpactLoading}
+        requireNameConfirmation={Boolean(slotDeleteImpact?.has_valuable_work)}
+        nameToConfirm={
+          slotDeleteImpact ? `#${slotDeleteImpact.sequence_number}` : ""
+        }
+      />
     </div>
   );
 }
@@ -1151,10 +1279,12 @@ function ResearchSubmissionCard({
   pendingId,
   loading,
   hideBunchLink = false,
+  canRemoveSlot = false,
   onCopy,
   onRefresh,
   onApprove,
   onReject,
+  onRemoveSlot,
   onMarkPublished,
   onUpdateVideoType,
 }: {
@@ -1162,10 +1292,12 @@ function ResearchSubmissionCard({
   pendingId: string | null;
   loading: boolean;
   hideBunchLink?: boolean;
+  canRemoveSlot?: boolean;
   onCopy: () => void;
   onRefresh: () => void;
   onApprove: () => void;
   onReject: () => void;
+  onRemoveSlot?: () => void;
   onMarkPublished: () => void;
   onUpdateVideoType?: (type: SlotVideoType, other: string) => void;
 }) {
@@ -1268,6 +1400,23 @@ function ResearchSubmissionCard({
           {video.status === "Recreated" ? (
             <button type="button" disabled={busy} onClick={onMarkPublished} className={VA_BTN_PRIMARY}>
               Mark published
+            </button>
+          ) : null}
+          {canRemoveSlot &&
+          video.bunch_id?.trim() &&
+          (video.status === "Approved" || video.status === "Recreated") &&
+          onRemoveSlot ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onRemoveSlot}
+              className={cn(
+                VA_BTN_SECONDARY,
+                "border-red-500/30 text-red-200 hover:border-red-500/50 hover:bg-red-500/10",
+              )}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              Remove slot
             </button>
           ) : null}
         </div>

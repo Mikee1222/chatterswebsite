@@ -305,6 +305,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "bunch_assigned_to_editor":
     case "bunch_editing_uploaded":
     case "bunch_icloud_organized":
+    case "recreate_video_slot_deleted":
     case "material_until_approaching":
     case "infloww_performance_alert":
     case "spot_check_logged":

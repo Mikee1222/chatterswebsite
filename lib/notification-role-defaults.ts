@@ -204,6 +204,7 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   bunch_assigned_to_editor: ["admin", "manager", "virtual_assistant", "chatter"],
   bunch_editing_uploaded: ["admin", "manager"],
   bunch_icloud_organized: ["admin", "manager"],
+  recreate_video_slot_deleted: ["virtual_assistant"],
   material_until_approaching: ["admin", "manager"],
   infloww_performance_alert: ["admin", "manager"],
   spot_check_logged: ["admin", "manager"],
@@ -881,6 +882,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "bunch_icloud_organized",
       "iCloud organization complete",
       "Ενημερώνει icloud_management:manage όταν ολοκληρώνεται η οργάνωση iCloud"
+    ),
+    eventEntry(
+      "recreate_video_slot_deleted",
+      "Recreate slot removed",
+      "Αποστέλλεται στον researcher όταν ο admin διαγράφει το εγκεκριμένο recreate slot του από bunch"
     ),
     eventEntry(
       "material_until_approaching",

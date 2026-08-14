@@ -788,6 +788,204 @@ export async function deleteVideoBunch(bunchId: string): Promise<VideoBunchDelet
   return impact;
 }
 
+export type RecreateVideoSlotDeleteImpact = {
+  slot_id: string;
+  sequence_number: number;
+  bunch_id: string;
+  bunch_name: string;
+  source: SlotSource;
+  slot_status: ScriptStatus;
+  filmed: boolean;
+  edited: boolean;
+  winner_video_id: string | null;
+  /** Linked Creative Scripts row removed with the slot. */
+  deletes_winner_video: boolean;
+  creative_name: string;
+  script_status: ScriptStatus | "";
+  has_script_text: boolean;
+  researcher_id: string;
+  researcher_name: string;
+  warning_lines: string[];
+  has_valuable_work: boolean;
+};
+
+function scriptStatusHasProgress(status: ScriptStatus): boolean {
+  return status === "Pending Review" || status === "Approved" || status === "Rejected";
+}
+
+/** Load recreate slot linked to a winner_videos row (Fill Bunches approve / Creative Scripts spawn). */
+export async function getRecreateVideoSlotByWinnerVideoId(
+  winnerVideoId: string,
+): Promise<RecreateVideoSlot | null> {
+  const id = winnerVideoId.trim();
+  if (!id) return null;
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("recreate_video_slots")
+    .select("*")
+    .eq("winner_video_id", id)
+    .maybeSingle();
+  if (error) throw new Error(`getRecreateVideoSlotByWinnerVideoId: ${error.message}`);
+  return data ? mapSlot(data as Record<string, unknown>) : null;
+}
+
+/** Preview cascade before permanently deleting a single recreate slot. */
+export async function getRecreateVideoSlotDeleteImpact(
+  slotId: string,
+): Promise<RecreateVideoSlotDeleteImpact | null> {
+  const sb = getSupabaseServiceClient();
+  const { data: slotRow, error: slotErr } = await sb
+    .from("recreate_video_slots")
+    .select("*")
+    .eq("id", slotId)
+    .maybeSingle();
+  if (slotErr) throw new Error(`getRecreateVideoSlotDeleteImpact: ${slotErr.message}`);
+  if (!slotRow) return null;
+
+  const slot = mapSlot(slotRow as Record<string, unknown>);
+  const bunch = await getVideoBunch(slot.bunch_id);
+
+  let creativeName = slot.assigned_creative_name?.trim() || bunch?.assigned_creative_name?.trim() || "";
+  let scriptStatus: ScriptStatus | "" = slot.status;
+  let hasScriptText = false;
+  let researcherId = "";
+  let researcherName = "";
+  const winnerVideoId = slot.winner_video_id?.trim() || null;
+
+  if (winnerVideoId) {
+    const { data: wvRow } = await sb
+      .from("winner_videos")
+      .select(
+        "assigned_creative_name, script_status, script_text, submitted_by_id, submitted_by_name",
+      )
+      .eq("id", winnerVideoId)
+      .maybeSingle();
+    if (wvRow) {
+      const wv = wvRow as Record<string, unknown>;
+      creativeName =
+        String(wv.assigned_creative_name ?? "").trim() ||
+        creativeName;
+      scriptStatus = coerceScriptStatus(wv.script_status) || slot.status;
+      hasScriptText = Boolean(String(wv.script_text ?? "").trim());
+      if (slot.source === "researcher_submitted") {
+        researcherId = String(wv.submitted_by_id ?? "").trim();
+        researcherName = String(wv.submitted_by_name ?? "").trim();
+      }
+    }
+  }
+
+  const warning_lines: string[] = [];
+  if (winnerVideoId) {
+    warning_lines.push("The linked Creative Scripts / research record will be permanently deleted.");
+  }
+  if (scriptStatus === "Approved" && creativeName) {
+    warning_lines.push(`Approved script by ${creativeName} will be lost.`);
+  } else if (scriptStatus === "Pending Review" && creativeName) {
+    warning_lines.push(`Script submitted by ${creativeName} (pending review) will be lost.`);
+  } else if (scriptStatus === "Rejected" && creativeName) {
+    warning_lines.push(`Rejected script by ${creativeName} will be lost.`);
+  } else if (scriptStatusHasProgress(scriptStatus)) {
+    warning_lines.push("Script review progress on this slot will be lost.");
+  } else if (creativeName && (scriptStatus === "Needs Script" || slot.status === "Needs Script")) {
+    warning_lines.push(`Creative assignment to ${creativeName} on this slot will be cleared.`);
+  }
+  if (hasScriptText && scriptStatus !== "Approved") {
+    warning_lines.push("Written script text on the linked record will be deleted.");
+  }
+  if (slot.filmed) {
+    warning_lines.push("Filming progress (slot marked filmed) will be lost.");
+  }
+  if (slot.edited) {
+    warning_lines.push("Editing progress (slot marked edited) will be lost.");
+  }
+
+  const has_valuable_work =
+    slot.filmed ||
+    slot.edited ||
+    scriptStatusHasProgress(scriptStatus) ||
+    hasScriptText ||
+    Boolean(winnerVideoId);
+
+  return {
+    slot_id: slot.id,
+    sequence_number: slot.sequence_number,
+    bunch_id: slot.bunch_id,
+    bunch_name: bunch?.name || "",
+    source: slot.source,
+    slot_status: slot.status,
+    filmed: slot.filmed,
+    edited: slot.edited,
+    winner_video_id: winnerVideoId,
+    deletes_winner_video: Boolean(winnerVideoId),
+    creative_name: creativeName,
+    script_status: scriptStatus,
+    has_script_text: hasScriptText,
+    researcher_id: researcherId,
+    researcher_name: researcherName,
+    warning_lines,
+    has_valuable_work,
+  };
+}
+
+export function formatRecreateVideoSlotDeleteDescription(
+  impact: RecreateVideoSlotDeleteImpact | null,
+  loading: boolean,
+): string {
+  if (loading || !impact) return "Checking linked records…";
+  const slotLabel = `#${impact.sequence_number}`;
+  const intro = `Remove slot ${slotLabel} from “${impact.bunch_name}”? The bunch filled count will decrease by 1 and researchers can submit a replacement find.`;
+  if (impact.warning_lines.length === 0) {
+    return `${intro} This cannot be undone.`;
+  }
+  return `${intro} You will also lose: ${impact.warning_lines.join(" ")} This cannot be undone.`;
+}
+
+/**
+ * Permanently delete one recreate slot, optionally removing its linked winner_videos row.
+ * Reopens the bunch slot for researcher replacement (provided_count drops automatically).
+ */
+export async function deleteRecreateVideoSlot(input: {
+  slot_id: string;
+  actor_user_id?: string;
+  actor_user_name?: string;
+}): Promise<RecreateVideoSlotDeleteImpact> {
+  const impact = await getRecreateVideoSlotDeleteImpact(input.slot_id);
+  if (!impact) throw new Error("Slot not found");
+
+  const sb = getSupabaseServiceClient();
+
+  {
+    const { error } = await sb.from("recreate_video_slots").delete().eq("id", impact.slot_id);
+    if (error) throw new Error(`delete recreate_video_slots: ${error.message}`);
+  }
+
+  if (impact.winner_video_id) {
+    const { error } = await sb.from("winner_videos").delete().eq("id", impact.winner_video_id);
+    if (error) throw new Error(`delete winner_videos: ${error.message}`);
+  }
+
+  if (
+    impact.source === "researcher_submitted" &&
+    impact.researcher_id &&
+    impact.researcher_id !== "system"
+  ) {
+    const actorName = (input.actor_user_name || "Admin").trim();
+    await notify({
+      user_id: impact.researcher_id,
+      event_type: NOTIFICATION_EVENT.RECREATE_VIDEO_SLOT_DELETED,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title: "Recreate slot removed — submit again",
+      body: `${actorName} removed your approved find (slot ${impact.sequence_number}) from “${impact.bunch_name}”. You can submit a replacement in Fill Bunches.`,
+      entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
+      entity_id: impact.bunch_id,
+      actor_user_id: input.actor_user_id,
+      _triggerSource: "recreate_video_slot_deleted",
+    }).catch(() => {});
+  }
+
+  return impact;
+}
+
 async function countSlotsForBunch(bunchId: string): Promise<number> {
   const sb = getSupabaseServiceClient();
   const { count, error } = await sb

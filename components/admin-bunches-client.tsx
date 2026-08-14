@@ -59,9 +59,11 @@ import {
 import { ROUTES } from "@/lib/routes";
 import type {
   RecreateVideoSlot,
+  RecreateVideoSlotDeleteImpact,
   VideoBunch,
   VideoBunchDeleteImpact,
 } from "@/services/winner-sourcing";
+import { formatRecreateVideoSlotDeleteDescription } from "@/services/winner-sourcing";
 import type { IcloudFolderEntry, ModelMaterialRunway } from "@/services/icloud";
 import { cn } from "@/lib/utils";
 
@@ -200,6 +202,12 @@ export function AdminBunchesClient({
   const [deleteImpact, setDeleteImpact] = React.useState<VideoBunchDeleteImpact | null>(null);
   const [deleteImpactLoading, setDeleteImpactLoading] = React.useState(false);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [slotDeleteTarget, setSlotDeleteTarget] = React.useState<RecreateVideoSlot | null>(null);
+  const [slotDeleteImpact, setSlotDeleteImpact] = React.useState<RecreateVideoSlotDeleteImpact | null>(
+    null,
+  );
+  const [slotDeleteImpactLoading, setSlotDeleteImpactLoading] = React.useState(false);
+  const [slotDeleteLoading, setSlotDeleteLoading] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
   const [modelFilter, setModelFilter] = React.useState("all");
@@ -703,6 +711,81 @@ export function AdminBunchesClient({
       void refreshAll();
     } finally {
       setDeleteLoading(false);
+    }
+  }
+
+  function closeSlotDeleteConfirm() {
+    setSlotDeleteTarget(null);
+    setSlotDeleteImpact(null);
+    setSlotDeleteImpactLoading(false);
+  }
+
+  async function openSlotDeleteConfirm(slot: RecreateVideoSlot) {
+    setSlotDeleteTarget(slot);
+    setSlotDeleteImpact(null);
+    setSlotDeleteImpactLoading(true);
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/slots/${encodeURIComponent(slot.id)}?delete_impact=1`,
+        { credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        impact?: RecreateVideoSlotDeleteImpact;
+        error?: string;
+      };
+      if (!res.ok || !data.impact) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-slot-impact-${Date.now()}`,
+            "Could not load delete impact",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        closeSlotDeleteConfirm();
+        return;
+      }
+      setSlotDeleteImpact(data.impact);
+    } finally {
+      setSlotDeleteImpactLoading(false);
+    }
+  }
+
+  async function confirmDeleteSlot() {
+    if (!slotDeleteTarget) return;
+    setSlotDeleteLoading(true);
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/slots/${encodeURIComponent(slotDeleteTarget.id)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-slot-del-err-${Date.now()}`,
+            "Remove slot failed",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        return;
+      }
+      const removedSeq = slotDeleteTarget.sequence_number;
+      const removedId = slotDeleteTarget.id;
+      setSlots((prev) => prev.filter((s) => s.id !== removedId));
+      closeSlotDeleteConfirm();
+      await refreshAll();
+      addToast(
+        winnerVideoLocalToast(
+          `ws-slot-del-ok-${Date.now()}`,
+          "Slot removed",
+          `Slot #${removedSeq} removed — bunch count updated.`,
+          "normal",
+        ),
+      );
+    } finally {
+      setSlotDeleteLoading(false);
     }
   }
 
@@ -1832,6 +1915,16 @@ export function AdminBunchesClient({
                           <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">
                             {slot.source === "from_winner" ? "from winner" : "researcher"}
                           </span>
+                          <button
+                            type="button"
+                            className="ml-auto inline-flex items-center gap-1 rounded-md border border-red-500/25 bg-red-500/10 px-2 py-1 text-[10px] font-medium text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+                            disabled={slotDeleteLoading || busyId === slot.id}
+                            title="Remove invalid slot"
+                            onClick={() => void openSlotDeleteConfirm(slot)}
+                          >
+                            <Trash2 className="h-3 w-3" aria-hidden />
+                            Remove
+                          </button>
                         </div>
                         <p className="mt-1.5 line-clamp-2 text-xs text-[#B8B4B8]/75">
                           {slot.description || "—"}
@@ -1900,6 +1993,25 @@ export function AdminBunchesClient({
         loading={deleteLoading || deleteImpactLoading}
         requireNameConfirmation={Boolean(deleteImpact?.has_valuable_work)}
         nameToConfirm={deleteImpact?.bunch_name || deleteTarget?.name || ""}
+      />
+
+      <ConfirmDialog
+        open={Boolean(slotDeleteTarget)}
+        onClose={closeSlotDeleteConfirm}
+        onConfirm={() => void confirmDeleteSlot()}
+        title={
+          slotDeleteTarget
+            ? `Remove slot #${slotDeleteTarget.sequence_number}?`
+            : "Remove recreate slot?"
+        }
+        description={formatRecreateVideoSlotDeleteDescription(slotDeleteImpact, slotDeleteImpactLoading)}
+        confirmLabel="Remove slot"
+        confirmVariant="danger"
+        loading={slotDeleteLoading || slotDeleteImpactLoading}
+        requireNameConfirmation={Boolean(slotDeleteImpact?.has_valuable_work)}
+        nameToConfirm={
+          slotDeleteTarget ? `#${slotDeleteTarget.sequence_number}` : slotDeleteImpact ? `#${slotDeleteImpact.sequence_number}` : ""
+        }
       />
     </div>
   );
