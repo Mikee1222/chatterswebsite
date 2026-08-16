@@ -1,5 +1,5 @@
 /**
- * Credentials vault — Supabase-backed encrypted credential storage.
+ * Password Library — Supabase-backed encrypted credential storage.
  */
 
 import {
@@ -8,9 +8,18 @@ import {
 } from "@/lib/credentials-crypto";
 import {
   CREDENTIAL_FIELDS,
+  CREDENTIAL_LIST_PLAINTEXT_FIELDS,
+  CUSTOM_FIELDS_STORAGE_KEY,
   MASKED_VALUE,
+  customFieldRefKey,
+  isCustomFieldRef,
+  isCredentialField,
+  parseCustomFieldsFromSecrets,
+  serializeCustomFieldsToStorage,
   type CredentialAccessAction,
+  type CredentialCustomFields,
   type CredentialField,
+  type CredentialFieldRef,
   type CredentialSecretData,
 } from "@/lib/credentials-types";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -31,6 +40,9 @@ export type CredentialEntryRecord = {
 export type MaskedCredentialEntry = CredentialEntryRecord & {
   fields: Record<CredentialField, string>;
   has_value: Record<CredentialField, boolean>;
+  custom_fields: Record<string, string>;
+  custom_field_keys: string[];
+  has_custom_fields: boolean;
 };
 
 export type CredentialAccessLogRecord = {
@@ -100,12 +112,16 @@ function normalizeSecretData(data: CredentialSecretData): Record<string, string>
     const value = data[field]?.trim() ?? "";
     if (value) out[field] = value;
   }
+  out[CUSTOM_FIELDS_STORAGE_KEY] = serializeCustomFieldsToStorage(data.customFields);
   return out;
 }
 
 function buildMaskedFields(secrets: Record<string, string>): {
   fields: Record<CredentialField, string>;
   has_value: Record<CredentialField, boolean>;
+  custom_fields: Record<string, string>;
+  custom_field_keys: string[];
+  has_custom_fields: boolean;
 } {
   const fields = {} as Record<CredentialField, string>;
   const has_value = {} as Record<CredentialField, boolean>;
@@ -115,18 +131,70 @@ function buildMaskedFields(secrets: Record<string, string>): {
     has_value[field] = raw.length > 0;
     if (!raw) {
       fields[field] = "";
-    } else if (field === "username") {
+    } else if (CREDENTIAL_LIST_PLAINTEXT_FIELDS.includes(field)) {
       fields[field] = raw;
     } else {
       fields[field] = MASKED_VALUE;
     }
   }
 
-  return { fields, has_value };
+  const customRaw = parseCustomFieldsFromSecrets(secrets);
+  const custom_field_keys = Object.keys(customRaw).sort((a, b) => a.localeCompare(b));
+  const custom_fields: Record<string, string> = {};
+  for (const key of custom_field_keys) {
+    custom_fields[key] = MASKED_VALUE;
+  }
+
+  return {
+    fields,
+    has_value,
+    custom_fields,
+    custom_field_keys,
+    has_custom_fields: custom_field_keys.length > 0,
+  };
 }
 
 function decryptRowSecrets(row: EntryRow): Record<string, string> {
   return decryptCredentialPayload(row.encrypted_data);
+}
+
+function mergeSecretData(
+  currentSecrets: Record<string, string>,
+  input: CredentialSecretData,
+): Record<string, string> {
+  const merged: Record<string, string> = { ...currentSecrets };
+  for (const field of CREDENTIAL_FIELDS) {
+    const incoming = input[field]?.trim() ?? "";
+    if (incoming) merged[field] = incoming;
+  }
+  if (input.customFields !== undefined) {
+    const currentCustom = parseCustomFieldsFromSecrets(merged);
+    const nextCustom: CredentialCustomFields = {};
+    for (const [key, value] of Object.entries(input.customFields)) {
+      const trimmedKey = key.trim();
+      const trimmedValue = value?.trim() ?? "";
+      if (!trimmedKey) continue;
+      if (trimmedValue) {
+        nextCustom[trimmedKey] = trimmedValue;
+      } else if (currentCustom[trimmedKey]) {
+        nextCustom[trimmedKey] = currentCustom[trimmedKey];
+      }
+    }
+    merged[CUSTOM_FIELDS_STORAGE_KEY] = serializeCustomFieldsToStorage(nextCustom);
+  }
+  return merged;
+}
+
+function readFieldValue(secrets: Record<string, string>, fieldRef: CredentialFieldRef): string {
+  if (isCredentialField(fieldRef)) {
+    return secrets[fieldRef]?.trim() ?? "";
+  }
+  if (isCustomFieldRef(fieldRef)) {
+    const key = customFieldRefKey(fieldRef);
+    const custom = parseCustomFieldsFromSecrets(secrets);
+    return custom[key]?.trim() ?? "";
+  }
+  return "";
 }
 
 export async function listCredentialEntries(): Promise<MaskedCredentialEntry[]> {
@@ -143,8 +211,8 @@ export async function listCredentialEntries(): Promise<MaskedCredentialEntry[]> 
   return (data ?? []).map((row) => {
     const base = mapEntryRow(row as EntryRow);
     const secrets = decryptRowSecrets(row as EntryRow);
-    const { fields, has_value } = buildMaskedFields(secrets);
-    return { ...base, fields, has_value };
+    const masked = buildMaskedFields(secrets);
+    return { ...base, ...masked };
   });
 }
 
@@ -162,8 +230,8 @@ export async function getCredentialEntryMasked(id: string): Promise<MaskedCreden
 
   const base = mapEntryRow(data as EntryRow);
   const secrets = decryptRowSecrets(data as EntryRow);
-  const { fields, has_value } = buildMaskedFields(secrets);
-  return { ...base, fields, has_value };
+  const masked = buildMaskedFields(secrets);
+  return { ...base, ...masked };
 }
 
 export async function createCredentialEntry(
@@ -207,8 +275,8 @@ export async function createCredentialEntry(
 
   const base = mapEntryRow(data as EntryRow);
   const secrets = decryptRowSecrets(data as EntryRow);
-  const { fields, has_value } = buildMaskedFields(secrets);
-  return { ...base, fields, has_value };
+  const masked = buildMaskedFields(secrets);
+  return { ...base, ...masked };
 }
 
 export async function updateCredentialEntry(
@@ -231,12 +299,7 @@ export async function updateCredentialEntry(
   if (!existing) throw new Error("Credential entry not found");
 
   const currentSecrets = decryptCredentialPayload(existing.encrypted_data);
-  const merged: Record<string, string> = { ...currentSecrets };
-  for (const field of CREDENTIAL_FIELDS) {
-    const incoming = input.data[field]?.trim() ?? "";
-    if (incoming) merged[field] = incoming;
-  }
-
+  const merged = mergeSecretData(currentSecrets, input.data);
   const encrypted_data = encryptCredentialPayload(merged);
   const now = new Date().toISOString();
 
@@ -267,8 +330,8 @@ export async function updateCredentialEntry(
 
   const base = mapEntryRow(data as EntryRow);
   const secrets = decryptRowSecrets(data as EntryRow);
-  const { fields, has_value } = buildMaskedFields(secrets);
-  return { ...base, fields, has_value };
+  const masked = buildMaskedFields(secrets);
+  return { ...base, ...masked };
 }
 
 export async function deleteCredentialEntry(id: string, actor: AuditActor): Promise<void> {
@@ -285,13 +348,9 @@ export async function deleteCredentialEntry(id: string, actor: AuditActor): Prom
 
 export async function revealCredentialField(
   id: string,
-  field: CredentialField,
+  field: CredentialFieldRef,
   actor: AuditActor,
-): Promise<{ field: CredentialField; value: string }> {
-  if (!CREDENTIAL_FIELDS.includes(field)) {
-    throw new Error("Invalid field");
-  }
-
+): Promise<{ field: CredentialFieldRef; value: string }> {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from("credential_entries")
@@ -302,7 +361,7 @@ export async function revealCredentialField(
   if (!data) throw new Error("Credential entry not found");
 
   const secrets = decryptCredentialPayload(data.encrypted_data);
-  const value = secrets[field]?.trim() ?? "";
+  const value = readFieldValue(secrets, field);
 
   await logCredentialAccess({
     credentialId: id,
@@ -316,13 +375,9 @@ export async function revealCredentialField(
 
 export async function copyCredentialField(
   id: string,
-  field: CredentialField,
+  field: CredentialFieldRef,
   actor: AuditActor,
-): Promise<{ field: CredentialField; value: string }> {
-  if (!CREDENTIAL_FIELDS.includes(field)) {
-    throw new Error("Invalid field");
-  }
-
+): Promise<{ field: CredentialFieldRef; value: string }> {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from("credential_entries")
@@ -333,7 +388,7 @@ export async function copyCredentialField(
   if (!data) throw new Error("Credential entry not found");
 
   const secrets = decryptCredentialPayload(data.encrypted_data);
-  const value = secrets[field]?.trim() ?? "";
+  const value = readFieldValue(secrets, field);
 
   await logCredentialAccess({
     credentialId: id,
@@ -349,7 +404,7 @@ export async function logCredentialAccess(params: {
   credentialId: string;
   actor: AuditActor;
   action: CredentialAccessAction;
-  fieldName?: CredentialField | null;
+  fieldName?: CredentialFieldRef | null;
 }): Promise<void> {
   const sb = getSupabaseServiceClient();
   const { error } = await sb.from("credential_access_log").insert({

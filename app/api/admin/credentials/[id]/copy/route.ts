@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { CREDENTIAL_FIELDS, type CredentialField } from "@/lib/credentials-types";
+import { parseCredentialFieldRef } from "@/lib/credentials-types";
 import { copyCredentialField } from "@/services/credential-entries";
 
 export const dynamic = "force-dynamic";
@@ -13,11 +13,6 @@ function actorFromSession(session: NonNullable<Awaited<ReturnType<typeof getSess
     userId: session.airtableUserId ?? session.id,
     userName: session.fullName?.trim() || session.email?.trim() || "Unknown",
   };
-}
-
-function parseField(value: unknown): CredentialField | null {
-  if (typeof value !== "string") return null;
-  return CREDENTIAL_FIELDS.includes(value as CredentialField) ? (value as CredentialField) : null;
 }
 
 /** POST /api/admin/credentials/[id]/copy — decrypt one field for clipboard (logged). */
@@ -33,7 +28,7 @@ export async function POST(
 
   const { id } = await params;
   const body = (await request.json().catch(() => null)) as { field?: string } | null;
-  const field = parseField(body?.field);
+  const field = parseCredentialFieldRef(body?.field);
   if (!field) return NextResponse.json({ error: "Invalid field" }, { status: 400 });
 
   try {

@@ -464,7 +464,7 @@ const adminNav: NavItem[] = [
   },
   {
     href: ROUTES.admin.credentialsVault,
-    label: "Credentials Vault",
+    label: "Password Library",
     iconKey: "Settings2",
     navSection: "TOOLS",
     requiresPermission: PERMISSIONS.CREDENTIALS_VIEW,

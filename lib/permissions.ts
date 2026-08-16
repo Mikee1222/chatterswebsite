@@ -154,7 +154,7 @@ export const PERMISSIONS = {
 
   ACTIVITY_LOGS_VIEW: "activity_logs:view",
 
-  /** Encrypted credentials vault — opt-in via Roles UI (admin default only). */
+  /** Encrypted password library — opt-in via Roles UI (admin default only). */
   CREDENTIALS_VIEW: "credentials:view",
   CREDENTIALS_MANAGE: "credentials:manage",
 
@@ -264,7 +264,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   blur_tool: "Blur tool",
   my_profiles: "My profiles",
   activity_logs: "Activity logs",
-  credentials: "Credentials vault",
+  credentials: "Password Library",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -434,8 +434,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "activity_logs:view": "Προβολή αρχείου καταγραφής δραστηριότητας συστήματος",
 
-  "credentials:view": "Προβολή κρυπτογραφημένου θησαυροφυλακίου credentials (masked, reveal/copy με audit)",
-  "credentials:manage": "Δημιουργία, επεξεργασία, διαγραφή credentials και προβολή audit log",
+  "credentials:view": "Προβολή κρυπτογραφημένης Password Library (masked, reveal/copy με audit)",
+  "credentials:manage": "Δημιουργία, επεξεργασία, διαγραφή καταχωρήσεων και προβολή audit log",
 };
 
 export type PermissionGroup = {
