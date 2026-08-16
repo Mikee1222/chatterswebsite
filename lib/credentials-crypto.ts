@@ -9,17 +9,26 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
+function parseEncryptionKey(raw: string): Buffer {
+  const key = /^[0-9a-fA-F]{64}$/.test(raw)
+    ? Buffer.from(raw, "hex")
+    : Buffer.from(raw, "base64");
+
+  if (key.length !== 32) {
+    throw new Error(
+      "CREDENTIALS_ENCRYPTION_KEY must be 32 bytes (base64- or 64-char hex-encoded)",
+    );
+  }
+  return key;
+}
+
 function getEncryptionKey(): Buffer {
   const raw = process.env.CREDENTIALS_ENCRYPTION_KEY?.trim();
   if (!raw) {
     throw new Error("CREDENTIALS_ENCRYPTION_KEY is not configured");
   }
 
-  const key = Buffer.from(raw, "base64");
-  if (key.length !== 32) {
-    throw new Error("CREDENTIALS_ENCRYPTION_KEY must be 32 bytes (base64-encoded)");
-  }
-  return key;
+  return parseEncryptionKey(raw);
 }
 
 /** Encrypt a JSON-serializable object into a single ciphertext string. */
