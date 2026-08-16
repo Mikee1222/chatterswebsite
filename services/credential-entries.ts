@@ -22,6 +22,14 @@ import {
   type CredentialFieldRef,
   type CredentialSecretData,
 } from "@/lib/credentials-types";
+import {
+  EXPECTED_CATEGORY_LABELS,
+  EXPECTED_MODEL_CATEGORY_KEYS,
+  detectAttentionReason,
+  normalizeCategoryKey,
+  type AttentionReason,
+  type ExpectedCategoryKey,
+} from "@/lib/credentials-ui-helpers";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 
 export type CredentialEntryRecord = {
@@ -460,3 +468,181 @@ export async function logCredentialViewedMasked(
     action: "viewed_masked",
   });
 }
+
+export type CredentialNeedsAttention = {
+  id: string;
+  label: string;
+  category: string;
+  model_id: string | null;
+  reason: AttentionReason;
+  note_snippet: string;
+};
+
+export type CredentialModelCoverage = {
+  model_id: string;
+  entry_count: number;
+  filled_categories: ExpectedCategoryKey[];
+  expected_categories: ExpectedCategoryKey[];
+  coverage_pct: number;
+};
+
+export type CredentialLibraryInsights = {
+  category_breakdown: { category: string; count: number; normalized: string }[];
+  general_count: number;
+  model_specific_count: number;
+  recently_added: {
+    id: string;
+    label: string;
+    category: string;
+    model_id: string | null;
+    created_at: string;
+  }[];
+  recently_accessed: {
+    credential_id: string;
+    last_accessed_at: string;
+    access_count: number;
+  }[];
+  never_accessed_ids: string[];
+  accessed_credential_ids: string[];
+  needs_attention: CredentialNeedsAttention[];
+  model_coverage: CredentialModelCoverage[];
+};
+
+const ACCESS_ACTIONS: CredentialAccessAction[] = ["revealed", "copied"];
+
+export async function getCredentialLibraryInsights(): Promise<CredentialLibraryInsights> {
+  const sb = getSupabaseServiceClient();
+
+  const [{ data: entryRows, error: entryError }, { data: logRows, error: logError }] =
+    await Promise.all([
+      sb
+        .from("credential_entries")
+        .select(
+          "id,model_id,category,label,encrypted_data,created_at,updated_at",
+        )
+        .order("created_at", { ascending: false }),
+      sb
+        .from("credential_access_log")
+        .select("credential_id,action,timestamp")
+        .in("action", ACCESS_ACTIONS)
+        .order("timestamp", { ascending: false })
+        .limit(2000),
+    ]);
+
+  if (entryError) throw new Error(`insights credential_entries: ${entryError.message}`);
+  if (logError) throw new Error(`insights credential_access_log: ${logError.message}`);
+
+  const entries = entryRows ?? [];
+  const logs = logRows ?? [];
+
+  const categoryCounts = new Map<string, { category: string; count: number; normalized: string }>();
+  let generalCount = 0;
+  let modelSpecificCount = 0;
+  const needsAttention: CredentialNeedsAttention[] = [];
+  const modelCategorySets = new Map<string, Set<ExpectedCategoryKey>>();
+  const modelEntryCounts = new Map<string, number>();
+
+  for (const row of entries) {
+    const category = (row.category ?? "").trim();
+    const normalized = normalizeCategoryKey(category);
+    const existing = categoryCounts.get(normalized);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      categoryCounts.set(normalized, { category, count: 1, normalized });
+    }
+
+    if (row.model_id) {
+      modelSpecificCount += 1;
+      modelEntryCounts.set(row.model_id, (modelEntryCounts.get(row.model_id) ?? 0) + 1);
+      const key = normalizeCategoryKey(category);
+      if ((EXPECTED_MODEL_CATEGORY_KEYS as readonly string[]).includes(key)) {
+        if (!modelCategorySets.has(row.model_id)) modelCategorySets.set(row.model_id, new Set());
+        modelCategorySets.get(row.model_id)!.add(key as ExpectedCategoryKey);
+      }
+    } else {
+      generalCount += 1;
+    }
+
+    try {
+      const secrets = decryptCredentialPayload(row.encrypted_data);
+      const notes = secrets.notes?.trim() ?? "";
+      const reason = detectAttentionReason(notes);
+      if (reason) {
+        needsAttention.push({
+          id: row.id,
+          label: row.label.trim(),
+          category,
+          model_id: row.model_id,
+          reason,
+          note_snippet: notes.length > 120 ? `${notes.slice(0, 117)}…` : notes,
+        });
+      }
+    } catch {
+      // skip unreadable entries for attention scan
+    }
+  }
+
+  const accessByCredential = new Map<string, { last_accessed_at: string; access_count: number }>();
+  for (const log of logs) {
+    const cid = log.credential_id;
+    const existing = accessByCredential.get(cid);
+    if (!existing) {
+      accessByCredential.set(cid, {
+        last_accessed_at: log.timestamp,
+        access_count: 1,
+      });
+    } else {
+      existing.access_count += 1;
+    }
+  }
+
+  const accessedCredentialIds = [...accessByCredential.keys()];
+  const neverAccessedIds = entries
+    .map((e) => e.id)
+    .filter((id) => !accessByCredential.has(id));
+
+  const recentlyAdded = entries.slice(0, 8).map((row) => ({
+    id: row.id,
+    label: row.label.trim(),
+    category: row.category.trim(),
+    model_id: row.model_id,
+    created_at: row.created_at,
+  }));
+
+  const recentlyAccessed = [...accessByCredential.entries()]
+    .map(([credential_id, meta]) => ({ credential_id, ...meta }))
+    .sort((a, b) => b.last_accessed_at.localeCompare(a.last_accessed_at))
+    .slice(0, 8);
+
+  const modelCoverage: CredentialModelCoverage[] = [...modelCategorySets.entries()]
+    .map(([model_id, filledSet]) => {
+      const filled_categories = [...filledSet].sort();
+      const expected_categories = [...EXPECTED_MODEL_CATEGORY_KEYS];
+      const coverage_pct = Math.round(
+        (filled_categories.length / expected_categories.length) * 100,
+      );
+      return {
+        model_id,
+        entry_count: modelEntryCounts.get(model_id) ?? 0,
+        filled_categories,
+        expected_categories,
+        coverage_pct,
+      };
+    })
+    .sort((a, b) => a.coverage_pct - b.coverage_pct);
+
+  return {
+    category_breakdown: [...categoryCounts.values()].sort((a, b) => b.count - a.count),
+    general_count: generalCount,
+    model_specific_count: modelSpecificCount,
+    recently_added: recentlyAdded,
+    recently_accessed: recentlyAccessed,
+    never_accessed_ids: neverAccessedIds,
+    accessed_credential_ids: accessedCredentialIds,
+    needs_attention: needsAttention.sort((a, b) => a.label.localeCompare(b.label)),
+    model_coverage: modelCoverage,
+  };
+}
+
+export { EXPECTED_CATEGORY_LABELS };

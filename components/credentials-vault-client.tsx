@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
+  AlertTriangle,
   Building2,
   ChevronDown,
   ChevronLeft,
@@ -11,8 +14,10 @@ import {
   EyeOff,
   FolderTree,
   Grid3X3,
+  HeartPulse,
   KeyRound,
   Layers,
+  LayoutDashboard,
   LayoutGrid,
   Loader2,
   Lock,
@@ -20,17 +25,25 @@ import {
   ScrollText,
   Search,
   Shield,
+  ShieldAlert,
   Trash2,
   User,
   X,
   Zap,
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
+import { AdminRowAvatar } from "@/components/admin-list-primitives";
 import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { CountUp, LuxuryStatCard, SectionLabel } from "@/components/infloww-performance-ui";
 import { copyTextToClipboard } from "@/lib/winner-videos-copy";
+import {
+  EXPECTED_CATEGORY_LABELS,
+  attentionReasonLabel,
+  categoryVisual,
+  normalizeCategoryKey,
+} from "@/lib/credentials-ui-helpers";
 import {
   CREDENTIAL_CATEGORY_SUGGESTIONS,
   CREDENTIAL_FIELD_LABELS,
@@ -41,9 +54,21 @@ import {
   type CredentialFieldRef,
   type CredentialSecretData,
 } from "@/lib/credentials-types";
-import type { CredentialAccessLogRecord, MaskedCredentialEntry } from "@/services/credential-entries";
+import type {
+  CredentialAccessLogRecord,
+  CredentialLibraryInsights,
+  MaskedCredentialEntry,
+} from "@/services/credential-entries";
 import type { AppNotification, ModelRecord } from "@/types";
 import { cn } from "@/lib/utils";
+
+const Pie = dynamic(() => import("recharts").then((m) => m.Pie), { ssr: false });
+const PieChart = dynamic(() => import("recharts").then((m) => m.PieChart), { ssr: false });
+const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
+  ssr: false,
+});
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
 
 const BG = "#050505";
 const PANEL = "#0d0d0d";
@@ -52,7 +77,15 @@ const GOLD = "#D4AF8C";
 const GOLD_DIM = "rgba(212,175,140,0.15)";
 const PAGE_SIZE = 24;
 
-type ViewMode = "tree" | "all";
+type ViewMode = "dashboard" | "tree" | "category" | "security" | "all";
+
+const VIEW_TABS: { id: ViewMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "tree", label: "By Model", icon: FolderTree },
+  { id: "category", label: "By Category", icon: Layers },
+  { id: "security", label: "Security Health", icon: ShieldAlert },
+  { id: "all", label: "All Entries", icon: LayoutGrid },
+];
 type ScopeFilter = "" | "general" | "model";
 type CustomFieldsFilter = "" | "yes" | "no";
 
@@ -144,46 +177,54 @@ function fieldDisplayLabel(fieldRef: string): string {
   return fieldRef;
 }
 
-type CategoryVisual = {
-  label: string;
-  bg: string;
-  text: string;
-  initials: string;
-};
+function relativeTime(ts: string): string {
+  try {
+    const diff = Date.now() - new Date(ts).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 48) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 14) return `${days}d ago`;
+    return formatTimestamp(ts);
+  } catch {
+    return ts;
+  }
+}
 
-function categoryVisual(category: string): CategoryVisual {
-  const c = category.toLowerCase();
-  if (c.includes("instagram") || c === "ig") {
-    return { label: category, bg: "linear-gradient(135deg,#f09433,#bc1888,#833ab4)", text: "#fff", initials: "IG" };
-  }
-  if (c.includes("tiktok") || c === "tt") {
-    return { label: category, bg: "#010101", text: "#69C9D0", initials: "TT" };
-  }
-  if (c.includes("facebook") || c === "fb") {
-    return { label: category, bg: "#1877F2", text: "#fff", initials: "FB" };
-  }
-  if (c.includes("snap")) {
-    return { label: category, bg: "#FFFC00", text: "#111", initials: "SC" };
-  }
-  if (c.includes("paypal")) {
-    return { label: category, bg: "#003087", text: "#fff", initials: "PP" };
-  }
-  if (c.includes("apple") || c.includes("icloud")) {
-    return { label: category, bg: "#555", text: "#fff", initials: "AP" };
-  }
-  if (c.includes("onlyfans") || c === "of") {
-    return { label: category, bg: "#00AFF0", text: "#fff", initials: "OF" };
-  }
-  if (c.includes("email") || c.includes("mail")) {
-    return { label: category, bg: "rgba(212,175,140,0.25)", text: GOLD, initials: "@" };
-  }
-  if (c.includes("sim") || c.includes("phone")) {
-    return { label: category, bg: "rgba(16,185,129,0.2)", text: "#6ee7b7", initials: "SIM" };
-  }
-  if (c.includes("payment") || c.includes("bank")) {
-    return { label: category, bg: "rgba(212,175,140,0.18)", text: GOLD, initials: "$" };
-  }
-  return { label: category, bg: "rgba(255,255,255,0.08)", text: "rgba(255,255,255,0.7)", initials: "••" };
+function CoverageRing({ pct, size = "md" }: { pct: number; size?: "sm" | "md" }) {
+  const reduce = useReducedMotion();
+  const r = size === "sm" ? 18 : 24;
+  const c = 2 * Math.PI * r;
+  const offset = c - (pct / 100) * c;
+  const tone = pct >= 70 ? "#10B981" : pct >= 45 ? GOLD : "#F59E0B";
+  const dim = size === "sm" ? "h-12 w-12" : "h-16 w-16";
+  const text = size === "sm" ? "text-[10px]" : "text-xs";
+
+  return (
+    <div className={cn("relative shrink-0", dim)}>
+      <svg viewBox="0 0 56 56" className="h-full w-full -rotate-90">
+        <circle cx="28" cy="28" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+        <motion.circle
+          cx="28"
+          cy="28"
+          r={r}
+          fill="none"
+          stroke={tone}
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          initial={reduce ? false : { strokeDashoffset: c }}
+          animate={{ strokeDashoffset: offset }}
+          transition={{ duration: 0.75, ease: [0.22, 1, 0.36, 1] }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className={cn("font-semibold tabular-nums text-white/85", text)}>{pct}%</span>
+      </div>
+    </div>
+  );
 }
 
 function CategoryBadge({ category, size = "md" }: { category: string; size?: "sm" | "md" }) {
@@ -223,9 +264,12 @@ export function CredentialsVaultClient({
   canManage,
 }: CredentialsVaultClientProps) {
   const { addToast } = useToast();
+  const reduceMotion = useReducedMotion();
   const [entries, setEntries] = React.useState<MaskedCredentialEntry[]>([]);
+  const [insights, setInsights] = React.useState<CredentialLibraryInsights | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [viewMode, setViewMode] = React.useState<ViewMode>("all");
+  const [insightsLoading, setInsightsLoading] = React.useState(true);
+  const [viewMode, setViewMode] = React.useState<ViewMode>("dashboard");
   const [search, setSearch] = React.useState("");
   const [categoryFilter, setCategoryFilter] = React.useState("");
   const [modelFilter, setModelFilter] = React.useState("");
@@ -234,6 +278,8 @@ export function CredentialsVaultClient({
   const [page, setPage] = React.useState(0);
   const [expandedModels, setExpandedModels] = React.useState<Set<string>>(new Set(["__general__"]));
   const [expandedCategories, setExpandedCategories] = React.useState<Set<string>>(new Set());
+  const [expandedCategoryGroups, setExpandedCategoryGroups] = React.useState<Set<string>>(new Set());
+  const [expandedCategoryModels, setExpandedCategoryModels] = React.useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [quickCopyIds, setQuickCopyIds] = React.useState<Set<string>>(new Set());
   const [revealed, setRevealed] = React.useState<Record<string, Partial<Record<string, string>>>>({});
@@ -248,6 +294,26 @@ export function CredentialsVaultClient({
   const [showCategorySuggestions, setShowCategorySuggestions] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [deleteTarget, setDeleteTarget] = React.useState<MaskedCredentialEntry | null>(null);
+
+  const loadInsights = React.useCallback(async () => {
+    setInsightsLoading(true);
+    try {
+      const res = await fetch("/api/admin/credentials/insights", { cache: "no-store" });
+      const data = (await res.json()) as { insights?: CredentialLibraryInsights; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to load insights");
+      setInsights(data.insights ?? null);
+    } catch (err) {
+      addToast(
+        libraryToast(
+          "Insights failed",
+          err instanceof Error ? err.message : "Could not load dashboard insights",
+          "high",
+        ),
+      );
+    } finally {
+      setInsightsLoading(false);
+    }
+  }, [addToast]);
 
   const loadEntries = React.useCallback(async () => {
     setLoading(true);
@@ -265,7 +331,8 @@ export function CredentialsVaultClient({
 
   React.useEffect(() => {
     void loadEntries();
-  }, [loadEntries]);
+    void loadInsights();
+  }, [loadEntries, loadInsights]);
 
   React.useEffect(() => {
     setPage(0);
@@ -333,6 +400,49 @@ export function CredentialsVaultClient({
     return byModel;
   }, [filtered]);
 
+  const categoryTree = React.useMemo(() => {
+    const byCategory = new Map<string, Map<string, MaskedCredentialEntry[]>>();
+    for (const entry of filtered) {
+      const catKey = normalizeCategoryKey(entry.category);
+      if (!byCategory.has(catKey)) byCategory.set(catKey, new Map());
+      const byModel = byCategory.get(catKey)!;
+      const modelKey = entry.model_id ?? "__general__";
+      if (!byModel.has(modelKey)) byModel.set(modelKey, []);
+      byModel.get(modelKey)!.push(entry);
+    }
+    return byCategory;
+  }, [filtered]);
+
+  const modelQuickAccess = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of entries) {
+      if (!e.model_id) continue;
+      counts.set(e.model_id, (counts.get(e.model_id) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([modelId, count]) => ({
+        modelId,
+        name: modelById[modelId] ?? "Unknown model",
+        count,
+      }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [entries, modelById]);
+
+  const chartSegments = React.useMemo(() => {
+    const source = insights?.category_breakdown ?? [];
+    return source.slice(0, 8).map((row) => ({
+      name: row.category,
+      value: row.count,
+      fill: categoryVisual(row.category).chartColor,
+    }));
+  }, [insights]);
+
+  const neverAccessedEntries = React.useMemo(() => {
+    if (!insights) return [];
+    const idSet = new Set(insights.never_accessed_ids);
+    return entries.filter((e) => idSet.has(e.id));
+  }, [entries, insights]);
+
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const pagedEntries = filtered.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
   const selected = entries.find((e) => e.id === selectedId) ?? null;
@@ -369,6 +479,35 @@ export function CredentialsVaultClient({
       else next.add(key);
       return next;
     });
+  }
+
+  function toggleCategoryGroup(key: string) {
+    setExpandedCategoryGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function toggleCategoryModel(key: string) {
+    setExpandedCategoryModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function goToEntry(entryId: string, mode: ViewMode = "all") {
+    setViewMode(mode);
+    setSelectedId(entryId);
+  }
+
+  function goToModel(modelId: string) {
+    setViewMode("tree");
+    setModelFilter(modelId);
+    setExpandedModels((prev) => new Set(prev).add(modelId));
   }
 
   function toggleQuickCopy(entryId: string) {
@@ -456,6 +595,7 @@ export function CredentialsVaultClient({
         return next;
       });
       await loadEntries();
+      void loadInsights();
       if (body.entry) setSelectedId(body.entry.id);
     } catch (err) {
       addToast(libraryToast("Save failed", err instanceof Error ? err.message : "Could not save", "high"));
@@ -474,6 +614,7 @@ export function CredentialsVaultClient({
       setDeleteTarget(null);
       if (selectedId === entry.id) setSelectedId(null);
       await loadEntries();
+      void loadInsights();
     } catch (err) {
       addToast(libraryToast("Delete failed", err instanceof Error ? err.message : "Could not delete", "high"));
     }
@@ -552,11 +693,15 @@ export function CredentialsVaultClient({
     const modelLabel = entry.model_id ? modelById[entry.model_id] : null;
 
     return (
-      <div
+      <motion.div
         key={entry.id}
+        layout={!reduceMotion}
+        initial={reduceMotion ? false : { opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
         className={cn(
-          "group relative overflow-hidden rounded-2xl border transition",
-          isSelected ? "ring-1 ring-[#D4AF8C]/40" : "hover:border-white/15",
+          "group relative overflow-hidden rounded-2xl border shadow-[0_8px_32px_rgba(0,0,0,0.35)] transition-all duration-300",
+          isSelected ? "ring-1 ring-[#D4AF8C]/40 shadow-[0_12px_40px_rgba(212,175,140,0.08)]" : "hover:border-white/15 hover:shadow-[0_12px_40px_rgba(0,0,0,0.45)]",
         )}
         style={{ borderColor: isSelected ? GOLD_DIM : BORDER, background: PANEL }}
       >
@@ -651,6 +796,455 @@ export function CredentialsVaultClient({
             </div>
           </div>
         </div>
+      </motion.div>
+    );
+  }
+
+  function renderEmptyState({
+    icon: Icon,
+    title,
+    description,
+  }: {
+    icon: React.ComponentType<{ className?: string }>;
+    title: string;
+    description: string;
+  }) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center rounded-2xl border py-16 text-center"
+        style={{ borderColor: BORDER, background: PANEL }}
+      >
+        <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#D4AF8C]/20 bg-[#D4AF8C]/10">
+          <Icon className="h-6 w-6 text-[#D4AF8C]/70" aria-hidden />
+        </div>
+        <p className="text-sm font-medium text-white/75">{title}</p>
+        <p className="mt-1 max-w-sm px-4 text-xs text-white/40">{description}</p>
+      </div>
+    );
+  }
+
+  function renderLoadingState() {
+    return (
+      <div
+        className="flex flex-col items-center justify-center gap-3 rounded-2xl border py-20"
+        style={{ borderColor: BORDER, background: PANEL }}
+      >
+        <Loader2 className="h-6 w-6 animate-spin text-[#D4AF8C]/60" aria-hidden />
+        <p className="text-sm text-white/45">Loading Password Library…</p>
+      </div>
+    );
+  }
+
+  function renderDetailShell(content: React.ReactNode, EmptyIcon: React.ComponentType<{ className?: string }>, emptyText: string) {
+    return (
+      <div className="rounded-2xl border p-4 sm:p-5 lg:sticky lg:top-4 lg:self-start" style={{ borderColor: BORDER, background: PANEL }}>
+        {!selected ? (
+          <div className="flex min-h-[320px] flex-col items-center justify-center text-center text-white/45">
+            <EmptyIcon className="mb-3 h-10 w-10 opacity-30" aria-hidden />
+            <p className="text-sm">{emptyText}</p>
+          </div>
+        ) : (
+          content
+        )}
+      </div>
+    );
+  }
+
+  function renderDashboardView() {
+    const pieTotal = chartSegments.reduce((sum, s) => sum + s.value, 0);
+
+    return (
+      <div className="mt-4 space-y-4">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
+            <SectionLabel>Category breakdown</SectionLabel>
+            <div className="relative mt-4 h-64 w-full">
+              {insightsLoading ? (
+                <div className="flex h-full items-center justify-center">
+                  <Loader2 className="h-5 w-5 animate-spin text-white/40" />
+                </div>
+              ) : pieTotal === 0 ? (
+                renderEmptyState({
+                  icon: Layers,
+                  title: "No categories yet",
+                  description: "Add entries to see distribution across platforms.",
+                })
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={chartSegments}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="46%"
+                      innerRadius={52}
+                      outerRadius={82}
+                      paddingAngle={chartSegments.length > 1 ? 3 : 0}
+                      stroke="rgba(10, 10, 16, 0.9)"
+                      strokeWidth={2}
+                    >
+                      {chartSegments.map((entry) => (
+                        <Cell key={entry.name} fill={entry.fill} />
+                      ))}
+                    </Pie>
+                    <text x="50%" y="46%" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.92)" fontSize={22} fontWeight={700}>
+                      {pieTotal}
+                    </text>
+                    <text x="50%" y="46%" dy={18} textAnchor="middle" fill="rgba(255,255,255,0.42)" fontSize={11} fontWeight={500}>
+                      entries
+                    </text>
+                    <Tooltip
+                      contentStyle={{ background: "#141414", border: `1px solid ${BORDER}`, borderRadius: 12, fontSize: 12 }}
+                      labelStyle={{ color: "rgba(255,255,255,0.7)" }}
+                      itemStyle={{ color: GOLD }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <LuxuryStatCard
+              label="Model-specific"
+              value={<CountUp value={insights?.model_specific_count ?? stats.total - stats.general} />}
+              accent="pink"
+              tooltip="Entries tied to a creator model"
+            />
+            <LuxuryStatCard
+              label="Company / General"
+              value={<CountUp value={insights?.general_count ?? stats.general} />}
+              accent="emerald"
+              tooltip="Shared credentials not tied to a model"
+            />
+            <LuxuryStatCard
+              label="Needs attention"
+              value={<CountUp value={insights?.needs_attention.length ?? 0} />}
+              accent="white"
+              tooltip="Notes flagged banned, deactivated, or not working"
+            />
+            <LuxuryStatCard
+              label="Never accessed"
+              value={<CountUp value={insights?.never_accessed_ids.length ?? 0} />}
+              accent="champagne"
+              tooltip="No reveal or copy logged in audit trail"
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
+            <SectionLabel>Recently added</SectionLabel>
+            <div className="mt-3 space-y-2">
+              {(insights?.recently_added ?? []).length === 0 ? (
+                <p className="py-6 text-center text-sm text-white/40">No entries yet.</p>
+              ) : (
+                insights!.recently_added.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => goToEntry(row.id)}
+                    className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-[#D4AF8C]/25 hover:bg-white/[0.03]"
+                    style={{ borderColor: BORDER }}
+                  >
+                    <CategoryBadge category={row.category} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-white/90">{row.label}</p>
+                      <p className="text-xs text-white/40">{relativeTime(row.created_at)}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
+            <SectionLabel>Recently accessed</SectionLabel>
+            <div className="mt-3 space-y-2">
+              {(insights?.recently_accessed ?? []).length === 0 ? (
+                <p className="py-6 text-center text-sm text-white/40">No reveal or copy activity yet.</p>
+              ) : (
+                insights!.recently_accessed.map((row) => {
+                  const entry = entries.find((e) => e.id === row.credential_id);
+                  if (!entry) return null;
+                  return (
+                    <button
+                      key={row.credential_id}
+                      type="button"
+                      onClick={() => goToEntry(row.credential_id)}
+                      className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-[#D4AF8C]/25 hover:bg-white/[0.03]"
+                      style={{ borderColor: BORDER }}
+                    >
+                      <CategoryBadge category={entry.category} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white/90">{entry.label}</p>
+                        <p className="text-xs text-white/40">
+                          {relativeTime(row.last_accessed_at)} · {row.access_count} action{row.access_count === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
+          <SectionLabel>Quick access by model</SectionLabel>
+          {modelQuickAccess.length === 0 ? (
+            <p className="mt-4 py-8 text-center text-sm text-white/40">No model-specific entries yet.</p>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {modelQuickAccess.map(({ modelId, name, count }) => (
+                <button
+                  key={modelId}
+                  type="button"
+                  onClick={() => goToModel(modelId)}
+                  className="group flex items-center gap-3 rounded-2xl border p-3 text-left transition hover:border-[#D4AF8C]/30 hover:bg-white/[0.03]"
+                  style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
+                >
+                  <AdminRowAvatar name={name} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white/90 group-hover:text-[#D4AF8C]">{name}</p>
+                    <p className="text-xs text-white/40">{count} entr{count === 1 ? "y" : "ies"}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderCategoryView() {
+    return (
+      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: PANEL }}>
+          <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/45">
+            <Layers className="h-3.5 w-3.5" aria-hidden />
+            Category → Model → Entry
+          </div>
+          {loading ? (
+            renderLoadingState()
+          ) : categoryTree.size === 0 ? (
+            renderEmptyState({ icon: Layers, title: "No entries", description: "Try adjusting your filters." })
+          ) : (
+            <div className="space-y-2">
+              {[...categoryTree.entries()]
+                .sort(([a], [b]) => {
+                  const labelA = categoryVisual(a === "other" ? "Other" : EXPECTED_CATEGORY_LABELS[a as keyof typeof EXPECTED_CATEGORY_LABELS] ?? a).label;
+                  const labelB = categoryVisual(b === "other" ? "Other" : EXPECTED_CATEGORY_LABELS[b as keyof typeof EXPECTED_CATEGORY_LABELS] ?? b).label;
+                  return labelA.localeCompare(labelB);
+                })
+                .map(([catKey, modelsMap]) => {
+                  const displayCategory =
+                    EXPECTED_CATEGORY_LABELS[catKey as keyof typeof EXPECTED_CATEGORY_LABELS] ??
+                    [...modelsMap.values()].flat()[0]?.category ??
+                    catKey;
+                  const catExpanded = expandedCategoryGroups.has(catKey);
+                  const total = [...modelsMap.values()].reduce((sum, items) => sum + items.length, 0);
+                  return (
+                    <div key={catKey} className="rounded-xl border" style={{ borderColor: BORDER }}>
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoryGroup(catKey)}
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-white/90 hover:bg-white/[0.03]"
+                      >
+                        {catExpanded ? <ChevronDown className="h-4 w-4 shrink-0 text-white/45" /> : <ChevronRight className="h-4 w-4 shrink-0 text-white/45" />}
+                        <CategoryBadge category={displayCategory} size="sm" />
+                        {displayCategory}
+                        <span className="ml-auto text-xs text-white/35">{total}</span>
+                      </button>
+                      {catExpanded && (
+                        <div className="border-t px-2 py-2" style={{ borderColor: BORDER }}>
+                          {[...modelsMap.entries()]
+                            .sort(([a], [b]) => {
+                              if (a === "__general__") return -1;
+                              if (b === "__general__") return 1;
+                              return (modelById[a] ?? "").localeCompare(modelById[b] ?? "");
+                            })
+                            .map(([modelKey, items]) => {
+                              const modelLabel = modelKey === "__general__" ? "Company / General" : modelById[modelKey] ?? "Unknown model";
+                              const modelNodeKey = `${catKey}::${modelKey}`;
+                              const modelExpanded = expandedCategoryModels.has(modelNodeKey);
+                              return (
+                                <div key={modelNodeKey} className="mb-1 last:mb-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleCategoryModel(modelNodeKey)}
+                                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-white/75 hover:bg-white/[0.03]"
+                                  >
+                                    {modelExpanded ? <ChevronDown className="h-3.5 w-3.5 text-white/40" /> : <ChevronRight className="h-3.5 w-3.5 text-white/40" />}
+                                    {modelKey === "__general__" ? (
+                                      <Building2 className="h-4 w-4 shrink-0 text-white/45" />
+                                    ) : (
+                                      <AdminRowAvatar name={modelLabel} size="sm" />
+                                    )}
+                                    {modelLabel}
+                                    <span className="ml-auto text-xs text-white/35">{items.length}</span>
+                                  </button>
+                                  {modelExpanded && (
+                                    <div className="ml-5 space-y-1 border-l pl-2" style={{ borderColor: BORDER }}>
+                                      {items.map((entry) => (
+                                        <button
+                                          key={entry.id}
+                                          type="button"
+                                          onClick={() => setSelectedId(entry.id)}
+                                          className={cn(
+                                            "block w-full rounded-lg px-2 py-2 text-left text-sm transition",
+                                            selectedId === entry.id
+                                              ? "bg-[#D4AF8C]/10 text-[#D4AF8C]"
+                                              : "text-white/70 hover:bg-white/[0.04] hover:text-white",
+                                          )}
+                                        >
+                                          {entry.label}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </div>
+        {renderDetailShell(selected ? renderDetailPanel(selected) : null, KeyRound, "Select an entry from the category tree.")}
+      </div>
+    );
+  }
+
+  function renderSecurityView() {
+    const attention = insights?.needs_attention ?? [];
+
+    return (
+      <div className="mt-4 space-y-4">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <LuxuryStatCard label="Needs attention" value={<CountUp value={attention.length} />} accent="pink" tooltip="Banned, deactivated, or not working in notes" />
+          <LuxuryStatCard label="Never accessed" value={<CountUp value={neverAccessedEntries.length} />} accent="champagne" tooltip="No reveal/copy in audit log" />
+          <LuxuryStatCard label="Models tracked" value={<CountUp value={insights?.model_coverage.length ?? 0} />} accent="white" tooltip="Models with credential coverage data" />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
+            <div className="mb-3 flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-300" aria-hidden />
+              <SectionLabel>Needs attention</SectionLabel>
+            </div>
+            {insightsLoading ? (
+              renderLoadingState()
+            ) : attention.length === 0 ? (
+              renderEmptyState({ icon: Shield, title: "All clear", description: "No banned, deactivated, or not-working flags in notes." })
+            ) : (
+              <div className="space-y-2">
+                {attention.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    onClick={() => goToEntry(row.id, "security")}
+                    className="w-full rounded-xl border px-3 py-3 text-left transition hover:border-amber-500/30 hover:bg-amber-500/[0.04]"
+                    style={{ borderColor: "rgba(245,158,11,0.2)", background: "rgba(245,158,11,0.04)" }}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CategoryBadge category={row.category} size="sm" />
+                      <span className="text-sm font-medium text-white/90">{row.label}</span>
+                      <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                        {attentionReasonLabel(row.reason)}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-xs text-white/45">{row.note_snippet}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
+            <div className="mb-3 flex items-center gap-2">
+              <HeartPulse className="h-4 w-4 text-[#D4AF8C]" aria-hidden />
+              <SectionLabel>Never accessed</SectionLabel>
+            </div>
+            {insightsLoading ? (
+              renderLoadingState()
+            ) : neverAccessedEntries.length === 0 ? (
+              renderEmptyState({ icon: Lock, title: "Fully audited", description: "Every entry has at least one reveal or copy logged." })
+            ) : (
+              <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                {neverAccessedEntries.slice(0, 24).map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => goToEntry(entry.id, "security")}
+                    className="flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition hover:border-white/15 hover:bg-white/[0.03]"
+                    style={{ borderColor: BORDER }}
+                  >
+                    <CategoryBadge category={entry.category} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-white/85">{entry.label}</p>
+                      <p className="text-xs text-white/40">{entry.model_id ? modelById[entry.model_id] : "Company / General"}</p>
+                    </div>
+                  </button>
+                ))}
+                {neverAccessedEntries.length > 24 ? (
+                  <p className="pt-2 text-center text-xs text-white/35">+ {neverAccessedEntries.length - 24} more</p>
+                ) : null}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
+          <SectionLabel>Completeness per model</SectionLabel>
+          <p className="mt-1 text-xs text-white/40">Expected platform categories filled vs baseline set ({EXPECTED_CATEGORY_LABELS.instagram}, {EXPECTED_CATEGORY_LABELS.onlyfans}, etc.)</p>
+          {insightsLoading ? (
+            <div className="mt-4">{renderLoadingState()}</div>
+          ) : (insights?.model_coverage ?? []).length === 0 ? (
+            <p className="mt-6 py-8 text-center text-sm text-white/40">No model-specific entries to score.</p>
+          ) : (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {insights!.model_coverage.map((row) => {
+                const name = modelById[row.model_id] ?? "Unknown model";
+                return (
+                  <div key={row.model_id} className="rounded-2xl border p-3" style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}>
+                    <div className="flex items-center gap-3">
+                      <AdminRowAvatar name={name} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white/90">{name}</p>
+                        <p className="text-xs text-white/40">
+                          {row.filled_categories.length}/{row.expected_categories.length} categories · {row.entry_count} entries
+                        </p>
+                      </div>
+                      <CoverageRing pct={row.coverage_pct} size="sm" />
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1">
+                      {row.expected_categories.map((key) => {
+                        const filled = row.filled_categories.includes(key);
+                        return (
+                          <span
+                            key={key}
+                            className={cn(
+                              "rounded-full px-2 py-0.5 text-[10px]",
+                              filled ? "border border-emerald-500/25 bg-emerald-500/10 text-emerald-200" : "border border-white/10 text-white/30",
+                            )}
+                          >
+                            {EXPECTED_CATEGORY_LABELS[key]}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     );
   }
@@ -736,15 +1330,22 @@ export function CredentialsVaultClient({
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] uppercase tracking-widest text-white/40">{CREDENTIAL_FIELD_LABELS[field]}</p>
-                    <p
-                      className={cn(
-                        "mt-1 break-all text-sm",
-                        isSecret && !isRevealedNow ? "font-mono tracking-widest text-[#D4AF8C]/70" : "font-mono text-white/85",
-                        field === "notes" && "whitespace-pre-wrap font-sans tracking-normal",
-                      )}
-                    >
-                      {value}
-                    </p>
+                    <AnimatePresence mode="wait" initial={false}>
+                      <motion.p
+                        key={isSecret && !isRevealedNow ? "masked" : `value-${value}`}
+                        initial={reduceMotion ? false : { opacity: 0, rotateX: -8 }}
+                        animate={{ opacity: 1, rotateX: 0 }}
+                        exit={reduceMotion ? undefined : { opacity: 0, rotateX: 8 }}
+                        transition={{ duration: 0.2 }}
+                        className={cn(
+                          "mt-1 break-all text-sm",
+                          isSecret && !isRevealedNow ? "font-mono tracking-widest text-[#D4AF8C]/70" : "font-mono text-white/85",
+                          field === "notes" && "whitespace-pre-wrap font-sans tracking-normal",
+                        )}
+                      >
+                        {value}
+                      </motion.p>
+                    </AnimatePresence>
                   </div>
                   {entry.has_value[field] && (
                     <div className="flex shrink-0 items-center gap-1">
@@ -882,280 +1483,282 @@ export function CredentialsVaultClient({
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Stats — always visible */}
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <LuxuryStatCard label="Total entries" value={<CountUp value={stats.total} />} accent="champagne" tooltip="All saved passwords and credentials" />
           <LuxuryStatCard label="Categories" value={<CountUp value={stats.categories} />} accent="white" tooltip="Unique category labels in use" />
-          <LuxuryStatCard label="Model-specific" value={<CountUp value={stats.models} />} accent="pink" tooltip="Models with at least one entry" />
+          <LuxuryStatCard label="Models covered" value={<CountUp value={stats.models} />} accent="pink" tooltip="Models with at least one entry" />
           <LuxuryStatCard label="Company / General" value={<CountUp value={stats.general} />} accent="emerald" tooltip="Entries not tied to a model" />
         </div>
 
-        {/* Filters */}
-        <div className="mt-4 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="relative sm:col-span-2 lg:col-span-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden />
-              <FormInput
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search label, category, model, username, email…"
-                className="pl-9"
-              />
-            </div>
-            <select
-              value={modelFilter}
-              onChange={(e) => setModelFilter(e.target.value)}
-              className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
-              style={{ borderColor: BORDER }}
-            >
-              <option value="">All models</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.model_name}
-                </option>
-              ))}
-            </select>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
-              style={{ borderColor: BORDER }}
-            >
-              <option value="">All categories</option>
-              {categoriesInUse.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={scopeFilter}
-                onChange={(e) => setScopeFilter(e.target.value as ScopeFilter)}
-                className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
-                style={{ borderColor: BORDER }}
+        {/* Tab navigation */}
+        <div
+          className="mt-4 inline-flex max-w-full flex-wrap rounded-2xl border border-white/[0.08] bg-[#0D0B0D]/70 p-1 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]"
+          role="tablist"
+          aria-label="Password Library views"
+        >
+          {VIEW_TABS.map(({ id, label, icon: Icon }) => {
+            const active = viewMode === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setViewMode(id)}
+                className={cn(
+                  "relative inline-flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition sm:px-4",
+                  active ? "text-white" : "text-[#B8B4B8]/55 hover:text-[#B8B4B8]",
+                )}
               >
-                <option value="">All scopes</option>
-                <option value="general">Company / General</option>
-                <option value="model">Model-specific</option>
-              </select>
-              <select
-                value={customFieldsFilter}
-                onChange={(e) => setCustomFieldsFilter(e.target.value as CustomFieldsFilter)}
-                className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
-                style={{ borderColor: BORDER }}
-              >
-                <option value="">Any fields</option>
-                <option value="yes">Has custom fields</option>
-                <option value="no">Standard only</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs uppercase tracking-widest text-white/35">View</span>
-            <button
-              type="button"
-              onClick={() => setViewMode("all")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition",
-                viewMode === "all" ? "border-[#D4AF8C]/40 text-[#D4AF8C]" : "border-white/10 text-white/50 hover:text-white",
-              )}
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              All entries
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("tree")}
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs transition",
-                viewMode === "tree" ? "border-[#D4AF8C]/40 text-[#D4AF8C]" : "border-white/10 text-white/50 hover:text-white",
-              )}
-            >
-              <FolderTree className="h-3.5 w-3.5" />
-              Tree browse
-            </button>
-            <span className="ml-auto text-xs text-white/35">
-              {filtered.length} result{filtered.length === 1 ? "" : "s"}
-            </span>
-          </div>
+                {active ? (
+                  <motion.span
+                    layoutId="password-library-tab"
+                    className="absolute inset-0 rounded-xl border border-[#D4AF8C]/25 bg-gradient-to-br from-[#D4AF8C]/20 to-[#D4AF8C]/5"
+                    transition={reduceMotion ? { duration: 0 } : { type: "spring", damping: 28, stiffness: 380 }}
+                  />
+                ) : null}
+                <Icon className="relative h-3.5 w-3.5 shrink-0" aria-hidden />
+                <span className="relative">{label}</span>
+              </button>
+            );
+          })}
         </div>
 
-        {viewMode === "all" ? (
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-            <div>
-              {loading ? (
-                <div className="flex items-center justify-center rounded-2xl border py-20" style={{ borderColor: BORDER, background: PANEL }}>
-                  <Loader2 className="h-5 w-5 animate-spin text-white/50" />
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="rounded-2xl border py-16 text-center text-sm text-white/45" style={{ borderColor: BORDER, background: PANEL }}>
-                  No entries match your filters.
-                </div>
-              ) : (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {pagedEntries.map((entry) => renderEntryCard(entry))}
-                  </div>
-                  {pageCount > 1 && (
-                    <div className="mt-4 flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: BORDER, background: PANEL }}>
-                      <button
-                        type="button"
-                        disabled={page === 0}
-                        onClick={() => setPage((p) => Math.max(0, p - 1))}
-                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-white/60 disabled:opacity-30"
-                      >
-                        <ChevronLeft className="h-4 w-4" />
-                        Previous
-                      </button>
-                      <span className="text-xs text-white/45">
-                        Page {page + 1} of {pageCount}
-                      </span>
-                      <button
-                        type="button"
-                        disabled={page >= pageCount - 1}
-                        onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-white/60 disabled:opacity-30"
-                      >
-                        Next
-                        <ChevronRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="rounded-2xl border p-4 sm:p-5 lg:sticky lg:top-4 lg:self-start" style={{ borderColor: BORDER, background: PANEL }}>
-              {!selected ? (
-                <div className="flex min-h-[320px] flex-col items-center justify-center text-center text-white/45">
-                  <Grid3X3 className="mb-3 h-10 w-10 opacity-30" aria-hidden />
-                  <p className="text-sm">Select an entry to view full details.</p>
-                </div>
-              ) : (
-                renderDetailPanel(selected)
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
-            <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: PANEL }}>
-              <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/45">
-                <Lock className="h-3.5 w-3.5" aria-hidden />
-                Model → Category → Entry
+        {/* Filters — browse views */}
+        {viewMode !== "dashboard" && viewMode !== "security" ? (
+          <div className="mt-4 space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="relative sm:col-span-2 lg:col-span-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden />
+                <FormInput
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search label, category, model, username, email…"
+                  className="pl-9"
+                />
               </div>
-              {loading ? (
-                <div className="flex items-center justify-center py-16 text-white/50">
-                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-                </div>
-              ) : tree.size === 0 ? (
-                <p className="py-12 text-center text-sm text-white/45">No entries yet.</p>
-              ) : (
-                <div className="space-y-2">
-                  {[...tree.entries()]
-                    .sort(([a], [b]) => {
-                      if (a === "__general__") return -1;
-                      if (b === "__general__") return 1;
-                      return (modelById[a] ?? "").localeCompare(modelById[b] ?? "");
+              <select
+                value={modelFilter}
+                onChange={(e) => setModelFilter(e.target.value)}
+                className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
+                style={{ borderColor: BORDER }}
+              >
+                <option value="">All models</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.model_name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
+                style={{ borderColor: BORDER }}
+              >
+                <option value="">All categories</option>
+                {categoriesInUse.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={scopeFilter}
+                  onChange={(e) => setScopeFilter(e.target.value as ScopeFilter)}
+                  className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
+                  style={{ borderColor: BORDER }}
+                >
+                  <option value="">All scopes</option>
+                  <option value="general">Company / General</option>
+                  <option value="model">Model-specific</option>
+                </select>
+                <select
+                  value={customFieldsFilter}
+                  onChange={(e) => setCustomFieldsFilter(e.target.value as CustomFieldsFilter)}
+                  className="rounded-lg border bg-[#0D0B0D]/80 px-3 py-2 text-sm text-white/85"
+                  style={{ borderColor: BORDER }}
+                >
+                  <option value="">Any fields</option>
+                  <option value="yes">Has custom fields</option>
+                  <option value="no">Standard only</option>
+                </select>
+              </div>
+            </div>
+            <p className="text-right text-xs text-white/35">
+              {filtered.length} result{filtered.length === 1 ? "" : "s"}
+            </p>
+          </div>
+        ) : null}
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={viewMode}
+            initial={reduceMotion ? false : { opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: -6 }}
+            transition={{ duration: 0.22 }}
+          >
+            {viewMode === "dashboard" && renderDashboardView()}
+            {viewMode === "category" && renderCategoryView()}
+            {viewMode === "security" && renderSecurityView()}
+            {viewMode === "all" && (
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                <div>
+                  {loading ? (
+                    renderLoadingState()
+                  ) : filtered.length === 0 ? (
+                    renderEmptyState({
+                      icon: LayoutGrid,
+                      title: "No matches",
+                      description: "Try adjusting your search or filters.",
                     })
-                    .map(([modelKey, categories]) => {
-                      const modelLabel =
-                        modelKey === "__general__"
-                          ? "Company / General"
-                          : modelById[modelKey] ?? "Unknown model";
-                      const modelExpanded = expandedModels.has(modelKey);
-                      const isGeneral = modelKey === "__general__";
-                      return (
-                        <div key={modelKey} className="rounded-xl border" style={{ borderColor: BORDER }}>
+                  ) : (
+                    <>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {pagedEntries.map((entry) => renderEntryCard(entry))}
+                      </div>
+                      {pageCount > 1 && (
+                        <div className="mt-4 flex items-center justify-between rounded-xl border px-3 py-2" style={{ borderColor: BORDER, background: PANEL }}>
                           <button
                             type="button"
-                            onClick={() => toggleModel(modelKey)}
-                            className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-white/90 hover:bg-white/[0.03]"
+                            disabled={page === 0}
+                            onClick={() => setPage((p) => Math.max(0, p - 1))}
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-white/60 disabled:opacity-30"
                           >
-                            {modelExpanded ? (
-                              <ChevronDown className="h-4 w-4 shrink-0 text-white/45" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 shrink-0 text-white/45" />
-                            )}
-                            {isGeneral ? (
-                              <Building2 className="h-4 w-4 shrink-0 text-white/45" aria-hidden />
-                            ) : (
-                              <User className="h-4 w-4 shrink-0" style={{ color: GOLD }} aria-hidden />
-                            )}
-                            {modelLabel}
+                            <ChevronLeft className="h-4 w-4" />
+                            Previous
                           </button>
-                          {modelExpanded && (
-                            <div className="border-t px-2 py-2" style={{ borderColor: BORDER }}>
-                              {[...categories.entries()]
-                                .sort(([a], [b]) => a.localeCompare(b))
-                                .map(([category, items]) => {
-                                  const catKey = `${modelKey}::${category}`;
-                                  const catExpanded = expandedCategories.has(catKey);
-                                  return (
-                                    <div key={catKey} className="mb-1 last:mb-0">
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleCategory(catKey)}
-                                        className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-white/75 hover:bg-white/[0.03]"
-                                      >
-                                        {catExpanded ? (
-                                          <ChevronDown className="h-3.5 w-3.5 text-white/40" />
-                                        ) : (
-                                          <ChevronRight className="h-3.5 w-3.5 text-white/40" />
-                                        )}
-                                        <CategoryBadge category={category} size="sm" />
-                                        {category}
-                                        <span className="ml-auto text-xs text-white/35">{items.length}</span>
-                                      </button>
-                                      {catExpanded && (
-                                        <div className="ml-5 space-y-1 border-l pl-2" style={{ borderColor: BORDER }}>
-                                          {items.map((entry) => (
-                                            <button
-                                              key={entry.id}
-                                              type="button"
-                                              onClick={() => setSelectedId(entry.id)}
-                                              className={cn(
-                                                "block w-full rounded-lg px-2 py-2 text-left text-sm transition",
-                                                selectedId === entry.id
-                                                  ? "bg-[#D4AF8C]/10 text-[#D4AF8C]"
-                                                  : "text-white/70 hover:bg-white/[0.04] hover:text-white",
-                                              )}
-                                            >
-                                              {entry.label}
-                                              {entry.fields.username ? (
-                                                <span className="mt-0.5 block truncate font-mono text-xs text-white/40">
-                                                  {entry.fields.username}
-                                                </span>
-                                              ) : null}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                            </div>
-                          )}
+                          <span className="text-xs text-white/45">
+                            Page {page + 1} of {pageCount}
+                          </span>
+                          <button
+                            type="button"
+                            disabled={page >= pageCount - 1}
+                            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-white/60 disabled:opacity-30"
+                          >
+                            Next
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
                         </div>
-                      );
-                    })}
+                      )}
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl border p-4 sm:p-5" style={{ borderColor: BORDER, background: PANEL }}>
-              {!selected ? (
-                <div className="flex h-full min-h-[320px] flex-col items-center justify-center text-center text-white/45">
-                  <KeyRound className="mb-3 h-10 w-10 opacity-30" aria-hidden />
-                  <p className="text-sm">Select an entry from the tree.</p>
+                {renderDetailShell(selected ? renderDetailPanel(selected) : null, Grid3X3, "Select an entry to view full details.")}
+              </div>
+            )}
+            {viewMode === "tree" && (
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+                <div className="rounded-2xl border p-4" style={{ borderColor: BORDER, background: PANEL }}>
+                  <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/45">
+                    <Lock className="h-3.5 w-3.5" aria-hidden />
+                    Model → Category → Entry
+                  </div>
+                  {loading ? (
+                    renderLoadingState()
+                  ) : tree.size === 0 ? (
+                    renderEmptyState({ icon: FolderTree, title: "No entries", description: "Try adjusting your filters." })
+                  ) : (
+                    <div className="space-y-2">
+                      {[...tree.entries()]
+                        .sort(([a], [b]) => {
+                          if (a === "__general__") return -1;
+                          if (b === "__general__") return 1;
+                          return (modelById[a] ?? "").localeCompare(modelById[b] ?? "");
+                        })
+                        .map(([modelKey, categories]) => {
+                          const modelLabel =
+                            modelKey === "__general__"
+                              ? "Company / General"
+                              : modelById[modelKey] ?? "Unknown model";
+                          const modelExpanded = expandedModels.has(modelKey);
+                          const isGeneral = modelKey === "__general__";
+                          return (
+                            <div key={modelKey} className="rounded-xl border" style={{ borderColor: BORDER }}>
+                              <button
+                                type="button"
+                                onClick={() => toggleModel(modelKey)}
+                                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm font-medium text-white/90 hover:bg-white/[0.03]"
+                              >
+                                {modelExpanded ? (
+                                  <ChevronDown className="h-4 w-4 shrink-0 text-white/45" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 shrink-0 text-white/45" />
+                                )}
+                                {isGeneral ? (
+                                  <Building2 className="h-4 w-4 shrink-0 text-white/45" aria-hidden />
+                                ) : (
+                                  <AdminRowAvatar name={modelLabel} size="sm" />
+                                )}
+                                {modelLabel}
+                              </button>
+                              {modelExpanded && (
+                                <div className="border-t px-2 py-2" style={{ borderColor: BORDER }}>
+                                  {[...categories.entries()]
+                                    .sort(([a], [b]) => a.localeCompare(b))
+                                    .map(([category, items]) => {
+                                      const catKey = `${modelKey}::${category}`;
+                                      const catExpanded = expandedCategories.has(catKey);
+                                      return (
+                                        <div key={catKey} className="mb-1 last:mb-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleCategory(catKey)}
+                                            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-white/75 hover:bg-white/[0.03]"
+                                          >
+                                            {catExpanded ? (
+                                              <ChevronDown className="h-3.5 w-3.5 text-white/40" />
+                                            ) : (
+                                              <ChevronRight className="h-3.5 w-3.5 text-white/40" />
+                                            )}
+                                            <CategoryBadge category={category} size="sm" />
+                                            {category}
+                                            <span className="ml-auto text-xs text-white/35">{items.length}</span>
+                                          </button>
+                                          {catExpanded && (
+                                            <div className="ml-5 space-y-1 border-l pl-2" style={{ borderColor: BORDER }}>
+                                              {items.map((entry) => (
+                                                <button
+                                                  key={entry.id}
+                                                  type="button"
+                                                  onClick={() => setSelectedId(entry.id)}
+                                                  className={cn(
+                                                    "block w-full rounded-lg px-2 py-2 text-left text-sm transition",
+                                                    selectedId === entry.id
+                                                      ? "bg-[#D4AF8C]/10 text-[#D4AF8C]"
+                                                      : "text-white/70 hover:bg-white/[0.04] hover:text-white",
+                                                  )}
+                                                >
+                                                  {entry.label}
+                                                  {entry.fields.username ? (
+                                                    <span className="mt-0.5 block truncate font-mono text-xs text-white/40">
+                                                      {entry.fields.username}
+                                                    </span>
+                                                  ) : null}
+                                                </button>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                 </div>
-              ) : (
-                renderDetailPanel(selected)
-              )}
-            </div>
-          </div>
-        )}
+                {renderDetailShell(selected ? renderDetailPanel(selected) : null, KeyRound, "Select an entry from the tree.")}
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
 
       {/* Form modal */}

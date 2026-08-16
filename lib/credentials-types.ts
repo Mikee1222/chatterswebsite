@@ -50,6 +50,7 @@ export const CREDENTIAL_CATEGORY_SUGGESTIONS = [
   "SIM",
   "PayPal",
   "Payment",
+  "YouTube",
   "General",
   "Other",
 ] as const;
