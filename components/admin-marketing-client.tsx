@@ -53,8 +53,18 @@ import type {
 import type { AppNotification, ModelRecord, UserRecord } from "@/types";
 import { isModelActiveForAssignment } from "@/lib/assignment-filters";
 import { StaffAssigneePicker, staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
+import { MarketingCredentialIndicator } from "@/components/marketing-credential-indicator";
+import {
+  ADMIN_MARKETING_TABS,
+  MarketingControlRoomHero,
+  MarketingFilterBar,
+  MarketingStatCard,
+  MarketingTabBar,
+  type MarketingTabId,
+} from "@/components/marketing-control-room-ui";
+import type { MaskedCredentialEntry } from "@/services/credential-entries";
 
-type Tab = "platforms" | "accounts" | "funnels" | "reports" | "phones";
+type Tab = MarketingTabId;
 type ReportDateRange = "all" | "7d" | "30d" | "custom";
 
 const REGIONS = ["USA", "Greek", "Global"] as const;
@@ -553,6 +563,9 @@ export function AdminMarketingClient({
   staffUsers,
   roleLabels,
   initialReports = [],
+  canViewCredentials = false,
+  canManageCredentials = false,
+  modelUuidByPublicId = {},
 }: {
   platforms: MarketingPlatform[];
   accounts: SocialAccount[];
@@ -563,6 +576,9 @@ export function AdminMarketingClient({
   staffUsers: StaffUserOption[];
   roleLabels: Record<string, string>;
   initialReports?: ShadowbanReport[];
+  canViewCredentials?: boolean;
+  canManageCredentials?: boolean;
+  modelUuidByPublicId?: Record<string, string>;
 }) {
   const { addToast } = useToast();
   const isSupabase = useIsSupabaseBackend();
@@ -576,6 +592,27 @@ export function AdminMarketingClient({
   const [busy, setBusy] = React.useState<string | null>(null);
   const [highlightAccountId, setHighlightAccountId] = React.useState<string | null>(null);
   const [statusMenuOpenId, setStatusMenuOpenId] = React.useState<string | null>(null);
+  const [credentialEntries, setCredentialEntries] = React.useState<MaskedCredentialEntry[]>([]);
+
+  React.useEffect(() => {
+    if (!canViewCredentials && !canManageCredentials) return;
+    let cancelled = false;
+    void fetch("/api/admin/credentials", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { entries: [] }))
+      .then((data: { entries?: MaskedCredentialEntry[] }) => {
+        if (!cancelled) setCredentialEntries(data.entries ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCredentialEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewCredentials, canManageCredentials]);
+
+  const handleCredentialCreated = React.useCallback((entry: MaskedCredentialEntry) => {
+    setCredentialEntries((prev) => [entry, ...prev.filter((e) => e.id !== entry.id)]);
+  }, []);
 
   React.useEffect(() => {
     if (!statusMenuOpenId) return;
@@ -935,6 +972,7 @@ export function AdminMarketingClient({
   const [filterPlatform, setFilterPlatform] = React.useState("");
   const [filterVA, setFilterVA] = React.useState("");
   const [filterStatus, setFilterStatus] = React.useState("");
+  const [filterRegion, setFilterRegion] = React.useState("");
   const [accountModalOpen, setAccountModalOpen] = React.useState(false);
   const [editingAccountId, setEditingAccountId] = React.useState<string | null>(null);
   const [accountDraft, setAccountDraft] = React.useState<Partial<SocialAccount>>({});
@@ -1011,10 +1049,11 @@ export function AdminMarketingClient({
       if (filterVA && a.assigned_va_id !== filterVA) return false;
       if (filterPlatform && a.platform !== filterPlatform) return false;
       if (filterStatus && (a.account_status ?? "active") !== filterStatus) return false;
+      if (filterRegion && a.region !== filterRegion) return false;
       if (!q) return true;
       return `${a.model_name} ${a.platform} ${a.username} ${a.account_link} ${a.notes}`.toLowerCase().includes(q);
     });
-  }, [accounts, searchAccounts, filterModel, filterVA, filterPlatform, filterStatus]);
+  }, [accounts, searchAccounts, filterModel, filterVA, filterPlatform, filterStatus, filterRegion]);
 
   const reportPlatformOptions = React.useMemo(
     () => [...new Set(reports.map((r) => r.platform).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -1466,40 +1505,57 @@ export function AdminMarketingClient({
   const selectClass = cn(ADMIN_FILTER_INPUT, "rounded-xl");
 
   const pendingCount = reportStats.pending;
+  const activeAccountCount = accounts.filter((a) => (a.account_status ?? "active") === "active").length;
+  const inactiveAccountCount = accounts.length - activeAccountCount;
+  const modelCount = new Set(accounts.map((a) => a.model_id).filter(Boolean)).size;
+
+  const accountFilterChips = (
+    <>
+      {filterModel ? (
+        <FilterChip label={`Creator: ${modelNameById[filterModel] ?? filterModel}`} onRemove={() => setFilterModel("")} />
+      ) : null}
+      {filterPlatform ? <FilterChip label={`Platform: ${filterPlatform}`} onRemove={() => setFilterPlatform("")} /> : null}
+      {filterRegion ? <FilterChip label={`Region: ${filterRegion}`} onRemove={() => setFilterRegion("")} /> : null}
+      {filterStatus ? <FilterChip label={`Status: ${filterStatus}`} onRemove={() => setFilterStatus("")} /> : null}
+      {filterVA ? (
+        <FilterChip
+          label={`VA: ${vaUsers.find((v) => v.id === filterVA)?.full_name ?? filterVA}`}
+          onRemove={() => setFilterVA("")}
+        />
+      ) : null}
+    </>
+  );
 
   return (
-    <div className="mx-auto max-w-7xl space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Marketing</h1>
-        <p className="mt-1 text-sm text-[#B8B4B8]/55">Control room for platforms, social accounts, funnel links, and shadowban reports.</p>
-      </div>
+    <div className="mx-auto max-w-7xl space-y-6">
+      <MarketingControlRoomHero
+        eyebrow="Marketing · Flagship"
+        title="Marketing Control Room"
+        description="Control room for platforms, social accounts, funnel links, phones, and shadowban reports — with Password Library integration."
+        stats={
+          <>
+            <MarketingStatCard label="Total accounts" value={accounts.length} accent="champagne" />
+            <MarketingStatCard label="Active" value={activeAccountCount} accent="emerald" />
+            <MarketingStatCard label="Inactive / issues" value={inactiveAccountCount} accent="amber" />
+            <MarketingStatCard label="Creators" value={modelCount} accent="pink" />
+            <MarketingStatCard label="Phones" value={phones.length} accent="blue" />
+          </>
+        }
+      />
 
       {error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
-        <button type="button" className={pill(tab === "accounts")} onClick={() => setTab("accounts")}>
-          Social accounts
-        </button>
-        <button type="button" className={pill(tab === "phones")} onClick={() => { setTab("phones"); setPhoneDetail(null); }}>
-          Phones
-        </button>
-        <button type="button" className={pill(tab === "reports")} onClick={() => setTab("reports")}>
-          Shadowban reports
-          {pendingCount > 0 ? (
-            <span className="ml-2 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 ring-1 ring-amber-500/30">
-              {pendingCount}
-            </span>
-          ) : null}
-        </button>
-        <button type="button" className={pill(tab === "funnels")} onClick={() => setTab("funnels")}>
-          Funnel links
-        </button>
-        <button type="button" className={pill(tab === "platforms")} onClick={() => setTab("platforms")}>
-          Platforms
-        </button>
-      </div>
+      <MarketingTabBar
+        tabs={ADMIN_MARKETING_TABS}
+        active={tab}
+        onChange={(next) => {
+          setTab(next);
+          if (next === "phones") setPhoneDetail(null);
+        }}
+        badgeByTab={{ reports: pendingCount }}
+      />
 
       {tab === "platforms" ? (
         <div className="space-y-6">
@@ -1691,16 +1747,21 @@ export function AdminMarketingClient({
             </button>
           </div>
 
-          <div className="mb-6 flex flex-wrap gap-3 rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div className="relative min-w-48 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B8B4B8]/30" />
-              <input
-                placeholder="Search username, model..."
-                value={searchAccounts}
-                onChange={(e) => setSearchAccounts(e.target.value)}
-                className={cn(ADMIN_FILTER_INPUT, "w-full pl-9")}
-              />
-            </div>
+          <MarketingFilterBar
+            search={searchAccounts}
+            onSearchChange={setSearchAccounts}
+            searchPlaceholder="Search username, model…"
+            showClear={!!(searchAccounts || filterModel || filterPlatform || filterVA || filterStatus || filterRegion)}
+            onClear={() => {
+              setSearchAccounts("");
+              setFilterModel("");
+              setFilterPlatform("");
+              setFilterVA("");
+              setFilterStatus("");
+              setFilterRegion("");
+            }}
+            chips={accountFilterChips}
+          >
             <select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className={ADMIN_SELECT}>
               <option value="">All creators</option>
               {models.map((m) => (
@@ -1714,6 +1775,14 @@ export function AdminMarketingClient({
               {[...new Set(accounts.map((a) => a.platform).filter(Boolean))].sort().map((p) => (
                 <option key={p} value={p}>
                   {p}
+                </option>
+              ))}
+            </select>
+            <select value={filterRegion} onChange={(e) => setFilterRegion(e.target.value)} className={ADMIN_SELECT}>
+              <option value="">All regions</option>
+              {REGIONS.map((r) => (
+                <option key={r} value={r}>
+                  {r}
                 </option>
               ))}
             </select>
@@ -1731,22 +1800,7 @@ export function AdminMarketingClient({
               <option value="shadowbanned">Shadowbanned</option>
               <option value="banned">Banned</option>
             </select>
-            {(searchAccounts || filterModel || filterPlatform || filterVA || filterStatus) && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchAccounts("");
-                  setFilterModel("");
-                  setFilterPlatform("");
-                  setFilterVA("");
-                  setFilterStatus("");
-                }}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-[#B8B4B8]/50 hover:text-white"
-              >
-                Clear
-              </button>
-            )}
-          </div>
+          </MarketingFilterBar>
 
           {accountsByModel.length === 0 ? (
             <div className={cn(VA_CARD, "py-20 text-center")}>
@@ -1871,12 +1925,20 @@ export function AdminMarketingClient({
                             </div>
                           ) : null}
 
-                          {acc.password ? (
-                            <div className="mb-3">
-                              <p className="mb-1 text-[10px] uppercase tracking-widest text-white/30">Password</p>
-                              <MaskedDisplay value={acc.password} />
-                            </div>
-                          ) : null}
+                          <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <MarketingCredentialIndicator
+                              variant="social"
+                              modelId={acc.model_id}
+                              platform={acc.platform}
+                              username={acc.username}
+                              entries={credentialEntries}
+                              canView={canViewCredentials}
+                              canManage={canManageCredentials}
+                              modelUuidByPublicId={modelUuidByPublicId}
+                              onEntryCreated={handleCredentialCreated}
+                              compact
+                            />
+                          </div>
 
                           {acc.linked_phone_id ? (
                             <button
@@ -2081,10 +2143,19 @@ export function AdminMarketingClient({
                           <MaskedDisplay value={phoneDetail.icloud_email} mode="email" />
                         </dd>
                       </div>
-                      <div>
-                        <dt className="text-[10px] uppercase tracking-widest text-white/35">iCloud password</dt>
-                        <dd className="mt-1">
-                          <MaskedDisplay value={phoneDetail.icloud_password} />
+                      <div className="sm:col-span-2">
+                        <dt className="mb-2 text-[10px] uppercase tracking-widest text-white/35">Password Library</dt>
+                        <dd>
+                          <MarketingCredentialIndicator
+                            variant="apple"
+                            icloudEmail={phoneDetail.icloud_email}
+                            linkedModelIds={[...new Set(phoneDetail.linked_accounts.map((a) => a.model_id).filter(Boolean))]}
+                            entries={credentialEntries}
+                            canView={canViewCredentials}
+                            canManage={canManageCredentials}
+                            modelUuidByPublicId={modelUuidByPublicId}
+                            onEntryCreated={handleCredentialCreated}
+                          />
                         </dd>
                       </div>
                       <div>
@@ -2268,8 +2339,20 @@ export function AdminMarketingClient({
                         </span>
                       </div>
                       <div className="mb-3">
-                        <p className="mb-0.5 text-[10px] uppercase tracking-widest text-white/30">iCloud</p>
+                        <p className="mb-1 text-[10px] uppercase tracking-widest text-white/30">iCloud</p>
                         <MaskedDisplay value={phone.icloud_email} mode="email" />
+                      </div>
+                      <div className="mb-3">
+                        <MarketingCredentialIndicator
+                          variant="apple"
+                          icloudEmail={phone.icloud_email}
+                          entries={credentialEntries}
+                          canView={canViewCredentials}
+                          canManage={canManageCredentials}
+                          modelUuidByPublicId={modelUuidByPublicId}
+                          onEntryCreated={handleCredentialCreated}
+                          compact
+                        />
                       </div>
                       {phone.file_links.length > 0 ? (
                         <div className="mb-3">

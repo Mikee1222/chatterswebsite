@@ -10,9 +10,21 @@ import {
   Link2,
   CheckCircle2,
   ShieldAlert,
+  Smartphone,
 } from "lucide-react";
+import { MarketingCredentialIndicator } from "@/components/marketing-credential-indicator";
+import {
+  MarketingControlRoomHero,
+  MarketingEmptyCard,
+  MarketingStatCard,
+  MarketingTabBar,
+  VA_MARKETING_TABS,
+  type MarketingTabId,
+} from "@/components/marketing-control-room-ui";
+import type { MaskedCredentialEntry } from "@/services/credential-entries";
 import type {
   FunnelLink,
+  Phone,
   ShadowbanReport,
   ShadowbanReportStatus,
   ShadowbanReportType,
@@ -129,10 +141,20 @@ function AccountCard({
   acc,
   pendingLifted,
   onReportLifted,
+  credentialEntries,
+  canViewCredentials,
+  canManageCredentials,
+  modelUuidByPublicId,
+  onCredentialCreated,
 }: {
   acc: SocialAccount;
   pendingLifted: boolean;
   onReportLifted: (acc: SocialAccount) => void;
+  credentialEntries: MaskedCredentialEntry[];
+  canViewCredentials: boolean;
+  canManageCredentials: boolean;
+  modelUuidByPublicId: Record<string, string>;
+  onCredentialCreated: (entry: MaskedCredentialEntry) => void;
 }) {
   const plat = acc.platform?.trim() || "Other";
   const color = getSocialColor(plat);
@@ -159,6 +181,20 @@ function AccountCard({
           </div>
         </div>
         <StatusBadge status={st} />
+      </div>
+      <div className="mb-3">
+        <MarketingCredentialIndicator
+          variant="social"
+          modelId={acc.model_id}
+          platform={acc.platform}
+          username={acc.username}
+          entries={credentialEntries}
+          canView={canViewCredentials}
+          canManage={canManageCredentials}
+          modelUuidByPublicId={modelUuidByPublicId}
+          onEntryCreated={onCredentialCreated}
+          compact
+        />
       </div>
       <a
         href={href}
@@ -211,12 +247,22 @@ function CreatorPortfolio({
   accounts,
   pendingLiftedAccountIds,
   onReportLifted,
+  credentialEntries,
+  canViewCredentials,
+  canManageCredentials,
+  modelUuidByPublicId,
+  onCredentialCreated,
 }: {
   modelId: string;
   modelName: string;
   accounts: SocialAccount[];
   pendingLiftedAccountIds: Set<string>;
   onReportLifted: (acc: SocialAccount) => void;
+  credentialEntries: MaskedCredentialEntry[];
+  canViewCredentials: boolean;
+  canManageCredentials: boolean;
+  modelUuidByPublicId: Record<string, string>;
+  onCredentialCreated: (entry: MaskedCredentialEntry) => void;
 }) {
   const issueCount = accounts.filter((a) => (a.account_status ?? "active") !== "active").length;
 
@@ -251,11 +297,76 @@ function CreatorPortfolio({
               acc={acc}
               pendingLifted={pendingLiftedAccountIds.has(acc.account_id)}
               onReportLifted={onReportLifted}
+              credentialEntries={credentialEntries}
+              canViewCredentials={canViewCredentials}
+              canManageCredentials={canManageCredentials}
+              modelUuidByPublicId={modelUuidByPublicId}
+              onCredentialCreated={onCredentialCreated}
             />
           ))}
         </div>
       </div>
     </section>
+  );
+}
+
+function VaPhoneCard({
+  phone,
+  linkedAccounts,
+  credentialEntries,
+  canViewCredentials,
+  canManageCredentials,
+  modelUuidByPublicId,
+  onCredentialCreated,
+}: {
+  phone: Phone;
+  linkedAccounts: SocialAccount[];
+  credentialEntries: MaskedCredentialEntry[];
+  canViewCredentials: boolean;
+  canManageCredentials: boolean;
+  modelUuidByPublicId: Record<string, string>;
+  onCredentialCreated: (entry: MaskedCredentialEntry) => void;
+}) {
+  return (
+    <article className={cn(VA_CARD, "overflow-hidden p-5")}>
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-pink-500/20 bg-gradient-to-br from-pink-500/15 to-rose-500/15">
+            <Smartphone className="h-5 w-5 text-pink-400" aria-hidden />
+          </div>
+          <div>
+            <p className="font-semibold text-white">{phone.device_name}</p>
+            <p className="text-xs text-[#B8B4B8]/45">{phone.icloud_email || "No iCloud email"}</p>
+          </div>
+        </div>
+        <span className={VA_MODEL_TAG}>{phone.linked_account_count} linked</span>
+      </div>
+      <MarketingCredentialIndicator
+        variant="apple"
+        icloudEmail={phone.icloud_email}
+        linkedModelIds={[...new Set(linkedAccounts.map((a) => a.model_id).filter(Boolean))]}
+        entries={credentialEntries}
+        canView={canViewCredentials}
+        canManage={canManageCredentials}
+        modelUuidByPublicId={modelUuidByPublicId}
+        onEntryCreated={onCredentialCreated}
+        compact
+      />
+      {linkedAccounts.length > 0 ? (
+        <div className="mt-4 space-y-2 border-t border-white/5 pt-4">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/55">Linked accounts</p>
+          {linkedAccounts.map((acc) => (
+            <div key={acc.id} className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2">
+              <PlatformIconBadge platform={acc.platform} size="sm" />
+              <div className="min-w-0">
+                <p className="truncate text-sm text-white">@{acc.username}</p>
+                <p className="text-xs text-[#B8B4B8]/45">{acc.model_name || acc.platform}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -575,9 +686,20 @@ function MarketingEmptyState() {
   );
 }
 
-export function VaMarketingClient() {
+export function VaMarketingClient({
+  canViewCredentials = false,
+  canManageCredentials = false,
+  modelUuidByPublicId = {},
+}: {
+  canViewCredentials?: boolean;
+  canManageCredentials?: boolean;
+  modelUuidByPublicId?: Record<string, string>;
+}) {
+  const [tab, setTab] = React.useState<Exclude<MarketingTabId, "platforms">>("accounts");
   const [accounts, setAccounts] = React.useState<SocialAccount[]>([]);
+  const [phones, setPhones] = React.useState<Phone[]>([]);
   const [funnels, setFunnels] = React.useState<FunnelLink[]>([]);
+  const [credentialEntries, setCredentialEntries] = React.useState<MaskedCredentialEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
   const [shadowbanOpen, setShadowbanOpen] = React.useState(false);
@@ -585,6 +707,27 @@ export function VaMarketingClient() {
   const [pendingLiftedAccountIds, setPendingLiftedAccountIds] = React.useState<Set<string>>(() => new Set());
   const [myReports, setMyReports] = React.useState<ShadowbanReport[]>([]);
   const [reportsLoading, setReportsLoading] = React.useState(true);
+  const [phonesLoading, setPhonesLoading] = React.useState(true);
+
+  const handleCredentialCreated = React.useCallback((entry: MaskedCredentialEntry) => {
+    setCredentialEntries((prev) => [entry, ...prev.filter((e) => e.id !== entry.id)]);
+  }, []);
+
+  React.useEffect(() => {
+    if (!canViewCredentials && !canManageCredentials) return;
+    let cancelled = false;
+    void fetch("/api/admin/credentials", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : { entries: [] }))
+      .then((data: { entries?: MaskedCredentialEntry[] }) => {
+        if (!cancelled) setCredentialEntries(data.entries ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setCredentialEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewCredentials, canManageCredentials]);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -622,6 +765,19 @@ export function VaMarketingClient() {
     }
   }, []);
 
+  const reloadPhones = React.useCallback(async () => {
+    setPhonesLoading(true);
+    try {
+      const res = await fetch("/api/va/marketing/phones", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { phones?: Phone[] };
+      if (res.ok) setPhones(data.phones ?? []);
+    } catch {
+      setPhones([]);
+    } finally {
+      setPhonesLoading(false);
+    }
+  }, []);
+
   const reloadReports = React.useCallback(async () => {
     setReportsLoading(true);
     try {
@@ -639,7 +795,8 @@ export function VaMarketingClient() {
     void reload();
     void reloadFunnels();
     void reloadReports();
-  }, [reload, reloadFunnels, reloadReports]);
+    void reloadPhones();
+  }, [reload, reloadFunnels, reloadReports, reloadPhones]);
 
   useSupabaseRealtimeRefresh(
     ["model_social_accounts"],
@@ -647,86 +804,71 @@ export function VaMarketingClient() {
       void reload();
       void reloadFunnels();
       void reloadReports();
+      void reloadPhones();
     },
     { debounceMs: 800 },
   );
 
   const grouped = React.useMemo(() => groupByModel(accounts), [accounts]);
+  const accountsByPhoneId = React.useMemo(() => {
+    const map = new Map<string, SocialAccount[]>();
+    for (const acc of accounts) {
+      if (!acc.linked_phone_id) continue;
+      const list = map.get(acc.linked_phone_id) ?? [];
+      list.push(acc);
+      map.set(acc.linked_phone_id, list);
+    }
+    return map;
+  }, [accounts]);
   const activeCount = accounts.filter((a) => (a.account_status ?? "active") === "active").length;
   const issueCount = accounts.length - activeCount;
   const bannedCount = accounts.filter((a) => a.account_status === "banned").length;
   const shadowbanCount = accounts.filter((a) => a.account_status === "shadowbanned").length;
+  const modelCount = grouped.size;
+  const pendingReportsCount = myReports.filter((r) => r.status === "pending").length;
 
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-5xl space-y-6 px-4 pb-10 pt-6 md:px-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h1 className="text-[32px] font-semibold tracking-tight text-white">Marketing accounts</h1>
-            <p className="mt-2 text-sm text-[#B8B4B8]/65">
-              Social handles assigned to you across your creators
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShadowbanOpen(true)}
-            className={cn(
-              "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition",
-              "border-amber-500/35 bg-transparent text-amber-300/90",
-              "shadow-[inset_0_1px_0_rgba(245,158,11,0.1)]",
-              "hover:border-amber-500/50 hover:bg-amber-500/8",
-              issueCount > 0 && bannedCount > 0
-                ? "border-red-500/40 text-red-300/90 hover:border-red-500/55 hover:bg-red-500/8"
-                : null,
-            )}
-          >
-            <AlertTriangle className="h-4 w-4" aria-hidden />
-            Report issue
-          </button>
-        </div>
+        <MarketingControlRoomHero
+          eyebrow="Marketing · VA"
+          title="Marketing Control Room"
+          description="Social handles, devices, shadowban reports, and tracking links assigned to you — with Password Library integration when permitted."
+          actions={
+            <button
+              type="button"
+              onClick={() => setShadowbanOpen(true)}
+              className={cn(
+                "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition",
+                "border-amber-500/35 bg-transparent text-amber-300/90",
+                "shadow-[inset_0_1px_0_rgba(245,158,11,0.1)]",
+                "hover:border-amber-500/50 hover:bg-amber-500/8",
+                issueCount > 0 && bannedCount > 0
+                  ? "border-red-500/40 text-red-300/90 hover:border-red-500/55 hover:bg-red-500/8"
+                  : null,
+              )}
+            >
+              <AlertTriangle className="h-4 w-4" aria-hidden />
+              Report issue
+            </button>
+          }
+          stats={
+            <>
+              <MarketingStatCard label="Total accounts" value={accounts.length} accent="champagne" />
+              <MarketingStatCard label="Active" value={activeCount} accent="emerald" />
+              <MarketingStatCard label="Issues" value={issueCount} accent="amber" />
+              <MarketingStatCard label="Creators" value={modelCount} accent="pink" />
+              <MarketingStatCard label="Phones" value={phones.length} accent="blue" />
+            </>
+          }
+        />
 
-        <div className="flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#151315] px-3.5 py-1.5 text-sm text-[#B8B4B8]/75">
-            Total
-            <span className="rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#D4AF8C]">
-              {accounts.length}
-            </span>
-          </span>
-          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/8 px-3.5 py-1.5 text-sm text-emerald-300/90">
-            Active
-            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-emerald-200">
-              {activeCount}
-            </span>
-          </span>
-          {shadowbanCount > 0 ? (
-            <span
-              className={cn(
-                "relative inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/8 px-3.5 py-1.5 text-sm text-amber-300",
-                VA_CARD_GLOW,
-                "before:bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.12)_0%,transparent_70%)] max-md:before:opacity-40",
-              )}
-            >
-              Shadowbanned
-              <span className="rounded-full border border-amber-500/30 bg-amber-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
-                {shadowbanCount}
-              </span>
-            </span>
-          ) : null}
-          {bannedCount > 0 ? (
-            <span
-              className={cn(
-                "relative inline-flex items-center gap-2 rounded-full border border-red-500/35 bg-red-500/10 px-3.5 py-1.5 text-sm text-red-300",
-                VA_CARD_GLOW,
-                "before:bg-[radial-gradient(ellipse_at_center,rgba(239,68,68,0.16)_0%,transparent_70%)] max-md:before:opacity-40",
-              )}
-            >
-              Banned
-              <span className="rounded-full border border-red-500/30 bg-red-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
-                {bannedCount}
-              </span>
-            </span>
-          ) : null}
-        </div>
+        <MarketingTabBar
+          tabs={VA_MARKETING_TABS}
+          active={tab}
+          onChange={setTab}
+          badgeByTab={{ reports: pendingReportsCount }}
+        />
 
         {err ? (
           <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
@@ -734,30 +876,78 @@ export function VaMarketingClient() {
           </div>
         ) : null}
 
-        {loading ? (
-          <div className={cn(VA_CARD, "px-6 py-16 text-center text-sm text-[#B8B4B8]/40")}>
-            Loading accounts…
-          </div>
-        ) : accounts.length === 0 ? (
-          <MarketingEmptyState />
-        ) : (
-          <div className="space-y-5">
-            {[...grouped.entries()].map(([modelId, group]) => (
-              <CreatorPortfolio
-                key={modelId}
-                modelId={modelId}
-                modelName={group.modelName}
-                accounts={group.items}
-                pendingLiftedAccountIds={pendingLiftedAccountIds}
-                onReportLifted={setLiftedTarget}
-              />
-            ))}
-          </div>
-        )}
+        {tab === "accounts" ? (
+          loading ? (
+            <div className={cn(VA_CARD, "px-6 py-16 text-center text-sm text-[#B8B4B8]/40")}>
+              Loading accounts…
+            </div>
+          ) : accounts.length === 0 ? (
+            <MarketingEmptyCard
+              icon={<Smartphone className="h-12 w-12" aria-hidden />}
+              title="No accounts yet"
+              description="When an admin assigns social handles to you, they'll show up here — grouped by creator, ready to open."
+            />
+          ) : (
+            <div className="space-y-5">
+              {[...grouped.entries()].map(([modelId, group]) => (
+                <CreatorPortfolio
+                  key={modelId}
+                  modelId={modelId}
+                  modelName={group.modelName}
+                  accounts={group.items}
+                  pendingLiftedAccountIds={pendingLiftedAccountIds}
+                  onReportLifted={setLiftedTarget}
+                  credentialEntries={credentialEntries}
+                  canViewCredentials={canViewCredentials}
+                  canManageCredentials={canManageCredentials}
+                  modelUuidByPublicId={modelUuidByPublicId}
+                  onCredentialCreated={handleCredentialCreated}
+                />
+              ))}
+            </div>
+          )
+        ) : null}
 
-        <MyReportsSection reports={myReports} loading={reportsLoading} />
+        {tab === "phones" ? (
+          phonesLoading ? (
+            <div className={cn(VA_CARD, "px-6 py-16 text-center text-sm text-[#B8B4B8]/40")}>Loading phones…</div>
+          ) : phones.length === 0 ? (
+            <MarketingEmptyCard
+              icon={<Smartphone className="h-12 w-12" aria-hidden />}
+              title="No phones assigned"
+              description="Devices linked to your marketing accounts will appear here with Apple ID credential indicators."
+            />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2">
+              {phones.map((phone) => (
+                <VaPhoneCard
+                  key={phone.id}
+                  phone={phone}
+                  linkedAccounts={accountsByPhoneId.get(phone.id) ?? []}
+                  credentialEntries={credentialEntries}
+                  canViewCredentials={canViewCredentials}
+                  canManageCredentials={canManageCredentials}
+                  modelUuidByPublicId={modelUuidByPublicId}
+                  onCredentialCreated={handleCredentialCreated}
+                />
+              ))}
+            </div>
+          )
+        ) : null}
 
-        <TrackingLinksSection funnels={funnels} />
+        {tab === "reports" ? <MyReportsSection reports={myReports} loading={reportsLoading} /> : null}
+
+        {tab === "funnels" ? (
+          funnels.length === 0 ? (
+            <MarketingEmptyCard
+              icon={<Link2 className="h-12 w-12" aria-hidden />}
+              title="No tracking links"
+              description="Promo and funnel links shared for your creators will appear here."
+            />
+          ) : (
+            <TrackingLinksSection funnels={funnels} />
+          )
+        ) : null}
       </div>
 
       <VAShadowbanReportModal
