@@ -463,6 +463,13 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.LINK_PAGES_VIEW,
   },
   {
+    href: ROUTES.admin.credentialsVault,
+    label: "Credentials Vault",
+    iconKey: "Settings2",
+    navSection: "TOOLS",
+    requiresPermission: PERMISSIONS.CREDENTIALS_VIEW,
+  },
+  {
     href: ROUTES.admin.clients,
     label: "Clients",
     iconKey: "Users",

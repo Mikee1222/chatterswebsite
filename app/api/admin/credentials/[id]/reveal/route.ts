@@ -1,0 +1,47 @@
+import { NextResponse } from "next/server";
+import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
+import { CREDENTIAL_FIELDS, type CredentialField } from "@/lib/credentials-types";
+import { revealCredentialField } from "@/services/credential-entries";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+function actorFromSession(session: NonNullable<Awaited<ReturnType<typeof getSessionFromCookies>>>) {
+  return {
+    userId: session.airtableUserId ?? session.id,
+    userName: session.fullName?.trim() || session.email?.trim() || "Unknown",
+  };
+}
+
+function parseField(value: unknown): CredentialField | null {
+  if (typeof value !== "string") return null;
+  return CREDENTIAL_FIELDS.includes(value as CredentialField) ? (value as CredentialField) : null;
+}
+
+/** POST /api/admin/credentials/[id]/reveal — decrypt one field (logged). */
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await getSessionFromCookies();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, PERMISSIONS.CREDENTIALS_VIEW))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const body = (await request.json().catch(() => null)) as { field?: string } | null;
+  const field = parseField(body?.field);
+  if (!field) return NextResponse.json({ error: "Invalid field" }, { status: 400 });
+
+  try {
+    const result = await revealCredentialField(id, field, actorFromSession(session));
+    return NextResponse.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Reveal failed";
+    const status = msg.includes("not found") ? 404 : 400;
+    return NextResponse.json({ error: msg }, { status });
+  }
+}

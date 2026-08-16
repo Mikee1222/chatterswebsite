@@ -142,6 +142,7 @@ export const ROUTES = {
     notificationDiagnostic: "/admin/notification-diagnostic",
     roles: "/admin/roles",
     linkPages: "/admin/link-pages",
+    credentialsVault: "/admin/credentials-vault",
   },
 
   /** Public link-in-bio pages */

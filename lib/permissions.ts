@@ -154,6 +154,10 @@ export const PERMISSIONS = {
 
   ACTIVITY_LOGS_VIEW: "activity_logs:view",
 
+  /** Encrypted credentials vault — opt-in via Roles UI (admin default only). */
+  CREDENTIALS_VIEW: "credentials:view",
+  CREDENTIALS_MANAGE: "credentials:manage",
+
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -260,6 +264,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   blur_tool: "Blur tool",
   my_profiles: "My profiles",
   activity_logs: "Activity logs",
+  credentials: "Credentials vault",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -428,6 +433,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "my_profiles:view": "Προβολή ανατεθειμένων μοντέλων, λογαριασμών και τηλεφώνων VA",
 
   "activity_logs:view": "Προβολή αρχείου καταγραφής δραστηριότητας συστήματος",
+
+  "credentials:view": "Προβολή κρυπτογραφημένου θησαυροφυλακίου credentials (masked, reveal/copy με audit)",
+  "credentials:manage": "Δημιουργία, επεξεργασία, διαγραφή credentials και προβολή audit log",
 };
 
 export type PermissionGroup = {
@@ -464,6 +472,8 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.MISTAKES_REASONS_MANAGE,
   // Opt-in tool access — grant per role via Roles UI; not an implicit manager default.
   PERMISSIONS.VIDEO_TRANSCRIBE_ACCESS,
+  PERMISSIONS.CREDENTIALS_VIEW,
+  PERMISSIONS.CREDENTIALS_MANAGE,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [
