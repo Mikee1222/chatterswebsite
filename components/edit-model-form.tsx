@@ -50,6 +50,12 @@ const INFLOWW_CREATOR_TOOLTIP =
 const CLARIOSUITE_IG_TOOLTIP =
   "Instagram account ID from Marketing → Instagram Insights → IG account lookup. Links this model to ClarioSuite analytics.";
 
+const STORY_LINK_A_TOOLTIP =
+  "Link A for the weekly Story CTA rotation — used Monday and Saturday (48h story w/ Instagram Plus).";
+
+const STORY_LINK_B_TOOLTIP =
+  "Link B for the weekly Story CTA rotation — used Wednesday (48h story w/ Instagram Plus).";
+
 type LinkedUserOption = {
   id: string;
   name: string;
@@ -104,6 +110,9 @@ export function EditModelForm({
     []
   );
   const [accountsLoaded, setAccountsLoaded] = React.useState(false);
+  const [storyLinkA, setStoryLinkA] = React.useState("");
+  const [storyLinkB, setStoryLinkB] = React.useState("");
+  const [storyLinksLoaded, setStoryLinksLoaded] = React.useState(false);
   const [linkedUserId, setLinkedUserId] = React.useState(currentLinkedUserId);
   const [clientId, setClientId] = React.useState(
     () => clientAssignments.find((a) => a.client[0])?.client[0] ?? ""
@@ -137,6 +146,22 @@ export function EditModelForm({
       cancelled = true;
     };
   }, [model.id, model.clariosuite_ig_user_id]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/models/${encodeURIComponent(model.id)}/story-link-config`)
+      .then((res) => res.json())
+      .then((data: { config?: { link_a_url?: string | null; link_b_url?: string | null } }) => {
+        if (cancelled) return;
+        setStoryLinkA(data.config?.link_a_url?.trim() ?? "");
+        setStoryLinkB(data.config?.link_b_url?.trim() ?? "");
+        setStoryLinksLoaded(true);
+      })
+      .catch(() => setStoryLinksLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [model.id]);
 
   React.useEffect(() => {
     if (team !== "chatting_agency") return;
@@ -222,6 +247,16 @@ export function EditModelForm({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ accounts: toSave }),
+        });
+      }
+      if (storyLinksLoaded) {
+        await fetch(`/api/admin/models/${encodeURIComponent(model.id)}/story-link-config`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            link_a_url: storyLinkA.trim() || null,
+            link_b_url: storyLinkB.trim() || null,
+          }),
         });
       }
       await relinkModelUserForModelProfile(model.id, linkedUserId || null);
@@ -368,8 +403,13 @@ export function EditModelForm({
 
       <SopFormSection
         title="Integrations"
-        description="External IDs for earnings and marketing analytics sync"
-        defaultOpen={Boolean(inflowwCreatorId || clariosuiteAccounts.some((a) => a.clariosuite_ig_user_id))}
+        description="External IDs for earnings, marketing analytics, and Story CTA links"
+        defaultOpen={Boolean(
+          inflowwCreatorId ||
+            clariosuiteAccounts.some((a) => a.clariosuite_ig_user_id) ||
+            storyLinkA ||
+            storyLinkB,
+        )}
       >
         <FormField
           label={<IntegrationFieldLabel label="Infloww creator ID" tooltip={INFLOWW_CREATOR_TOOLTIP} />}
@@ -404,6 +444,36 @@ export function EditModelForm({
           ) : (
             <p className="text-sm text-white/40">Loading linked accounts…</p>
           )}
+        </FormField>
+        <FormField
+          label={<IntegrationFieldLabel label="Story CTA — Link A" tooltip={STORY_LINK_A_TOOLTIP} />}
+          icon={<Link2 />}
+          htmlFor="story_link_a"
+          description="Monday & Saturday — 48h story w/ Instagram Plus."
+        >
+          <FormInput
+            id="story_link_a"
+            type="url"
+            value={storyLinkA}
+            onChange={(e) => setStoryLinkA(e.target.value)}
+            placeholder="https://…"
+            disabled={!storyLinksLoaded}
+          />
+        </FormField>
+        <FormField
+          label={<IntegrationFieldLabel label="Story CTA — Link B" tooltip={STORY_LINK_B_TOOLTIP} />}
+          icon={<Link2 />}
+          htmlFor="story_link_b"
+          description="Wednesday — 48h story w/ Instagram Plus."
+        >
+          <FormInput
+            id="story_link_b"
+            type="url"
+            value={storyLinkB}
+            onChange={(e) => setStoryLinkB(e.target.value)}
+            placeholder="https://…"
+            disabled={!storyLinksLoaded}
+          />
         </FormField>
       </SopFormSection>
 

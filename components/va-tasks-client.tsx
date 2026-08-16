@@ -42,6 +42,7 @@ import {
   vaTaskScreenshotFileError,
 } from "@/lib/va-task-screenshots";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
+import { StoryCtaScheduleWidget } from "@/components/story-cta-schedule-widget";
 
 type Props = {
   tasks: VaTaskRecord[];
@@ -1106,6 +1107,8 @@ export function VaTasksClient({
         />
 
         <TaskDateNavigator value={selectedYmd} onChange={setSelectedYmd} />
+
+        <StoryCtaScheduleWidget />
 
         <div className="flex flex-wrap gap-2">
           {(
