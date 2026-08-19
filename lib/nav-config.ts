@@ -403,7 +403,7 @@ const adminNav: NavItem[] = [
   },
   {
     href: ROUTES.admin.taskTemplates,
-    label: "Task Templates",
+    label: "Tasks Settings",
     // D3: distinct icon from "Tasks" (ListTodo) so the two are not confused in the sidebar.
     iconKey: "LayoutDashboard",
     navSection: "TEAM",

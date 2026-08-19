@@ -45,7 +45,14 @@ function Toggle({
   );
 }
 
-export function AdminTaskTimerConfigClient({ initialConfigs }: { initialConfigs: TimerConfig[] }) {
+export function AdminTaskTimerConfigClient({
+  initialConfigs,
+  embedded = false,
+}: {
+  initialConfigs: TimerConfig[];
+  /** When true, page header is omitted (used inside Tasks Settings tabs). */
+  embedded?: boolean;
+}) {
   const [configs, setConfigs] = React.useState(initialConfigs);
   const [saving, setSaving] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -78,13 +85,15 @@ export function AdminTaskTimerConfigClient({ initialConfigs }: { initialConfigs:
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Category Task Timers</h1>
-        <p className="mt-1 text-sm text-white/50">
-          Enable the Start Task / End Task timer for specific step-type categories. When enabled,
-          VAs will see a timer button inline with that category&apos;s checklist items.
-        </p>
-      </div>
+      {!embedded ? (
+        <div>
+          <h1 className="text-2xl font-semibold text-white">Category Task Timers</h1>
+          <p className="mt-1 text-sm text-white/50">
+            Enable the Start Task / End Task timer for specific step-type categories. When enabled,
+            VAs will see a timer button inline with that category&apos;s checklist items.
+          </p>
+        </div>
+      ) : null}
 
       {error ? (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">

@@ -57,6 +57,8 @@ interface DraftPhase {
 
 type Props = {
   initialTemplates: TaskTemplateRecord[];
+  /** When true, page header is omitted (used inside Tasks Settings tabs). */
+  embedded?: boolean;
 };
 
 const ADMIN_FILTER_INPUT =
@@ -310,7 +312,7 @@ function SortableDraftPhase({
   );
 }
 
-export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
+export function AdminTaskTemplatesClient({ initialTemplates, embedded = false }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const reduceMotion = useReducedMotion() ?? false;
@@ -632,12 +634,19 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-pink-400">Administration</p>
-          <h1 className="mt-2 text-[36px] font-bold leading-tight tracking-tight text-white">Task Templates</h1>
-          <p className="mt-2 text-sm text-white/40">Reusable task structures with phases and checklist items</p>
-        </div>
+      <div
+        className={cn(
+          "flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between",
+          embedded && "sm:justify-end",
+        )}
+      >
+        {!embedded ? (
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-pink-400">Administration</p>
+            <h1 className="mt-2 text-[36px] font-bold leading-tight tracking-tight text-white">Tasks Settings</h1>
+            <p className="mt-2 text-sm text-white/40">Reusable task structures with phases and checklist items</p>
+          </div>
+        ) : null}
         <button
           type="button"
           onClick={openCreate}

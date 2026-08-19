@@ -4,6 +4,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { ChevronDown, ChevronRight, Trophy, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ROUTES } from "@/lib/routes";
 import { VA_CARD, VA_TASKS } from "@/lib/va-tasks-tokens";
 import { FindingCard } from "@/components/manager-review-ui";
 import type {
@@ -478,7 +479,7 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
         {!timeStats || (timeStats.by_category.every((c) => c.total_sessions === 0)) ? (
           <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center text-sm text-white/40">
             No timed task sessions for this range.{" "}
-            <a href="/admin/task-timer-config" className="text-[#D4AF8C]/70 underline underline-offset-2 hover:text-[#D4AF8C]">
+            <a href={ROUTES.admin.taskTimerConfig} className="text-[#D4AF8C]/70 underline underline-offset-2 hover:text-[#D4AF8C]">
               Enable categories in Timer Config.
             </a>
           </p>

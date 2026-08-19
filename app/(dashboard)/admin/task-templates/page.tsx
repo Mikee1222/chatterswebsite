@@ -1,17 +1,31 @@
+import { Suspense } from "react";
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getAllTaskTemplatesAdmin } from "@/services/task-templates";
-import { AdminTaskTemplatesClient } from "@/components/admin-task-templates-client";
+import { getTimerConfigs } from "@/services/task-category-timer";
+import { AdminTasksSettingsClient } from "@/components/admin-tasks-settings-client";
 
-export default async function AdminTaskTemplatesPage() {
+type SearchParams = Promise<{ tab?: string }>;
+
+export default async function AdminTaskTemplatesPage({ searchParams }: { searchParams: SearchParams }) {
   await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.TASK_TEMPLATES_MANAGE);
 
-  const templates = await getAllTaskTemplatesAdmin().catch(() => []);
+  const { tab } = await searchParams;
+  const initialTab = tab === "timer-config" ? "timer-config" : "templates";
+
+  const [templates, timerConfigs] = await Promise.all([
+    getAllTaskTemplatesAdmin().catch(() => []),
+    getTimerConfigs().catch(() => []),
+  ]);
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-      <AdminTaskTemplatesClient initialTemplates={templates} />
-    </div>
+    <Suspense>
+      <AdminTasksSettingsClient
+        initialTemplates={templates}
+        initialTimerConfigs={timerConfigs}
+        initialTab={initialTab}
+      />
+    </Suspense>
   );
 }
