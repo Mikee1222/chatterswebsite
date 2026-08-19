@@ -12,6 +12,8 @@ import {
   Smartphone,
   Trash2,
 } from "lucide-react";
+import { CategoryTaskTimer } from "@/components/category-task-timer";
+import type { TaskStepType } from "@/lib/task-step-types";
 import { formatDateEuropean } from "@/lib/format";
 import { ymdInAthens } from "@/lib/airtable-datetime";
 import { getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
@@ -131,6 +133,8 @@ export type VaTaskCardProps = {
   canManage?: boolean;
   onEdit?: (task: VaTaskRecord) => void;
   onDelete?: (task: VaTaskRecord) => void;
+  /** Step-type categories that admin has enabled for task timers */
+  enabledTimerCategories?: TaskStepType[];
 };
 
 function allPhasesCompleted(phases: TaskPhase[]): boolean {
@@ -163,6 +167,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   canManage = false,
   onEdit,
   onDelete,
+  enabledTimerCategories = [],
 }: VaTaskCardProps) {
   const [expanded, setExpanded] = React.useState(false);
   const [observations, setObservations] = React.useState(task.completed_notes ?? "");
@@ -212,7 +217,15 @@ export const VaTaskCard = React.memo(function VaTaskCard({
     (phase: PhaseRibbonPhase) => {
       const accs = phase.assigned_model_id ? getModelAccounts(phase.assigned_model_id) : [];
       const startedMins = minutesSince(phase.start_time);
-      if (accs.length === 0 && !(phase.status === "in_progress" && startedMins != null)) return null;
+
+      // Determine dominant step_type for this phase's items
+      const phaseCats = [...new Set((phase.items ?? []).map((i) => i.step_type).filter(Boolean))] as TaskStepType[];
+      const timerCat = phaseCats.find((c) => enabledTimerCategories.includes(c)) ?? null;
+
+      const hasTimer = timerCat !== null && !task.is_virtual_occurrence;
+      const hasExtras = accs.length > 0 || (phase.status === "in_progress" && startedMins != null) || hasTimer;
+      if (!hasExtras) return null;
+
       return (
         <div className="mt-3 space-y-3 border-t border-[rgba(255,255,255,0.05)] pt-3">
           {phase.status === "in_progress" && startedMins != null ? (
@@ -278,10 +291,18 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               </div>
             </div>
           ) : null}
+          {hasTimer && timerCat ? (
+            <CategoryTaskTimer
+              vaTaskId={task.id}
+              category={timerCat}
+              enabledCategories={enabledTimerCategories}
+              onShift={onShift}
+            />
+          ) : null}
         </div>
       );
     },
-    [getModelAccounts, onShadowbanReport],
+    [getModelAccounts, onShadowbanReport, enabledTimerCategories, onShift, task.id, task.is_virtual_occurrence],
   );
 
   const renderItem = React.useCallback(

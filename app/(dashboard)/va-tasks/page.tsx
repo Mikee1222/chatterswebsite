@@ -8,6 +8,7 @@ import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getVaTasksForUser } from "@/services/va-tasks";
 import { getActiveVaTaskShift } from "@/services/shifts";
+import { getEnabledTimerCategories } from "@/services/task-category-timer";
 import { VaTasksClient } from "@/components/va-tasks-client";
 
 export default async function VaTasksPage() {
@@ -40,9 +41,10 @@ export default async function VaTasksPage() {
     .then(({ spawnTodayRecurringOccurrencesForVa }) => spawnTodayRecurringOccurrencesForVa(vaId))
     .catch((err) => console.error("[va-tasks] spawn today recurring failed", err));
 
-  const [tasks, activeShift] = await Promise.all([
+  const [tasks, activeShift, enabledTimerCategories] = await Promise.all([
     getVaTasksForUser(vaId).catch(() => []),
     getActiveVaTaskShift(vaId).catch(() => null),
+    getEnabledTimerCategories().catch(() => []),
   ]);
   const userName = (user.fullName || user.email || "").trim();
 
@@ -63,6 +65,7 @@ export default async function VaTasksPage() {
       userName={userName}
       initialActiveShift={initialActiveShift}
       canManage={canManage}
+      enabledTimerCategories={enabledTimerCategories}
     />
   );
 }

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { ChevronDown, ChevronRight, Trophy } from "lucide-react";
+import { ChevronDown, ChevronRight, Trophy, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VA_CARD, VA_TASKS } from "@/lib/va-tasks-tokens";
 import { FindingCard } from "@/components/manager-review-ui";
@@ -11,6 +11,7 @@ import type {
   VaStatisticsPreset,
   VaStatisticsReport,
 } from "@/services/va-statistics";
+import type { CategoryTimeStat, VaCategoryTimeStat } from "@/services/task-category-timer";
 
 const PRESETS: { id: VaStatisticsPreset; label: string }[] = [
   { id: "this_week", label: "This Week" },
@@ -149,6 +150,17 @@ function VaDetailCard({ row }: { row: VaPerUserStatistics }) {
   );
 }
 
+function fmtSeconds(s: number | null | undefined): string {
+  if (s == null) return "—";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rem = m % 60;
+  return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
+}
+
+type CategoryTimeStats = { by_category: CategoryTimeStat[]; by_va: VaCategoryTimeStat[] };
+
 export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaStatisticsReport }) {
   const [preset, setPreset] = React.useState<VaStatisticsPreset>(initialReport.range.preset);
   const [customStart, setCustomStart] = React.useState(initialReport.range.startYmd);
@@ -157,6 +169,22 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [sortMetric, setSortMetric] = React.useState<SortMetric>("completion_rate");
+  const [timeStats, setTimeStats] = React.useState<CategoryTimeStats | null>(null);
+  const [timeStatsLoading, setTimeStatsLoading] = React.useState(false);
+
+  const loadTimeStats = React.useCallback(async (start: string, end: string) => {
+    setTimeStatsLoading(true);
+    try {
+      const params = new URLSearchParams({ start, end });
+      const res = await fetch(`/api/admin/category-time-stats?${params}`, { credentials: "include", cache: "no-store" });
+      const d = (await res.json().catch(() => ({}))) as { stats?: CategoryTimeStats };
+      if (d.stats) setTimeStats(d.stats);
+    } catch {
+      // silently fail — time stats are supplemental
+    } finally {
+      setTimeStatsLoading(false);
+    }
+  }, []);
 
   const load = React.useCallback(async (nextPreset: VaStatisticsPreset, start: string, end: string) => {
     setLoading(true);
@@ -182,6 +210,11 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
       setLoading(false);
     }
   }, []);
+
+  // Load category time stats whenever the report range changes
+  React.useEffect(() => {
+    void loadTimeStats(report.range.startYmd, report.range.endYmd);
+  }, [report.range.startYmd, report.range.endYmd, loadTimeStats]);
 
   const ranked = React.useMemo(() => {
     const rows = [...report.by_va];
@@ -432,6 +465,74 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
             report.by_va.map((row) => <VaDetailCard key={row.va_id} row={row} />)
           )}
         </div>
+      </section>
+
+      {/* Category time section */}
+      <section className="space-y-4">
+        <div className="flex items-center gap-2">
+          <Timer className="h-4 w-4 text-[#D4AF8C]/70" />
+          <h2 className="text-lg font-semibold text-white">Category Time Tracking</h2>
+          {timeStatsLoading ? <span className="text-xs text-white/30">Loading…</span> : null}
+        </div>
+
+        {!timeStats || (timeStats.by_category.every((c) => c.total_sessions === 0)) ? (
+          <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center text-sm text-white/40">
+            No timed task sessions for this range.{" "}
+            <a href="/admin/task-timer-config" className="text-[#D4AF8C]/70 underline underline-offset-2 hover:text-[#D4AF8C]">
+              Enable categories in Timer Config.
+            </a>
+          </p>
+        ) : (
+          <div className="space-y-5">
+            {/* Overall averages */}
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Team averages</p>
+              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                {timeStats.by_category.filter((c) => c.total_sessions > 0).map((c) => (
+                  <div key={c.category} className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                    <p className="text-[11px] text-white/45">{c.category}</p>
+                    <p className="text-sm font-semibold text-white">{fmtSeconds(c.avg_seconds)}</p>
+                    <p className="text-[10px] text-white/30">{c.total_sessions} sessions</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Per-VA breakdown */}
+            {timeStats.by_va.length > 0 ? (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Per-VA averages</p>
+                <div className="overflow-hidden rounded-2xl border border-white/10">
+                  <table className="w-full text-sm">
+                    <thead className="bg-white/[0.04] text-left text-xs uppercase tracking-wide text-white/40">
+                      <tr>
+                        <th className="px-4 py-3">VA</th>
+                        {timeStats.by_category.filter((c) => c.total_sessions > 0).map((c) => (
+                          <th key={c.category} className="px-4 py-3">{c.category}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {timeStats.by_va.map((va) => (
+                        <tr key={va.va_id} className="border-t border-white/5">
+                          <td className="px-4 py-3 font-medium text-white">{va.va_name}</td>
+                          {timeStats.by_category.filter((c) => c.total_sessions > 0).map((c) => {
+                            const s = va.by_category.find((b) => b.category === c.category);
+                            return (
+                              <td key={c.category} className="px-4 py-3 tabular-nums text-[#D4AF8C]">
+                                {s && s.total_sessions > 0 ? fmtSeconds(s.avg_seconds) : <span className="text-white/25">—</span>}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
       </section>
     </div>
   );

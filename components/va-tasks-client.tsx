@@ -49,6 +49,7 @@ type Props = {
   userName?: string;
   initialActiveShift?: ActiveShift | null;
   canManage?: boolean;
+  enabledTimerCategories?: import("@/lib/task-step-types").TaskStepType[];
 };
 
 const DATE_VIEW_GROUP_OPTS = { forDateView: true as const };
@@ -473,6 +474,7 @@ export function VaTasksClient({
   userName = "",
   initialActiveShift = null,
   canManage = false,
+  enabledTimerCategories = [],
 }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
@@ -1221,6 +1223,7 @@ export function VaTasksClient({
                   canManage={canManage}
                   onEdit={canManage ? handleEditRequest : undefined}
                   onDelete={canManage ? handleDeleteRequest : undefined}
+                  enabledTimerCategories={enabledTimerCategories}
                 />
               ))}
               {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (
@@ -1255,6 +1258,7 @@ export function VaTasksClient({
                       canManage={canManage}
                       onEdit={canManage ? handleEditRequest : undefined}
                       onDelete={canManage ? handleDeleteRequest : undefined}
+                      enabledTimerCategories={enabledTimerCategories}
                     />
                   ) : (
                     <div className="rounded-2xl border border-[#D4AF8C]/15 bg-[#151315] px-4 py-3">

@@ -128,6 +128,7 @@ export const ROUTES = {
     pdfMaker: "/admin/pdf-maker",
     vaTasks: "/admin/va-tasks",
     taskTemplates: "/admin/task-templates",
+    taskTimerConfig: "/admin/task-timer-config",
     vaStatistics: "/admin/va-statistics",
     winnerVideos: "/admin/winner-videos",
     /** Winner/Super Winner sourcing hub (distinct from Research `/admin/winner-videos`). */
