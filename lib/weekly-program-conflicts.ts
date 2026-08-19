@@ -100,7 +100,6 @@ export function getWeeklyProgramConflicts(
     for (let j = i + 1; j < programs.length; j++) {
       const q = programs[j];
       if (!q.start_time || !q.end_time) continue;
-      if (!sameWeeklyProgramChatter(p, q)) continue;
       const modelSetP = new Set(p.model_ids.filter(Boolean));
       for (const mid of q.model_ids.filter(Boolean)) {
         if (!modelSetP.has(mid)) continue;
@@ -110,7 +109,7 @@ export function getWeeklyProgramConflicts(
           p.day === q.day ? p.day : `${p.day} / ${q.day}`;
         conflicts.push({
           type: "model_time_overlap",
-          message: `Model "${name}" has overlapping times (${dayLabel}): ${p.chatter_name ?? "—"} (${p.shift_type}) and ${q.chatter_name ?? "—"} (${q.shift_type}). Same model cannot be assigned to two overlapping shifts for the same chatter this week.`,
+          message: `Model "${name}" has overlapping times (${dayLabel}): ${p.chatter_name ?? "—"} (${p.shift_type}) and ${q.chatter_name ?? "—"} (${q.shift_type}). Same model cannot be assigned to two overlapping shifts this week.`,
           recordIds: [p.id, q.id],
           day: p.day,
           shiftType: p.shift_type,

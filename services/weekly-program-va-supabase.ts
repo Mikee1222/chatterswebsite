@@ -24,7 +24,6 @@ import {
 import {
   filterProgramsForConflictCheck,
   rangesOverlap,
-  sameWeeklyProgramChatter,
 } from "@/lib/weekly-program-conflicts";
 import type { ConflictCheckExclude } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
@@ -252,15 +251,15 @@ export async function checkScheduledShiftConflictsVa(
   start_time: string,
   end_time: string
 ): Promise<ConflictResultVa> {
+  void _vaId;
+  void _vaName;
   void _day;
   void _shiftType;
   const programs = await getProgramsForWeekVa(weekStart);
   const others = filterProgramsForConflictCheck(programs, exclude);
   const modelSet = new Set(modelIds.filter(Boolean));
-  const savingChatter = { chatter_id: _vaId, chatter_name: _vaName };
   for (const p of others) {
     if (!p.start_time || !p.end_time) continue;
-    if (!sameWeeklyProgramChatter(p, savingChatter)) continue;
     if (!rangesOverlap(p.start_time, p.end_time, start_time, end_time)) continue;
     for (const mid of p.model_ids.filter(Boolean)) {
       if (!modelSet.has(mid)) continue;

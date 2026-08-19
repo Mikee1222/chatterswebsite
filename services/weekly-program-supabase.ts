@@ -24,7 +24,6 @@ import {
 import {
   filterProgramsForConflictCheck,
   rangesOverlap,
-  sameWeeklyProgramChatter,
 } from "@/lib/weekly-program-conflicts";
 import type { ConflictCheckExclude } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
@@ -244,15 +243,15 @@ export async function checkScheduledShiftConflicts(
   start_time: string,
   end_time: string
 ): Promise<ConflictResult> {
+  void _chatterId;
+  void _chatterName;
   void _day;
   void _shiftType;
   const programs = await getProgramsForWeek(weekStart);
   const others = filterProgramsForConflictCheck(programs, exclude);
   const modelSet = new Set(modelIds.filter(Boolean));
-  const savingChatter = { chatter_id: _chatterId, chatter_name: _chatterName };
   for (const p of others) {
     if (!p.start_time || !p.end_time) continue;
-    if (!sameWeeklyProgramChatter(p, savingChatter)) continue;
     if (!rangesOverlap(p.start_time, p.end_time, start_time, end_time)) continue;
     for (const mid of p.model_ids.filter(Boolean)) {
       if (!modelSet.has(mid)) continue;
@@ -260,7 +259,7 @@ export async function checkScheduledShiftConflicts(
       return {
         conflict: true,
         type: "model",
-        message: `Model "${modelName}" is already assigned to ${p.chatter_name ?? "another chatter"} during overlapping hours in this week. Same model cannot be in two overlapping shifts for the same chatter.`,
+        message: `Model "${modelName}" is already assigned to ${p.chatter_name ?? "another chatter"} during overlapping hours in this week. Same model cannot be in two overlapping shifts.`,
         modelName,
         otherChatter: p.chatter_name ?? undefined,
       };

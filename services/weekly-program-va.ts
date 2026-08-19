@@ -14,7 +14,6 @@ import { WEEKLY_PROGRAM_DAY_OPTIONS, WEEKLY_PROGRAM_SHIFT_TYPES, ensureMondayFor
 import {
   filterProgramsForConflictCheck,
   rangesOverlap,
-  sameWeeklyProgramChatter,
   type ConflictCheckExclude,
 } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
@@ -324,12 +323,12 @@ export async function checkScheduledShiftConflictsVa(
     );
   }
   const programs = await getProgramsForWeekVa(weekStart);
+  void _vaId;
+  void _vaName;
   const others = filterProgramsForConflictCheck(programs, exclude);
   const modelSet = new Set(modelIds.filter(Boolean));
-  const savingChatter = { chatter_id: _vaId, chatter_name: _vaName };
   for (const p of others) {
     if (!p.start_time || !p.end_time) continue;
-    if (!sameWeeklyProgramChatter(p, savingChatter)) continue;
     if (!rangesOverlap(p.start_time, p.end_time, start_time, end_time)) continue;
     for (const mid of p.model_ids.filter(Boolean)) {
       if (!modelSet.has(mid)) continue;
