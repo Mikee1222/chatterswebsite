@@ -77,7 +77,11 @@ export async function POST(req: Request) {
       });
       return Response.json({ entry });
     } catch (e) {
-      return Response.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
+      const message = e instanceof Error ? e.message : "Failed";
+      if (message.includes("already completed")) {
+        return Response.json({ error: message }, { status: 409 });
+      }
+      return Response.json({ error: message }, { status: 500 });
     }
   }
 

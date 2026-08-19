@@ -482,6 +482,8 @@ export function VaTasksClient({
   const { addToast } = useToast();
   const isSupabase = useIsSupabaseBackend();
   const tasks = initialTasks;
+  const tasksRef = React.useRef(tasks);
+  tasksRef.current = tasks;
   const [selected, setSelected] = React.useState<VaTaskRecord | null>(null);
   const [notes, setNotes] = React.useState("");
   const [statusPick, setStatusPick] = React.useState<VaTaskStatus>("done");
@@ -508,15 +510,6 @@ export function VaTasksClient({
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
   const isViewingToday = selectedYmd === todayYmd;
-
-  useSupabaseRealtimeRefresh(
-    ["va_tasks", "va_task_phases", "va_task_phase_items"],
-    () => {
-      setTaskPhases({});
-      router.refresh();
-    },
-    { debounceMs: 700 },
-  );
 
   const [deferredSearch, setDeferredSearch] = React.useState("");
   const handleDeferredSearchChange = React.useCallback((q: string) => setDeferredSearch(q), []);
@@ -672,68 +665,118 @@ export function VaTasksClient({
     delete phaseRollbackRef.current[taskId];
   }, []);
 
-  const loadPhasesAndAccounts = React.useCallback(async (task: VaTaskRecord) => {
-    // Always re-fetch on expand — drop any stale snapshot first so we never paint
-    // checklist rows missing step_type while the fresh request is in-flight.
-    if (phasesInflightRef.current.has(task.id)) return;
-    phasesInflightRef.current.add(task.id);
-    setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
-    setTaskPhases((prev) => ({ ...prev, [task.id]: [] }));
-    try {
-      const params = new URLSearchParams({ task_id: task.id });
-      if (task.virtual_source_task_id?.trim()) {
-        params.set("source_task_id", task.virtual_source_task_id.trim());
-      }
-      const res = await fetch(`/api/va/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
-      const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-      const phases: TaskPhase[] = normalizeTaskPhasesForClient(data.phases ?? []);
+  const fetchPhasesForTask = React.useCallback(async (task: VaTaskRecord): Promise<TaskPhase[]> => {
+    const params = new URLSearchParams({ task_id: task.id });
+    if (task.virtual_source_task_id?.trim()) {
+      params.set("source_task_id", task.virtual_source_task_id.trim());
+    }
+    const res = await fetch(`/api/va/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
+    const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
+    return normalizeTaskPhasesForClient(data.phases ?? []);
+  }, []);
 
-      // Paint checklist immediately — do NOT wait on N+1 social-account fetches (desktop expand lag).
-      React.startTransition(() => {
-        setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
-      });
+  const loadModelAccountsForPhases = React.useCallback(async (phases: TaskPhase[]) => {
+    const modelIds = [
+      ...new Set(
+        phases
+          .map((p) => p.assigned_model_id?.trim())
+          .filter((id): id is string => Boolean(id) && !modelAccountsRef.current[id]),
+      ),
+    ];
+    if (modelIds.length === 0) return;
 
-      const modelIds = [
-        ...new Set(
-          phases
-            .map((p) => p.assigned_model_id?.trim())
-            .filter((id): id is string => Boolean(id) && !modelAccountsRef.current[id]),
-        ),
-      ];
-      if (modelIds.length === 0) return;
-
-      const accountsByModel: Record<string, SocialAccount[]> = {};
-      await Promise.all(
-        modelIds.map(async (modelId) => {
-          const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(modelId)}`, {
-            credentials: "include",
-          });
-          const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
-          if (accRes.ok) {
-            accountsByModel[modelId] = accData.accounts ?? [];
-          }
-        }),
-      );
-
-      React.startTransition(() => {
-        setModelAccounts((prev) => {
-          const next = { ...prev };
-          for (const [modelId, accs] of Object.entries(accountsByModel)) {
-            if (!next[modelId]) next[modelId] = accs;
-          }
-          return next;
+    const accountsByModel: Record<string, SocialAccount[]> = {};
+    await Promise.all(
+      modelIds.map(async (modelId) => {
+        const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(modelId)}`, {
+          credentials: "include",
         });
-      });
-    } finally {
-      phasesInflightRef.current.delete(task.id);
-      setPhasesLoadingIds((prev) => {
-        if (!prev[task.id]) return prev;
+        const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
+        if (accRes.ok) {
+          accountsByModel[modelId] = accData.accounts ?? [];
+        }
+      }),
+    );
+
+    React.startTransition(() => {
+      setModelAccounts((prev) => {
         const next = { ...prev };
-        delete next[task.id];
+        for (const [modelId, accs] of Object.entries(accountsByModel)) {
+          if (!next[modelId]) next[modelId] = accs;
+        }
         return next;
       });
-    }
+    });
   }, []);
+
+  const refreshPhasesAndAccounts = React.useCallback(
+    async (task: VaTaskRecord) => {
+      if (phasesInflightRef.current.has(task.id)) return;
+      phasesInflightRef.current.add(task.id);
+      setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
+      try {
+        const phases = await fetchPhasesForTask(task);
+        React.startTransition(() => {
+          setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
+        });
+        await loadModelAccountsForPhases(phases);
+      } finally {
+        phasesInflightRef.current.delete(task.id);
+        setPhasesLoadingIds((prev) => {
+          if (!prev[task.id]) return prev;
+          const next = { ...prev };
+          delete next[task.id];
+          return next;
+        });
+      }
+    },
+    [fetchPhasesForTask, loadModelAccountsForPhases],
+  );
+
+  const loadPhasesAndAccounts = React.useCallback(
+    async (task: VaTaskRecord) => {
+      // Always re-fetch on expand — drop any stale snapshot first so we never paint
+      // checklist rows missing step_type while the fresh request is in-flight.
+      if (phasesInflightRef.current.has(task.id)) return;
+      phasesInflightRef.current.add(task.id);
+      setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
+      setTaskPhases((prev) => ({ ...prev, [task.id]: [] }));
+      try {
+        const phases = await fetchPhasesForTask(task);
+        React.startTransition(() => {
+          setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
+        });
+        await loadModelAccountsForPhases(phases);
+      } finally {
+        phasesInflightRef.current.delete(task.id);
+        setPhasesLoadingIds((prev) => {
+          if (!prev[task.id]) return prev;
+          const next = { ...prev };
+          delete next[task.id];
+          return next;
+        });
+      }
+    },
+    [fetchPhasesForTask, loadModelAccountsForPhases],
+  );
+
+  const refreshPhasesAndAccountsRef = React.useRef(refreshPhasesAndAccounts);
+  refreshPhasesAndAccountsRef.current = refreshPhasesAndAccounts;
+
+  useSupabaseRealtimeRefresh(
+    ["va_tasks", "va_task_phases", "va_task_phase_items"],
+    () => {
+      // Re-fetch loaded tasks in-place — wiping taskPhases on item completion left expanded
+      // cards showing "No phases for this task" until manual re-expand (timer End path).
+      const loadedTaskIds = Object.keys(taskPhasesRef.current);
+      for (const taskId of loadedTaskIds) {
+        const task = tasksRef.current.find((t) => t.id === taskId);
+        if (task) void refreshPhasesAndAccountsRef.current(task);
+      }
+      router.refresh();
+    },
+    { debounceMs: 700 },
+  );
 
   const submitPhaseItemCompletion = React.useCallback(
     async (item: PhaseItem, taskId: string, screenshots: File[] = []) => {

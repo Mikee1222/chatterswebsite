@@ -133,6 +133,19 @@ export async function startTimerEntry(input: {
 }): Promise<CategoryTimeEntry> {
   const sb = getSupabaseServiceClient();
 
+  const { data: priorCompleted, error: priorErr } = await sb
+    .from("task_category_time_entries")
+    .select("id")
+    .eq("task_phase_item_id", input.task_phase_item_id)
+    .eq("va_id", input.va_id)
+    .not("ended_at", "is", null)
+    .limit(1)
+    .maybeSingle();
+  if (priorErr) throw new Error(`startTimerEntry: ${priorErr.message}`);
+  if (priorCompleted) {
+    throw new Error("Timer already completed for this checklist item");
+  }
+
   // One active item-timer per VA — end any existing session first.
   const existing = await getActiveTimerForVa(input.va_id);
   if (existing) await endTimerEntry(existing.id, input.va_id);

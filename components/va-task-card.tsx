@@ -270,6 +270,13 @@ export const VaTaskCard = React.memo(function VaTaskCard({
     if (next) void onLoadPhases(task);
   }, [onLoadPhases, task]);
 
+  // Safety net: realtime invalidation must not leave an expanded card on empty phases.
+  React.useEffect(() => {
+    if (expanded && phases.length === 0 && !phasesLoading) {
+      void onLoadPhases(task);
+    }
+  }, [expanded, phases.length, phasesLoading, onLoadPhases, task]);
+
   const renderPhaseExtra = React.useCallback(
     (phase: PhaseRibbonPhase) => {
       const accs = phase.assigned_model_id ? getModelAccounts(phase.assigned_model_id) : [];
@@ -377,6 +384,8 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         !isVirtual && enabledTimerCategories.includes(itemStepType);
       const timerInProgress = activeTimerEntry?.task_phase_item_id === item.id;
       const completedDuration = itemDurations[item.id];
+      const timerAlreadyCompleted =
+        item.status === "completed" || completedDuration != null;
       return (
         <div className="space-y-1">
           <div className="flex items-start gap-1">
@@ -431,7 +440,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                 </p>
               ) : null}
             </button>
-            {showItemTimer && onActiveTimerEntryChange ? (
+            {showItemTimer && onActiveTimerEntryChange && !timerAlreadyCompleted ? (
               <CategoryTaskTimer
                 vaTaskId={task.id}
                 taskPhaseItemId={item.id}
