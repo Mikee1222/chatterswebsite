@@ -61,6 +61,16 @@ async function main() {
           ? `${w.top_post.content_label} · ${w.top_post.reach} reach`
           : null,
         cross_platform: w.cross_platform?.text ?? null,
+        cross_platform_section: w.cross_platform_section
+          ? {
+              status: w.cross_platform_section.analytics.status,
+              overlap_days: w.cross_platform_section.analytics.overlap_days,
+              correlation: w.cross_platform_section.analytics.reach_visitor_correlation.correlation,
+              conversion_pct: w.cross_platform_section.analytics.conversion_estimate.rate_pct,
+              chart_days: w.cross_platform_section.chart.length,
+              of_new_subs: w.cross_platform_section.of_totals.new_subscribers,
+            }
+          : null,
       });
       console.log(`Talking Points: ${w.talking_points}`);
     }

@@ -29,6 +29,7 @@ import type {
 import type { IgWeeklyInsightSeverity, IgWeeklyInsightTag } from "@/lib/instagram-weekly-insights";
 import { fmtIgGuardedPct } from "@/lib/instagram-weekly-insights";
 import type { PeriodChangeDisplayNote } from "@/services/infloww-analytics";
+import { IgWeeklyCrossPlatformSection } from "@/components/ig-weekly-cross-platform-section";
 
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
@@ -465,20 +466,11 @@ function WeekCard({ slice }: { slice: IgModelWeekSlice }) {
 
           {slice.top_post ? <TopPostMini post={slice.top_post} /> : null}
 
-          {slice.cross_platform ? (
-            <p
-              className={cn(
-                "rounded-lg border px-2 py-1.5 text-[10px] leading-relaxed",
-                slice.cross_platform.signal === "aligned"
-                  ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-100/85"
-                  : slice.cross_platform.signal === "divergent"
-                    ? "border-amber-500/25 bg-amber-500/8 text-amber-100/85"
-                    : "border-white/10 bg-white/[0.03] text-white/55"
-              )}
-            >
-              <span className="font-semibold uppercase tracking-wider text-white/40">IG × OF · </span>
-              {slice.cross_platform.text}
-            </p>
+          {slice.cross_platform_section ? (
+            <IgWeeklyCrossPlatformSection
+              section={slice.cross_platform_section}
+              igTotals={slice.totals}
+            />
           ) : null}
         </>
       )}
