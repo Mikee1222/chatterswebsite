@@ -1,18 +1,20 @@
 "use client";
 
 /**
- * Per-category task timer button.
- * Shown inline per phase when the category has timer enabled by admin.
- * Visually distinct from shift-level Start/Pause/End controls.
+ * Per-item task timer control — inline next to a checklist item row.
+ * Visually distinct from the completion checkbox (timing ≠ completion).
+ * Requires active non-paused shift. One active timer per VA globally.
  */
 
 import * as React from "react";
-import { Timer, Square, Play } from "lucide-react";
+import { Square, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskStepType } from "@/lib/task-step-types";
 
-type TimerEntry = {
+export type TaskTimerEntry = {
   id: string;
+  va_task_id: string;
+  task_phase_item_id: string;
   category: TaskStepType;
   started_at: string;
 };
@@ -21,7 +23,10 @@ function useLiveDuration(startedAt: string | null): string {
   const [elapsed, setElapsed] = React.useState(0);
 
   React.useEffect(() => {
-    if (!startedAt) { setElapsed(0); return; }
+    if (!startedAt) {
+      setElapsed(0);
+      return;
+    }
     const tick = () => {
       setElapsed(Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
     };
@@ -37,45 +42,40 @@ function useLiveDuration(startedAt: string | null): string {
 
 type Props = {
   vaTaskId: string;
+  taskPhaseItemId: string;
   category: TaskStepType;
   /** Categories that the admin has enabled for timing */
   enabledCategories: TaskStepType[];
   /** Whether the VA has an active non-paused shift */
   onShift: boolean;
+  /** VA-wide active entry (lifted to parent card) */
+  activeEntry: TaskTimerEntry | null;
+  onActiveEntryChange: (entry: TaskTimerEntry | null) => void;
+  disabled?: boolean;
 };
 
-export function CategoryTaskTimer({ vaTaskId, category, enabledCategories, onShift }: Props) {
-  const [activeEntry, setActiveEntry] = React.useState<TimerEntry | null>(null);
-  const [loading, setLoading] = React.useState(true);
+export function CategoryTaskTimer({
+  vaTaskId,
+  taskPhaseItemId,
+  category,
+  enabledCategories,
+  onShift,
+  activeEntry,
+  onActiveEntryChange,
+  disabled = false,
+}: Props) {
   const [acting, setActing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const timerEnabled = enabledCategories.includes(category);
-  const duration = useLiveDuration(activeEntry?.started_at ?? null);
+  const isActive = activeEntry?.task_phase_item_id === taskPhaseItemId;
+  const duration = useLiveDuration(isActive ? (activeEntry?.started_at ?? null) : null);
 
-  // Fetch on mount / task id change
-  React.useEffect(() => {
-    if (!timerEnabled) { setLoading(false); return; }
-    let cancelled = false;
-    setLoading(true);
-    fetch(`/api/va/task-timer?va_task_id=${encodeURIComponent(vaTaskId)}`, { credentials: "include" })
-      .then((r) => r.json() as Promise<{ entry?: TimerEntry | null; enabledCategories?: TaskStepType[] }>)
-      .then((d) => {
-        if (cancelled) return;
-        const entry = d.entry && d.entry.category === category ? d.entry : null;
-        setActiveEntry(entry ?? null);
-      })
-      .catch(() => {/* silently fail initial fetch */})
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [vaTaskId, category, timerEnabled]);
+  if (!timerEnabled || disabled) return null;
 
-  if (!timerEnabled) return null;
-  if (loading) return null; // don't flash a loading state
-
-  const isActive = activeEntry !== null;
-
-  const handleStart = async () => {
+  const handleStart = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (!onShift || acting) return;
     setActing(true);
     setError(null);
@@ -84,19 +84,26 @@ export function CategoryTaskTimer({ vaTaskId, category, enabledCategories, onShi
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start", va_task_id: vaTaskId, category }),
+        body: JSON.stringify({
+          action: "start",
+          va_task_id: vaTaskId,
+          task_phase_item_id: taskPhaseItemId,
+          category,
+        }),
       });
-      const d = (await res.json()) as { entry?: TimerEntry; error?: string };
+      const d = (await res.json()) as { entry?: TaskTimerEntry; error?: string };
       if (!res.ok || !d.entry) throw new Error(d.error ?? "Failed to start timer");
-      setActiveEntry(d.entry);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      onActiveEntryChange(d.entry);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
     } finally {
       setActing(false);
     }
   };
 
-  const handleEnd = async () => {
+  const handleEnd = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
     if (!activeEntry || acting) return;
     setActing(true);
     setError(null);
@@ -107,55 +114,86 @@ export function CategoryTaskTimer({ vaTaskId, category, enabledCategories, onShi
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "end", entry_id: activeEntry.id }),
       });
-      const d = (await res.json()) as { entry?: TimerEntry; error?: string };
+      const d = (await res.json()) as { entry?: TaskTimerEntry; error?: string };
       if (!res.ok) throw new Error(d.error ?? "Failed to end timer");
-      setActiveEntry(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed");
+      onActiveEntryChange(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed");
     } finally {
       setActing(false);
     }
   };
 
   return (
-    <div className="mt-2 flex items-center gap-2">
+    <div className="flex shrink-0 flex-col items-end gap-0.5" onClick={(e) => e.stopPropagation()}>
       {isActive ? (
         <button
           type="button"
-          onClick={() => void handleEnd()}
+          onClick={(e) => void handleEnd(e)}
           disabled={acting}
           className={cn(
-            "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition",
+            "flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition",
             "border-[#D4AF8C]/40 bg-[#D4AF8C]/10 text-[#D4AF8C]",
             "hover:bg-[#D4AF8C]/20 disabled:cursor-not-allowed disabled:opacity-50",
           )}
         >
-          <Square className="h-3 w-3 fill-current" aria-hidden />
-          End Task
-          <span className="ml-1 font-mono tabular-nums opacity-80">{duration}</span>
+          <Square className="h-2.5 w-2.5 fill-current" aria-hidden />
+          End
+          <span className="font-mono tabular-nums opacity-80">{duration}</span>
         </button>
       ) : (
         <button
           type="button"
-          onClick={() => void handleStart()}
+          onClick={(e) => void handleStart(e)}
           disabled={!onShift || acting}
-          title={!onShift ? "Start or resume your shift to use task timer" : undefined}
+          title={!onShift ? "Start or resume your shift to use task timer" : "Start timing this item"}
           className={cn(
-            "flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition",
-            "border-white/12 bg-white/[0.04] text-white/55",
-            "hover:border-white/20 hover:bg-white/[0.07] hover:text-white/80",
+            "flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition",
+            "border-white/10 bg-white/[0.03] text-white/45",
+            "hover:border-white/18 hover:bg-white/[0.06] hover:text-white/70",
             "disabled:cursor-not-allowed disabled:opacity-40",
           )}
         >
-          <Play className="h-3 w-3" aria-hidden />
-          Start Task
+          <Play className="h-2.5 w-2.5" aria-hidden />
+          Start
         </button>
       )}
-      <span className="flex items-center gap-1 text-[10px] text-white/25">
-        <Timer className="h-3 w-3" />
-        {category}
-      </span>
-      {error ? <span className="text-[10px] text-red-400">{error}</span> : null}
+      {error ? <span className="max-w-[8rem] truncate text-[9px] text-red-400">{error}</span> : null}
     </div>
   );
+}
+
+/** Fetch the VA's single active item-timer (shared across all items on a task card). */
+export function useVaActiveTaskTimer(enabled: boolean): {
+  activeEntry: TaskTimerEntry | null;
+  setActiveEntry: React.Dispatch<React.SetStateAction<TaskTimerEntry | null>>;
+  loading: boolean;
+} {
+  const [activeEntry, setActiveEntry] = React.useState<TaskTimerEntry | null>(null);
+  const [loading, setLoading] = React.useState(enabled);
+
+  React.useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    fetch("/api/va/task-timer", { credentials: "include" })
+      .then((r) => r.json() as Promise<{ entry?: TaskTimerEntry | null }>)
+      .then((d) => {
+        if (!cancelled) setActiveEntry(d.entry ?? null);
+      })
+      .catch(() => {
+        /* silent */
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled]);
+
+  return { activeEntry, setActiveEntry, loading };
 }

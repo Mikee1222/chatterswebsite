@@ -12,7 +12,7 @@ import {
   Smartphone,
   Trash2,
 } from "lucide-react";
-import { CategoryTaskTimer } from "@/components/category-task-timer";
+import { CategoryTaskTimer, useVaActiveTaskTimer } from "@/components/category-task-timer";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import { formatDateEuropean } from "@/lib/format";
 import { ymdInAthens } from "@/lib/airtable-datetime";
@@ -193,6 +193,16 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   const expandedRef = React.useRef(expanded);
   expandedRef.current = expanded;
 
+  const hasTimerItems =
+    expanded &&
+    !task.is_virtual_occurrence &&
+    enabledTimerCategories.length > 0 &&
+    phases.some((p) =>
+      (p.items ?? []).some((i) => enabledTimerCategories.includes(i.step_type ?? DEFAULT_TASK_STEP_TYPE)),
+    );
+  const { activeEntry: activeTimerEntry, setActiveEntry: setActiveTimerEntry } =
+    useVaActiveTaskTimer(hasTimerItems);
+
   React.useEffect(() => {
     if (!observationsDirty) {
       setObservations(task.completed_notes ?? "");
@@ -236,12 +246,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
       const accs = phase.assigned_model_id ? getModelAccounts(phase.assigned_model_id) : [];
       const startedMins = minutesSince(phase.start_time);
 
-      // Determine dominant step_type for this phase's items
-      const phaseCats = [...new Set((phase.items ?? []).map((i) => i.step_type).filter(Boolean))] as TaskStepType[];
-      const timerCat = phaseCats.find((c) => enabledTimerCategories.includes(c)) ?? null;
-
-      const hasTimer = timerCat !== null && !task.is_virtual_occurrence;
-      const hasExtras = accs.length > 0 || (phase.status === "in_progress" && startedMins != null) || hasTimer;
+      const hasExtras = accs.length > 0 || (phase.status === "in_progress" && startedMins != null);
       if (!hasExtras) return null;
 
       return (
@@ -309,18 +314,10 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               </div>
             </div>
           ) : null}
-          {hasTimer && timerCat ? (
-            <CategoryTaskTimer
-              vaTaskId={task.id}
-              category={timerCat}
-              enabledCategories={enabledTimerCategories}
-              onShift={onShift}
-            />
-          ) : null}
         </div>
       );
     },
-    [getModelAccounts, onShadowbanReport, enabledTimerCategories, onShift, task.id, task.is_virtual_occurrence],
+    [getModelAccounts, onShadowbanReport, task.id],
   );
 
   const renderItem = React.useCallback(
@@ -346,6 +343,9 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         onCompleteItem(item as PhaseItem, task.id);
       };
       const hasProofLinks = Boolean(item.screenshot?.some((s) => s.url));
+      const itemStepType = item.step_type ?? DEFAULT_TASK_STEP_TYPE;
+      const showItemTimer =
+        !isVirtual && enabledTimerCategories.includes(itemStepType);
       return (
         <div className="space-y-1">
           <div className="flex items-start gap-1">
@@ -369,7 +369,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               )}
             >
               <div className="flex items-start gap-2">
-                <StepTypeBadge stepType={item.step_type ?? DEFAULT_TASK_STEP_TYPE} />
+                <StepTypeBadge stepType={itemStepType} />
                 <p
                   className={cn(
                     "flex-1 text-sm leading-snug transition-colors duration-200 motion-reduce:transition-none",
@@ -393,6 +393,17 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                 </p>
               ) : null}
             </button>
+            {showItemTimer ? (
+              <CategoryTaskTimer
+                vaTaskId={task.id}
+                taskPhaseItemId={item.id}
+                category={itemStepType}
+                enabledCategories={enabledTimerCategories}
+                onShift={onShift}
+                activeEntry={activeTimerEntry}
+                onActiveEntryChange={setActiveTimerEntry}
+              />
+            ) : null}
           </div>
           {hasProofLinks ? (
             <div className="flex flex-wrap gap-x-3 gap-y-0.5 pl-12">
@@ -415,7 +426,15 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         </div>
       );
     },
-    [onShift, onCompleteItem, task.id, task.is_virtual_occurrence],
+    [
+      onShift,
+      onCompleteItem,
+      task.id,
+      task.is_virtual_occurrence,
+      enabledTimerCategories,
+      activeTimerEntry,
+      setActiveTimerEntry,
+    ],
   );
 
   return (
@@ -642,5 +661,6 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.observationsSaving === next.observationsSaving &&
   prev.canManage === next.canManage &&
   prev.onEdit === next.onEdit &&
-  prev.onDelete === next.onDelete,
+  prev.onDelete === next.onDelete &&
+  prev.enabledTimerCategories === next.enabledTimerCategories,
 );

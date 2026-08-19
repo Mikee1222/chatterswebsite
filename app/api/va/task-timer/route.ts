@@ -1,33 +1,31 @@
 /**
- * VA task category timer API.
- * GET  ?va_task_id=...  → active timer entry for this task
- * POST { action:"start", va_task_id, category }  → start timer (ends any active first)
- * POST { action:"end", entry_id }                → end active timer
+ * VA per-item task timer API.
+ * GET  → active timer entry for this VA (at most one across all tasks)
+ * POST { action:"start", va_task_id, task_phase_item_id, category } → start item timer
+ * POST { action:"end", entry_id } → end active timer
+ *
+ * Policy: ONE active item-timer per VA at a time. Starting a new item auto-ends any other.
  */
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import {
-  getActiveTimerEntry,
+  getActiveTimerForVa,
   startTimerEntry,
   endTimerEntry,
   getEnabledTimerCategories,
 } from "@/services/task-category-timer";
 
-export async function GET(req: Request) {
+export async function GET() {
   const session = await getSessionFromCookies();
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session, PERMISSIONS.VA_TASKS_VIEW))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  const url = new URL(req.url);
-  const va_task_id = url.searchParams.get("va_task_id")?.trim() ?? "";
-  if (!va_task_id) return Response.json({ error: "va_task_id required" }, { status: 400 });
-
   try {
     const [entry, enabledCategories] = await Promise.all([
-      getActiveTimerEntry(va_task_id, session.id),
+      getActiveTimerForVa(session.id),
       getEnabledTimerCategories(),
     ]);
     return Response.json({ entry, enabledCategories });
@@ -42,7 +40,13 @@ export async function POST(req: Request) {
   if (!hasPermission(session, PERMISSIONS.VA_TASKS_VIEW))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
-  let body: { action?: string; va_task_id?: string; category?: string; entry_id?: string };
+  let body: {
+    action?: string;
+    va_task_id?: string;
+    task_phase_item_id?: string;
+    category?: string;
+    entry_id?: string;
+  };
   try {
     body = await req.json();
   } catch {
@@ -50,17 +54,23 @@ export async function POST(req: Request) {
   }
 
   if (body.action === "start") {
-    const { va_task_id, category } = body;
+    const { va_task_id, task_phase_item_id, category } = body;
     if (!va_task_id) return Response.json({ error: "va_task_id required" }, { status: 400 });
+    if (!task_phase_item_id) return Response.json({ error: "task_phase_item_id required" }, { status: 400 });
     if (!(TASK_STEP_TYPES as readonly string[]).includes(category as string))
       return Response.json({ error: "Invalid category" }, { status: 400 });
 
-    try {
-      // Enforce: one active timer per task at a time — end any active one first
-      const existing = await getActiveTimerEntry(va_task_id, session.id);
-      if (existing) await endTimerEntry(existing.id, session.id);
+    const enabled = await getEnabledTimerCategories();
+    if (!enabled.includes(category as TaskStepType))
+      return Response.json({ error: "Timer not enabled for this category" }, { status: 400 });
 
-      const entry = await startTimerEntry(va_task_id, session.id, category as TaskStepType);
+    try {
+      const entry = await startTimerEntry({
+        va_task_id,
+        task_phase_item_id,
+        va_id: session.id,
+        category: category as TaskStepType,
+      });
       return Response.json({ entry });
     } catch (e) {
       return Response.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });

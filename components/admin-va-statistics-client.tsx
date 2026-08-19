@@ -12,7 +12,11 @@ import type {
   VaStatisticsPreset,
   VaStatisticsReport,
 } from "@/services/va-statistics";
-import type { CategoryTimeStat, VaCategoryTimeStat } from "@/services/task-category-timer";
+import type {
+  CategoryTimeStat,
+  VaCategoryTimeStat,
+  CategoryTimeStatsResult,
+} from "@/services/task-category-timer";
 
 const PRESETS: { id: VaStatisticsPreset; label: string }[] = [
   { id: "this_week", label: "This Week" },
@@ -160,7 +164,7 @@ function fmtSeconds(s: number | null | undefined): string {
   return rem > 0 ? `${h}h ${rem}m` : `${h}h`;
 }
 
-type CategoryTimeStats = { by_category: CategoryTimeStat[]; by_va: VaCategoryTimeStat[] };
+type CategoryTimeStats = CategoryTimeStatsResult;
 
 export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaStatisticsReport }) {
   const [preset, setPreset] = React.useState<VaStatisticsPreset>(initialReport.range.preset);
@@ -468,46 +472,92 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
         </div>
       </section>
 
-      {/* Category time section */}
+      {/* Category time section — per-item timing model */}
       <section className="space-y-4">
         <div className="flex items-center gap-2">
           <Timer className="h-4 w-4 text-[#D4AF8C]/70" />
-          <h2 className="text-lg font-semibold text-white">Category Time Tracking</h2>
+          <h2 className="text-lg font-semibold text-white">Task Timing</h2>
           {timeStatsLoading ? <span className="text-xs text-white/30">Loading…</span> : null}
         </div>
 
         {!timeStats || (timeStats.by_category.every((c) => c.total_sessions === 0)) ? (
           <p className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center text-sm text-white/40">
-            No timed task sessions for this range.{" "}
+            No timed checklist items for this range.{" "}
             <a href={ROUTES.admin.taskTimerConfig} className="text-[#D4AF8C]/70 underline underline-offset-2 hover:text-[#D4AF8C]">
               Enable categories in Timer Config.
             </a>
           </p>
         ) : (
           <div className="space-y-5">
-            {/* Overall averages */}
+            <StatChip
+              label="Total tracked time"
+              value={fmtSeconds(timeStats.total_tracked_seconds)}
+              hint={`${timeStats.by_category.reduce((n, c) => n + c.total_sessions, 0)} item sessions`}
+              accent="champagne"
+            />
+
+            {/* Team averages by category */}
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Team averages</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Team avg per category</p>
               <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
                 {timeStats.by_category.filter((c) => c.total_sessions > 0).map((c) => (
                   <div key={c.category} className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
                     <p className="text-[11px] text-white/45">{c.category}</p>
                     <p className="text-sm font-semibold text-white">{fmtSeconds(c.avg_seconds)}</p>
-                    <p className="text-[10px] text-white/30">{c.total_sessions} sessions</p>
+                    <p className="text-[10px] text-white/30">
+                      {c.total_sessions} sessions · {fmtSeconds(c.total_seconds)} total
+                    </p>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Per-VA breakdown */}
+            {/* Longest / shortest items */}
+            {(timeStats.longest_items.length > 0 || timeStats.shortest_items.length > 0) ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {timeStats.longest_items.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Longest items (avg)</p>
+                    <div className="space-y-2">
+                      {timeStats.longest_items.map((item) => (
+                        <div key={item.task_phase_item_id} className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                          <p className="truncate text-sm font-medium text-white">{item.item_title}</p>
+                          <p className="text-[11px] text-white/45">
+                            {item.category} · {item.va_name} · {fmtSeconds(item.avg_seconds)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {timeStats.shortest_items.length > 0 ? (
+                  <div>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Shortest items (avg)</p>
+                    <div className="space-y-2">
+                      {timeStats.shortest_items.map((item) => (
+                        <div key={`short-${item.task_phase_item_id}`} className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                          <p className="truncate text-sm font-medium text-white">{item.item_title}</p>
+                          <p className="text-[11px] text-white/45">
+                            {item.category} · {item.va_name} · {fmtSeconds(item.avg_seconds)}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Per-VA averages */}
             {timeStats.by_va.length > 0 ? (
               <div>
-                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Per-VA averages</p>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Per-VA avg by category</p>
                 <div className="overflow-hidden rounded-2xl border border-white/10">
                   <table className="w-full text-sm">
                     <thead className="bg-white/[0.04] text-left text-xs uppercase tracking-wide text-white/40">
                       <tr>
                         <th className="px-4 py-3">VA</th>
+                        <th className="px-4 py-3">Tracked</th>
                         {timeStats.by_category.filter((c) => c.total_sessions > 0).map((c) => (
                           <th key={c.category} className="px-4 py-3">{c.category}</th>
                         ))}
@@ -517,6 +567,7 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
                       {timeStats.by_va.map((va) => (
                         <tr key={va.va_id} className="border-t border-white/5">
                           <td className="px-4 py-3 font-medium text-white">{va.va_name}</td>
+                          <td className="px-4 py-3 tabular-nums text-white/55">{fmtSeconds(va.total_tracked_seconds)}</td>
                           {timeStats.by_category.filter((c) => c.total_sessions > 0).map((c) => {
                             const s = va.by_category.find((b) => b.category === c.category);
                             return (
@@ -529,6 +580,40 @@ export function AdminVaStatisticsClient({ initialReport }: { initialReport: VaSt
                       ))}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Per-task-instance item durations */}
+            {timeStats.by_task_instance.length > 0 ? (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-white/35">Per task instance</p>
+                <div className="space-y-3">
+                  {timeStats.by_task_instance.slice(0, 15).map((task) => (
+                    <FindingCard key={task.va_task_id} className="p-4">
+                      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="font-medium text-white">{task.va_task_title}</p>
+                        <p className="text-xs text-white/40">
+                          {task.va_name} · {fmtSeconds(task.total_seconds)} total
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        {task.items.map((item) => (
+                          <div key={item.task_phase_item_id} className="flex items-center justify-between gap-3 text-sm">
+                            <span className="min-w-0 truncate text-white/70">
+                              <span className="text-[10px] uppercase tracking-wide text-white/35">{item.category}</span>
+                              {" · "}
+                              {item.item_title}
+                            </span>
+                            <span className="shrink-0 tabular-nums text-[#D4AF8C]">
+                              {fmtSeconds(item.total_seconds)}
+                              {item.sessions > 1 ? ` (${item.sessions}×)` : ""}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </FindingCard>
+                  ))}
                 </div>
               </div>
             ) : null}
