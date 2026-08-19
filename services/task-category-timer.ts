@@ -178,16 +178,10 @@ export async function endTimerEntry(
     return done as CategoryTimeEntry;
   }
 
-  const startMs = new Date(String(existing.started_at)).getTime();
-  const endMs = new Date(endedIso).getTime();
-  const duration_seconds =
-    Number.isFinite(startMs) && Number.isFinite(endMs)
-      ? Math.max(0, Math.floor((endMs - startMs) / 1000))
-      : null;
-
+  // duration_seconds is a DB-generated column (ended_at - started_at); only set ended_at.
   const { data, error } = await sb
     .from("task_category_time_entries")
-    .update({ ended_at: endedIso, duration_seconds })
+    .update({ ended_at: endedIso })
     .eq("id", entry_id)
     .eq("va_id", va_id)
     .select("*")
