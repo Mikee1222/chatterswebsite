@@ -178,10 +178,10 @@ export const CategoryTaskTimer = React.memo(function CategoryTaskTimer({
           disabled={!onShift || acting}
           title={!onShift ? "Start or resume your shift to use task timer" : "Start timing this item"}
           className={cn(
-            "flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition",
-            "border-white/10 bg-white/[0.03] text-white/45",
-            "hover:border-white/18 hover:bg-white/[0.06] hover:text-white/70",
-            "disabled:cursor-not-allowed disabled:opacity-40",
+            "flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition",
+            "border-[#FF1493]/45 bg-gradient-to-br from-[#FF1493] via-[#E91E8C] to-[#DB2777] text-white",
+            "shadow-[0_4px_16px_-6px_rgba(255,20,147,0.45)]",
+            "hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40",
           )}
         >
           <Play className="h-2.5 w-2.5" aria-hidden />
