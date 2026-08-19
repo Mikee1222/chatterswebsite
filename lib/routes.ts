@@ -90,6 +90,9 @@ export const ROUTES = {
     earningsConfig: "/admin/earnings-config",
     /** All-chatters Infloww sales/chat performance leaderboard. */
     inflowwPerformance: "/admin/infloww-performance",
+    /** Infloww monthly billing invoices. */
+    inflowwInvoices: "/admin/infloww-invoices",
+    creatorStatusLog: "/admin/creator-status-log",
     whales: "/admin/whales",
     /** Admin whale profile (Airtable whales record id). */
     whaleDetail: (id: string) => `/admin/whales/${encodeURIComponent(id)}`,

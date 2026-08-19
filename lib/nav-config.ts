@@ -596,6 +596,13 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.BILLING_VIEW,
   },
   {
+    href: ROUTES.admin.inflowwInvoices,
+    label: "Infloww Invoices",
+    iconKey: "FileText",
+    navSection: "FINANCE",
+    requiresPermission: PERMISSIONS.BILLING_VIEW,
+  },
+  {
     href: ROUTES.admin.customRequests,
     label: "Custom requests",
     iconKey: "Receipt",

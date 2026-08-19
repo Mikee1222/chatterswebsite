@@ -2397,3 +2397,202 @@ export async function fetchPriorityMassMessages(params: {
 }
 
 export { CREATOR_REPORT_MAX_CREATOR_IDS, CREATOR_LINK_TYPES };
+
+// ---------------------------------------------------------------------------
+// Creator Status Change Log — GET /v1/creator/status-change-log
+// ---------------------------------------------------------------------------
+
+/** Single entry from the Infloww creator status-change-log endpoint. */
+export interface InflowwCreatorStatusLogEntry {
+  id: string;
+  statusBefore: string;
+  statusAfter: string;
+  creatorId: string;
+  platformPid: string | undefined;
+  operationTimeMs: number;
+  operationEmployeeId: string | undefined;
+}
+
+function mapStatusLogRow(row: unknown): InflowwCreatorStatusLogEntry | null {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const id = strField(r, ["id"]);
+  const creatorId = strField(r, ["creatorId", "creator_id"]);
+  if (!id || !creatorId) return null;
+  const operationTimeRaw =
+    r["operationTime"] ?? r["operation_time"] ?? r["timestamp"] ?? r["createdTime"];
+  const operationTimeMs = coerceScalarToUnixMs(operationTimeRaw);
+  return {
+    id,
+    statusBefore: strField(r, ["statusBefore", "status_before"]) ?? "",
+    statusAfter: strField(r, ["statusAfter", "status_after"]) ?? "",
+    creatorId,
+    platformPid: strField(r, ["platformPid", "platform_pid"]),
+    operationTimeMs,
+    operationEmployeeId: strField(r, ["operationEmployeeId", "operation_employee_id", "employeeId", "employee_id"]),
+  };
+}
+
+/**
+ * GET /v1/creator/status-change-log
+ * Fetches creator connection/bind/2FA status change events.
+ * - Batches creatorIds ≤10 per request (API limit).
+ * - Paginates with cursor.
+ * - Data only available from 2026-06-01 onwards.
+ */
+export async function getCreatorStatusChangeLog(params: {
+  creatorIds: string[];
+  startMs?: number;
+  endMs?: number;
+}): Promise<InflowwCreatorStatusLogEntry[]> {
+  if (!params.creatorIds.length) return [];
+  const out: InflowwCreatorStatusLogEntry[] = [];
+  const batches = chunkCreatorIds(params.creatorIds);
+
+  for (const batch of batches) {
+    let cursor: string | undefined;
+    let pages = 0;
+    const MAX_PAGES = 200;
+    do {
+      pages += 1;
+      if (pages > MAX_PAGES) break;
+      const qp = new URLSearchParams({ platformCode: "OnlyFans", limit: "100" });
+      for (const id of batch) qp.append("creatorIds", id);
+      if (params.startMs != null) qp.set("startTime", String(params.startMs));
+      if (params.endMs != null) qp.set("endTime", String(params.endMs));
+      if (cursor) qp.set("cursor", cursor);
+
+      const payload = await inflowwFetchJson<unknown>("/creator/status-change-log", qp);
+      const rows = pickArray(payload);
+      inflowwDebug("status-change-log page", {
+        batch: batch.length,
+        page: pages,
+        rowCount: rows.length,
+        hasMore: hasMoreFrom(payload),
+      });
+      for (const row of rows) {
+        const mapped = mapStatusLogRow(row);
+        if (mapped) out.push(mapped);
+      }
+      const more = hasMoreFrom(payload);
+      const next = cursorFromPayload(payload) ?? nextCursorFrom(payload);
+      if (more && next) {
+        cursor = next;
+      } else {
+        cursor = undefined;
+      }
+      if (rows.length === 0) break;
+    } while (cursor);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Monthly Billing — GET /v1/invoice-data/monthly-billing
+// STRICT rate limit: 10 QPM — dedicated 6-second minimum spacing per call.
+// ---------------------------------------------------------------------------
+
+const BILLING_QPM = 10;
+/** Minimum gap between billing API calls: 60s / 10 QPM = 6s, add 200ms buffer. */
+const BILLING_MIN_INTERVAL_MS = Math.ceil((60_000 / BILLING_QPM) + 200);
+
+let billingLastRequestStart = 0;
+let billingFetchChain: Promise<void> = Promise.resolve();
+
+async function billingRateLimitedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const run = billingFetchChain.then(async () => {
+    const now = Date.now();
+    const wait = Math.max(0, BILLING_MIN_INTERVAL_MS - (now - billingLastRequestStart));
+    if (wait > 0) await sleep(wait);
+    billingLastRequestStart = Date.now();
+    return fetch(input, init);
+  });
+  billingFetchChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
+async function billingFetchJson<T>(path: string, searchParams?: URLSearchParams): Promise<T> {
+  const url = `${INFLOWW_BASE_URL}${path}${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`;
+  const init: RequestInit = { headers: inflowwHeaders(), cache: "no-store" };
+  let last429Body = "";
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await billingRateLimitedFetch(url, init);
+    if (res.status === 429) {
+      last429Body = await res.text();
+      // 10 QPM — back off at least 12s on 429
+      if (attempt < 3) await sleep(12_000 * (attempt + 1));
+      continue;
+    }
+    if (!res.ok) {
+      const body = await res.text();
+      const truncated = body.slice(0, 300);
+      throw new InflowwApiError(`Infloww API ${res.status}: ${truncated}`, res.status, { body: truncated, path });
+    }
+    return (await res.json()) as T;
+  }
+  throw new InflowwApiError(`Infloww API 429 (rate limited): ${last429Body.slice(0, 300)}`, 429, { path });
+}
+
+function billingMoneyField(r: Record<string, unknown>, key: string): number {
+  const v = r[key];
+  if (v == null || v === "") return 0;
+  const n = typeof v === "number" ? v : Number.parseFloat(String(v).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return 0;
+  // Billing fields are whole-dollar amounts in the Infloww API (not cents).
+  return n;
+}
+
+function mapBillingRow(row: unknown): import("@/types/infloww").InflowwMonthlyBillingRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    billingId: String(r["billingId"] ?? r["billing_id"] ?? r["id"] ?? ""),
+    invoiceId: strField(r, ["invoiceId", "invoice_id"]),
+    billingPeriod: String(r["billingPeriod"] ?? r["billing_period"] ?? ""),
+    currency: strField(r, ["currency"]) ?? "USD",
+    subscription: billingMoneyField(r, "subscription"),
+    discount: billingMoneyField(r, "discount"),
+    igic: billingMoneyField(r, "igic"),
+    total: billingMoneyField(r, "total"),
+    deductions: billingMoneyField(r, "deductions"),
+    balanceDue: billingMoneyField(r, "balanceDue") || billingMoneyField(r, "balance_due"),
+    paid: billingMoneyField(r, "paid"),
+    pending: billingMoneyField(r, "pending"),
+  };
+}
+
+/**
+ * GET /v1/invoice-data/monthly-billing
+ * Params: startTime, endTime in yyyy-MM format (e.g. "2026-01"). Max 12-month range per call.
+ * STRICT 10 QPM limit — uses dedicated billing rate limiter (6.2s minimum between calls).
+ *
+ * Call once per sync run (agency-level). Do NOT call multiple times per day.
+ */
+export async function fetchMonthlyBilling(params: {
+  startTime: string;
+  endTime: string;
+}): Promise<import("@/types/infloww").InflowwMonthlyBillingRow[]> {
+  const out: import("@/types/infloww").InflowwMonthlyBillingRow[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+  const MAX_PAGES = 50;
+  do {
+    pages += 1;
+    if (pages > MAX_PAGES) break;
+    const qp = new URLSearchParams({
+      startTime: params.startTime,
+      endTime: params.endTime,
+      limit: "100",
+    });
+    if (cursor) qp.set("cursor", cursor);
+    const payload = await billingFetchJson<unknown>("/invoice-data/monthly-billing", qp);
+    const rows = pickArray(payload);
+    inflowwDebug("monthly-billing page", { page: pages, rowCount: rows.length });
+    for (const row of rows) {
+      const mapped = mapBillingRow(row);
+      if (mapped.billingId) out.push(mapped);
+    }
+    cursor = cursorFromPayload(payload) ?? nextCursorFrom(payload);
+    if (!hasMoreFrom(payload) && !cursor) break;
+    if (rows.length === 0) break;
+  } while (cursor);
+  return out;
+}

@@ -4,6 +4,7 @@ import { inflowwReportTodayYmd } from "@/lib/infloww-api";
 import { syncInflowwCreatorEarnings } from "@/services/infloww-creator-earnings";
 import { syncInflowwDailyStats } from "@/services/infloww-daily-stats";
 import { runInflowwPerformanceAlerts } from "@/services/infloww-performance-alerts";
+import { dailySyncCreatorStatusLog } from "@/services/infloww-creator-status-log";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -76,11 +77,22 @@ export async function GET(request: Request) {
       console.error("[cron/sync-infloww-stats] performance alerts", alertErr);
     }
 
+    let statusLog: Awaited<ReturnType<typeof dailySyncCreatorStatusLog>> | null = null;
+    try {
+      statusLog = await dailySyncCreatorStatusLog();
+      if (statusLog.errors.length > 0) {
+        console.error("[cron/sync-infloww-stats] status-log errors", statusLog.errors.slice(0, 5));
+      }
+    } catch (statusLogErr) {
+      console.error("[cron/sync-infloww-stats] status-log sync failed", statusLogErr);
+    }
+
     return NextResponse.json({
       success: employee.errors.length === 0 && creatorErrorCount === 0,
       employee,
       creator,
       performanceAlerts,
+      statusLog,
     });
   } catch (err) {
     console.error("[cron/sync-infloww-stats]", err);

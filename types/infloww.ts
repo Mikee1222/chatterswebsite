@@ -276,12 +276,39 @@ export interface InflowwRefund {
   refundTimeMs: number;
 }
 
+/** Normalized row from GET /v1/invoice-data/monthly-billing. Money in dollars (response may be cents — see mapBillingRow). */
+export interface InflowwMonthlyBillingRow {
+  billingId: string;
+  invoiceId?: string;
+  billingPeriod: string;
+  currency: string;
+  subscription: number;
+  discount: number;
+  igic: number;
+  total: number;
+  deductions: number;
+  balanceDue: number;
+  paid: number;
+  pending: number;
+}
+
 /** Daily renew-on count from GET /v1/creator-report/fans/renew-on. */
 export interface InflowwCreatorRenewOnRow {
   platformPid: string;
   date: string;
   fansWithRenewOn: number;
   creatorId?: string;
+}
+
+/** Entry from GET /v1/creator/status-change-log (connection/bind/2FA history). */
+export interface InflowwCreatorStatusLogEntry {
+  id: string;
+  statusBefore: string;
+  statusAfter: string;
+  creatorId: string;
+  platformPid: string | undefined;
+  operationTimeMs: number;
+  operationEmployeeId: string | undefined;
 }
 
 /** Normalized row from GET /v1/priority-mass-messages. Money in dollars. */
