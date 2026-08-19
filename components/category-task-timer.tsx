@@ -19,14 +19,15 @@ export type TaskTimerEntry = {
   started_at: string;
 };
 
-function useLiveDuration(startedAt: string | null): string {
+/** Isolated 1s tick — only this span re-renders, not sibling timers or the card. */
+const LiveDurationDisplay = React.memo(function LiveDurationDisplay({
+  startedAt,
+}: {
+  startedAt: string;
+}) {
   const [elapsed, setElapsed] = React.useState(0);
 
   React.useEffect(() => {
-    if (!startedAt) {
-      setElapsed(0);
-      return;
-    }
     const tick = () => {
       setElapsed(Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
     };
@@ -37,8 +38,12 @@ function useLiveDuration(startedAt: string | null): string {
 
   const m = Math.floor(elapsed / 60);
   const s = elapsed % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+  return (
+    <span className="font-mono tabular-nums opacity-80">
+      {String(m).padStart(2, "0")}:{String(s).padStart(2, "0")}
+    </span>
+  );
+});
 
 type Props = {
   vaTaskId: string;
@@ -54,7 +59,7 @@ type Props = {
   disabled?: boolean;
 };
 
-export function CategoryTaskTimer({
+export const CategoryTaskTimer = React.memo(function CategoryTaskTimer({
   vaTaskId,
   taskPhaseItemId,
   category,
@@ -69,7 +74,6 @@ export function CategoryTaskTimer({
 
   const timerEnabled = enabledCategories.includes(category);
   const isActive = activeEntry?.task_phase_item_id === taskPhaseItemId;
-  const duration = useLiveDuration(isActive ? (activeEntry?.started_at ?? null) : null);
 
   if (!timerEnabled || disabled) return null;
 
@@ -139,7 +143,7 @@ export function CategoryTaskTimer({
         >
           <Square className="h-2.5 w-2.5 fill-current" aria-hidden />
           End
-          <span className="font-mono tabular-nums opacity-80">{duration}</span>
+          {activeEntry?.started_at ? <LiveDurationDisplay startedAt={activeEntry.started_at} /> : null}
         </button>
       ) : (
         <button
@@ -161,7 +165,7 @@ export function CategoryTaskTimer({
       {error ? <span className="max-w-[8rem] truncate text-[9px] text-red-400">{error}</span> : null}
     </div>
   );
-}
+});
 
 /** Fetch the VA's single active item-timer (shared across all items on a task card). */
 export function useVaActiveTaskTimer(enabled: boolean): {

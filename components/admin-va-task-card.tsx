@@ -78,11 +78,129 @@ const StatusBadge = React.memo(function StatusBadge({ status }: { status: VaTask
   return <span className={cn(VA_STATUS_BADGE, variant)}>{status.replace(/_/g, " ")}</span>;
 });
 
+/** Memoized row — local title state avoids parent re-renders on every keystroke while expanded. */
+const AdminChecklistItemRow = React.memo(function AdminChecklistItemRow({
+  item,
+  phase,
+  idx,
+  taskId,
+  onUpdatePhaseItem,
+  onDeletePhaseItem,
+}: {
+  item: PhaseRibbonItem;
+  phase: PhaseRibbonPhase;
+  idx: number;
+  taskId: string;
+  onUpdatePhaseItem: (
+    itemId: string,
+    phaseId: string,
+    taskId: string,
+    updates: Partial<PhaseItem>,
+  ) => void | Promise<void>;
+  onDeletePhaseItem: (itemId: string, phaseId: string, taskId: string) => void | Promise<void>;
+}) {
+  const [title, setTitle] = React.useState(item.title ?? "");
+
+  React.useEffect(() => {
+    setTitle(item.title ?? "");
+  }, [item.id, item.title]);
+
+  return (
+    <div className="group flex items-start gap-3">
+      <div
+        className={cn(
+          "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border-2",
+          item.status === "completed"
+            ? "border-[#FF1493]/80 bg-gradient-to-br from-[#FF1493] via-[#E91E8C] to-[#D4AF8C] shadow-[0_0_10px_-3px_rgba(255,20,147,0.45)]"
+            : "border-[#D4AF8C]/45 bg-[#D4AF8C]/[0.04]",
+        )}
+      >
+        {item.status === "completed" ? (
+          <Check className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]" strokeWidth={3.25} aria-hidden />
+        ) : null}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={item.step_type ?? DEFAULT_TASK_STEP_TYPE}
+            onChange={(e) =>
+              void onUpdatePhaseItem(item.id, phase.id, taskId, {
+                step_type: e.target.value as TaskStepType,
+              })
+            }
+            className="w-[7.5rem] shrink-0 cursor-pointer rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#151315] px-2 py-1 text-[10px] text-[#B8B4B8] focus:border-[#FF1493]/40 focus:outline-none"
+            aria-label="Step type"
+          >
+            {TASK_STEP_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+          <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => {
+              if (title !== (item.title ?? "")) {
+                void onUpdatePhaseItem(item.id, phase.id, taskId, { title });
+              }
+            }}
+            placeholder={`Item ${idx + 1}…`}
+            className={cn(
+              "min-w-0 flex-1 bg-transparent text-sm focus:outline-none transition-colors duration-200 motion-reduce:transition-none",
+              item.status === "completed"
+                ? "text-[#B8B4B8]/28 line-through decoration-[#B8B4B8]/35 decoration-[1.5px]"
+                : "text-[#B8B4B8]",
+            )}
+          />
+        </div>
+        {item.requires_screenshot && item.status !== "completed" ? (
+          <p className="mt-0.5 flex items-center gap-1 text-xs text-[#D4AF8C]/55">
+            <Camera className="h-3.5 w-3.5" aria-hidden /> Requires proof
+          </p>
+        ) : null}
+      </div>
+      <div className="flex shrink-0 items-center gap-1 self-center opacity-100 transition md:opacity-0 md:group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100">
+        <button
+          type="button"
+          onClick={() =>
+            void onUpdatePhaseItem(item.id, phase.id, taskId, {
+              requires_screenshot: !item.requires_screenshot,
+            })
+          }
+          className={cn(
+            "relative h-5 w-9 min-h-[44px] min-w-[44px] rounded-full transition-all",
+            item.requires_screenshot ? "bg-[#D4AF8C]" : "bg-white/15",
+          )}
+          aria-label="Toggle screenshot required"
+        >
+          <span
+            className={cn(
+              "absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white transition-all",
+              item.requires_screenshot ? "left-[1.35rem]" : "left-1",
+            )}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={() => void onDeletePhaseItem(item.id, phase.id, taskId)}
+          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-[#B8B4B8]/50 hover:bg-red-500/10 hover:text-red-400"
+          aria-label="Remove item"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+});
+
 export type AdminVaTaskCardProps = {
   task: VaTaskRecord;
   assignedLabel: string;
   canManage: boolean;
   phases: TaskPhase[];
+  /** True while phases are in-flight for an expanded card (avoids mounting heavy checklist during fetch). */
+  phasesLoading?: boolean;
   isReminding: boolean;
   remindSuccess: boolean;
   isConfirmingDelete: boolean;
@@ -97,7 +215,6 @@ export type AdminVaTaskCardProps = {
   onUpdatePhaseItem: (itemId: string, phaseId: string, taskId: string, updates: Partial<PhaseItem>) => void;
   onDeletePhaseItem: (itemId: string, phaseId: string, taskId: string) => void;
   onUpdatePhaseTitleLocal: (phaseId: string, taskId: string, title: string) => void;
-  onUpdatePhaseItemTitleLocal: (itemId: string, phaseId: string, taskId: string, title: string) => void;
 };
 
 export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
@@ -105,6 +222,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   assignedLabel,
   canManage,
   phases,
+  phasesLoading = false,
   isReminding,
   remindSuccess,
   isConfirmingDelete,
@@ -119,10 +237,11 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   onUpdatePhaseItem,
   onDeletePhaseItem,
   onUpdatePhaseTitleLocal,
-  onUpdatePhaseItemTitleLocal,
 }: AdminVaTaskCardProps) {
   const [expanded, setExpanded] = React.useState(false);
-  const [loadingPhases, setLoadingPhases] = React.useState(false);
+  const expandedRef = React.useRef(expanded);
+  expandedRef.current = expanded;
+
   const modelNames = task.assigned_model_names ?? [];
   const isVirtual = Boolean(task.is_virtual_occurrence || task.id.startsWith("virt_"));
   /** Inline phase edits stay on real rows; use Edit for series / occurrence changes. */
@@ -131,19 +250,12 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   const todayYmd = getVaTasksViewTodayYmd();
   const virtualBadgeLabel = isVirtual && dueYmd && dueYmd > todayYmd ? "Upcoming day" : "Projected";
 
-  const togglePhases = React.useCallback(async () => {
-    if (expanded) {
-      setExpanded(false);
-      return;
-    }
-    setExpanded(true);
-    setLoadingPhases(true);
-    try {
-      await onLoadPhases(task.id, task.virtual_source_task_id);
-    } finally {
-      setLoadingPhases(false);
-    }
-  }, [expanded, onLoadPhases, task.id, task.virtual_source_task_id]);
+  // Keep expand paint free of setState updaters — fetch runs after the open toggle commits.
+  const togglePhases = React.useCallback(() => {
+    const next = !expandedRef.current;
+    setExpanded(next);
+    if (next) void onLoadPhases(task.id, task.virtual_source_task_id);
+  }, [onLoadPhases, task.id, task.virtual_source_task_id]);
 
   const renderPhaseExtra = React.useCallback(
     (phase: PhaseRibbonPhase) => {
@@ -175,9 +287,15 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
                 <option value="Global">Global</option>
               </select>
               <input
-                value={phase.title}
-                onChange={(e) => onUpdatePhaseTitleLocal(phase.id, task.id, e.target.value)}
-                onBlur={() => void onUpdatePhase(phase.id, task.id, { title: phase.title })}
+                defaultValue={phase.title}
+                key={`${phase.id}-${phase.title}`}
+                onBlur={(e) => {
+                  const next = e.target.value;
+                  if (next !== phase.title) {
+                    onUpdatePhaseTitleLocal(phase.id, task.id, next);
+                    void onUpdatePhase(phase.id, task.id, { title: next });
+                  }
+                }}
                 placeholder="Phase title"
                 className="min-w-0 flex-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-transparent px-2 py-1.5 text-sm text-white placeholder:text-[#B8B4B8]/25 focus:outline-none focus:border-[#D4AF8C]/35"
               />
@@ -230,90 +348,17 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
     (item: PhaseRibbonItem, phase: PhaseRibbonPhase, idx: number) => {
       if (!canEditPhases) return null;
       return (
-        <div className="group flex items-start gap-3">
-          <div
-            className={cn(
-              "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[5px] border-2",
-              item.status === "completed"
-                ? "border-[#FF1493]/80 bg-gradient-to-br from-[#FF1493] via-[#E91E8C] to-[#D4AF8C] shadow-[0_0_10px_-3px_rgba(255,20,147,0.45)]"
-                : "border-[#D4AF8C]/45 bg-[#D4AF8C]/[0.04]",
-            )}
-          >
-            {item.status === "completed" ? (
-              <Check className="h-3.5 w-3.5 text-white drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]" strokeWidth={3.25} aria-hidden />
-            ) : null}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={item.step_type ?? DEFAULT_TASK_STEP_TYPE}
-                onChange={(e) =>
-                  void onUpdatePhaseItem(item.id, phase.id, task.id, {
-                    step_type: e.target.value as TaskStepType,
-                  })
-                }
-                className="w-[7.5rem] shrink-0 cursor-pointer rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#151315] px-2 py-1 text-[10px] text-[#B8B4B8] focus:border-[#FF1493]/40 focus:outline-none"
-                aria-label="Step type"
-              >
-                {TASK_STEP_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              <input
-                value={item.title}
-                onChange={(e) => onUpdatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)}
-                onBlur={() => void onUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })}
-                placeholder={`Item ${idx + 1}…`}
-                className={cn(
-                  "min-w-0 flex-1 bg-transparent text-sm focus:outline-none transition-colors duration-200 motion-reduce:transition-none",
-                  item.status === "completed"
-                    ? "text-[#B8B4B8]/28 line-through decoration-[#B8B4B8]/35 decoration-[1.5px]"
-                    : "text-[#B8B4B8]",
-                )}
-              />
-            </div>
-            {item.requires_screenshot && item.status !== "completed" ? (
-              <p className="mt-0.5 flex items-center gap-1 text-xs text-[#D4AF8C]/55">
-                <Camera className="h-3.5 w-3.5" aria-hidden /> Requires proof
-              </p>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-1 self-center opacity-100 transition md:opacity-0 md:group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100">
-            <button
-              type="button"
-              onClick={() =>
-                void onUpdatePhaseItem(item.id, phase.id, task.id, {
-                  requires_screenshot: !item.requires_screenshot,
-                })
-              }
-              className={cn(
-                "relative h-5 w-9 min-h-[44px] min-w-[44px] rounded-full transition-all",
-                item.requires_screenshot ? "bg-[#D4AF8C]" : "bg-white/15",
-              )}
-              aria-label="Toggle screenshot required"
-            >
-              <span
-                className={cn(
-                  "absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white transition-all",
-                  item.requires_screenshot ? "left-[1.35rem]" : "left-1",
-                )}
-              />
-            </button>
-            <button
-              type="button"
-              onClick={() => void onDeletePhaseItem(item.id, phase.id, task.id)}
-              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-[#B8B4B8]/50 hover:bg-red-500/10 hover:text-red-400"
-              aria-label="Remove item"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
+        <AdminChecklistItemRow
+          item={item}
+          phase={phase}
+          idx={idx}
+          taskId={task.id}
+          onUpdatePhaseItem={onUpdatePhaseItem}
+          onDeletePhaseItem={onDeletePhaseItem}
+        />
       );
     },
-    [canEditPhases, onDeletePhaseItem, onUpdatePhaseItem, onUpdatePhaseItemTitleLocal, task.id],
+    [canEditPhases, onDeletePhaseItem, onUpdatePhaseItem, task.id],
   );
 
   return (
@@ -416,7 +461,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
         <div className="mt-5 border-t border-[#1f1f1f] pt-4">
           <button
             type="button"
-            onClick={() => void togglePhases()}
+            onClick={togglePhases}
             className="group/ph flex items-center gap-2 text-sm text-white/45 transition-colors hover:text-white/75"
           >
             <span className="text-xs">{expanded ? "▼" : "▶"}</span>
@@ -426,16 +471,24 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
                 {phases.length}
               </span>
             ) : null}
-            {loadingPhases ? <span className="animate-pulse text-xs text-white/30">Loading…</span> : null}
+            {phasesLoading && phases.length === 0 ? (
+              <span className="animate-pulse text-xs text-white/30">Loading…</span>
+            ) : null}
           </button>
 
           {expanded ? (
             <div className="mt-5">
-              <TaskPhaseRibbon
-                phases={phases}
-                renderPhaseExtra={renderPhaseExtra}
-                renderItem={canEditPhases ? renderItem : undefined}
-              />
+              {phasesLoading && phases.length === 0 ? (
+                <p className={cn(VA_CARD, "animate-pulse py-10 text-center text-sm text-[#B8B4B8]/35")}>
+                  Loading phases…
+                </p>
+              ) : (
+                <TaskPhaseRibbon
+                  phases={phases}
+                  renderPhaseExtra={renderPhaseExtra}
+                  renderItem={canEditPhases ? renderItem : undefined}
+                />
+              )}
               {isVirtual ? (
                 <p className="mt-3 text-center text-xs text-sky-300/70">
                   Projected occurrence — use Edit or Delete to change this date or the series.
@@ -462,6 +515,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   prev.assignedLabel === next.assignedLabel &&
   prev.canManage === next.canManage &&
   prev.phases === next.phases &&
+  prev.phasesLoading === next.phasesLoading &&
   prev.isReminding === next.isReminding &&
   prev.remindSuccess === next.remindSuccess &&
   prev.isConfirmingDelete === next.isConfirmingDelete &&
@@ -475,6 +529,5 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   prev.onAddPhaseItem === next.onAddPhaseItem &&
   prev.onUpdatePhaseItem === next.onUpdatePhaseItem &&
   prev.onDeletePhaseItem === next.onDeletePhaseItem &&
-  prev.onUpdatePhaseTitleLocal === next.onUpdatePhaseTitleLocal &&
-  prev.onUpdatePhaseItemTitleLocal === next.onUpdatePhaseItemTitleLocal,
+  prev.onUpdatePhaseTitleLocal === next.onUpdatePhaseTitleLocal,
 );
