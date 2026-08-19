@@ -80,9 +80,15 @@ export interface InflowwEmployeeChatRow {
   fanCvr: number | null;
   avgEarningsPerSpendingFan: number | null;
   responseTimeSeconds: number | null;
+  /** Scheduled-hours response time (seconds). When present, also stored in responseTimeSeconds. */
+  responseTimeScheduledSeconds?: number | null;
+  /** Clocked-hours response time (seconds). */
+  responseTimeClockedSeconds?: number | null;
   salesPerHour: number | null;
   messagesPerHour: number | null;
   fansChattedPerHour: number | null;
+  /** Total characters sent across all messages for this employee+creator+day. */
+  characterCount?: number | null;
 }
 
 /** Merged sales + chat metrics for upsert into infloww_daily_stats. */

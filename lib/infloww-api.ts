@@ -737,9 +737,9 @@ function mapEmployeeRow(row: unknown, idx: number): import("@/types/infloww").In
     idField(nested ?? {}, ["employeeId", "employee_id", "id"]) ||
     idField(nestedUser ?? {}, ["employeeId", "id"]);
   const name =
-    strField(r, ["name", "fullName", "full_name", "displayName", "display_name", "employeeName"]) ??
-    strField(nested ?? {}, ["name", "fullName", "displayName"]) ??
-    strField(nestedUser ?? {}, ["name", "fullName", "displayName"]) ??
+    strField(r, ["employeeName", "employee_name", "name", "fullName", "full_name", "displayName", "display_name"]) ??
+    strField(nested ?? {}, ["employeeName", "name", "fullName", "displayName"]) ??
+    strField(nestedUser ?? {}, ["employeeName", "name", "fullName", "displayName"]) ??
     (employeeId ? `Employee ${employeeId}` : `Employee ${idx + 1}`);
   const email =
     strField(r, ["email", "emailAddress", "email_address"]) ??
@@ -1196,13 +1196,36 @@ function mapChatRow(row: unknown): import("@/types/infloww").InflowwEmployeeChat
       "avgEarningsPerFan",
       "avg_earnings_per_fan",
     ]),
-    responseTimeSeconds: nullableNumField(r, [
-      "responseTimeSeconds",
-      "response_time_seconds",
-      "responseTime",
-      "response_time",
-      "avgResponseTime",
+    responseTimeScheduledSeconds: nullableNumField(r, [
+      "responseTimeBasedOnScheduledHours",
+      "response_time_based_on_scheduled_hours",
     ]),
+    responseTimeClockedSeconds: nullableNumField(r, [
+      "responseTimeBasedOnClockedHours",
+      "response_time_based_on_clocked_hours",
+    ]),
+    responseTimeSeconds: (() => {
+      // v1 changelog: response time now split into scheduled vs clocked hours.
+      // Prefer scheduled (matches previous methodology), fall back to clocked, then legacy keys.
+      const scheduled = nullableNumField(r, [
+        "responseTimeBasedOnScheduledHours",
+        "response_time_based_on_scheduled_hours",
+      ]);
+      if (scheduled != null) return scheduled;
+      const clocked = nullableNumField(r, [
+        "responseTimeBasedOnClockedHours",
+        "response_time_based_on_clocked_hours",
+      ]);
+      if (clocked != null) return clocked;
+      return nullableNumField(r, [
+        "responseTimeSeconds",
+        "response_time_seconds",
+        "responseTime",
+        "response_time",
+        "avgResponseTime",
+      ]);
+    })(),
+    characterCount: nullableNumField(r, ["characterCount", "character_count", "charCount"]),
     salesPerHour: nullableNumField(r, ["salesPerHour", "sales_per_hour"]),
     messagesPerHour: nullableNumField(r, ["messagesPerHour", "messages_per_hour", "messagesSentPerHour"]),
     fansChattedPerHour: nullableNumField(r, ["fansChattedPerHour", "fans_chatted_per_hour"]),
