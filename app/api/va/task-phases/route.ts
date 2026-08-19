@@ -9,6 +9,8 @@ import { getVaTaskById } from "@/services/va-tasks";
 import { getPhasesForTaskDisplay } from "@/services/task-phases";
 import { VA_TASK_PHASES_JSON_HEADERS } from "@/lib/va-task-phases-fetch";
 
+export const dynamic = "force-dynamic";
+
 function vaCanReadTask(
   session: { id: string; airtableUserId: string | null },
   task: { assigned_to_ids: string[] },

@@ -43,7 +43,7 @@ import {
 } from "@/lib/va-task-screenshots";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { StoryCtaScheduleWidget } from "@/components/story-cta-schedule-widget";
-import { VA_TASK_PHASES_FETCH_INIT } from "@/lib/va-task-phases-fetch";
+import { VA_TASK_PHASES_FETCH_INIT, normalizeTaskPhasesForClient } from "@/lib/va-task-phases-fetch";
 
 type Props = {
   tasks: VaTaskRecord[];
@@ -613,6 +613,7 @@ export function VaTasksClient({
 
   React.useEffect(() => {
     setShowAllTasks(false);
+    setTaskPhases({});
   }, [selectedYmd, deferredSearch, filterStatus, filterPriority]);
 
   const visibleRegularTasks = React.useMemo(
@@ -665,10 +666,12 @@ export function VaTasksClient({
   }, []);
 
   const loadPhasesAndAccounts = React.useCallback(async (task: VaTaskRecord) => {
-    // Always re-fetch on expand — cached rows may predate step_type backfill or lack the field.
+    // Always re-fetch on expand — drop any stale snapshot first so we never paint
+    // checklist rows missing step_type while the fresh request is in-flight.
     if (phasesInflightRef.current.has(task.id)) return;
     phasesInflightRef.current.add(task.id);
     setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
+    setTaskPhases((prev) => ({ ...prev, [task.id]: [] }));
     try {
       const params = new URLSearchParams({ task_id: task.id });
       if (task.virtual_source_task_id?.trim()) {
@@ -676,7 +679,7 @@ export function VaTasksClient({
       }
       const res = await fetch(`/api/va/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
       const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-      const phases: TaskPhase[] = data.phases ?? [];
+      const phases: TaskPhase[] = normalizeTaskPhasesForClient(data.phases ?? []);
 
       // Paint checklist immediately — do NOT wait on N+1 social-account fetches (desktop expand lag).
       React.startTransition(() => {

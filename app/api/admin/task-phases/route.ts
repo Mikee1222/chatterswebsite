@@ -4,6 +4,8 @@ import { hasAnyPermission, hasPermission } from "@/lib/rbac";
 import { isVirtualVaTaskId } from "@/lib/recurrence";
 import { PERMISSIONS } from "@/lib/permissions";
 import { VA_TASK_PHASES_JSON_HEADERS } from "@/lib/va-task-phases-fetch";
+
+export const dynamic = "force-dynamic";
 import {
   createPhase,
   getPhasesForTaskDisplay,

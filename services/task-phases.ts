@@ -9,7 +9,12 @@ import {
   resolveVirtualPhaseSourceId,
 } from "@/lib/va-virtual-phases";
 import { getUserByAirtableId } from "@/services/users";
-import { coerceTaskStepType, DEFAULT_TASK_STEP_TYPE, type TaskStepType } from "@/lib/task-step-types";
+import {
+  coerceTaskStepType,
+  DEFAULT_TASK_STEP_TYPE,
+  inferTaskStepTypeFromTitle,
+  type TaskStepType,
+} from "@/lib/task-step-types";
 import { getVaTaskById } from "@/services/va-tasks";
 
 export type { TaskStepType } from "@/lib/task-step-types";
@@ -558,7 +563,10 @@ export async function clonePhasesToTask(
         description: item.description,
         requires_screenshot: item.requires_screenshot,
         sort_order: item.sort_order,
-        step_type: item.step_type,
+        step_type:
+          item.step_type && item.step_type !== DEFAULT_TASK_STEP_TYPE
+            ? item.step_type
+            : inferTaskStepTypeFromTitle(item.title) ?? item.step_type ?? DEFAULT_TASK_STEP_TYPE,
       });
     }
     cloned += 1;
