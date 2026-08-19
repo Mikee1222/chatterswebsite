@@ -83,9 +83,9 @@ export function AdminInflowwInvoicesClient({ billing }: Props) {
     <div className="space-y-6">
       {/* Summary stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="Total Billed" value={fmt(totalBalanceDue)} />
         <StatCard label="Total Paid" value={fmt(totalPaid)} accent />
         <StatCard label="Total Pending" value={fmt(totalPending)} warning={totalPending > 0} />
-        <StatCard label="Balance Due" value={fmt(totalBalanceDue)} warning={totalBalanceDue > 0} />
         <StatCard label="Periods" value={String(billing.length)} />
       </div>
 
@@ -148,9 +148,8 @@ export function AdminInflowwInvoicesClient({ billing }: Props) {
               <StatCard label="Total" value={fmt(selected.total, currency)} />
               <StatCard label="Paid" value={fmt(selected.paid, currency)} accent />
               <StatCard
-                label="Balance Due"
+                label="Billed (Balance Due)"
                 value={fmt(selected.balanceDue, currency)}
-                warning={selected.balanceDue > 0}
               />
             </div>
 
