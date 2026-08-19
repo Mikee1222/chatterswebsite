@@ -15,9 +15,9 @@ export default async function AdminInflowwInvoicesPage() {
     <div className="space-y-8">
       <div>
         <p className="text-xs uppercase tracking-[0.35em] text-pink-300/80">Finance</p>
-        <h1 className="mt-2 text-4xl font-semibold text-white">Infloww Invoices</h1>
+        <h1 className="mt-2 text-4xl font-semibold text-white">Infloww Platform Subscription</h1>
         <p className="mt-2 text-gray-400">
-          Monthly billing records from Infloww. Synced once daily.
+          Monthly subscription fees billed by Infloww to your agency. Synced once daily.
         </p>
       </div>
       <AdminInflowwInvoicesClient billing={billing} />

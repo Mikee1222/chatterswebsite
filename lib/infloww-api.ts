@@ -2537,8 +2537,8 @@ function billingMoneyField(r: Record<string, unknown>, key: string): number {
   if (v == null || v === "") return 0;
   const n = typeof v === "number" ? v : Number.parseFloat(String(v).replace(/,/g, ""));
   if (!Number.isFinite(n)) return 0;
-  // Billing fields are whole-dollar amounts in the Infloww API (not cents).
-  return n;
+  // Billing fields are minor units (cents) — same convention as all other Infloww money fields.
+  return n / 100;
 }
 
 function mapBillingRow(row: unknown): import("@/types/infloww").InflowwMonthlyBillingRow {
