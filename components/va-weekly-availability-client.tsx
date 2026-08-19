@@ -10,7 +10,8 @@ import {
   updateAvailabilityVaAction,
 } from "@/app/actions/weekly-availability-va";
 import { vaWeeklyAvailabilityUrl } from "@/lib/routes";
-import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
+import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel, getShiftTypeFormLabel } from "@/lib/weekly-program";
+import { PRESET_WEEKLY_PROGRAM_SHIFT_TYPES, getShiftTypeDefinition } from "@/lib/weekly-program-shift-types";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
@@ -241,9 +242,11 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
   ];
 
   const shiftOptions = [
-    { value: "Morning", label: "Morning (12:00–20:00)" },
-    { value: "Night", label: "Night (20:00–03:00)" },
-    { value: "Custom", label: "Custom" },
+    ...PRESET_WEEKLY_PROGRAM_SHIFT_TYPES.map((value) => ({
+      value,
+      label: getShiftTypeFormLabel(value),
+    })),
+    { value: "Custom" as const, label: "Custom" },
   ];
 
   return (
@@ -492,13 +495,13 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
                             </div>
                             {r.notes?.trim() && <p className="mt-1 text-white/50 truncate">notes: {r.notes}</p>}
                           </>
-                        ) : r.entry_type === "availability" && (r.shift_type === "Morning" || r.shift_type === "Night") ? (
+                        ) : r.entry_type === "availability" && r.shift_type !== "Custom" ? (
                           <>
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-[hsl(330,90%,75%)]">{r.shift_type}</span>
+                              <span className="font-medium text-[hsl(330,90%,75%)]">{getShiftTypeFormLabel(r.shift_type, r.day)}</span>
                               <StatusBadge status={r.status} />
                             </div>
-                            <p className="mt-1 text-white/60 text-xs">{r.shift_type === "Morning" ? "12:00–20:00" : "20:00–03:00"}</p>
+                            <p className="mt-1 text-white/60 text-xs">{getShiftTypeDefinition(r.shift_type)?.timeRangeLabel ?? r.shift_type}</p>
                             {r.notes?.trim() && <p className="mt-1 text-white/50 truncate">notes: {r.notes}</p>}
                           </>
                         ) : (

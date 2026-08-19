@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
-import { addDays, buildCustomShiftTimes, getMondayOfWeek, normalizeHHmm, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
+import { addDays, buildCustomShiftTimes, getMondayOfWeek, normalizeHHmm, WEEKLY_PROGRAM_DAY_OPTIONS, getTimesForShiftType } from "@/lib/weekly-program";
 import { rangesOverlap } from "@/lib/weekly-program-conflicts";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -36,7 +36,7 @@ function timesForAvailability(
     if (start === end) return { error: "Start and end time cannot be the same." };
     return buildCustomShiftTimes(dateYmd, start, end);
   }
-  return buildCustomShiftTimes(dateYmd, shiftType === "Morning" ? "12:00" : "20:00", shiftType === "Morning" ? "20:00" : "03:00");
+  return getTimesForShiftType(shiftType, dateYmd, day);
 }
 
 function timesForExistingRequest(request: WeeklyAvailabilityRequest): { start_time: string; end_time: string } | null {

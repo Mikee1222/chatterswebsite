@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { formatTimeFromISO, formatDateEuropean } from "@/lib/format";
-import { addDays } from "@/lib/weekly-program";
+import { addDays, shiftCardAccentClass } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
 import type { WeeklyProgramRecord } from "@/types";
 import { PeriodDayIndicator } from "@/components/period-day-indicator";
@@ -39,12 +39,6 @@ function OvernightContinuationBadge() {
       +1 cont.
     </span>
   );
-}
-
-function shiftCardAccentClass(shiftType: string): string {
-  if (shiftType === "Morning") return "border-l-[3px] border-l-amber-400/55";
-  if (shiftType === "Night") return "border-l-[3px] border-l-indigo-400/55";
-  return "border-l-[3px] border-l-pink-400/55";
 }
 
 export function WeeklyProgramDaySwiper({

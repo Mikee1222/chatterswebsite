@@ -12,7 +12,7 @@ import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 import { WeeklyProgramDaySwiper } from "@/components/weekly-program-day-swiper";
 import { formatDateEuropean, formatTimeFromISO } from "@/lib/format";
 import { ROUTES, weeklyAvailabilityUrl } from "@/lib/routes";
-import { addDays, formatWeekLabel, getTodayYmd } from "@/lib/weekly-program";
+import { addDays, formatWeekLabel, getTodayYmd, shiftCardAccentClass, fallbackShiftStartMinutes, weeklyProgramShiftTypesSummary } from "@/lib/weekly-program";
 import {
   parseChatterScheduleViewMode,
   type ChatterScheduleViewMode,
@@ -25,12 +25,6 @@ import { cn } from "@/lib/utils";
 const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"] as const;
 
 type DisplayEntry = ChatterTeamScheduleEntry & { notes?: string };
-
-function fallbackShiftStartMinutes(shiftType: string): number {
-  if (shiftType === "Morning") return 720;
-  if (shiftType === "Night") return 1200;
-  return 9999;
-}
 
 function utcStartMinutes(entry: { start_time?: string | null; shift_type: string }): number {
   if (entry.start_time) {
@@ -53,12 +47,6 @@ function OvernightContinuationBadge() {
       +1 cont.
     </span>
   );
-}
-
-function shiftCardAccentClass(shiftType: string): string {
-  if (shiftType === "Morning") return "border-l-[3px] border-l-amber-400/55";
-  if (shiftType === "Night") return "border-l-[3px] border-l-indigo-400/55";
-  return "border-l-[3px] border-l-pink-400/55";
 }
 
 function ScheduleViewToggle({
@@ -288,7 +276,7 @@ export function ChatterWeeklyProgramClient({
         title="Weekly program"
         description={
           <>
-            Week of {weekLabel}. Morning 12:00–20:00, Night 20:00–03:00.
+            Week of {weekLabel}. {weeklyProgramShiftTypesSummary()}.
             {viewMode === "everyone" ? (
               <span className="mt-1 block text-sm text-white/50">
                 Team view shows shift times and model assignments only — no internal notes.

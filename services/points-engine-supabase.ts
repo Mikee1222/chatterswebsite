@@ -13,11 +13,12 @@ import {
   type SbRow,
 } from "@/lib/supabase-data";
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
-import { getTimesForShiftType } from "@/lib/weekly-program";
+import { getTimesForShiftType, weekdayFromDateYmd } from "@/lib/weekly-program";
+import { PRESET_WEEKLY_PROGRAM_SHIFT_TYPES } from "@/lib/weekly-program-shift-types";
 import { getPointsConfig, type PointsConfig } from "@/services/points-config";
 import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
 import { listAllUsers } from "@/services/users";
-import type { Shift, WeeklyProgramShiftType } from "@/types";
+import type { Shift, WeeklyProgramShiftType, WeeklyProgramDay } from "@/types";
 import { devLog } from "@/lib/dev-log";
 import type {
   AdminPointsLedgerRow,
@@ -334,9 +335,13 @@ export async function awardShiftEndPoints(
   if (sched === "Night") {
     await awardPoints(chatterUserId, config.SHIFT_NIGHT_BONUS, "Night shift", "shift", shiftRecordId);
   }
-  if (shift.date && shift.start_time && (sched === "Morning" || sched === "Night")) {
+  if (shift.date && shift.start_time && (PRESET_WEEKLY_PROGRAM_SHIFT_TYPES as readonly string[]).includes(sched)) {
     try {
-      const { start_time: schedStartIso } = getTimesForShiftType(sched, shift.date);
+      const { start_time: schedStartIso } = getTimesForShiftType(
+        sched as WeeklyProgramShiftType,
+        shift.date,
+        weekdayFromDateYmd(shift.date) as WeeklyProgramDay
+      );
       const actualMs = new Date(shift.start_time).getTime();
       const schedMs = new Date(schedStartIso).getTime();
       if (!Number.isNaN(actualMs) && !Number.isNaN(schedMs)) {

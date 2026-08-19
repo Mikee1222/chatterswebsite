@@ -15,6 +15,10 @@
 
 import { formatDateOnlyEuropean } from "@/lib/format";
 import { getMondayOfWeekFromYmdAthens, getTodayYmdAthens } from "@/lib/airtable-datetime";
+import {
+  getNightEndHHmm,
+  weekdayFromDateYmd,
+} from "@/lib/weekly-program-shift-types";
 import type { WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 
 const DATE_ONLY_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -29,7 +33,28 @@ export const WEEKLY_PROGRAM_DAY_OPTIONS: WeeklyProgramDay[] = [
   "Sunday",
 ];
 
-export const WEEKLY_PROGRAM_SHIFT_TYPES: WeeklyProgramShiftType[] = ["Morning", "Night", "Custom"];
+export const WEEKLY_PROGRAM_SHIFT_TYPES: WeeklyProgramShiftType[] = [
+  "Morning",
+  "Midday",
+  "Afternoon",
+  "Night",
+  "LateNight",
+  "Custom",
+];
+
+export {
+  PRESET_WEEKLY_PROGRAM_SHIFT_TYPES,
+  WEEKLY_PROGRAM_SHIFT_TYPE_DEFINITIONS,
+  getNightEndHHmm,
+  getShiftTypeDefinition,
+  getShiftTypeDisplayName,
+  getShiftTypeFormLabel,
+  getShiftTypeLabel,
+  shiftCardAccentClass,
+  fallbackShiftStartMinutes,
+  weekdayFromDateYmd,
+  weeklyProgramShiftTypesSummary,
+} from "@/lib/weekly-program-shift-types";
 
 /** Weekday name for today (e.g. "Monday") for matching weekly program day. */
 export function getTodayWeekday(): WeeklyProgramDay {
@@ -50,26 +75,52 @@ export function getTodayYmd(): string {
 }
 
 /**
- * Morning 12:00–20:00, Night 20:00–03:00 (end next day).
+ * Preset shift windows (UTC wall-clock fragments in ISO strings):
+ * - Morning 12:00–20:00
+ * - Midday 12:00–16:00
+ * - Afternoon 16:00–00:00 (next calendar day)
+ * - Night (Evening) 20:00–03:00; Fri/Sat → 04:00
+ * - LateNight 00:00–03:00 (next calendar day when end ≤ start)
  * Custom: use buildCustomShiftTimes() with HH:mm.
- * dateYmd = YYYY-MM-DD for the day.
+ * dateYmd = YYYY-MM-DD for the shift day; optional day overrides weekday for Night end time.
  */
 export function getTimesForShiftType(
   shiftType: WeeklyProgramShiftType,
-  dateYmd: string
+  dateYmd: string,
+  day?: WeeklyProgramDay
 ): { start_time: string; end_time: string } {
+  const ymd = dateYmd.trim().slice(0, 10);
+  const weekday = day ?? weekdayFromDateYmd(ymd);
+  const nextYmd = addDays(ymd, 1);
+
   if (shiftType === "Morning") {
     return {
-      start_time: `${dateYmd}T12:00:00.000Z`,
-      end_time: `${dateYmd}T20:00:00.000Z`,
+      start_time: `${ymd}T12:00:00.000Z`,
+      end_time: `${ymd}T20:00:00.000Z`,
+    };
+  }
+  if (shiftType === "Midday") {
+    return {
+      start_time: `${ymd}T12:00:00.000Z`,
+      end_time: `${ymd}T16:00:00.000Z`,
+    };
+  }
+  if (shiftType === "Afternoon") {
+    return {
+      start_time: `${ymd}T16:00:00.000Z`,
+      end_time: `${nextYmd}T00:00:00.000Z`,
     };
   }
   if (shiftType === "Night") {
-    const nextDay = new Date(dateYmd + "T12:00:00.000Z");
-    nextDay.setUTCDate(nextDay.getUTCDate() + 1);
-    const nextYmd = nextDay.toISOString().split("T")[0];
+    const endHHmm = getNightEndHHmm(weekday);
     return {
-      start_time: `${dateYmd}T20:00:00.000Z`,
+      start_time: `${ymd}T20:00:00.000Z`,
+      end_time: `${nextYmd}T${endHHmm}:00.000Z`,
+    };
+  }
+  if (shiftType === "LateNight") {
+    return {
+      start_time: `${ymd}T00:00:00.000Z`,
       end_time: `${nextYmd}T03:00:00.000Z`,
     };
   }

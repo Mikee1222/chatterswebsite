@@ -16,13 +16,14 @@ const OVERTIME_GRACE_MS = 10 * 60 * 1000;
 const RUNNING_LONG_BUFFER_MS = 30 * 60 * 1000;
 const NO_MODELS_GRACE_MS = 10 * 60 * 1000;
 
-import { getTimesForShiftType, buildCustomShiftTimes } from "@/lib/weekly-program";
+import { getTimesForShiftType, buildCustomShiftTimes, weekdayFromDateYmd } from "@/lib/weekly-program";
+import { PRESET_WEEKLY_PROGRAM_SHIFT_TYPES } from "@/lib/weekly-program-shift-types";
 import {
   getTodayYmdAthens,
   getTodayWeekdayAthens,
   getWeekStartYmdInAthens,
 } from "@/lib/airtable-datetime";
-import type { WeeklyProgramShiftType } from "@/types";
+import type { WeeklyProgramShiftType, WeeklyProgramDay } from "@/types";
 
 function getScheduledStartIso(
   program: {
@@ -34,8 +35,9 @@ function getScheduledStartIso(
   dateYmd: string
 ): string | null {
   const shiftType = program.shift_type as WeeklyProgramShiftType;
-  if (shiftType === "Morning" || shiftType === "Night") {
-    const times = getTimesForShiftType(shiftType, dateYmd);
+  const weekday = (program.day as WeeklyProgramDay | undefined) ?? weekdayFromDateYmd(dateYmd);
+  if ((PRESET_WEEKLY_PROGRAM_SHIFT_TYPES as readonly string[]).includes(shiftType)) {
+    const times = getTimesForShiftType(shiftType, dateYmd, weekday);
     return times.start_time;
   }
   if (shiftType === "Custom" && program.start_time && program.end_time) {
@@ -62,8 +64,9 @@ function getScheduledEndIso(
   dateYmd: string
 ): string | null {
   const shiftType = program.shift_type as WeeklyProgramShiftType;
-  if (shiftType === "Morning" || shiftType === "Night") {
-    const times = getTimesForShiftType(shiftType, dateYmd);
+  const weekday = (program.day as WeeklyProgramDay | undefined) ?? weekdayFromDateYmd(dateYmd);
+  if ((PRESET_WEEKLY_PROGRAM_SHIFT_TYPES as readonly string[]).includes(shiftType)) {
+    const times = getTimesForShiftType(shiftType, dateYmd, weekday);
     return times.end_time;
   }
   if (shiftType === "Custom" && program.start_time && program.end_time) {

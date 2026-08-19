@@ -25,7 +25,8 @@ import {
   deleteAvailabilityAction,
 } from "@/app/actions/weekly-availability";
 import { weeklyAvailabilityUrl } from "@/lib/routes";
-import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
+import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel, getShiftTypeFormLabel } from "@/lib/weekly-program";
+import { PRESET_WEEKLY_PROGRAM_SHIFT_TYPES, getShiftTypeDefinition } from "@/lib/weekly-program-shift-types";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
@@ -253,9 +254,11 @@ export function WeeklyAvailabilityClient({ weekStart: initialWeekStart, initialR
   ];
 
   const shiftOptions = [
-    { value: "Morning", label: "Morning (12:00–20:00)" },
-    { value: "Night", label: "Night (20:00–03:00)" },
-    { value: "Custom", label: "Custom" },
+    ...PRESET_WEEKLY_PROGRAM_SHIFT_TYPES.map((value) => ({
+      value,
+      label: getShiftTypeFormLabel(value),
+    })),
+    { value: "Custom" as const, label: "Custom" },
   ];
 
   return (
@@ -587,29 +590,34 @@ export function WeeklyAvailabilityClient({ weekStart: initialWeekStart, initialR
                                 ) : null}
                               </div>
                             </div>
-                          ) : r.entry_type === "availability" && (r.shift_type === "Morning" || r.shift_type === "Night") ? (
+                          ) : r.entry_type === "availability" && r.shift_type !== "Custom" ? (
                             <div className="flex gap-3">
                               <span
                                 className={cn(
                                   "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ring-1 transition-[box-shadow,transform] group-hover:scale-[1.02] group-hover:ring-pink-500/30",
-                                  r.shift_type === "Morning"
-                                    ? "bg-amber-500/15 text-amber-200 ring-amber-500/25"
-                                    : "bg-indigo-500/15 text-indigo-200 ring-indigo-500/25"
+                                  getShiftTypeDefinition(r.shift_type)?.badgeClass ??
+                                    "bg-white/10 text-white/70 ring-white/15"
                                 )}
                               >
-                                {r.shift_type === "Morning" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+                                {r.shift_type === "Morning" ? (
+                                  <Sun className="h-5 w-5" />
+                                ) : r.shift_type === "Night" ? (
+                                  <Moon className="h-5 w-5" />
+                                ) : (
+                                  <Clock className="h-5 w-5" />
+                                )}
                               </span>
                               <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center justify-between gap-2">
                                   <span className="font-semibold text-pink-100">
-                                    {d} — {r.shift_type}
+                                    {d} — {getShiftTypeFormLabel(r.shift_type, r.day)}
                                   </span>
                                   <span className={cn("rounded-lg px-2 py-0.5 text-xs font-medium capitalize", statusBadgeClass(r.status))}>
                                     {r.status}
                                   </span>
                                 </div>
                                 <p className="mt-1 text-xs text-white/55">
-                                  {r.shift_type === "Morning" ? "12:00–20:00" : "20:00–03:00"}
+                                  {getShiftTypeDefinition(r.shift_type)?.timeRangeLabel ?? r.shift_type}
                                 </p>
                                 {r.notes?.trim() ? (
                                   <p className="mt-1 truncate text-xs text-white/50">Notes: {r.notes}</p>

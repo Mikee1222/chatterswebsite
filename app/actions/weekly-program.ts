@@ -102,7 +102,7 @@ export async function createProgramAction(fields: {
       start_time = built.start_time;
       end_time = built.end_time;
     } else {
-      const times = getTimesForShiftType(fields.shift_type, dateYmd);
+      const times = getTimesForShiftType(fields.shift_type, dateYmd, fields.day);
       start_time = times.start_time;
       end_time = times.end_time;
     }
@@ -194,7 +194,7 @@ export async function updateProgramAction(
       start_time = built.start_time;
       end_time = built.end_time;
     } else {
-      const times = getTimesForShiftType(shiftType, dateYmd);
+      const times = getTimesForShiftType(shiftType, dateYmd, day);
       start_time = times.start_time;
       end_time = times.end_time;
     }

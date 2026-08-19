@@ -30,6 +30,7 @@ import {
   formatWeekLabel,
   normalizeHHmm,
   normalizeTime,
+  fallbackShiftStartMinutes,
 } from "@/lib/weekly-program";
 import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
 import { getWeeklyProgramConflicts, collectConflictRecordIds, getModelCoverageBoard, rangesOverlap } from "@/lib/weekly-program-conflicts";
@@ -74,12 +75,6 @@ const DAYS: WeeklyProgramDay[] = [
 
 const SHIFT_TYPES: WeeklyProgramShiftType[] = ["Morning", "Night"];
 
-const SHIFT_START_FALLBACK_MINUTES: Record<WeeklyProgramShiftType, number> = {
-  Morning: 720,
-  Night: 1200,
-  Custom: 9999,
-};
-
 function startMinutesUtc(startIso: string | null | undefined, shiftType: WeeklyProgramShiftType): number {
   if (startIso) {
     const date = new Date(startIso);
@@ -87,7 +82,7 @@ function startMinutesUtc(startIso: string | null | undefined, shiftType: WeeklyP
       return date.getUTCHours() * 60 + date.getUTCMinutes();
     }
   }
-  return SHIFT_START_FALLBACK_MINUTES[shiftType];
+  return fallbackShiftStartMinutes(shiftType);
 }
 
 const SHIFT_FILTER_OPTIONS: CustomSelectOption[] = [

@@ -1,9 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { BarChart3, Check, Instagram, Layers, Moon, Sun } from "lucide-react";
+import { BarChart3, Check, Instagram, Layers, Moon, Star, Sun, SunMedium, Sunset } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { UserRole } from "@/types";
+import type { UserRole, WeeklyProgramShiftType } from "@/types";
+import {
+  getShiftTypeLabel,
+  WEEKLY_PROGRAM_SHIFT_TYPE_DEFINITIONS,
+} from "@/lib/weekly-program-shift-types";
 
 function initialsFromName(name: string, max = 2): string {
   const parts = name
@@ -93,14 +97,26 @@ export function ShiftTypeBadge({
   shiftType: string;
   className?: string;
 }) {
-  const t = shiftType === "Custom" ? "Custom" : shiftType === "Morning" ? "Morning" : shiftType === "Night" ? "Night" : shiftType;
-  const Icon = t === "Morning" ? Sun : t === "Night" ? Moon : Layers;
-  const chip =
-    t === "Morning"
-      ? "border-amber-400/35 bg-amber-500/15 text-amber-100"
-      : t === "Night"
-        ? "border-indigo-400/35 bg-indigo-500/15 text-indigo-100"
-        : "border-pink-400/35 bg-pink-500/12 text-pink-100";
+  const def =
+    shiftType !== "Custom"
+      ? WEEKLY_PROGRAM_SHIFT_TYPE_DEFINITIONS[
+          shiftType as keyof typeof WEEKLY_PROGRAM_SHIFT_TYPE_DEFINITIONS
+        ]
+      : null;
+  const t = def ? getShiftTypeLabel(shiftType as WeeklyProgramShiftType) : shiftType === "Custom" ? "Custom" : shiftType;
+  const Icon =
+    def?.icon === "sunrise"
+      ? SunMedium
+      : def?.icon === "sunset"
+        ? Sunset
+        : def?.icon === "moon"
+          ? Moon
+          : def?.icon === "stars"
+            ? Star
+            : def?.icon === "sun"
+              ? Sun
+              : Layers;
+  const chip = def?.badgeClass ?? "border-pink-400/35 bg-pink-500/12 text-pink-100";
   return (
     <span
       className={cn(

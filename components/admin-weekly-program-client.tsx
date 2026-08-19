@@ -31,6 +31,11 @@ import {
   formatWeekLabel,
   normalizeHHmm,
   normalizeTime,
+  PRESET_WEEKLY_PROGRAM_SHIFT_TYPES,
+  getShiftTypeFormLabel,
+  shiftCardAccentClass,
+  fallbackShiftStartMinutes,
+  weeklyProgramShiftTypesSummary,
 } from "@/lib/weekly-program";
 import { getWeeklyProgramConflicts, collectConflictRecordIds, rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { Conflict, ConflictSummary, CoverageBoard, CoverageCell } from "@/lib/weekly-program-conflicts";
@@ -51,18 +56,7 @@ function formatTimeRange(startIso: string, endIso: string): string {
   return `${formatTimeFromISO(startIso)}–${formatTimeFromISO(endIso)}`;
 }
 
-function shiftCardAccentClass(shiftType: WeeklyProgramShiftType): string {
-  if (shiftType === "Morning") return "border-l-[3px] border-l-amber-400/55";
-  if (shiftType === "Night") return "border-l-[3px] border-l-indigo-400/55";
-  return "border-l-[3px] border-l-pink-400/55";
-}
-
-function fallbackShiftStartMinutes(shiftType: WeeklyProgramShiftType): number {
-  if (shiftType === "Morning") return 720;
-  if (shiftType === "Night") return 1200;
-  return 9999;
-}
-
+/** Duration in hours between two ISO timestamps (supports overnight). */
 function utcStartMinutes(entry: Pick<WeeklyProgramRecord, "start_time" | "shift_type">): number {
   const start = new Date(entry.start_time);
   if (Number.isFinite(start.getTime())) return start.getUTCHours() * 60 + start.getUTCMinutes();
@@ -101,18 +95,22 @@ const DAYS: WeeklyProgramDay[] = [
   "Sunday",
 ];
 
-const SHIFT_TYPES: WeeklyProgramShiftType[] = ["Morning", "Night"];
+const SHIFT_TYPES: WeeklyProgramShiftType[] = [...PRESET_WEEKLY_PROGRAM_SHIFT_TYPES];
 
 const SHIFT_FILTER_OPTIONS: CustomSelectOption[] = [
   { value: "", label: "All shifts" },
-  { value: "Morning", label: "Morning" },
-  { value: "Night", label: "Night" },
+  ...PRESET_WEEKLY_PROGRAM_SHIFT_TYPES.map((value) => ({
+    value,
+    label: getShiftTypeFormLabel(value),
+  })),
 ];
 
 const AVAIL_SHIFT_TYPE_OPTIONS: CustomSelectOption[] = [
   { value: "", label: "All types" },
-  { value: "Morning", label: "Morning" },
-  { value: "Night", label: "Night" },
+  ...PRESET_WEEKLY_PROGRAM_SHIFT_TYPES.map((value) => ({
+    value,
+    label: getShiftTypeFormLabel(value),
+  })),
   { value: "Custom", label: "Custom" },
 ];
 
@@ -405,11 +403,7 @@ function programsCoveringSlot(
     if (normalizeWeekStart(p.week_start) !== weekStartNorm) return false;
     if (p.day !== day) return false;
     if (!p.start_time || !p.end_time) return false;
-    if (p.shift_type === slot) return true;
-    if (p.shift_type === "Custom") {
-      return intervalsStrictOverlap(p.start_time, p.end_time, win.start_time, win.end_time);
-    }
-    return false;
+    return intervalsStrictOverlap(p.start_time, p.end_time, win.start_time, win.end_time);
   });
 }
 
@@ -433,8 +427,8 @@ function buildClientCoverageBoard(
     for (const day of DAYS) {
       const dayIdx = DAYS.indexOf(day);
       const dateYmd = addDays(weekStartNorm, dayIdx);
-      const morningWin = getTimesForShiftType("Morning", dateYmd);
-      const nightWin = getTimesForShiftType("Night", dateYmd);
+      const morningWin = getTimesForShiftType("Morning", dateYmd, day);
+      const nightWin = getTimesForShiftType("Night", dateYmd, day);
       const morningCands = programsCoveringSlot(programsWeek, weekStartNorm, day, "Morning", morningWin, nightWin).filter((p) =>
         (p.model_ids ?? []).includes(m.id)
       );
@@ -1236,7 +1230,7 @@ export function AdminWeeklyProgramClient({
       <ContentPipelineHero
         eyebrow="Chatter program"
         title="Weekly program"
-        description="Standard shifts: Morning 12:00–20:00, Night 20:00–03:00. Multiple models per chatter per shift."
+        description={`Standard shifts: ${weeklyProgramShiftTypesSummary()}. Evening ends 04:00 Fri/Sat. Multiple models per chatter per shift.`}
         actions={
           canManage ? (
             <ButtonPrimary
@@ -2464,11 +2458,13 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
   const dayFormSelectOptions = React.useMemo(() => DAYS.map((d) => ({ value: d, label: d })), []);
   const shiftTypeFormSelectOptions = React.useMemo(
     () => [
-      { value: "Morning", label: "Morning (12:00–20:00)" },
-      { value: "Night", label: "Night (20:00–03:00)" },
+      ...PRESET_WEEKLY_PROGRAM_SHIFT_TYPES.map((value) => ({
+        value,
+        label: getShiftTypeFormLabel(value, day),
+      })),
       { value: "Custom", label: "Custom" },
     ],
-    []
+    [day]
   );
 
   const suggestions = React.useMemo(() => {
@@ -2503,15 +2499,7 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
     const dateLabel = formatDateEuropean(dateYmd);
     let startIso: string;
     let endIso: string;
-    if (shiftType === "Morning") {
-      const t = getTimesForShiftType("Morning", dateYmd);
-      startIso = t.start_time;
-      endIso = t.end_time;
-    } else if (shiftType === "Night") {
-      const t = getTimesForShiftType("Night", dateYmd);
-      startIso = t.start_time;
-      endIso = t.end_time;
-    } else {
+    if (shiftType === "Custom") {
       const startHHmm = normalizeHHmm(customStartTime.trim());
       const endHHmm = normalizeHHmm(customEndTime.trim());
       if (!startHHmm || !endHHmm || startHHmm === endHHmm) {
@@ -2520,6 +2508,10 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
       const built = buildCustomShiftTimes(dateYmd, startHHmm, endHHmm);
       startIso = built.start_time;
       endIso = built.end_time;
+    } else {
+      const t = getTimesForShiftType(shiftType, dateYmd, day);
+      startIso = t.start_time;
+      endIso = t.end_time;
     }
     const timeRange = formatTimeRange(startIso, endIso);
     const hours = durationHours(startIso, endIso);
@@ -2544,12 +2536,8 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
   const formTimeWindow = React.useMemo((): { startIso: string; endIso: string } | null => {
     const dayIdx = DAYS.indexOf(day);
     const dateYmd = addDays(weekStartVal, dayIdx);
-    if (shiftType === "Morning") {
-      const t = getTimesForShiftType("Morning", dateYmd);
-      return { startIso: t.start_time, endIso: t.end_time };
-    }
-    if (shiftType === "Night") {
-      const t = getTimesForShiftType("Night", dateYmd);
+    if (shiftType !== "Custom") {
+      const t = getTimesForShiftType(shiftType, dateYmd, day);
       return { startIso: t.start_time, endIso: t.end_time };
     }
     const startHHmm = normalizeHHmm(customStartTime.trim());

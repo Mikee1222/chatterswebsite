@@ -193,21 +193,21 @@ function buildCodeSelectExpectations(): Record<string, Record<string, readonly s
     weekly_program: {
       day: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
       /** @see WEEKLY_PROGRAM_SHIFT_TYPES — not the same as shifts.shift_type */
-      shift_type: ["Morning", "Night", "Custom"],
+      shift_type: ["Morning", "Midday", "Afternoon", "Night", "LateNight", "Custom"],
     },
     weekly_program_va: {
       day: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-      shift_type: ["Morning", "Night", "Custom"],
+      shift_type: ["Morning", "Midday", "Afternoon", "Night", "LateNight", "Custom"],
     },
     weekly_availability_requests: {
       day: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-      shift_type: ["Morning", "Night", "Custom"],
+      shift_type: ["Morning", "Midday", "Afternoon", "Night", "LateNight", "Custom"],
       entry_type: ["availability", "day_off"],
       status: ["submitted", "reviewed", "used", "rejected"],
     },
     weekly_availability_requests_va: {
       day: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
-      shift_type: ["Morning", "Night", "Custom"],
+      shift_type: ["Morning", "Midday", "Afternoon", "Night", "LateNight", "Custom"],
       entry_type: ["availability", "day_off"],
       status: ["submitted", "reviewed", "used", "rejected"],
     },

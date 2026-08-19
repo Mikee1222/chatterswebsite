@@ -978,8 +978,14 @@ export type WeeklyProgramDay =
   | "Saturday"
   | "Sunday";
 
-/** Standard shift types. Morning 12:00–20:00, Night 20:00–03:00, Custom = user-defined times. */
-export type WeeklyProgramShiftType = "Morning" | "Night" | "Custom";
+/** Standard shift types. See lib/weekly-program-shift-types.ts for labels and windows. */
+export type WeeklyProgramShiftType =
+  | "Morning"
+  | "Midday"
+  | "Afternoon"
+  | "Night"
+  | "LateNight"
+  | "Custom";
 
 /** One row = one scheduled shift entry. One chatter, one day, one shift type, multiple models. */
 export interface WeeklyProgramRecord {

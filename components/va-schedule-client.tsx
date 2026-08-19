@@ -24,7 +24,7 @@ import {
 } from "@/lib/weekly-program";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { getNextOccurrence, vaTaskSeriesKey } from "@/lib/recurrence";
-import type { Shift, VaTaskRecord, WeeklyProgramDay, WeeklyProgramRecord } from "@/types";
+import type { Shift, VaTaskRecord, WeeklyProgramDay, WeeklyProgramRecord, WeeklyProgramShiftType } from "@/types";
 import { cn } from "@/lib/utils";
 
 export type VaScheduleClientProps = {
@@ -117,7 +117,17 @@ function getRecurringPreviewDates(
   return dates;
 }
 
-const SHIFT_TYPE_CONFIG = {
+const SHIFT_TYPE_CONFIG: Record<
+  WeeklyProgramShiftType,
+  {
+    label: string;
+    emoji: string;
+    color: string;
+    border: string;
+    text: string;
+    dot: string;
+  }
+> = {
   Morning: {
     label: "Morning",
     emoji: "",
@@ -126,13 +136,37 @@ const SHIFT_TYPE_CONFIG = {
     text: "text-amber-400",
     dot: "bg-amber-400",
   },
+  Midday: {
+    label: "Midday",
+    emoji: "",
+    color: "from-lime-500/20 to-green-500/10",
+    border: "border-lime-500/25",
+    text: "text-lime-400",
+    dot: "bg-lime-400",
+  },
+  Afternoon: {
+    label: "Afternoon",
+    emoji: "",
+    color: "from-orange-500/20 to-amber-500/10",
+    border: "border-orange-500/25",
+    text: "text-orange-400",
+    dot: "bg-orange-400",
+  },
   Night: {
-    label: "Night",
+    label: "Evening",
     emoji: "",
     color: "from-blue-500/20 to-indigo-500/10",
     border: "border-blue-500/25",
     text: "text-blue-400",
     dot: "bg-blue-400",
+  },
+  LateNight: {
+    label: "Late Night",
+    emoji: "",
+    color: "from-violet-500/20 to-purple-500/10",
+    border: "border-violet-500/25",
+    text: "text-violet-400",
+    dot: "bg-violet-400",
   },
   Custom: {
     label: "Custom",
@@ -142,7 +176,7 @@ const SHIFT_TYPE_CONFIG = {
     text: "text-purple-400",
     dot: "bg-purple-400",
   },
-} as const;
+};
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
