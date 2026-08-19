@@ -6,6 +6,7 @@ import { addDays } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
 import type { WeeklyProgramRecord } from "@/types";
 import { PeriodDayIndicator } from "@/components/period-day-indicator";
+import { AdminRowAvatar, ShiftTypeBadge } from "@/components/admin-list-primitives";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -17,6 +18,12 @@ type Props = {
   idToName: Record<string, string>;
   periodDatesByModelId?: Record<string, string[]>;
   showOvernightContinuationBadge?: boolean;
+  /** Team schedule: show who's working each shift. */
+  showChatterName?: boolean;
+  /** Highlight shifts belonging to this chatter (team view). */
+  highlightChatterId?: string;
+  /** My schedule: optional shift notes. Hidden in team view. */
+  showNotes?: boolean;
 };
 
 function isOvernightContinuationStart(startIso: string): boolean {
@@ -34,12 +41,21 @@ function OvernightContinuationBadge() {
   );
 }
 
+function shiftCardAccentClass(shiftType: string): string {
+  if (shiftType === "Morning") return "border-l-[3px] border-l-amber-400/55";
+  if (shiftType === "Night") return "border-l-[3px] border-l-indigo-400/55";
+  return "border-l-[3px] border-l-pink-400/55";
+}
+
 export function WeeklyProgramDaySwiper({
   byDay,
   weekStart,
   idToName,
   periodDatesByModelId = {},
   showOvernightContinuationBadge = false,
+  showChatterName = false,
+  highlightChatterId,
+  showNotes = false,
 }: Props) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = React.useState(0);
@@ -111,14 +127,31 @@ export function WeeklyProgramDaySwiper({
                 {entries.length === 0 ? (
                   <p className="py-6 text-center text-sm text-white/45">No shifts</p>
                 ) : (
-                  entries.map((e) => (
+                  entries.map((e) => {
+                    const isMine = highlightChatterId != null && e.chatter_id === highlightChatterId;
+                    return (
                     <div
                       key={e.id}
-                      className="rounded-2xl border border-white/10 bg-white/5 p-5"
+                      className={cn(
+                        "rounded-2xl border p-5 pl-4",
+                        shiftCardAccentClass(e.shift_type),
+                        isMine
+                          ? "border-[#FF1493]/45 bg-[#FF1493]/[0.08] ring-1 ring-[#FF1493]/25"
+                          : "border-white/10 bg-white/5",
+                      )}
                     >
-                      <span className="inline-flex rounded-full border border-pink-500/45 bg-pink-600/20 px-3 py-1.5 text-sm font-bold uppercase tracking-wide text-pink-100">
-                        {e.shift_type}
-                      </span>
+                      {showChatterName && e.chatter_name ? (
+                        <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5">
+                          <AdminRowAvatar name={e.chatter_name} size="sm" />
+                          <span className="truncate text-sm font-semibold text-white/90">{e.chatter_name}</span>
+                          {isMine ? (
+                            <span className="rounded-full bg-[#FF1493]/25 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#FF69B4]">
+                              You
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      <ShiftTypeBadge shiftType={e.shift_type} />
                       <div className="mt-3 flex flex-wrap items-center gap-2">
                         <p className="text-xl font-semibold tabular-nums text-pink-400">
                           {e.start_time ? formatTimeFromISO(e.start_time) : "—"} – {e.end_time ? formatTimeFromISO(e.end_time) : "—"}
@@ -133,7 +166,7 @@ export function WeeklyProgramDaySwiper({
                             return (
                               <span
                                 key={id}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-white text-sm font-medium"
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-sm font-medium text-white"
                               >
                                 {label}
                                 {inPeriod ? <PeriodDayIndicator className="shrink-0" /> : null}
@@ -142,8 +175,14 @@ export function WeeklyProgramDaySwiper({
                           })}
                         </div>
                       )}
+                      {showNotes && e.notes?.trim() ? (
+                        <p className="mt-3 text-xs leading-relaxed text-white/50">
+                          {e.notes.trim().length > 100 ? `${e.notes.trim().slice(0, 100)}…` : e.notes.trim()}
+                        </p>
+                      ) : null}
                     </div>
-                  ))
+                  );
+                  })
                 )}
               </div>
             </div>

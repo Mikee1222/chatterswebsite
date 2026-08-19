@@ -42,6 +42,8 @@ import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 import { AdminRowAvatar, CoverageSlotChip, ShiftTypeBadge } from "@/components/admin-list-primitives";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import { LuxuryStatCard } from "@/components/infloww-performance-ui";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
 function formatTimeRange(startIso: string, endIso: string): string {
@@ -667,6 +669,13 @@ export function AdminWeeklyProgramClient({
 
   const renderedEntryCount = byDay.reduce((acc, d) => acc + d.entries.length, 0);
 
+  const heroStats = React.useMemo(() => {
+    const shiftCount = programsThisWeek.length;
+    const chatterCount = new Set(programsThisWeek.map((p) => p.chatter_id).filter(Boolean)).size;
+    const modelCount = new Set(programsThisWeek.flatMap((p) => p.model_ids).filter(Boolean)).size;
+    return { shiftCount, chatterCount, modelCount };
+  }, [programsThisWeek]);
+
   const duplicateTargetExistingCount = React.useMemo(() => {
     if (!duplicateOpenDay) return 0;
     const targetWeekMon = normalizeWeekStart(copyTargetWeek);
@@ -1224,10 +1233,39 @@ export function AdminWeeklyProgramClient({
           </Link>
         </div>
       </div>
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Weekly program</h1>
-        <p className="mt-1 text-sm text-white/60">Standard shifts: Morning 12:00–20:00, Night 20:00–03:00. Multiple models per chatter per shift.</p>
-      </div>
+      <ContentPipelineHero
+        eyebrow="Chatter program"
+        title="Weekly program"
+        description="Standard shifts: Morning 12:00–20:00, Night 20:00–03:00. Multiple models per chatter per shift."
+        actions={
+          canManage ? (
+            <ButtonPrimary
+              type="button"
+              onClick={() => {
+                setCreateOpen(true);
+                setError(null);
+                setSuccess(null);
+              }}
+              className="w-full sm:w-auto"
+            >
+              Create shift
+            </ButtonPrimary>
+          ) : null
+        }
+        stats={
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <LuxuryStatCard label="Shifts this week" value={heroStats.shiftCount} accent="pink" glow />
+            <LuxuryStatCard label="Chatters scheduled" value={heroStats.chatterCount} accent="champagne" />
+            <LuxuryStatCard label="Models assigned" value={heroStats.modelCount} accent="white" />
+            <LuxuryStatCard
+              label="Conflicts"
+              value={resolvedConflictSummary.total}
+              accent={resolvedConflictSummary.total > 0 ? "amber" : "emerald"}
+              hint={resolvedConflictSummary.total > 0 ? "Review before publishing" : "All clear"}
+            />
+          </div>
+        }
+      />
 
       {error && (
         <div
@@ -1402,11 +1440,6 @@ export function AdminWeeklyProgramClient({
             options={SHIFT_FILTER_OPTIONS}
             className="w-full min-h-[44px] sm:min-w-[120px] sm:min-h-0"
           />
-          {canManage ? (
-          <ButtonPrimary type="button" onClick={() => { setCreateOpen(true); setError(null); setSuccess(null); }} className="w-full sm:w-auto">
-            Create shift
-          </ButtonPrimary>
-          ) : null}
         </div>
       </div>
 
