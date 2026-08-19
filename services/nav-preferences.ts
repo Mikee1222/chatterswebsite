@@ -10,8 +10,6 @@ import {
 } from "@/lib/nav-preferences";
 import { getUserByAirtableId, getUserByUserId, updateUser } from "@/services/users";
 
-const AIRTABLE_FIELD = "nav_preferences";
-
 /** Load nav preferences for a user (by Airtable id or internal user_id). */
 export async function getNavPreferencesForUser(
   userId: string,
@@ -51,9 +49,4 @@ export async function clearNavPreferencesForUser(userId: string): Promise<void> 
   const user = (await getUserByAirtableId(userId)) ?? (await getUserByUserId(userId));
   if (!user) return;
   await updateUser(user.id, { nav_preferences: "" } as Parameters<typeof updateUser>[1]);
-}
-
-/** Airtable field name for schema scripts. */
-export function getNavPreferencesAirtableFieldName(): string {
-  return AIRTABLE_FIELD;
 }

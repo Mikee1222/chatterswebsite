@@ -6,6 +6,9 @@
 import { ROUTES } from "@/lib/routes";
 import { NAV_SECTION_ORDER } from "@/lib/nav-config";
 
+/** Airtable / users column name for stored nav preferences JSON. */
+export const NAV_PREFERENCES_AIRTABLE_FIELD = "nav_preferences";
+
 export type UserNavPreferences = {
   /** Ordered href list — max {@link MAX_PINNED_NAV_ITEMS}. */
   pinned_hrefs: string[];
