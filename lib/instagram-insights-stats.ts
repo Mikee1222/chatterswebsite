@@ -58,6 +58,25 @@ export type IgPostRow = {
   posted_at?: string | null;
 };
 
+/**
+ * Post-level reach for display/ranking — stored reach, else views (common for REELS when Meta omits reach),
+ * else optional estimated account daily reach for the week.
+ */
+export function resolvePostReach(
+  post: IgPostRow,
+  opts?: { estimatedReach?: number | null }
+): { reach: number; estimated: boolean } {
+  const storedReach = coalesceIgMetric(post.reach);
+  if (storedReach > 0) return { reach: storedReach, estimated: false };
+  const views = coalesceIgMetric(post.views);
+  if (views > 0) return { reach: views, estimated: false };
+  const estimated = opts?.estimatedReach;
+  if (estimated != null && estimated > 0) {
+    return { reach: Math.round(estimated), estimated: true };
+  }
+  return { reach: 0, estimated: false };
+}
+
 /** Engagement score for a post — stored value or derived from likes/comments when reach was missing at sync. */
 export function resolvePostEngagementScore(
   post: IgPostRow,
@@ -104,7 +123,13 @@ export function summarizeIgDaily(daily: IgDailyRow[]) {
   const reach = daily.reduce((s, d) => s + coalesceIgMetric(d.reach), 0);
   const viewsRaw = daily.reduce((s, d) => s + coalesceIgMetric(d.views), 0);
   const views = resolveViewsTotal(daily);
-  const interactions = daily.reduce((s, d) => s + coalesceIgMetric(d.total_interactions), 0);
+  // Only count interactions on days with reach — avoids inflated ER when sync gaps store 0 reach
+  // but still report interactions (e.g. Frika Aug 19–20 partial week).
+  const interactions = daily.reduce((s, d) => {
+    const dayReach = coalesceIgMetric(d.reach);
+    if (dayReach <= 0) return s;
+    return s + coalesceIgMetric(d.total_interactions);
+  }, 0);
   // Period-level ER (Σ interactions ÷ Σ reach) — never average daily rates (Lina Aug 12 spike).
   let avgEr: number | null = null;
   if (reach > 0 && interactions > 0) {

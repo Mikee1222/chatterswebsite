@@ -32,6 +32,7 @@ import {
   postingFrequency,
   postingVsReachSeries,
   resolvePostEngagementScore,
+  resolvePostReach,
   toFiniteRate,
   type IgDailyRow,
   type IgPostRow,
@@ -87,6 +88,8 @@ export type IgWeekTopPost = {
   media_product_type: string | null;
   engagement_score: number | null;
   reach: number;
+  /** True when reach is inferred from views or week avg daily reach (Meta/ClarioSuite omitted post reach). */
+  reach_estimated: boolean;
   posted_at: string | null;
   content_label: string;
 };
@@ -409,7 +412,9 @@ function topPostInWeek(
     const scoreA = resolvePostEngagementScore(a, { estimatedReach: avgReach }) ?? 0;
     const scoreB = resolvePostEngagementScore(b, { estimatedReach: avgReach }) ?? 0;
     if (scoreB !== scoreA) return scoreB - scoreA;
-    return (b.reach ?? 0) - (a.reach ?? 0);
+    const reachA = resolvePostReach(a, { estimatedReach: avgReach }).reach;
+    const reachB = resolvePostReach(b, { estimatedReach: avgReach }).reach;
+    return reachB - reachA;
   });
   const best = sorted[0];
   if (!best) return null;
@@ -418,6 +423,7 @@ function topPostInWeek(
     mediaType: best.media_type,
     mediaProductType: best.media_product_type,
   });
+  const resolvedReach = resolvePostReach(best, { estimatedReach: avgReach });
 
   return {
     media_id: best.media_id,
@@ -427,7 +433,8 @@ function topPostInWeek(
     media_type: best.media_type,
     media_product_type: best.media_product_type,
     engagement_score: resolvePostEngagementScore(best, { estimatedReach: avgReach }),
-    reach: best.reach,
+    reach: resolvedReach.reach,
+    reach_estimated: resolvedReach.estimated,
     posted_at: best.posted_at,
     content_label: igPostGroupLabel(group).replace(/s$/, "").toLowerCase(),
   };
@@ -515,7 +522,7 @@ function buildCrossPlatformNote(params: {
   if (igUp && subsStrong) {
     return {
       signal: "aligned",
-      text: `OnlyFans added ${newSubs} new subs in the same window — IG reach lift may be feeding the funnel (correlation ≠ causation).`,
+      text: `OnlyFans added ${newSubs} new subs in the same window — IG reach lift may be feeding the funnel.`,
     };
   }
   if (igUp && newSubs <= 1) {

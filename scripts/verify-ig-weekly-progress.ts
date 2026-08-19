@@ -7,6 +7,7 @@ loadEnv({ path: ".env.local" });
 
 import "./_polyfill-websocket";
 import { getInstagramWeeklyProgressReport } from "@/services/instagram-weekly-progress";
+import { fmtIgConversionEstimate } from "@/lib/instagram-weekly-insights";
 
 async function main() {
   const arg = process.argv[2];
@@ -27,7 +28,7 @@ async function main() {
     `Team month: ${report.team_month_totals.reach.toLocaleString()} reach · ${report.team_month_totals.posts_in_week} posts`
   );
 
-  const targets = ["lydia", "lina"];
+  const targets = ["lydia", "lina", "frika"];
   for (const needle of targets) {
     const model = report.models.find((m) => m.modelName.toLowerCase().includes(needle));
     if (!model) {
@@ -53,12 +54,13 @@ async function main() {
         wow_engagement_note: w.wow.engagement_rate.display_note,
         wow_engagement_capped: w.wow.engagement_rate.pct_capped,
         tags: w.insights.map((t) => t.label),
+        tag_count: w.insights.length,
         vs_historical: w.comparisons.vs_historical_reach_pct,
         vs_historical_note: w.comparisons.vs_historical_reach_note,
         vs_historical_capped: w.comparisons.vs_historical_reach_capped,
         vs_team: w.comparisons.vs_team_reach_pct,
         top_post: w.top_post
-          ? `${w.top_post.content_label} · ${w.top_post.reach} reach`
+          ? `${w.top_post.content_label} · ${w.top_post.reach} reach${w.top_post.reach_estimated ? " (est.)" : ""}`
           : null,
         cross_platform: w.cross_platform?.text ?? null,
         cross_platform_section: w.cross_platform_section
@@ -67,6 +69,11 @@ async function main() {
               overlap_days: w.cross_platform_section.analytics.overlap_days,
               correlation: w.cross_platform_section.analytics.reach_visitor_correlation.correlation,
               conversion_pct: w.cross_platform_section.analytics.conversion_estimate.rate_pct,
+              conversion_display: fmtIgConversionEstimate({
+                rate_pct: w.cross_platform_section.analytics.conversion_estimate.rate_pct,
+                total_reach: w.cross_platform_section.analytics.conversion_estimate.total_reach,
+                total_new_subs: w.cross_platform_section.analytics.conversion_estimate.total_new_subs,
+              }),
               chart_days: w.cross_platform_section.chart.length,
               of_new_subs: w.cross_platform_section.of_totals.new_subscribers,
             }

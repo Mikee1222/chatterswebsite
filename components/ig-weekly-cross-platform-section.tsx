@@ -2,9 +2,9 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { GitCompareArrows } from "lucide-react";
+import { GitCompareArrows, BarChart3 } from "lucide-react";
 import { CHART_TOOLTIP_STYLE, fmtCompact, fmtNum, fmtPct } from "@/lib/instagram-insights-ui";
-import { fmtIgGuardedPct } from "@/lib/instagram-weekly-insights";
+import { fmtIgConversionEstimate } from "@/lib/instagram-weekly-insights";
 import { StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { CROSS_PLATFORM_STAT_INFO } from "@/components/cross-platform-insights";
 import type {
@@ -92,8 +92,9 @@ export function IgWeeklyCrossPlatformSection({
   if (blocked || (sparse && activeDays < 2)) {
     return (
       <div className="relative overflow-hidden rounded-xl border border-[#D4AF8C]/20 bg-gradient-to-br from-[#D4AF8C]/8 via-black/30 to-[#FF1493]/5 px-3 py-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">
-          📊 Cross-Platform: Instagram → OnlyFans
+        <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">
+          <BarChart3 className="h-3 w-3 text-[#FF1493]/80" aria-hidden />
+          Cross-Platform: Instagram → OnlyFans
         </p>
         <p className="mt-1.5 text-[11px] leading-relaxed text-white/50">
           Not enough combined data this week
@@ -110,7 +111,7 @@ export function IgWeeklyCrossPlatformSection({
         <div className="flex items-center gap-1.5">
           <GitCompareArrows className="h-3 w-3 text-[#FF1493]/80" />
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/85">
-            📊 Cross-Platform: Instagram → OnlyFans
+            Cross-Platform: Instagram → OnlyFans
           </p>
           <StatInfoTooltip text={CROSS_PLATFORM_STAT_INFO.section} />
         </div>
@@ -241,7 +242,7 @@ export function IgWeeklyCrossPlatformSection({
                 {strengthLabel(corr.strength)} alignment
               </span>{" "}
               (r={corr.correlation}) — IG reach appears to align with OF profile visitors in this
-              week&apos;s data. Correlation ≠ causation.
+              week&apos;s data.
             </>
           ) : (
             corr.note
@@ -252,8 +253,12 @@ export function IgWeeklyCrossPlatformSection({
             <span className="rounded border border-amber-400/35 bg-amber-400/10 px-1 py-0.5 text-[8px] font-bold uppercase text-amber-200">
               Estimate
             </span>{" "}
-            {fmtIgGuardedPct(conv.rate_pct, { signed: false })} new subs per 100 IG reach —
-            descriptive only, not true attribution.
+            {fmtIgConversionEstimate({
+              rate_pct: conv.rate_pct,
+              total_reach: conv.total_reach,
+              total_new_subs: conv.total_new_subs,
+            })}{" "}
+            — descriptive only, not true attribution.
           </p>
         ) : (
           <p className="text-[10px] text-white/40">{conv.note}</p>

@@ -197,6 +197,20 @@ export type IgWeeklyInsightTag = {
   label: string;
   severity: IgWeeklyInsightSeverity;
   category: IgWeeklyInsightCategory;
+  /** Lucide icon key for Weekly Progress pills (rendered client-side). */
+  icon?: "trending-up" | "trending-down" | "star" | "target" | "message-circle" | "minus" | "alert";
+};
+
+/** Max insight pills per model/week — decision-relevant only. */
+export const IG_WEEKLY_MAX_INSIGHT_TAGS = 3;
+
+/** Category priority when signals conflict (higher wins). */
+const IG_INSIGHT_CATEGORY_PRIORITY: Record<IgWeeklyInsightCategory, number> = {
+  reach_trend: 100,
+  engagement: 80,
+  posting: 60,
+  growth: 40,
+  absolute_tier: 20,
 };
 
 export type IgWeeklyInsightContext = {
@@ -321,6 +335,38 @@ export function fmtIgGuardedPct(
   return `${sign}${Math.abs(pct).toFixed(0)}%${capSuffix}`;
 }
 
+/**
+ * Format IG→OF subs-per-reach estimate for small rates (0.03% → "0.03%" or "3 subs per 10K reach").
+ * Avoids rounding tiny percentages to 0%.
+ */
+export function fmtIgConversionEstimate(params: {
+  rate_pct: number | null | undefined;
+  total_reach?: number;
+  total_new_subs?: number;
+}): string {
+  const { rate_pct, total_reach, total_new_subs } = params;
+  if (rate_pct == null || !Number.isFinite(rate_pct)) return "—";
+  if (rate_pct >= 0.1) {
+    return `${rate_pct.toFixed(rate_pct >= 1 ? 1 : 2)}% new subs per 100 IG reach`;
+  }
+  if (rate_pct > 0) {
+    return `${rate_pct.toFixed(2)}% new subs per 100 IG reach`;
+  }
+  if (
+    total_reach != null &&
+    total_reach > 0 &&
+    total_new_subs != null &&
+    total_new_subs > 0
+  ) {
+    const per10k = (total_new_subs / total_reach) * 10_000;
+    if (per10k >= 0.05) {
+      const n = per10k < 1 ? per10k.toFixed(2) : per10k.toFixed(1);
+      return `${n} subs per 10,000 IG reach`;
+    }
+  }
+  return "—";
+}
+
 function fmtErPct(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   return n < 1 ? `${n.toFixed(2)}%` : `${n.toFixed(1)}%`;
@@ -339,61 +385,115 @@ export function pctVsBaseline(
   return guardIgPctVsBaseline(current, baseline, kind, opts);
 }
 
-/** Extensible rule-based tags — multiple tags per model/week. */
+type IgInsightCandidate = IgWeeklyInsightTag & { priority: number };
+
+/** Resolve conflicting tags — reach decline beats tier labels, engagement vs posting, etc. */
+function pickWeeklyInsightTags(candidates: IgInsightCandidate[]): IgWeeklyInsightTag[] {
+  if (!candidates.length) return [];
+
+  const sorted = [...candidates].sort((a, b) => b.priority - a.priority);
+  const picked: IgInsightCandidate[] = [];
+
+  const reachDown = sorted.some(
+    (t) => t.category === "reach_trend" && (t.id.includes("down") || t.id === "reach-strong-down")
+  );
+  const reachUpStrong = sorted.some((t) => t.id === "reach-strong-up" || t.id === "reach-mild-up");
+  const highReachLowEng = sorted.some((t) => t.id === "high-reach-low-eng");
+  const engSurging = sorted.some((t) => t.id === "eng-strong-up");
+
+  for (const tag of sorted) {
+    if (picked.length >= IG_WEEKLY_MAX_INSIGHT_TAGS) break;
+
+    if (reachDown) {
+      if (tag.category === "absolute_tier" && tag.id !== "best-week-month") continue;
+      if (tag.id === "reach-strong-up" || tag.id === "reach-mild-up" || tag.id === "cadence-lift") {
+        continue;
+      }
+    }
+    if (reachUpStrong && tag.id === "reach-strong-down") continue;
+    if (highReachLowEng && tag.id === "eng-strong-up") continue;
+    if (engSurging && tag.id === "high-reach-low-eng") continue;
+    if (tag.id === "tier-needs" && reachUpStrong) continue;
+    if (tag.id === "tier-top" && reachDown) continue;
+
+    if (picked.some((p) => p.id === tag.id)) continue;
+    if (picked.some((p) => p.category === tag.category && p.category !== "absolute_tier")) {
+      continue;
+    }
+
+    picked.push(tag);
+  }
+
+  return picked.map(({ priority: _p, ...tag }) => tag);
+}
+
+/** Extensible rule-based tags — up to 3 decision-relevant tags per model/week. */
 export function generateIgWeeklyInsights(ctx: IgWeeklyInsightContext): IgWeeklyInsightTag[] {
-  const tags: IgWeeklyInsightTag[] = [];
+  const candidates: IgInsightCandidate[] = [];
   const reachWow = ctx.reach_wow_pct;
+  const catPri = (category: IgWeeklyInsightCategory, boost = 0) =>
+    IG_INSIGHT_CATEGORY_PRIORITY[category] + boost;
 
   if (ctx.is_best_week_in_month && ctx.reach > 0) {
-    tags.push({
+    candidates.push({
       id: "best-week-month",
-      label: "🌟 Best Week This Month",
+      label: "Best Week This Month",
       severity: "positive",
       category: "absolute_tier",
+      icon: "star",
+      priority: catPri("absolute_tier", 30),
     });
   }
 
-  // Reach trend vs prior custom week
   if (reachWow != null) {
     if (reachWow > 20) {
-      tags.push({
+      candidates.push({
         id: "reach-strong-up",
-        label: "📈 Strong Growth Week",
+        label: "Strong Growth Week",
         severity: "positive",
         category: "reach_trend",
+        icon: "trending-up",
+        priority: catPri("reach_trend", 25),
       });
     } else if (reachWow < -20) {
-      tags.push({
+      candidates.push({
         id: "reach-strong-down",
-        label: "📉 Needs Attention",
+        label: "Needs Attention",
         severity: reachWow <= -40 ? "critical" : "warning",
         category: "reach_trend",
+        icon: "trending-down",
+        priority: catPri("reach_trend", reachWow <= -40 ? 35 : 28),
       });
     } else if (Math.abs(reachWow) <= 10) {
-      tags.push({
+      candidates.push({
         id: "reach-steady",
-        label: "➡️ Steady",
+        label: "Steady",
         severity: "neutral",
         category: "reach_trend",
+        icon: "minus",
+        priority: catPri("reach_trend", 5),
       });
     } else if (reachWow > 10) {
-      tags.push({
+      candidates.push({
         id: "reach-mild-up",
         label: "Modest reach lift",
         severity: "positive",
         category: "reach_trend",
+        icon: "trending-up",
+        priority: catPri("reach_trend", 12),
       });
     } else {
-      tags.push({
+      candidates.push({
         id: "reach-mild-down",
         label: "Soft reach dip",
         severity: "warning",
         category: "reach_trend",
+        icon: "trending-down",
+        priority: catPri("reach_trend", 15),
       });
     }
   }
 
-  // Absolute tier vs team that week
   const peers = ctx.team_week_reach.filter((r) => r > 0);
   if (ctx.reach > 0 && peers.length >= 2) {
     const sorted = [...peers].sort((a, b) => b - a);
@@ -401,33 +501,32 @@ export function generateIgWeeklyInsights(ctx: IgWeeklyInsightContext): IgWeeklyI
     const of = sorted.length;
     const percentile = of <= 1 ? 100 : Math.round(((of - rank) / (of - 1)) * 100);
     if (percentile >= 75 || rank === 1) {
-      tags.push({
+      candidates.push({
         id: "tier-top",
-        label: "🌟 Top Performer",
+        label: "Top Performer",
         severity: "positive",
         category: "absolute_tier",
+        icon: "star",
+        priority: catPri("absolute_tier", 10),
       });
     } else if (percentile <= 25) {
-      tags.push({
+      candidates.push({
         id: "tier-needs",
         label: "Needs Improvement",
         severity: "warning",
         category: "absolute_tier",
-      });
-    } else {
-      tags.push({
-        id: "tier-avg",
-        label: "Average",
-        severity: "neutral",
-        category: "absolute_tier",
+        icon: "alert",
+        priority: catPri("absolute_tier", 8),
       });
     }
   } else if (ctx.reach <= 0 && ctx.posts_in_week > 0) {
-    tags.push({
+    candidates.push({
       id: "tier-needs-zero-reach",
       label: "Needs Improvement",
       severity: "warning",
       category: "absolute_tier",
+      icon: "alert",
+      priority: catPri("absolute_tier", 12),
     });
   }
 
@@ -453,123 +552,140 @@ export function generateIgWeeklyInsights(ctx: IgWeeklyInsightContext): IgWeeklyI
     ctx.reach > 0 &&
     ctx.reach >= (sortedDesc(peers)[Math.floor(peers.length * 0.25)] ?? 0);
   if (reachRankHigh && lowEr) {
-    tags.push({
+    candidates.push({
       id: "high-reach-low-eng",
-      label: "💬 High Reach, Low Engagement",
+      label: "High Reach, Low Engagement",
       severity: "warning",
       category: "engagement",
+      icon: "message-circle",
+      priority: catPri("engagement", 22),
     });
   }
 
-  // Engagement trend
   const erWow = ctx.engagement_wow_pct;
   if (erWow != null) {
     if (erWow > 20) {
-      tags.push({
+      candidates.push({
         id: "eng-strong-up",
         label: "Engagement surging",
         severity: "positive",
         category: "engagement",
+        icon: "trending-up",
+        priority: catPri("engagement", 18),
       });
     } else if (erWow < -20) {
-      tags.push({
+      candidates.push({
         id: "eng-strong-down",
         label: "Engagement cooling",
         severity: "warning",
         category: "engagement",
+        icon: "trending-down",
+        priority: catPri("engagement", 20),
       });
     }
   }
 
   if (ctx.is_consistent_poster) {
-    tags.push({
+    candidates.push({
       id: "consistent-poster",
-      label: "🎯 Consistent Poster",
+      label: "Consistent Poster",
       severity: "positive",
       category: "posting",
+      icon: "target",
+      priority: catPri("posting", 10),
     });
   }
 
-  // Posting + engagement correlation insights
   if (highPost && lowEr) {
-    tags.push({
+    candidates.push({
       id: "post-high-er-low",
       label: "High posting, weak engagement",
       severity: "warning",
       category: "posting",
+      icon: "message-circle",
+      priority: catPri("posting", 15),
     });
   }
   if (highEr && lowPost) {
-    tags.push({
+    candidates.push({
       id: "efficient-underposted",
       label: "Strong content — post more",
       severity: "info",
       category: "posting",
+      priority: catPri("posting", 8),
     });
   }
   if (ctx.posting_reach_correlation != null && ctx.posting_reach_correlation >= 0.55) {
-    tags.push({
+    candidates.push({
       id: "post-reach-correlated",
       label: "Posting drives reach",
       severity: "positive",
       category: "posting",
+      icon: "target",
+      priority: catPri("posting", 12),
     });
   } else if (ctx.posting_reach_correlation != null && ctx.posting_reach_correlation <= -0.4) {
-    tags.push({
+    candidates.push({
       id: "post-reach-inverse",
       label: "Reach despite low posts",
       severity: "info",
       category: "posting",
+      priority: catPri("posting", 6),
     });
   }
 
-  // Follower growth acceleration/deceleration
   const delta = ctx.follower_delta;
   const priorDelta = ctx.prior_follower_delta;
   if (delta != null && priorDelta != null) {
     const accel = delta - priorDelta;
     if (accel > 50) {
-      tags.push({
+      candidates.push({
         id: "growth-accelerating",
         label: "Follower growth accelerating",
         severity: "positive",
         category: "growth",
+        priority: catPri("growth", 12),
       });
     } else if (accel < -50) {
-      tags.push({
+      candidates.push({
         id: "growth-decelerating",
         label: "Follower growth slowing",
         severity: "warning",
         category: "growth",
+        priority: catPri("growth", 14),
       });
     }
   } else if (delta != null && delta > 100) {
-    tags.push({
+    candidates.push({
       id: "growth-strong-week",
       label: "Strong follower week",
       severity: "positive",
       category: "growth",
+      priority: catPri("growth", 10),
     });
   } else if (delta != null && delta < -20) {
-    tags.push({
+    candidates.push({
       id: "growth-negative",
       label: "Follower loss this week",
       severity: "warning",
       category: "growth",
+      priority: catPri("growth", 16),
     });
   }
 
   const postWow = ctx.posting_wow_pct;
   if (postWow != null && postWow > 30 && (reachWow ?? 0) > 10) {
-    tags.push({
+    candidates.push({
       id: "cadence-lift",
       label: "Cadence boost paying off",
       severity: "positive",
       category: "posting",
+      icon: "target",
+      priority: catPri("posting", 14),
     });
   }
 
-  return tags;
+  return pickWeeklyInsightTags(candidates);
 }
 
 function sortedDesc(nums: number[]): number[] {

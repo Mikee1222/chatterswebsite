@@ -7,7 +7,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Instagram, MessageSquare, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Instagram, MessageSquare, Sparkles, TrendingDown, TrendingUp, Star, Target, MessageCircle, Minus, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMonthYyyyMm } from "@/lib/format";
 import { VA_CARD } from "@/lib/va-tasks-tokens";
@@ -26,8 +26,7 @@ import type {
   IgWeeklyModelProgress,
   IgWeeklyProgressReport,
 } from "@/services/instagram-weekly-progress";
-import type { IgWeeklyInsightSeverity, IgWeeklyInsightTag } from "@/lib/instagram-weekly-insights";
-import { fmtIgGuardedPct } from "@/lib/instagram-weekly-insights";
+import { fmtIgGuardedPct, type IgWeeklyInsightTag } from "@/lib/instagram-weekly-insights";
 import type { PeriodChangeDisplayNote } from "@/services/infloww-analytics";
 import { IgWeeklyCrossPlatformSection } from "@/components/ig-weekly-cross-platform-section";
 
@@ -37,7 +36,28 @@ const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.Respo
 const AreaChart = dynamic(() => import("recharts").then((m) => m.AreaChart), { ssr: false });
 const Area = dynamic(() => import("recharts").then((m) => m.Area), { ssr: false });
 
-function insightTone(severity: IgWeeklyInsightSeverity): string {
+function insightIcon(tag: IgWeeklyInsightTag) {
+  switch (tag.icon) {
+    case "trending-up":
+      return TrendingUp;
+    case "trending-down":
+      return TrendingDown;
+    case "star":
+      return Star;
+    case "target":
+      return Target;
+    case "message-circle":
+      return MessageCircle;
+    case "minus":
+      return Minus;
+    case "alert":
+      return AlertTriangle;
+    default:
+      return null;
+  }
+}
+
+function insightTone(severity: IgWeeklyInsightTag["severity"]): string {
   switch (severity) {
     case "positive":
       return "border-emerald-500/35 bg-emerald-500/12 text-emerald-200";
@@ -58,18 +78,22 @@ function InsightPills({ tags }: { tags: IgWeeklyInsightTag[] }) {
   }
   return (
     <div className="flex flex-wrap gap-1.5">
-      {tags.map((t) => (
-        <span
-          key={t.id}
-          className={cn(
-            "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide",
-            insightTone(t.severity)
-          )}
-          title={t.category}
-        >
-          {t.label}
-        </span>
-      ))}
+      {tags.map((t) => {
+        const Icon = insightIcon(t);
+        return (
+          <span
+            key={t.id}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold tracking-wide",
+              insightTone(t.severity)
+            )}
+            title={t.category}
+          >
+            {Icon ? <Icon className="h-3 w-3 shrink-0 opacity-90" aria-hidden /> : null}
+            {t.label}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -154,7 +178,8 @@ function TopPostMini({ post }: { post: IgWeekTopPost }) {
           {caption && (post.caption?.length ?? 0) > 72 ? "…" : ""}
         </p>
         <p className="text-[10px] text-white/35">
-          {fmtCompact(post.reach)} reach
+          {post.reach_estimated ? "~" : ""}
+          {fmtCompact(post.reach)} reach{post.reach_estimated ? " (est.)" : ""}
           {post.engagement_score != null ? ` · ${fmtPct(post.engagement_score)} eng` : ""}
           {posted ? ` · ${posted}` : ""}
         </p>
@@ -623,6 +648,10 @@ export function AdminInstagramWeeklyProgressPanel({
           <p className="mt-1 text-sm text-white/45">
             Custom month weeks (1–7 · 8–14 · 15–21 · 22–end) · combined multi-account · auto
             insights per model
+          </p>
+          <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-white/35">
+            Cross-platform correlation patterns are descriptive only — correlation ≠ causation.
+            <StatInfoTooltip text="IG reach vs OnlyFans profile visitors can move together without one causing the other. Subs-per-reach estimates are not attribution." />
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

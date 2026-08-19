@@ -288,8 +288,10 @@ async function upsertTopPosts(link: SyncLink): Promise<number> {
       const comments = Math.round(insight.comments ?? item.commentsCount ?? 0);
       const shares = Math.round(insight.shares ?? 0);
       const saved = Math.round(insight.saved ?? 0);
-      const reach = Math.round(insight.reach ?? insight.carouselAlbumReach ?? 0);
+      const reachRaw = Math.round(insight.reach ?? insight.carouselAlbumReach ?? 0);
       const views = Math.round(insight.views ?? insight.videoViews ?? 0);
+      // REELS often omit reach from Meta; views/plays are the usable proxy at sync time.
+      const reach = reachRaw > 0 ? reachRaw : views;
       const totalInteractions =
         insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)
           ? Math.round(insight.totalInteractions)
@@ -306,8 +308,8 @@ async function upsertTopPosts(link: SyncLink): Promise<number> {
           comments,
           shares,
           saved,
-          reach,
-          views,
+          reach: reachRaw > 0 ? reachRaw : 0,
+          views: views > 0 ? views : undefined,
           totalInteractions,
         }),
         reach,
