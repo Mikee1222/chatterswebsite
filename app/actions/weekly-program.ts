@@ -109,6 +109,7 @@ export async function createProgramAction(fields: {
 
     const conflict = await checkScheduledShiftConflicts(
       fields.chatter[0] ?? "",
+      fields.chatter_name ?? "",
       fields.models,
       fields.day,
       fields.shift_type,
@@ -169,6 +170,7 @@ export async function updateProgramAction(
     if (!existing) return { success: false, error: "Entry not found." };
 
     const chatterId = fields.chatter?.[0] ?? existing.chatter_id;
+    const chatterName = fields.chatter_name ?? existing.chatter_name ?? "";
     const models = fields.models ?? existing.model_ids;
     const day = fields.day ?? existing.day;
     const shiftType = fields.shift_type ?? existing.shift_type;
@@ -201,6 +203,7 @@ export async function updateProgramAction(
 
     const conflict = await checkScheduledShiftConflicts(
       chatterId,
+      chatterName,
       models,
       day,
       shiftType,

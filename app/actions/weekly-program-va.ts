@@ -80,6 +80,7 @@ export async function createProgramVaAction(fields: {
 
     const conflict = await checkScheduledShiftConflictsVa(
       fields.chatter[0] ?? "",
+      fields.chatter_name ?? "",
       fields.models,
       fields.day,
       fields.shift_type,
@@ -140,6 +141,7 @@ export async function updateProgramVaAction(
     if (!existing) return { success: false, error: "Entry not found." };
 
     const vaId = fields.chatter?.[0] ?? existing.chatter_id;
+    const vaName = fields.chatter_name ?? existing.chatter_name ?? "";
     const models = fields.models ?? existing.model_ids;
     const day = fields.day ?? existing.day;
     const shiftType = fields.shift_type ?? existing.shift_type;
@@ -172,6 +174,7 @@ export async function updateProgramVaAction(
 
     const conflict = await checkScheduledShiftConflictsVa(
       vaId,
+      vaName,
       models,
       day,
       shiftType,

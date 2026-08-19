@@ -33,7 +33,7 @@ import {
   fallbackShiftStartMinutes,
 } from "@/lib/weekly-program";
 import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
-import { getWeeklyProgramConflicts, collectConflictRecordIds, getModelCoverageBoard, rangesOverlap } from "@/lib/weekly-program-conflicts";
+import { getWeeklyProgramConflicts, collectConflictRecordIds, getModelCoverageBoard, rangesOverlap, sameWeeklyProgramChatter } from "@/lib/weekly-program-conflicts";
 import type { Conflict, ConflictSummary, CoverageBoard } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ModelRecord } from "@/types";
@@ -1630,6 +1630,7 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
     const window = formTimeWindow;
     const otherPrograms = programs.filter((p) => p.id !== entry?.id);
     const newDayIdx = DAYS.indexOf(day);
+    const editingChatter = { chatter_id: chatterId, chatter_name: chatterName };
 
     for (const m of assignmentModelList) {
       result[m.id] = { taken: false };
@@ -1637,6 +1638,7 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
       for (const p of otherPrograms) {
         if (!p.start_time || !p.end_time) continue;
         if (!p.model_ids.includes(m.id)) continue;
+        if (!sameWeeklyProgramChatter(p, editingChatter)) continue;
 
         const slotDayIdx = DAYS.indexOf(p.day);
         const dayDiff = Math.abs(newDayIdx - slotDayIdx);
@@ -1670,7 +1672,7 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
       });
     }
     return result;
-  }, [formTimeWindow, programs, assignmentModelList, entry?.id, day, weekStartVal]);
+  }, [formTimeWindow, programs, assignmentModelList, entry?.id, day, weekStartVal, chatterId, chatterName]);
 
   React.useEffect(() => {
     const existingAssignment = isEdit && entry?.model_ids?.length ? new Set(entry.model_ids) : null;
