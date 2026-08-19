@@ -47,8 +47,15 @@ async function main() {
         follower_growth_pct: w.totals.follower_growth_pct,
         posts: w.totals.posts_in_week,
         wow_reach_pct: w.wow.reach.pct_change,
+        wow_reach_note: w.wow.reach.display_note,
+        wow_reach_capped: w.wow.reach.pct_capped,
+        wow_engagement_pct: w.wow.engagement_rate.pct_change,
+        wow_engagement_note: w.wow.engagement_rate.display_note,
+        wow_engagement_capped: w.wow.engagement_rate.pct_capped,
         tags: w.insights.map((t) => t.label),
         vs_historical: w.comparisons.vs_historical_reach_pct,
+        vs_historical_note: w.comparisons.vs_historical_reach_note,
+        vs_historical_capped: w.comparisons.vs_historical_reach_capped,
         vs_team: w.comparisons.vs_team_reach_pct,
         top_post: w.top_post
           ? `${w.top_post.content_label} · ${w.top_post.reach} reach`

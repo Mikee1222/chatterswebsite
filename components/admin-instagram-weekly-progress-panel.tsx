@@ -27,6 +27,8 @@ import type {
   IgWeeklyProgressReport,
 } from "@/services/instagram-weekly-progress";
 import type { IgWeeklyInsightSeverity, IgWeeklyInsightTag } from "@/lib/instagram-weekly-insights";
+import { fmtIgGuardedPct } from "@/lib/instagram-weekly-insights";
+import type { PeriodChangeDisplayNote } from "@/services/infloww-analytics";
 
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
@@ -78,26 +80,31 @@ function comparisonTone(pct: number | null | undefined): string {
   return "text-white/50";
 }
 
-function fmtComparisonPct(pct: number | null | undefined): string {
-  if (pct == null || !Number.isFinite(pct)) return "—";
-  const sign = pct > 0 ? "+" : "";
-  return `${sign}${pct.toFixed(0)}%`;
+function fmtComparisonPct(
+  pct: number | null | undefined,
+  opts?: { display_note?: PeriodChangeDisplayNote; pct_capped?: boolean }
+): string {
+  return fmtIgGuardedPct(pct, opts);
 }
 
 function ComparisonRow({
   label,
   pct,
   detail,
+  display_note,
+  pct_capped,
 }: {
   label: string;
   pct: number | null;
   detail?: string;
+  display_note?: PeriodChangeDisplayNote;
+  pct_capped?: boolean;
 }) {
   return (
     <div className="rounded-lg border border-white/6 bg-black/20 px-2 py-1.5">
       <p className="text-[9px] uppercase tracking-wider text-white/30">{label}</p>
       <p className={cn("text-[11px] font-semibold tabular-nums", comparisonTone(pct))}>
-        {fmtComparisonPct(pct)}
+        {fmtComparisonPct(pct, { display_note, pct_capped })}
       </p>
       {detail ? <p className="text-[9px] text-white/25">{detail}</p> : null}
     </div>
@@ -176,8 +183,11 @@ function TopPostMini({ post }: { post: IgWeekTopPost }) {
 
 function WeekComparisons({ comparisons }: { comparisons: IgWeekComparisons }) {
   const hasHistorical =
-    comparisons.vs_historical_reach_pct != null && comparisons.historical_weeks_sampled >= 1;
-  const hasTeam = comparisons.vs_team_reach_pct != null;
+    (comparisons.vs_historical_reach_pct != null ||
+      comparisons.vs_historical_reach_note != null) &&
+    comparisons.historical_weeks_sampled >= 1;
+  const hasTeam =
+    comparisons.vs_team_reach_pct != null || comparisons.vs_team_reach_note != null;
   if (!hasHistorical && !hasTeam) return null;
 
   return (
@@ -186,6 +196,8 @@ function WeekComparisons({ comparisons }: { comparisons: IgWeekComparisons }) {
         <ComparisonRow
           label="vs typical week"
           pct={comparisons.vs_historical_reach_pct}
+          display_note={comparisons.vs_historical_reach_note}
+          pct_capped={comparisons.vs_historical_reach_capped}
           detail={
             comparisons.historical_avg_reach != null
               ? `avg ${fmtCompact(comparisons.historical_avg_reach)} · ${comparisons.historical_weeks_sampled} mo`
@@ -197,6 +209,8 @@ function WeekComparisons({ comparisons }: { comparisons: IgWeekComparisons }) {
         <ComparisonRow
           label="vs team avg"
           pct={comparisons.vs_team_reach_pct}
+          display_note={comparisons.vs_team_reach_note}
+          pct_capped={comparisons.vs_team_reach_capped}
           detail={
             comparisons.team_avg_reach != null
               ? `team ${fmtCompact(comparisons.team_avg_reach)}`

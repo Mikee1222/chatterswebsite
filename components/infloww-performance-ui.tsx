@@ -158,11 +158,21 @@ export function CountUp({
 }
 
 export function PeriodBadge({ change }: { change: PeriodChangeMetric }) {
+  if (change.display_note === "new_activity") {
+    return <span className="text-xs font-medium text-emerald-300/85">New activity</span>;
+  }
+  if (
+    change.display_note === "insufficient_baseline" ||
+    change.display_note === "insufficient_history"
+  ) {
+    return <span className="text-xs text-white/35">Not enough prior data</span>;
+  }
   if (change.direction === "na" || change.pct_change == null) {
     return <span className="text-xs text-white/35">vs prior —</span>;
   }
   const up = change.direction === "up";
   const down = change.direction === "down";
+  const capSuffix = change.pct_capped ? "+" : "";
   return (
     <span
       className={cn(
@@ -173,6 +183,7 @@ export function PeriodBadge({ change }: { change: PeriodChangeMetric }) {
       )}
     >
       {up ? "▲" : down ? "▼" : "●"} {pctPoints(change.pct_change)}
+      {capSuffix}
     </span>
   );
 }

@@ -2,7 +2,186 @@
  * Rule-based insight tags + Talking Points for Instagram Weekly Progress (custom 4-week months).
  */
 
-import type { PeriodChangeMetric } from "@/services/infloww-analytics";
+import type {
+  PeriodChangeDisplayNote,
+  PeriodChangeMetric,
+} from "@/services/infloww-analytics";
+
+/** Max % shown before capping (displays as "500%+"). */
+export const IG_PCT_DISPLAY_CAP = 500;
+
+/** Min engagement-rate baseline (percentage points, e.g. 0.1 = 0.1%). */
+export const IG_MIN_ER_BASELINE_PCT = 0.1;
+
+/** Min reach baseline for meaningful WoW comparisons. */
+export const IG_MIN_REACH_BASELINE = 5_000;
+
+/** Min reach baseline for vs-historical when sample is thin. */
+export const IG_MIN_HISTORICAL_REACH_BASELINE = 2_000;
+
+/** Min absolute ER change (percentage points) to trust WoW % on tiny baselines. */
+export const IG_MIN_ER_ABS_CHANGE_PCT = 0.15;
+
+export type IgMetricKind = "reach" | "engagement_rate" | "count" | "rate";
+
+export type IgGuardedPctResult = {
+  pct_change: number | null;
+  direction: PeriodChangeMetric["direction"];
+  display_note?: PeriodChangeDisplayNote;
+  pct_capped?: boolean;
+};
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function minBaselineFor(kind: IgMetricKind, historicalSamples?: number): number {
+  if (kind === "engagement_rate" || kind === "rate") return IG_MIN_ER_BASELINE_PCT;
+  if (kind === "reach") {
+    return historicalSamples != null && historicalSamples < 2
+      ? IG_MIN_HISTORICAL_REACH_BASELINE
+      : IG_MIN_REACH_BASELINE;
+  }
+  return 1;
+}
+
+/** Guard WoW / period % change against near-zero denominators and cap extremes. */
+export function guardIgPctChange(
+  current: number,
+  previous: number,
+  kind: IgMetricKind
+): IgGuardedPctResult {
+  if (!Number.isFinite(current) || !Number.isFinite(previous)) {
+    return { pct_change: null, direction: "na" };
+  }
+
+  if (previous === 0 && current === 0) {
+    return { pct_change: null, direction: "flat" };
+  }
+
+  const minBaseline = minBaselineFor(kind);
+
+  if (previous <= 0 || previous < minBaseline) {
+    const meaningfulCurrent =
+      kind === "engagement_rate" || kind === "rate"
+        ? current >= IG_MIN_ER_BASELINE_PCT
+        : kind === "reach"
+          ? current >= IG_MIN_REACH_BASELINE
+          : current > 0;
+    if (meaningfulCurrent) {
+      return { pct_change: null, direction: "up", display_note: "new_activity" };
+    }
+    if (current === 0) {
+      return { pct_change: null, direction: "na" };
+    }
+    return {
+      pct_change: null,
+      direction: current > previous ? "up" : "down",
+      display_note: "insufficient_baseline",
+    };
+  }
+
+  const raw = ((current - previous) / Math.abs(previous)) * 100;
+  const absDelta = Math.abs(current - previous);
+
+  if (
+    (kind === "engagement_rate" || kind === "rate") &&
+    absDelta < IG_MIN_ER_ABS_CHANGE_PCT &&
+    Math.abs(raw) > IG_PCT_DISPLAY_CAP / 2
+  ) {
+    return {
+      pct_change: null,
+      direction: raw > 0 ? "up" : "down",
+      display_note: "insufficient_baseline",
+    };
+  }
+
+  if (Math.abs(raw) > IG_PCT_DISPLAY_CAP) {
+    return {
+      pct_change: raw > 0 ? IG_PCT_DISPLAY_CAP : -IG_PCT_DISPLAY_CAP,
+      direction: raw > 0 ? "up" : "down",
+      pct_capped: true,
+    };
+  }
+
+  const direction: PeriodChangeMetric["direction"] =
+    Math.abs(raw) < 0.5 ? "flat" : raw > 0 ? "up" : "down";
+  return { pct_change: round2(raw), direction };
+}
+
+/** Build a full PeriodChangeMetric with IG sanity guards applied. */
+export function igGuardedPeriodChange(
+  current: number,
+  previous: number,
+  kind: IgMetricKind
+): PeriodChangeMetric {
+  const guard = guardIgPctChange(current, previous, kind);
+  return {
+    current,
+    previous,
+    pct_change: guard.pct_change,
+    direction: guard.direction,
+    display_note: guard.display_note,
+    pct_capped: guard.pct_capped,
+  };
+}
+
+export type IgGuardedBaselinePct = {
+  pct: number | null;
+  display_note?: PeriodChangeDisplayNote;
+  pct_capped?: boolean;
+};
+
+/** Guard % above/below a baseline (historical avg, team avg). */
+export function guardIgPctVsBaseline(
+  current: number,
+  baseline: number,
+  kind: IgMetricKind,
+  opts?: { historicalSamples?: number }
+): IgGuardedBaselinePct {
+  if (!Number.isFinite(current) || !Number.isFinite(baseline)) {
+    return { pct: null };
+  }
+
+  const minBaseline = minBaselineFor(kind, opts?.historicalSamples);
+
+  if (baseline < minBaseline) {
+    const meaningfulCurrent =
+      kind === "engagement_rate" || kind === "rate"
+        ? current >= IG_MIN_ER_BASELINE_PCT
+        : kind === "reach"
+          ? current >= IG_MIN_REACH_BASELINE
+          : current > 0;
+    if (meaningfulCurrent) {
+      return {
+        pct: null,
+        display_note:
+          opts?.historicalSamples != null ? "insufficient_history" : "insufficient_baseline",
+      };
+    }
+    return { pct: null, display_note: "insufficient_baseline" };
+  }
+
+  const raw = ((current - baseline) / baseline) * 100;
+  const absDelta = Math.abs(current - baseline);
+
+  if (
+    (kind === "engagement_rate" || kind === "rate") &&
+    absDelta < IG_MIN_ER_ABS_CHANGE_PCT &&
+    Math.abs(raw) > 100
+  ) {
+    return { pct: null, display_note: "insufficient_baseline" };
+  }
+
+  if (Math.abs(raw) > IG_PCT_DISPLAY_CAP) {
+    return {
+      pct: raw > 0 ? IG_PCT_DISPLAY_CAP : -IG_PCT_DISPLAY_CAP,
+      pct_capped: true,
+    };
+  }
+
+  return { pct: round2(raw) };
+}
 
 export type IgWeeklyInsightSeverity = "positive" | "neutral" | "warning" | "critical" | "info";
 
@@ -52,18 +231,30 @@ export type IgWeeklyTalkingPointsContext = {
   week: number;
   reach: number;
   reach_wow_pct: number | null;
+  reach_wow_note?: PeriodChangeDisplayNote;
+  reach_wow_capped?: boolean;
   avg_engagement_rate: number | null;
   engagement_wow_pct: number | null;
+  engagement_wow_note?: PeriodChangeDisplayNote;
+  engagement_wow_capped?: boolean;
   follower_delta: number | null;
   follower_growth_pct: number | null;
   posts_in_week: number;
   posting_frequency: number | null;
   /** % above/below model's historical avg for this week index (null if no history). */
   vs_historical_reach_pct: number | null;
+  vs_historical_reach_note?: PeriodChangeDisplayNote;
+  vs_historical_reach_capped?: boolean;
   vs_historical_engagement_pct: number | null;
+  vs_historical_engagement_note?: PeriodChangeDisplayNote;
+  vs_historical_engagement_capped?: boolean;
   /** % above/below team average reach that week. */
   vs_team_reach_pct: number | null;
+  vs_team_reach_note?: PeriodChangeDisplayNote;
+  vs_team_reach_capped?: boolean;
   vs_team_engagement_pct: number | null;
+  vs_team_engagement_note?: PeriodChangeDisplayNote;
+  vs_team_engagement_capped?: boolean;
   is_best_week_in_month: boolean;
   top_post_label: string | null;
   cross_platform_note: string | null;
@@ -86,11 +277,48 @@ function fmtCompact(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-function fmtPctShort(n: number | null | undefined, opts?: { signed?: boolean }): string {
+function fmtPctShort(
+  n: number | null | undefined,
+  opts?: {
+    signed?: boolean;
+    display_note?: PeriodChangeDisplayNote;
+    pct_capped?: boolean;
+  }
+): string {
+  if (opts?.display_note === "new_activity") return "new activity";
+  if (
+    opts?.display_note === "insufficient_baseline" ||
+    opts?.display_note === "insufficient_history"
+  ) {
+    return "not enough prior data for comparison";
+  }
   if (n == null || !Number.isFinite(n)) return "—";
-  if (opts?.signed === false) return `${Math.abs(n).toFixed(1)}%`;
+  const capSuffix = opts?.pct_capped ? "+" : "";
+  if (opts?.signed === false) return `${Math.abs(n).toFixed(1)}%${capSuffix}`;
   const sign = n > 0 ? "+" : "";
-  return `${sign}${n.toFixed(1)}%`;
+  return `${sign}${n.toFixed(1)}%${capSuffix}`;
+}
+
+/** Format guarded comparison % for UI badges and talking points. */
+export function fmtIgGuardedPct(
+  pct: number | null | undefined,
+  opts?: {
+    display_note?: PeriodChangeDisplayNote;
+    pct_capped?: boolean;
+    signed?: boolean;
+  }
+): string {
+  if (opts?.display_note === "new_activity") return "New activity";
+  if (
+    opts?.display_note === "insufficient_baseline" ||
+    opts?.display_note === "insufficient_history"
+  ) {
+    return "Not enough prior data";
+  }
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  const capSuffix = opts?.pct_capped ? "+" : "";
+  const sign = opts?.signed === false ? "" : pct > 0 ? "+" : "";
+  return `${sign}${Math.abs(pct).toFixed(0)}%${capSuffix}`;
 }
 
 function fmtErPct(n: number | null | undefined): string {
@@ -99,9 +327,16 @@ function fmtErPct(n: number | null | undefined): string {
 }
 
 /** % difference of current vs baseline (positive = above baseline). */
-export function pctVsBaseline(current: number, baseline: number): number | null {
-  if (!Number.isFinite(current) || !Number.isFinite(baseline) || baseline <= 0) return null;
-  return ((current - baseline) / baseline) * 100;
+export function pctVsBaseline(
+  current: number,
+  baseline: number,
+  kind: IgMetricKind = "count",
+  opts?: { historicalSamples?: number }
+): IgGuardedBaselinePct {
+  if (!Number.isFinite(current) || !Number.isFinite(baseline) || baseline <= 0) {
+    return { pct: null };
+  }
+  return guardIgPctVsBaseline(current, baseline, kind, opts);
 }
 
 /** Extensible rule-based tags — multiple tags per model/week. */
@@ -352,22 +587,42 @@ export function generateIgWeeklyTalkingPoints(ctx: IgWeeklyTalkingPointsContext)
   // Lead sentence: headline performance
   if (ctx.is_best_week_in_month && ctx.reach > 0) {
     const wow =
-      ctx.reach_wow_pct != null ? ` (${fmtPctShort(ctx.reach_wow_pct)} WoW)` : "";
+      ctx.reach_wow_note === "new_activity"
+        ? " (new activity vs prior week)"
+        : ctx.reach_wow_pct != null
+          ? ` (${fmtPctShort(ctx.reach_wow_pct, { pct_capped: ctx.reach_wow_capped })} WoW)`
+          : "";
     parts.push(
       `${name}'s Week ${ctx.week} was their strongest this month at ${fmtCompact(ctx.reach)} reach${wow}.`
     );
   } else if (ctx.reach_wow_pct != null && ctx.reach_wow_pct > 20) {
     parts.push(
-      `Reach jumped ${fmtPctShort(ctx.reach_wow_pct)} week-over-week to ${fmtCompact(ctx.reach)} — a clear growth week for ${name}.`
+      `Reach jumped ${fmtPctShort(ctx.reach_wow_pct, {
+        display_note: ctx.reach_wow_note,
+        pct_capped: ctx.reach_wow_capped,
+      })} week-over-week to ${fmtCompact(ctx.reach)} — a clear growth week for ${name}.`
+    );
+  } else if (ctx.reach_wow_note === "new_activity") {
+    parts.push(
+      `${name} had new Instagram reach activity this week (${fmtCompact(ctx.reach)} total) — prior week was too quiet for a fair comparison.`
     );
   } else if (ctx.reach_wow_pct != null && ctx.reach_wow_pct < -20) {
     parts.push(
-      `Reach fell ${fmtPctShort(ctx.reach_wow_pct, { signed: false })} vs last week (${fmtCompact(ctx.reach)} total) — worth discussing content mix and timing with ${name}.`
+      `Reach fell ${fmtPctShort(ctx.reach_wow_pct, {
+        signed: false,
+        display_note: ctx.reach_wow_note,
+        pct_capped: ctx.reach_wow_capped,
+      })} vs last week (${fmtCompact(ctx.reach)} total) — worth discussing content mix and timing with ${name}.`
     );
   } else if (ctx.reach > 0) {
-    parts.push(
-      `Week ${ctx.week} landed at ${fmtCompact(ctx.reach)} reach${ctx.reach_wow_pct != null ? ` (${fmtPctShort(ctx.reach_wow_pct)} vs prior week)` : ""}.`
-    );
+    const wowSuffix =
+      ctx.reach_wow_pct != null || ctx.reach_wow_note
+        ? ` (${fmtPctShort(ctx.reach_wow_pct, {
+            display_note: ctx.reach_wow_note,
+            pct_capped: ctx.reach_wow_capped,
+          })} vs prior week)`
+        : "";
+    parts.push(`Week ${ctx.week} landed at ${fmtCompact(ctx.reach)} reach${wowSuffix}.`);
   } else if (ctx.posts_in_week > 0) {
     parts.push(
       `${name} posted ${ctx.posts_in_week} time${ctx.posts_in_week === 1 ? "" : "s"} this week but reach hasn't registered yet — check sync or account health.`
@@ -379,11 +634,23 @@ export function generateIgWeeklyTalkingPoints(ctx: IgWeeklyTalkingPointsContext)
   // Second sentence: engagement, posting, or follower angle
   const er = ctx.avg_engagement_rate;
   if (er != null && er > 0) {
-    if (ctx.engagement_wow_pct != null && ctx.engagement_wow_pct > 15) {
+    if (ctx.engagement_wow_note === "new_activity") {
       parts.push(
-        `Engagement rate rose to ${fmtErPct(er)} (${fmtPctShort(ctx.engagement_wow_pct)} WoW)${ctx.top_post_label ? `, led by a strong ${ctx.top_post_label}` : ""}.`
+        `Engagement rate rose to ${fmtErPct(er)} (up from a near-zero prior week)${ctx.top_post_label ? `, led by a strong ${ctx.top_post_label}` : ""}.`
       );
-    } else if (er != null && ctx.vs_team_engagement_pct != null && ctx.vs_team_engagement_pct < -25) {
+    } else if (ctx.engagement_wow_pct != null && ctx.engagement_wow_pct > 15) {
+      parts.push(
+        `Engagement rate rose to ${fmtErPct(er)} (${fmtPctShort(ctx.engagement_wow_pct, {
+          display_note: ctx.engagement_wow_note,
+          pct_capped: ctx.engagement_wow_capped,
+        })} WoW)${ctx.top_post_label ? `, led by a strong ${ctx.top_post_label}` : ""}.`
+      );
+    } else if (
+      er != null &&
+      ctx.vs_team_engagement_pct != null &&
+      ctx.vs_team_engagement_pct < -25 &&
+      !ctx.vs_team_engagement_note
+    ) {
       parts.push(
         `Engagement at ${fmtErPct(er)} trails the team average — content may be reaching broadly without converting to interactions.`
       );
@@ -409,16 +676,32 @@ export function generateIgWeeklyTalkingPoints(ctx: IgWeeklyTalkingPointsContext)
   } else if (
     ctx.vs_historical_reach_pct != null &&
     ctx.historical_weeks_sampled >= 2 &&
-    Math.abs(ctx.vs_historical_reach_pct) >= 12
+    Math.abs(ctx.vs_historical_reach_pct) >= 12 &&
+    !ctx.vs_historical_reach_note
   ) {
     const dir = ctx.vs_historical_reach_pct > 0 ? "above" : "below";
     parts.push(
-      `That's ${fmtPctShort(Math.abs(ctx.vs_historical_reach_pct))} ${dir} ${name}'s typical Week ${ctx.week} based on ${ctx.historical_weeks_sampled} prior months.`
+      `That's ${fmtPctShort(Math.abs(ctx.vs_historical_reach_pct), {
+        signed: false,
+        pct_capped: ctx.vs_historical_reach_capped,
+      })} ${dir} ${name}'s typical Week ${ctx.week} based on ${ctx.historical_weeks_sampled} prior months.`
     );
-  } else if (ctx.vs_team_reach_pct != null && Math.abs(ctx.vs_team_reach_pct) >= 15) {
+  } else if (
+    ctx.vs_historical_reach_note === "insufficient_history" ||
+    ctx.vs_historical_reach_note === "insufficient_baseline"
+  ) {
+    parts.push(`Not enough prior Instagram history to compare Week ${ctx.week} to a typical week yet.`);
+  } else if (
+    ctx.vs_team_reach_pct != null &&
+    Math.abs(ctx.vs_team_reach_pct) >= 15 &&
+    !ctx.vs_team_reach_note
+  ) {
     const dir = ctx.vs_team_reach_pct > 0 ? "ahead of" : "behind";
     parts.push(
-      `Reach is ${fmtPctShort(Math.abs(ctx.vs_team_reach_pct))} ${dir} the team average this week.`
+      `Reach is ${fmtPctShort(Math.abs(ctx.vs_team_reach_pct), {
+        signed: false,
+        pct_capped: ctx.vs_team_reach_capped,
+      })} ${dir} the team average this week.`
     );
   }
 

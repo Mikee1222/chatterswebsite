@@ -23,11 +23,20 @@ export type AnalyticsTotalsInput = {
   has_direct_unlock_metrics?: boolean;
 };
 
+export type PeriodChangeDisplayNote =
+  | "new_activity"
+  | "insufficient_baseline"
+  | "insufficient_history";
+
 export type PeriodChangeMetric = {
   current: number;
   previous: number;
   pct_change: number | null;
   direction: "up" | "down" | "flat" | "na";
+  /** When set, UI shows this label instead of a raw % (IG weekly progress). */
+  display_note?: PeriodChangeDisplayNote;
+  /** True when pct_change was capped at a max display value (show trailing "+"). */
+  pct_capped?: boolean;
 };
 
 export type ConversionFunnel = {
