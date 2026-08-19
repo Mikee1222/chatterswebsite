@@ -52,6 +52,7 @@ type Fields = {
   [FIELD_CONTRACT_ATTACHMENTS]?: unknown;
   [FIELD_COLLABORATION_START_DATE]?: string;
   [FIELD_COLLABORATION_END_DATE]?: string;
+  nav_preferences?: string;
 };
 
 function parseCompensationType(raw: unknown): CompensationType | null {
@@ -140,6 +141,9 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
   if (collaborationStart) out.collaboration_start_date = collaborationStart;
   const collaborationEnd = parseDateField(f[FIELD_COLLABORATION_END_DATE]);
   if (collaborationEnd) out.collaboration_end_date = collaborationEnd;
+  if (typeof f.nav_preferences === "string" && f.nav_preferences.trim()) {
+    out.nav_preferences = f.nav_preferences.trim();
+  }
   return out;
 }
 
@@ -334,6 +338,7 @@ export type UpdateUserInput = Partial<{
   contract_attachments: UserContractAttachment[] | null;
   collaboration_start_date: string | null;
   collaboration_end_date: string | null;
+  nav_preferences: string | null;
 }>;
 
 function applyCompensationFields(
@@ -431,6 +436,9 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
     (fields as Record<string, unknown>).infloww_employee_id = input.infloww_employee_id;
   }
   applyCompensationFields(fields as Record<string, unknown>, input);
+  if (input.nav_preferences !== undefined) {
+    fields.nav_preferences = input.nav_preferences ?? "";
+  }
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);
   return mapRecord(rec);
 }

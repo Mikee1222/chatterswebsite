@@ -939,6 +939,8 @@ export interface UserRecord {
   collaboration_start_date?: string | null;
   /** Airtable `Collaboration End Date` (YYYY-MM-DD). */
   collaboration_end_date?: string | null;
+  /** JSON sidebar prefs: pinned_hrefs, collapsed_sections, hidden_sections. */
+  nav_preferences?: string;
 }
 
 export interface ActivityLog {

@@ -80,6 +80,12 @@ import { useNotificationCenter } from "@/contexts/notification-center-context";
 import { useRealtime } from "@/contexts/realtime-context";
 import { useNotificationPrompt } from "@/contexts/notification-prompt-context";
 import { usePwa } from "@/components/pwa-provider";
+import {
+  PINNED_NAV_SECTION_KEY,
+  type UserNavPreferences,
+} from "@/lib/nav-preferences";
+import { useNavPreferencesState } from "@/hooks/use-nav-preferences";
+import { Pin } from "lucide-react";
 
 /** Row layout aligned with VA quick actions (`va-quick-actions-modal.tsx`). */
 const MORE_MENU_ROW_CLASS =
@@ -229,6 +235,7 @@ type MobileAppShellProps = {
   /** Model UI language from cookie / Airtable — translates bottom tabs + More menu labels. */
   modelUiLanguage?: ModelLang;
   userPermissions?: Permission[];
+  initialNavPreferences: UserNavPreferences;
 };
 
 /** Unmounts children while any modal/overlay asks mobile chrome to hide. Must sit under MobileFabVisibilityProvider. */
@@ -247,6 +254,7 @@ export function MobileAppShell({
   navBadgeCounts,
   modelUiLanguage,
   userPermissions = [],
+  initialNavPreferences,
 }: MobileAppShellProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = React.useState(false);
@@ -301,15 +309,26 @@ export function MobileAppShell({
   }, [role, hiddenForRole, modelUiLanguage, userPermissions]);
 
   const mainHrefSet = React.useMemo(() => new Set(mainTabRows.map((r) => r.item.href)), [mainTabRows]);
+
+  const { pinnedHrefs, hiddenSections } = useNavPreferencesState(initialNavPreferences);
+  const itemByHref = React.useMemo(() => new Map(allItems.map((i) => [i.href, i])), [allItems]);
+  const pinnedMoreItems = React.useMemo(
+    () =>
+      pinnedHrefs
+        .map((href) => itemByHref.get(href))
+        .filter((item): item is NavItem => item != null && !mainHrefSet.has(item.href)),
+    [pinnedHrefs, itemByHref, mainHrefSet]
+  );
+
   // Order the More sheet by the shared canonical section order (NAV_SECTION_ORDER) so section
   // headers stay contiguous and consistent for every role — including custom roles and the
   // permission-gated shared items that get appended after a role's base list.
   const moreItems = React.useMemo(
     () =>
-      groupNavItemsBySection(allItems.filter((item) => !mainHrefSet.has(item.href))).flatMap(
-        (g) => g.items
-      ),
-    [allItems, mainHrefSet]
+      groupNavItemsBySection(
+        allItems.filter((item) => !mainHrefSet.has(item.href) && !hiddenSections.includes(item.navSection ?? ""))
+      ).flatMap((g) => g.items),
+    [allItems, mainHrefSet, hiddenSections]
   );
 
   const navHrefs = React.useMemo(() => allItems.map((i) => i.href), [allItems]);
@@ -546,6 +565,40 @@ export function MobileAppShell({
 
       <MoreMenuModal open={moreOpen} onClose={() => setMoreOpen(false)} title="More" userRole={role}>
         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2">
+          {pinnedMoreItems.length > 0 ? (
+            <>
+              <li>
+                <div
+                  className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-pink-300/80"
+                  role="presentation"
+                >
+                  {PINNED_NAV_SECTION_KEY}
+                </div>
+              </li>
+              {pinnedMoreItems.map((link) => {
+                const Icon = ICON_MAP[link.iconKey] ?? Users;
+                const active = !link.disabled && navActive(link.href);
+                return (
+                  <li key={`pinned-${link.href}`}>
+                    <Link
+                      href={link.href}
+                      prefetch
+                      onClick={() => setMoreOpen(false)}
+                      className={cn(MORE_MENU_ROW_CLASS, active ? "bg-pink-500/10 text-pink-100" : "text-white/95")}
+                    >
+                      <span className={cn(MORE_MENU_ICON_WRAP_CLASS, active && "bg-pink-500/30 text-pink-300")}>
+                        <Icon className="h-5 w-5" />
+                      </span>
+                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="truncate">{link.label}</span>
+                        <Pin className="h-3.5 w-3.5 shrink-0 text-pink-400/80" aria-hidden />
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </>
+          ) : null}
           {moreItems.map((link, linkIndex) => {
             const prevLink = linkIndex > 0 ? moreItems[linkIndex - 1] : null;
             const showSection =

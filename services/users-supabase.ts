@@ -46,6 +46,7 @@ type Row = SbRow & {
   contract_attachments?: string[] | null;
   collaboration_start_date?: string | null;
   collaboration_end_date?: string | null;
+  nav_preferences?: unknown;
 };
 
 function parseCompensationType(raw: unknown): CompensationType | null {
@@ -121,6 +122,15 @@ function mapRowSync(row: Row, modelAt: Map<string, string>, includePasswordHash 
   }
   if (row.collaboration_end_date) {
     out.collaboration_end_date = String(row.collaboration_end_date).slice(0, 10);
+  }
+  if (typeof row.nav_preferences === "string" && row.nav_preferences.trim()) {
+    out.nav_preferences = row.nav_preferences.trim();
+  } else if (row.nav_preferences != null && typeof row.nav_preferences === "object") {
+    try {
+      out.nav_preferences = JSON.stringify(row.nav_preferences);
+    } catch {
+      /* ignore */
+    }
   }
   return out;
 }
@@ -306,6 +316,7 @@ export type UpdateUserInput = Partial<{
   contract_attachments: UserContractAttachment[] | null;
   collaboration_start_date: string | null;
   collaboration_end_date: string | null;
+  nav_preferences: string | null;
 }>;
 
 export async function updateUser(recordId: string, input: UpdateUserInput): Promise<UserRecord> {
@@ -359,6 +370,17 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   }
   if (input.collaboration_end_date !== undefined) {
     patch.collaboration_end_date = input.collaboration_end_date || null;
+  }
+  if (input.nav_preferences !== undefined) {
+    if (input.nav_preferences == null || input.nav_preferences.trim() === "") {
+      patch.nav_preferences = null;
+    } else {
+      try {
+        patch.nav_preferences = JSON.parse(input.nav_preferences);
+      } catch {
+        patch.nav_preferences = input.nav_preferences;
+      }
+    }
   }
   const updated = await sbUpdateByPublicId<Row>(TABLE, recordId, patch);
   return mapRow(updated);

@@ -27,6 +27,8 @@ import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getUnreadCount } from "@/services/notifications";
 import { getDataBackend } from "@/lib/data-backend";
+import { getNavPreferencesForUser } from "@/services/nav-preferences";
+import { defaultNavPreferencesForRole } from "@/lib/nav-preferences";
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
 export default async function DashboardLayout({
@@ -105,6 +107,11 @@ export default async function DashboardLayout({
     ? await getUnreadCount(notificationUserId).catch(() => 0)
     : 0;
 
+  const navUserId = user.airtableUserId ?? user.id;
+  const initialNavPreferences = await getNavPreferencesForUser(navUserId, user.role).catch(() =>
+    defaultNavPreferencesForRole(user.role)
+  );
+
   return (
     <Providers initialUnreadCount={initialUnreadCount} dataBackend={dataBackend}>
       <SidebarProvider>
@@ -121,6 +128,7 @@ export default async function DashboardLayout({
             quickStats={quickStats}
             roleLabel={roleLabel}
             roleColor={roleColor}
+            initialNavPreferences={initialNavPreferences}
           />
           <DashboardContentOffset>
             <Topbar user={user} />
@@ -132,6 +140,7 @@ export default async function DashboardLayout({
               navBadgeCounts={navBadgeCounts}
               modelUiLanguage={modelUiLanguage}
               userPermissions={userPermissions}
+              initialNavPreferences={initialNavPreferences}
             >
               <main
                 data-main-content

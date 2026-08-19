@@ -48,6 +48,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   X,
+  EyeOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -69,6 +70,13 @@ import type { SessionUser, SopColor } from "@/types";
 import { getNavRoleForSession } from "@/lib/staff-session-role";
 import { useSidebar } from "@/contexts/sidebar-context";
 import { SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
+import {
+  MAX_PINNED_NAV_ITEMS,
+  PINNED_NAV_SECTION_KEY,
+  type UserNavPreferences,
+} from "@/lib/nav-preferences";
+import { useNavPreferencesState } from "@/hooks/use-nav-preferences";
+import { showAllNavSections } from "@/app/actions/nav-preferences";
 
 const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   Home,
@@ -115,11 +123,6 @@ const BETA_BADGE_CLASS =
 const COMING_SOON_BADGE_CLASS =
   "ml-1.5 inline-flex shrink-0 items-center rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/55 ring-1 ring-white/15";
 
-const PINNED_SECTION_KEY = "Pinned";
-const COLLAPSED_SECTIONS_KEY = "sidebar_collapsed_sections";
-const PINNED_ITEMS_KEY = "sidebar_pinned_items";
-const MAX_PINNED = 6;
-
 const SYSTEM_ROLE_COLORS: Record<string, SopColor> = {
   admin: "pink",
   manager: "blue",
@@ -140,27 +143,6 @@ function NavComingSoonBadge({ text }: { text: string }) {
 function navItemIsActive(pathname: string, item: NavItem, items: NavItem[]): boolean {
   const hrefs = items.map((i) => i.href);
   return navHrefIsActive(pathname, item.href, hrefs);
-}
-
-function readJsonArray(key: string): string[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((x): x is string => typeof x === "string");
-  } catch {
-    return [];
-  }
-}
-
-function writeJsonArray(key: string, value: string[]) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* ignore */
-  }
 }
 
 function getInitials(user: SessionUser): string {
@@ -194,6 +176,7 @@ export function Sidebar({
   quickStats,
   roleLabel,
   roleColor,
+  initialNavPreferences,
 }: {
   user: SessionUser;
   hiddenNavConfig: ParsedHiddenNavConfig;
@@ -203,6 +186,7 @@ export function Sidebar({
   quickStats?: SidebarQuickStats;
   roleLabel?: string;
   roleColor?: string;
+  initialNavPreferences: UserNavPreferences;
 }) {
   const pathname = usePathname();
   const { collapsed, toggleCollapsed } = useSidebar();
@@ -210,18 +194,26 @@ export function Sidebar({
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const searchContainerRef = React.useRef<HTMLDivElement>(null);
   const sidebarRootRef = React.useRef<HTMLElement>(null);
+  const prefersReducedMotion = React.useMemo(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+    []
+  );
 
-  const [collapsedSections, setCollapsedSections] = React.useState<string[]>([]);
-  const [pinnedHrefs, setPinnedHrefs] = React.useState<string[]>([]);
-  const [sectionsHydrated, setSectionsHydrated] = React.useState(false);
+  const {
+    toggleSectionCollapsed,
+    toggleSectionHidden,
+    togglePin,
+    showAllSections,
+    isSectionCollapsed,
+    pinnedHrefs,
+    hiddenSections,
+  } = useNavPreferencesState(initialNavPreferences);
+
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
-
-  React.useEffect(() => {
-    setCollapsedSections(readJsonArray(COLLAPSED_SECTIONS_KEY));
-    setPinnedHrefs(readJsonArray(PINNED_ITEMS_KEY).slice(0, MAX_PINNED));
-    setSectionsHydrated(true);
-  }, []);
+  const [resettingSections, setResettingSections] = React.useState(false);
 
   // Close search after navigation so result Links can receive click before dismiss.
   React.useEffect(() => {
@@ -306,7 +298,13 @@ export function Sidebar({
 
   // Every role's nav groups into the same canonical labeled sections (NAV_SECTION_ORDER),
   // not just the admin area — custom roles included, well-organized by construction.
-  const navSections = React.useMemo(() => groupNavItemsBySection(items), [items]);
+  const navSections = React.useMemo(
+    () =>
+      groupNavItemsBySection(items).filter(
+        ({ section }) => !hiddenSections.includes(section)
+      ),
+    [items, hiddenSections]
+  );
 
   const searchResults = React.useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -341,33 +339,15 @@ export function Sidebar({
           : "Model"
         : user.role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
 
-  const toggleSection = (section: string) => {
-    setCollapsedSections((prev) => {
-      const next = prev.includes(section)
-        ? prev.filter((s) => s !== section)
-        : [...prev, section];
-      writeJsonArray(COLLAPSED_SECTIONS_KEY, next);
-      return next;
-    });
-  };
+  const toggleSection = (section: string) => toggleSectionCollapsed(section);
 
-  const togglePin = (href: string) => {
-    setPinnedHrefs((prev) => {
-      let next: string[];
-      if (prev.includes(href)) {
-        next = prev.filter((h) => h !== href);
-      } else if (prev.length >= MAX_PINNED) {
-        next = prev;
-      } else {
-        next = [...prev, href];
-      }
-      writeJsonArray(PINNED_ITEMS_KEY, next);
-      return next;
-    });
-  };
+  const handleTogglePin = (href: string) => togglePin(href, MAX_PINNED_NAV_ITEMS);
 
-  const isSectionCollapsed = (section: string) =>
-    sectionsHydrated && collapsedSections.includes(section);
+  const handleShowAllSections = () => {
+    setResettingSections(true);
+    showAllSections();
+    void showAllNavSections().finally(() => setResettingSections(false));
+  };
 
   const renderNavItem = (item: NavItem, options?: { showSectionSubtitle?: boolean }) => {
     const Icon = ICON_MAP[item.iconKey];
@@ -426,7 +406,7 @@ export function Sidebar({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            togglePin(item.href);
+            handleTogglePin(item.href);
           }}
           className={cn(
             "absolute right-1.5 top-1/2 z-20 -translate-y-1/2 rounded-md p-1 text-white/40 transition-opacity hover:bg-white/10 hover:text-pink-300",
@@ -469,29 +449,45 @@ export function Sidebar({
     );
   };
 
-  const renderSection = (section: string, sectionItems: NavItem[]) => {
+  const renderSection = (section: string, sectionItems: NavItem[], options?: { allowHide?: boolean }) => {
     const sectionCollapsed = isSectionCollapsed(section);
+    const canHide = options?.allowHide && section !== PINNED_NAV_SECTION_KEY;
     return (
       <div key={section} className="mb-1">
         {!collapsed ? (
-          <button
-            type="button"
-            onClick={() => toggleSection(section)}
-            className="flex w-full items-center gap-1.5 px-3 pb-1 pt-3 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40 first:pt-1 hover:text-white/55"
-          >
-            <ChevronDown
-              className={cn(
-                "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
-                sectionCollapsed && "-rotate-90"
-              )}
-              aria-hidden
-            />
-            <span className="truncate">{section}</span>
-          </button>
+          <div className="group/section flex items-center gap-0.5 px-1 pt-3 first:pt-1">
+            <button
+              type="button"
+              onClick={() => toggleSection(section)}
+              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-white/40 transition-colors hover:bg-white/[0.04] hover:text-white/60"
+            >
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 shrink-0 transition-transform",
+                  !prefersReducedMotion && "duration-200 ease-out",
+                  sectionCollapsed && "-rotate-90"
+                )}
+                aria-hidden
+              />
+              <span className="truncate">{section}</span>
+            </button>
+            {canHide ? (
+              <button
+                type="button"
+                onClick={() => toggleSectionHidden(section)}
+                className="rounded-md p-1 text-white/30 opacity-0 transition-opacity hover:bg-white/10 hover:text-white/55 group-hover/section:opacity-100"
+                aria-label={`Hide ${section} section`}
+                title="Hide section"
+              >
+                <EyeOff className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
         ) : null}
         <div
           className={cn(
-            "overflow-hidden transition-[max-height] duration-200 ease-out",
+            "overflow-hidden",
+            !prefersReducedMotion && "transition-[max-height] duration-200 ease-out",
             collapsed || !sectionCollapsed ? "max-h-[2000px]" : "max-h-0"
           )}
         >
@@ -577,10 +573,11 @@ export function Sidebar({
                 className="flex w-full items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-sm text-white/45 transition-colors hover:border-white/15 hover:bg-white/[0.06] hover:text-white/65"
               >
                 <Search className="h-3.5 w-3.5 shrink-0" />
-                <span className="flex-1 text-left">Search</span>
+                <span className="flex-1 text-left">Search navigation</span>
                 <kbd className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium text-white/35">
                   /
                 </kbd>
+                <span className="sr-only">Press slash to search</span>
               </button>
             )}
           </div>
@@ -637,12 +634,28 @@ export function Sidebar({
             </div>
           ) : (
             <>
-              {isAdminAreaUser && pinnedItems.length > 0 ? (
-                renderSection(PINNED_SECTION_KEY, pinnedItems)
+              {hiddenSections.length > 0 && !collapsed ? (
+                <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
+                  <span className="text-[11px] text-white/45">
+                    {hiddenSections.length} section{hiddenSections.length === 1 ? "" : "s"} hidden
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleShowAllSections}
+                    disabled={resettingSections}
+                    className="shrink-0 text-[11px] font-medium text-pink-300 hover:text-pink-200 disabled:opacity-50"
+                  >
+                    Show all
+                  </button>
+                </div>
               ) : null}
 
+              {isAdminAreaUser && pinnedItems.length > 0
+                ? renderSection(PINNED_NAV_SECTION_KEY, pinnedItems)
+                : null}
+
               {navSections.map(({ section, items: sectionItems }) =>
-                renderSection(section, sectionItems)
+                renderSection(section, sectionItems, { allowHide: isAdminAreaUser })
               )}
             </>
           )}

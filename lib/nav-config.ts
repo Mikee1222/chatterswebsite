@@ -206,11 +206,13 @@ export const NAV_SECTION_ORDER = [
   "TASKS",
   "WORK",
   "CREATORS",
-  "CONTENT",
+  "CONTENT PIPELINE",
+  "PERFORMANCE & ANALYTICS",
   "MARKETING",
   "REQUESTS",
   "REVIEW & QA",
   "FINANCE",
+  "SECURITY",
   "INFO",
   "REWARDS",
   "TOOLS",
@@ -466,7 +468,7 @@ const adminNav: NavItem[] = [
     href: ROUTES.admin.credentialsVault,
     label: "Password Library",
     iconKey: "Settings2",
-    navSection: "TOOLS",
+    navSection: "SECURITY",
     requiresPermission: PERMISSIONS.CREDENTIALS_VIEW,
   },
   {
@@ -484,66 +486,83 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.WHALES_MANAGE,
   },
 
-  // ── CONTENT ──
+  // ── CONTENT PIPELINE ──
   // NOTE: "PDF Maker" / "Transcript Videos" (utilities) live in `sharedPermissionNavItems`
-  // under TOOLS; Fill Bunches + creative scripts also live there under CONTENT.
-  {
-    href: ROUTES.admin.vaContentAssignments,
-    label: "Chatting Content",
-    iconKey: "FileText",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.CONTENT_ASSIGN,
-  },
+  // under TOOLS; Fill Bunches + creative scripts also live there under CONTENT PIPELINE.
   {
     href: ROUTES.admin.modelContentRequests,
     label: "Model content requests",
     iconKey: "FileText",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.CONTENT_VIEW,
   },
   {
     href: ROUTES.admin.winnerVideos,
     label: "Content Q/A",
     iconKey: "ListTodo",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
   },
   {
     href: ROUTES.admin.winnerVideosHub,
-    label: "Winner Videos",
+    label: "Winner Videos Hub",
     iconKey: "Trophy",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
   },
   {
     href: ROUTES.admin.bunches,
     label: "Bunches",
     iconKey: "FolderOpen",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
   },
   {
     href: ROUTES.admin.sopLibrary,
     label: "SOP Library",
     iconKey: "BookOpen",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.SOPS_MANAGE,
   },
 
-  // ── MARKETING ──
+  // ── PERFORMANCE & ANALYTICS ──
   {
-    href: ROUTES.admin.marketing,
-    label: "Marketing",
+    href: ROUTES.admin.earnings,
+    label: "Creator earnings",
+    iconKey: "LineChart",
+    navSection: "PERFORMANCE & ANALYTICS",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.EARNINGS_VIEW,
+  },
+  {
+    href: ROUTES.admin.inflowwPerformance,
+    label: "Chatter performance",
     iconKey: "TrendingUp",
-    navSection: "MARKETING",
-    requiresPermission: PERMISSIONS.MARKETING_MANAGE,
+    navSection: "PERFORMANCE & ANALYTICS",
+    requiresPermission: PERMISSIONS.INFLOWW_STATS_VIEW_ALL,
   },
   {
     href: ROUTES.admin.instagramInsights,
     label: "Instagram Insights",
     iconKey: "LineChart",
-    navSection: "MARKETING",
+    navSection: "PERFORMANCE & ANALYTICS",
     requiresPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
+  },
+
+  // ── MARKETING ──
+  {
+    href: ROUTES.admin.marketing,
+    label: "Marketing control room",
+    iconKey: "TrendingUp",
+    navSection: "MARKETING",
+    requiresPermission: PERMISSIONS.MARKETING_MANAGE,
+  },
+  {
+    href: ROUTES.admin.vaContentAssignments,
+    label: "Chatting Content",
+    iconKey: "FileText",
+    navSection: "MARKETING",
+    requiresPermission: PERMISSIONS.CONTENT_ASSIGN,
   },
   {
     href: ROUTES.admin.informations,
@@ -552,25 +571,24 @@ const adminNav: NavItem[] = [
     navSection: "MARKETING",
     requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
   },
-
-  // ── REVIEW & QA ──
-  // Manage-tier supervision + mistakes review. The matching SUBMIT-tier items live in
-  // `sharedPermissionNavItems` (also REVIEW & QA); `hiddenIfPermission` dedupes users who
-  // hold the manage grant so they see this richer review item instead of the submit item.
   {
     href: ROUTES.admin.spotChecks,
     label: "Spot checks",
     iconKey: "ListTodo",
-    navSection: "REVIEW & QA",
+    navSection: "MARKETING",
     requiresPermission: PERMISSIONS.SPOTCHECK_MANAGE,
   },
   {
     href: ROUTES.admin.dailyReview,
     label: "Daily review",
     iconKey: "CalendarCheck",
-    navSection: "REVIEW & QA",
+    navSection: "MARKETING",
     requiresPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
   },
+
+  // ── REVIEW & QA ──
+  // Manage-tier supervision + mistakes review. The matching SUBMIT-tier items live in
+  // `sharedPermissionNavItems`; `hiddenIfPermission` dedupes users who hold the manage grant.
   {
     href: ROUTES.admin.mistakes,
     label: "Mistakes",
@@ -652,23 +670,8 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.CLIENTS_VIEW,
   },
   {
-    href: ROUTES.admin.earnings,
-    label: "Earnings",
-    iconKey: "LineChart",
-    navSection: "FINANCE",
-    adminOnly: true,
-    requiresPermission: PERMISSIONS.EARNINGS_VIEW,
-  },
-  {
-    href: ROUTES.admin.inflowwPerformance,
-    label: "Chatter performance",
-    iconKey: "TrendingUp",
-    navSection: "FINANCE",
-    requiresPermission: PERMISSIONS.INFLOWW_STATS_VIEW_ALL,
-  },
-  {
     href: ROUTES.admin.inflowwReassignments,
-    label: "Sales reassignments",
+    label: "Infloww reassignments",
     iconKey: "ArrowRightLeft",
     navSection: "FINANCE",
     requiresPermission: PERMISSIONS.INFLOWW_STATS_VIEW_ALL,
@@ -767,7 +770,7 @@ const modelNav: NavItem[] = [
   { href: ROUTES.model.schedule, label: "Availability", iconKey: "CalendarClock", navSection: "OVERVIEW" },
 
   // ── CONTENT ──
-  { href: ROUTES.model.contentAssignments, label: "Chatting Assignments", iconKey: "FileText", navSection: "CONTENT" },
+  { href: ROUTES.model.contentAssignments, label: "Chatting Assignments", iconKey: "FileText", navSection: "MARKETING" },
 
   // ── REQUESTS ──
   { href: ROUTES.model.customs, label: "Custom requests", iconKey: "Package", navSection: "REQUESTS" },
@@ -829,16 +832,16 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.admin.vaStatistics,
     label: "VA Statistics",
     iconKey: "LineChart",
-    navSection: "TEAM",
+    navSection: "PERFORMANCE & ANALYTICS",
     requiresPermission: PERMISSIONS.VA_STATISTICS_VIEW,
   },
 
-  // ── CONTENT ──
+  // ── CONTENT PIPELINE ──
   {
     href: ROUTES.winnerRecreates,
     label: "Fill Bunches",
     iconKey: "Trophy",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.WINNER_SOURCING_SUBMIT,
     hiddenIfPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
     excludeFromMobileMainTabs: true,
@@ -847,7 +850,7 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.creativeScripts,
     label: "Scripts to Write",
     iconKey: "FileText",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
     // Users who can manage creative scripts see the admin Research review flow instead.
     hiddenIfPermission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
@@ -857,7 +860,7 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.shootAssignments,
     label: "Shoot Assignments",
     iconKey: "PlayCircle",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.FILMING_VIEW_ASSIGNMENTS,
     hiddenIfPermission: PERMISSIONS.FILMING_MANAGE,
     excludeFromMobileMainTabs: true,
@@ -866,24 +869,24 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.filmingCalendar,
     label: "Filming Calendar",
     iconKey: "CalendarDays",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresAnyPermission: [PERMISSIONS.FILMING_VIEW_ASSIGNMENTS, PERMISSIONS.FILMING_MANAGE],
     excludeFromMobileMainTabs: true,
   },
   {
     href: ROUTES.editAssignments,
-    label: "Edit Assignments",
+    label: "Editor",
     iconKey: "FileText",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.EDITING_VIEW_ASSIGNMENTS,
     hiddenIfPermission: PERMISSIONS.EDITING_MANAGE,
     excludeFromMobileMainTabs: true,
   },
   {
     href: ROUTES.icloudOrganization,
-    label: "iCloud Management",
+    label: "iCloud Manager",
     iconKey: "FolderOpen",
-    navSection: "CONTENT",
+    navSection: "CONTENT PIPELINE",
     requiresPermission: PERMISSIONS.ICLOUD_MANAGEMENT_VIEW,
     // Manage holders still use this page (no per-bunch assign) — do not hide on manage.
     excludeFromMobileMainTabs: true,
@@ -894,7 +897,7 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.spotChecks,
     label: "Spot Checks",
     iconKey: "ListTodo",
-    navSection: "REVIEW & QA",
+    navSection: "MARKETING",
     requiresPermission: PERMISSIONS.SPOTCHECK_SUBMIT,
     // Users who can manage spot checks see the manage-tier review item instead.
     hiddenIfPermission: PERMISSIONS.SPOTCHECK_MANAGE,
@@ -904,7 +907,7 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.dailyReview,
     label: "Daily Review",
     iconKey: "CalendarCheck",
-    navSection: "REVIEW & QA",
+    navSection: "MARKETING",
     requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
     // Users who can manage daily reviews see the manage-tier review item instead.
     hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
