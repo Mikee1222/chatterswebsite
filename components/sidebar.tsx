@@ -40,6 +40,7 @@ import {
   BookOpen,
   Link2,
   FolderOpen,
+  ArrowRightLeft,
   ChevronDown,
   Search,
   Pin,
@@ -105,6 +106,7 @@ const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   BookOpen,
   Link2,
   FolderOpen,
+  ArrowRightLeft,
 };
 
 const BETA_BADGE_CLASS =

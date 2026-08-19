@@ -5,6 +5,7 @@ import { syncInflowwCreatorEarnings } from "@/services/infloww-creator-earnings"
 import { syncInflowwDailyStats } from "@/services/infloww-daily-stats";
 import { runInflowwPerformanceAlerts } from "@/services/infloww-performance-alerts";
 import { dailySyncCreatorStatusLog } from "@/services/infloww-creator-status-log";
+import { dailySyncSalesReassignments } from "@/services/infloww-sales-reassignments";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -87,12 +88,23 @@ export async function GET(request: Request) {
       console.error("[cron/sync-infloww-stats] status-log sync failed", statusLogErr);
     }
 
+    let salesReassignments: Awaited<ReturnType<typeof dailySyncSalesReassignments>> | null = null;
+    try {
+      salesReassignments = await dailySyncSalesReassignments();
+      if (salesReassignments.errors.length > 0) {
+        console.error("[cron/sync-infloww-stats] sales-reassignments errors", salesReassignments.errors.slice(0, 5));
+      }
+    } catch (reassignErr) {
+      console.error("[cron/sync-infloww-stats] sales-reassignments sync failed", reassignErr);
+    }
+
     return NextResponse.json({
       success: employee.errors.length === 0 && creatorErrorCount === 0,
       employee,
       creator,
       performanceAlerts,
       statusLog,
+      salesReassignments,
     });
   } catch (err) {
     console.error("[cron/sync-infloww-stats]", err);

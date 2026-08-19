@@ -2566,6 +2566,139 @@ function mapBillingRow(row: unknown): import("@/types/infloww").InflowwMonthlyBi
  *
  * Call once per sync run (agency-level). Do NOT call multiple times per day.
  */
+// ---------------------------------------------------------------------------
+// Reassigned Sales Log — GET /v1/transaction-perf/manual-assignment/details
+// Requires `organization` scope. Returns employee sales reassignment events.
+// ---------------------------------------------------------------------------
+
+/** Single entry from the Infloww manual-assignment/details endpoint. */
+export interface InflowwReassignmentEntry {
+  id: string;
+  transactionId: string;
+  transactionPerfId: string;
+  operationType: string;
+  operationEmployeeId: string | undefined;
+  beforeEmployeeId: string | undefined;
+  afterEmployeeId: string | undefined;
+  createdTimeMs: number;
+}
+
+function mapReassignmentRow(row: unknown): InflowwReassignmentEntry | null {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const id = strField(r, ["id"]);
+  const transactionId = strField(r, ["transactionId", "transaction_id"]);
+  if (!id || !transactionId) return null;
+  return {
+    id,
+    transactionId,
+    transactionPerfId: strField(r, ["transactionPerfId", "transaction_perf_id"]) ?? "",
+    operationType: strField(r, ["operationType", "operation_type"]) ?? "",
+    operationEmployeeId: strField(r, [
+      "operationEmployeeId",
+      "operation_employee_id",
+      "employeeId",
+      "employee_id",
+    ]),
+    beforeEmployeeId: strField(r, [
+      "beforeAttributeEmployeeId",
+      "before_attribute_employee_id",
+      "beforeEmployeeId",
+      "before_employee_id",
+    ]),
+    afterEmployeeId: strField(r, [
+      "afterAttributeEmployeeId",
+      "after_attribute_employee_id",
+      "afterEmployeeId",
+      "after_employee_id",
+    ]),
+    createdTimeMs: msField(r, ["createdTime", "created_time", "timestamp", "operationTime"]),
+  };
+}
+
+/**
+ * GET /v1/transaction-perf/manual-assignment/details
+ * Fetches sales reassignment events. Requires `organization` scope.
+ * - Uses unix-ms startTime/endTime
+ * - Cursor pagination, limit max 100
+ * - Auto-chunks into 31-day windows up to 366 days back
+ */
+export async function fetchReassignedSalesLog(params: {
+  startMs: number;
+  endMs: number;
+}): Promise<InflowwReassignmentEntry[]> {
+  const out: InflowwReassignmentEntry[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+  const MAX_PAGES = 200;
+
+  do {
+    pages += 1;
+    if (pages > MAX_PAGES) break;
+
+    const qp = new URLSearchParams({
+      startTime: String(params.startMs),
+      endTime: String(params.endMs),
+      limit: "100",
+    });
+    if (cursor) qp.set("cursor", cursor);
+
+    const payload = await inflowwFetchJson<unknown>(
+      "/transaction-perf/manual-assignment/details",
+      qp
+    );
+
+    const rows = pickArray(payload);
+    inflowwDebug("reassignment-log page", {
+      page: pages,
+      rowCount: rows.length,
+      hasMore: hasMoreFrom(payload),
+    });
+
+    for (const row of rows) {
+      const mapped = mapReassignmentRow(row);
+      if (mapped) out.push(mapped);
+    }
+
+    const more = hasMoreFrom(payload);
+    const next = cursorFromPayload(payload) ?? nextCursorFrom(payload);
+    if (more && next) {
+      cursor = next;
+    } else {
+      cursor = undefined;
+    }
+    if (rows.length === 0) break;
+  } while (cursor);
+
+  return out;
+}
+
+/**
+ * Fetch reassigned sales log for a date range (auto-chunks 31-day windows, up to 366 days back).
+ * startYmd/endYmd are Athens calendar days (YYYY-MM-DD).
+ */
+export async function fetchReassignedSalesLogForRange(params: {
+  startYmd: string;
+  endYmd: string;
+}): Promise<InflowwReassignmentEntry[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertEmployeeReportLookback(start, end);
+  const chunks = chunkDateRangeYmd(start, end);
+  const out: InflowwReassignmentEntry[] = [];
+
+  for (const chunk of chunks) {
+    const startMs = athensYmdStartUtcMs(chunk.startYmd);
+    let endMs = athensYmdEndUtcMs(chunk.endYmd);
+    const safeEnd = Date.now() - 2000;
+    if (endMs > safeEnd) endMs = safeEnd;
+    if (endMs < startMs) continue;
+
+    const rows = await fetchReassignedSalesLog({ startMs, endMs });
+    out.push(...rows);
+  }
+
+  return out;
+}
+
 export async function fetchMonthlyBilling(params: {
   startTime: string;
   endTime: string;

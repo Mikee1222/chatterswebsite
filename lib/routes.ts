@@ -92,6 +92,8 @@ export const ROUTES = {
     inflowwPerformance: "/admin/infloww-performance",
     /** Infloww monthly billing invoices. */
     inflowwInvoices: "/admin/infloww-invoices",
+    /** Infloww manual sales reassignment audit log. */
+    inflowwReassignments: "/admin/infloww-reassignments",
     creatorStatusLog: "/admin/creator-status-log",
     whales: "/admin/whales",
     /** Admin whale profile (Airtable whales record id). */

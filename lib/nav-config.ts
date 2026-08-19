@@ -138,7 +138,7 @@ export function getBothTypeHiddenNavPreview(config: VaHiddenNavByType): string[]
 }
 
 export type NavIconKey =
-  | "Home"| "Calendar"| "CalendarCheck"| "PlayCircle"| "FileText"| "Users"| "Receipt"| "Wrench"| "Radio"| "UserCheck"| "Activity"| "Package"| "UserCog"| "LayoutDashboard"| "ListTodo"| "Settings"| "Sparkles"| "Trophy"| "Target"| "LineChart"| "CalendarDays"| "CalendarClock"| "Clock"| "MessageSquarePlus"| "ImageOff"| "AlertTriangle"| "AlertCircle"| "Settings2"| "Coins"| "TrendingUp"| "Info"| "CreditCard"| "BookOpen"| "Link2"| "FolderOpen";
+  | "Home"| "Calendar"| "CalendarCheck"| "PlayCircle"| "FileText"| "Users"| "Receipt"| "Wrench"| "Radio"| "UserCheck"| "Activity"| "Package"| "UserCog"| "LayoutDashboard"| "ListTodo"| "Settings"| "Sparkles"| "Trophy"| "Target"| "LineChart"| "CalendarDays"| "CalendarClock"| "Clock"| "MessageSquarePlus"| "ImageOff"| "AlertTriangle"| "AlertCircle"| "Settings2"| "Coins"| "TrendingUp"| "Info"| "CreditCard"| "BookOpen"| "Link2"| "FolderOpen"| "ArrowRightLeft";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -663,6 +663,13 @@ const adminNav: NavItem[] = [
     href: ROUTES.admin.inflowwPerformance,
     label: "Chatter performance",
     iconKey: "TrendingUp",
+    navSection: "FINANCE",
+    requiresPermission: PERMISSIONS.INFLOWW_STATS_VIEW_ALL,
+  },
+  {
+    href: ROUTES.admin.inflowwReassignments,
+    label: "Sales reassignments",
+    iconKey: "ArrowRightLeft",
     navSection: "FINANCE",
     requiresPermission: PERMISSIONS.INFLOWW_STATS_VIEW_ALL,
   },
