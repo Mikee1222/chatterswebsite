@@ -21,7 +21,8 @@ import {
   ensureMondayForQuery,
   airtableWeekStartToMonday,
 } from "@/lib/weekly-program";
-import { rangesOverlap } from "@/lib/weekly-program-conflicts";
+import { filterProgramsForConflictCheck, rangesOverlap } from "@/lib/weekly-program-conflicts";
+import type { ConflictCheckExclude } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ListParams } from "@/lib/airtable-server";
 import type { CreateWeeklyProgramVaFields, ConflictResultVa } from "./weekly-program-va";
@@ -241,7 +242,7 @@ export async function checkScheduledShiftConflictsVa(
   _day: WeeklyProgramDay,
   _shiftType: WeeklyProgramShiftType,
   weekStart: string,
-  excludeRecordId: string | undefined,
+  exclude: ConflictCheckExclude | undefined,
   modelIdToName: Record<string, string> | undefined,
   start_time: string,
   end_time: string
@@ -250,7 +251,7 @@ export async function checkScheduledShiftConflictsVa(
   void _day;
   void _shiftType;
   const programs = await getProgramsForWeekVa(weekStart);
-  const others = programs.filter((p) => p.id !== excludeRecordId);
+  const others = filterProgramsForConflictCheck(programs, exclude);
   const modelSet = new Set(modelIds.filter(Boolean));
   for (const p of others) {
     if (!p.start_time || !p.end_time) continue;

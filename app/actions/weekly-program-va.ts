@@ -176,7 +176,7 @@ export async function updateProgramVaAction(
       day,
       shiftType,
       weekStart,
-      recordId,
+      { recordId: existing.id, programId: existing.program_id },
       fields.modelIdToName,
       start_time,
       end_time

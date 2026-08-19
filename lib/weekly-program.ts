@@ -80,7 +80,7 @@ export function getTodayYmd(): string {
  * - Midday 12:00–16:00
  * - Afternoon 16:00–00:00 (next calendar day)
  * - Night (Evening) 20:00–03:00; Fri/Sat → 04:00
- * - LateNight 00:00–03:00 (next calendar day when end ≤ start)
+ * - LateNight 00:00–03:00 on the morning after the shift day (3h post-midnight tail)
  * Custom: use buildCustomShiftTimes() with HH:mm.
  * dateYmd = YYYY-MM-DD for the shift day; optional day overrides weekday for Night end time.
  */
@@ -120,7 +120,7 @@ export function getTimesForShiftType(
   }
   if (shiftType === "LateNight") {
     return {
-      start_time: `${ymd}T00:00:00.000Z`,
+      start_time: `${nextYmd}T00:00:00.000Z`,
       end_time: `${nextYmd}T03:00:00.000Z`,
     };
   }

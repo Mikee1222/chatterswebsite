@@ -48,6 +48,24 @@ export function rangesOverlap(
   return a < d && c < b;
 }
 
+/** When editing, drop the row being saved so its previous times are not compared. */
+export type ConflictCheckExclude = {
+  recordId?: string;
+  programId?: string;
+};
+
+export function filterProgramsForConflictCheck(
+  programs: WeeklyProgramRecord[],
+  exclude?: ConflictCheckExclude
+): WeeklyProgramRecord[] {
+  if (!exclude?.recordId && !exclude?.programId) return programs;
+  return programs.filter((p) => {
+    if (exclude.recordId && p.id === exclude.recordId) return false;
+    if (exclude.programId && p.program_id && p.program_id === exclude.programId) return false;
+    return true;
+  });
+}
+
 export function getWeeklyProgramConflicts(
   programs: WeeklyProgramRecord[],
   modelIds: string[],

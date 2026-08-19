@@ -11,7 +11,11 @@ import {
 import { firstLinkedId, linkedRecordIds, snapshotText } from "@/lib/airtable-linked";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import { WEEKLY_PROGRAM_DAY_OPTIONS, WEEKLY_PROGRAM_SHIFT_TYPES, ensureMondayForQuery, airtableWeekStartToMonday } from "@/lib/weekly-program";
-import { rangesOverlap } from "@/lib/weekly-program-conflicts";
+import {
+  filterProgramsForConflictCheck,
+  rangesOverlap,
+  type ConflictCheckExclude,
+} from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import { devLog } from "@/lib/dev-log";
 
@@ -298,7 +302,7 @@ export async function checkScheduledShiftConflictsVa(
   _day: WeeklyProgramDay,
   _shiftType: WeeklyProgramShiftType,
   weekStart: string,
-  excludeRecordId: string | undefined,
+  exclude: ConflictCheckExclude | undefined,
   modelIdToName: Record<string, string> | undefined,
   start_time: string,
   end_time: string
@@ -310,14 +314,14 @@ export async function checkScheduledShiftConflictsVa(
       _day,
       _shiftType,
       weekStart,
-      excludeRecordId,
+      exclude,
       modelIdToName,
       start_time,
       end_time
     );
   }
   const programs = await getProgramsForWeekVa(weekStart);
-  const others = programs.filter((p) => p.id !== excludeRecordId);
+  const others = filterProgramsForConflictCheck(programs, exclude);
   const modelSet = new Set(modelIds.filter(Boolean));
   for (const p of others) {
     if (!p.start_time || !p.end_time) continue;
