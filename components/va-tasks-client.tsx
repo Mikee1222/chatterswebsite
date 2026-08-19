@@ -43,6 +43,7 @@ import {
 } from "@/lib/va-task-screenshots";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { StoryCtaScheduleWidget } from "@/components/story-cta-schedule-widget";
+import { VA_TASK_PHASES_FETCH_INIT } from "@/lib/va-task-phases-fetch";
 
 type Props = {
   tasks: VaTaskRecord[];
@@ -509,7 +510,10 @@ export function VaTasksClient({
 
   useSupabaseRealtimeRefresh(
     ["va_tasks", "va_task_phases", "va_task_phase_items"],
-    () => router.refresh(),
+    () => {
+      setTaskPhases({});
+      router.refresh();
+    },
     { debounceMs: 700 },
   );
 
@@ -661,8 +665,7 @@ export function VaTasksClient({
   }, []);
 
   const loadPhasesAndAccounts = React.useCallback(async (task: VaTaskRecord) => {
-    if (taskPhasesRef.current[task.id]) return;
-    // Dedupe concurrent expands (Strict Mode / double-click) without recreating this callback.
+    // Always re-fetch on expand — cached rows may predate step_type backfill or lack the field.
     if (phasesInflightRef.current.has(task.id)) return;
     phasesInflightRef.current.add(task.id);
     setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
@@ -671,7 +674,7 @@ export function VaTasksClient({
       if (task.virtual_source_task_id?.trim()) {
         params.set("source_task_id", task.virtual_source_task_id.trim());
       }
-      const res = await fetch(`/api/va/task-phases?${params}`, { credentials: "include" });
+      const res = await fetch(`/api/va/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
       const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
       const phases: TaskPhase[] = data.phases ?? [];
 

@@ -7,6 +7,7 @@ import { resolveVirtualPhaseSourceId } from "@/lib/va-virtual-phases";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { getVaTaskById } from "@/services/va-tasks";
 import { getPhasesForTaskDisplay } from "@/services/task-phases";
+import { VA_TASK_PHASES_JSON_HEADERS } from "@/lib/va-task-phases-fetch";
 
 function vaCanReadTask(
   session: { id: string; airtableUserId: string | null },
@@ -40,5 +41,5 @@ export async function GET(req: Request) {
   }
 
   const phases = await getPhasesForTaskDisplay(taskId, explicitSource ?? lookupId);
-  return NextResponse.json({ phases });
+  return NextResponse.json({ phases }, { headers: VA_TASK_PHASES_JSON_HEADERS });
 }

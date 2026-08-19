@@ -3,6 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasAnyPermission, hasPermission } from "@/lib/rbac";
 import { isVirtualVaTaskId } from "@/lib/recurrence";
 import { PERMISSIONS } from "@/lib/permissions";
+import { VA_TASK_PHASES_JSON_HEADERS } from "@/lib/va-task-phases-fetch";
 import {
   createPhase,
   getPhasesForTaskDisplay,
@@ -36,7 +37,7 @@ export async function GET(req: Request) {
       sourceTaskId: sourceTaskIds[index]?.trim() || null,
     }));
     const phasesByTask = await getPhasesForTasksDisplay(specs);
-    return NextResponse.json({ phases_by_task: phasesByTask });
+    return NextResponse.json({ phases_by_task: phasesByTask }, { headers: VA_TASK_PHASES_JSON_HEADERS });
   }
 
   const taskId = searchParams.get("task_id")?.trim();
@@ -46,7 +47,7 @@ export async function GET(req: Request) {
     taskId,
     explicitSource ?? (isVirtualVaTaskId(taskId) ? null : undefined),
   );
-  return NextResponse.json({ phases });
+  return NextResponse.json({ phases }, { headers: VA_TASK_PHASES_JSON_HEADERS });
 }
 
 export async function POST(req: Request) {

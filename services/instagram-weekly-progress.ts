@@ -3,7 +3,7 @@
  * Mirrors Chatter Performance Weekly Progress (`services/infloww-performance.ts`).
  */
 
-import { getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import {
   classifyCustomWeekProgress,
   customWeekIndexForYmd,
@@ -14,17 +14,22 @@ import {
   type CustomWeekProgress,
   type CustomWeekStatus,
 } from "@/lib/infloww-custom-weeks";
+import { classifyIgPost, igPostGroupLabel } from "@/lib/instagram-insights-ui";
 import {
   generateIgWeeklyInsights,
+  generateIgWeeklyTalkingPoints,
   medianIgMetric,
+  pctVsBaseline,
   type IgWeeklyInsightTag,
 } from "@/lib/instagram-weekly-insights";
 import {
   aggregateIgDailyByDate,
   computeModelEngagementTotals,
+  followerGrowthRatePct,
   pearsonCorrelation,
   postingFrequency,
   postingVsReachSeries,
+  resolvePostEngagementScore,
   toFiniteRate,
   type IgDailyRow,
   type IgPostRow,
@@ -38,6 +43,7 @@ import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
 } from "@/services/clariosuite-sync";
+import { listCreatorDailyStats } from "@/services/infloww-creator-earnings";
 
 export type IgWeekMetricTotals = {
   reach: number;
@@ -46,6 +52,7 @@ export type IgWeekMetricTotals = {
   follower_start: number | null;
   follower_end: number | null;
   follower_delta: number | null;
+  follower_growth_pct: number | null;
   posting_frequency: number | null;
   posts_in_week: number;
   /** Daily reach values within the week (for sparklines). */
@@ -59,6 +66,36 @@ export type IgWeekWowMetrics = {
   follower_delta: PeriodChangeMetric;
   posting_frequency: PeriodChangeMetric;
 };
+
+export type IgWeekTopPost = {
+  media_id: string;
+  caption: string | null;
+  image_url: string | null;
+  permalink: string | null;
+  media_type: string | null;
+  media_product_type: string | null;
+  engagement_score: number | null;
+  reach: number;
+  posted_at: string | null;
+  content_label: string;
+};
+
+export type IgWeekComparisons = {
+  vs_historical_reach_pct: number | null;
+  vs_historical_engagement_pct: number | null;
+  vs_team_reach_pct: number | null;
+  vs_team_engagement_pct: number | null;
+  historical_weeks_sampled: number;
+  team_avg_reach: number | null;
+  team_avg_engagement: number | null;
+  historical_avg_reach: number | null;
+  historical_avg_engagement: number | null;
+};
+
+export type IgCrossPlatformNote = {
+  text: string;
+  signal: "aligned" | "divergent" | "sparse";
+} | null;
 
 export type IgModelWeekSlice = {
   week: CustomWeekIndex;
@@ -76,6 +113,11 @@ export type IgModelWeekSlice = {
   totals: IgWeekMetricTotals;
   wow: IgWeekWowMetrics;
   insights: IgWeeklyInsightTag[];
+  talking_points: string;
+  comparisons: IgWeekComparisons;
+  top_post: IgWeekTopPost | null;
+  cross_platform: IgCrossPlatformNote;
+  is_best_week_in_month: boolean;
 };
 
 export type IgWeeklyModelProgress = {
@@ -110,6 +152,15 @@ export type IgWeeklyProgressReport = {
   team_month_totals: IgWeekMetricTotals;
 };
 
+type FullTopPost = Awaited<ReturnType<typeof queryClarioSuiteTopPosts>>[number];
+
+type HistoricalWeekAvg = {
+  reachSum: number;
+  erSum: number;
+  erCount: number;
+  samples: number;
+};
+
 function emptyTotals(): IgWeekMetricTotals {
   return {
     reach: 0,
@@ -118,9 +169,24 @@ function emptyTotals(): IgWeekMetricTotals {
     follower_start: null,
     follower_end: null,
     follower_delta: null,
+    follower_growth_pct: null,
     posting_frequency: null,
     posts_in_week: 0,
     daily_sparkline: [],
+  };
+}
+
+function emptyComparisons(): IgWeekComparisons {
+  return {
+    vs_historical_reach_pct: null,
+    vs_historical_engagement_pct: null,
+    vs_team_reach_pct: null,
+    vs_team_engagement_pct: null,
+    historical_weeks_sampled: 0,
+    team_avg_reach: null,
+    team_avg_engagement: null,
+    historical_avg_reach: null,
+    historical_avg_engagement: null,
   };
 }
 
@@ -142,6 +208,25 @@ function emptyWow(current: IgWeekMetricTotals): IgWeekWowMetrics {
 
 function hasWeekActivity(t: IgWeekMetricTotals): boolean {
   return t.reach > 0 || t.posts_in_week > 0 || (t.follower_delta ?? 0) !== 0;
+}
+
+function avg(nums: number[]): number | null {
+  if (!nums.length) return null;
+  return nums.reduce((s, n) => s + n, 0) / nums.length;
+}
+
+function shiftMonth(year: number, month: number, delta: number): { year: number; month: number } {
+  let m = month + delta;
+  let y = year;
+  while (m < 1) {
+    m += 12;
+    y -= 1;
+  }
+  while (m > 12) {
+    m -= 12;
+    y += 1;
+  }
+  return { year: y, month: m };
 }
 
 function sumWeekTotals(
@@ -177,6 +262,7 @@ function sumWeekTotals(
     follower_start: summary.follower_start,
     follower_end: summary.follower_end,
     follower_delta: summary.follower_delta,
+    follower_growth_pct: followerGrowthRatePct(summary.follower_start, summary.follower_delta),
     posting_frequency: freq.posts_per_week,
     posts_in_week: freq.posts_in_range,
     daily_sparkline: sparkline,
@@ -185,9 +271,7 @@ function sumWeekTotals(
 
 function addTotals(a: IgWeekMetricTotals, b: IgWeekMetricTotals): IgWeekMetricTotals {
   const views =
-    a.views == null && b.views == null
-      ? null
-      : (a.views ?? 0) + (b.views ?? 0);
+    a.views == null && b.views == null ? null : (a.views ?? 0) + (b.views ?? 0);
   const erValues = [a.avg_engagement_rate, b.avg_engagement_rate].filter(
     (x): x is number => x != null && x > 0
   );
@@ -202,6 +286,10 @@ function addTotals(a: IgWeekMetricTotals, b: IgWeekMetricTotals): IgWeekMetricTo
       a.follower_delta != null || b.follower_delta != null
         ? (a.follower_delta ?? 0) + (b.follower_delta ?? 0)
         : null,
+    follower_growth_pct: followerGrowthRatePct(
+      a.follower_start ?? b.follower_start,
+      (a.follower_delta ?? 0) + (b.follower_delta ?? 0)
+    ),
     posting_frequency:
       a.posting_frequency != null || b.posting_frequency != null
         ? (a.posting_frequency ?? 0) + (b.posting_frequency ?? 0)
@@ -261,6 +349,152 @@ function wowFromTotals(
   };
 }
 
+function topPostInWeek(
+  posts: FullTopPost[],
+  boundary: CustomWeekBoundary,
+  avgReach: number | null
+): IgWeekTopPost | null {
+  const inWeek = posts.filter((p) => {
+    if (!p.posted_at) return false;
+    const ymd = p.posted_at.slice(0, 10);
+    return ymd >= boundary.startYmd && ymd <= boundary.endYmd;
+  });
+  if (!inWeek.length) return null;
+
+  const sorted = [...inWeek].sort((a, b) => {
+    const scoreA = resolvePostEngagementScore(a, { estimatedReach: avgReach }) ?? 0;
+    const scoreB = resolvePostEngagementScore(b, { estimatedReach: avgReach }) ?? 0;
+    if (scoreB !== scoreA) return scoreB - scoreA;
+    return (b.reach ?? 0) - (a.reach ?? 0);
+  });
+  const best = sorted[0];
+  if (!best) return null;
+
+  const group = classifyIgPost({
+    mediaType: best.media_type,
+    mediaProductType: best.media_product_type,
+  });
+
+  return {
+    media_id: best.media_id,
+    caption: best.caption,
+    image_url: best.image_url,
+    permalink: best.permalink,
+    media_type: best.media_type,
+    media_product_type: best.media_product_type,
+    engagement_score: resolvePostEngagementScore(best, { estimatedReach: avgReach }),
+    reach: best.reach,
+    posted_at: best.posted_at,
+    content_label: igPostGroupLabel(group).replace(/s$/, "").toLowerCase(),
+  };
+}
+
+function buildHistoricalAvgs(
+  modelId: string,
+  year: number,
+  month: number,
+  historicalDaily: Map<string, IgDailyRow[]>,
+  historicalPosts: Map<string, IgPostRow[]>
+): Map<CustomWeekIndex, HistoricalWeekAvg> {
+  const result = new Map<CustomWeekIndex, HistoricalWeekAvg>();
+  const daily = historicalDaily.get(modelId) ?? [];
+  const posts = historicalPosts.get(modelId) ?? [];
+
+  for (let i = 1; i <= 3; i++) {
+    const { year: py, month: pm } = shiftMonth(year, month, -i);
+    const boundaries = getCustomWeekBoundaries(py, pm);
+    for (const boundary of boundaries) {
+      const totals = sumWeekTotals(daily, posts, boundary);
+      if (totals.reach <= 0 && totals.posts_in_week <= 0) continue;
+      const prev = result.get(boundary.week) ?? {
+        reachSum: 0,
+        erSum: 0,
+        erCount: 0,
+        samples: 0,
+      };
+      result.set(boundary.week, {
+        reachSum: prev.reachSum + totals.reach,
+        erSum:
+          prev.erSum +
+          (totals.avg_engagement_rate != null && totals.avg_engagement_rate > 0
+            ? totals.avg_engagement_rate
+            : 0),
+        erCount:
+          prev.erCount +
+          (totals.avg_engagement_rate != null && totals.avg_engagement_rate > 0 ? 1 : 0),
+        samples: prev.samples + 1,
+      });
+    }
+  }
+  return result;
+}
+
+function resolveHistoricalAvg(
+  raw: HistoricalWeekAvg | undefined
+): { reach: number; engagement: number | null; samples: number } | null {
+  if (!raw || raw.samples <= 0) return null;
+  return {
+    reach: raw.reachSum / raw.samples,
+    engagement: raw.erCount > 0 ? raw.erSum / raw.erCount : null,
+    samples: raw.samples,
+  };
+}
+
+function buildCrossPlatformNote(params: {
+  modelId: string;
+  boundary: CustomWeekBoundary;
+  igReachWowPct: number | null;
+  ofByModelDate: Map<string, Map<string, { new_subscribers: number }>>;
+}): IgCrossPlatformNote {
+  const byDate = params.ofByModelDate.get(params.modelId);
+  if (!byDate) return null;
+
+  let days = 0;
+  let newSubs = 0;
+  const cur = params.boundary.startYmd;
+  const end = params.boundary.endYmd;
+  let ymd = cur;
+  while (ymd <= end) {
+    const row = byDate.get(ymd);
+    if (row) {
+      days += 1;
+      newSubs += row.new_subscribers;
+    }
+    ymd = addDaysAthensYmd(ymd, 1);
+  }
+  if (days < 3) return null;
+
+  const igUp = (params.igReachWowPct ?? 0) > 12;
+  const igDown = (params.igReachWowPct ?? 0) < -12;
+  const subsStrong = newSubs >= 5;
+
+  if (igUp && subsStrong) {
+    return {
+      signal: "aligned",
+      text: `OnlyFans added ${newSubs} new subs in the same window — IG reach lift may be feeding the funnel (correlation ≠ causation).`,
+    };
+  }
+  if (igUp && newSubs <= 1) {
+    return {
+      signal: "divergent",
+      text: `IG reach improved but OnlyFans saw only ${newSubs} new sub${newSubs === 1 ? "" : "s"} — worth checking bio link, offer, or posting-to-CTA timing.`,
+    };
+  }
+  if (igDown && newSubs >= 5) {
+    return {
+      signal: "divergent",
+      text: `OnlyFans still picked up ${newSubs} new subs despite softer IG reach — subs may be coming from other channels.`,
+    };
+  }
+  if (subsStrong) {
+    return {
+      signal: "aligned",
+      text: `Cross-platform: ${newSubs} new OnlyFans subs during this IG week.`,
+    };
+  }
+  return null;
+}
+
 /**
  * Aggregate clariosuite_daily_insights into custom 4-week buckets for a calendar month.
  * Multi-account rows are combined per model via aggregateIgDailyByDate.
@@ -276,51 +510,98 @@ export async function getInstagramWeeklyProgressReport(
   const monthStart = boundaries[0]?.startYmd ?? `${monthKey}-01`;
   const monthEnd = boundaries[boundaries.length - 1]?.endYmd ?? monthStart;
 
+  const histStart = shiftMonth(year, month, -3);
+  const histBoundaries = getCustomWeekBoundaries(histStart.year, histStart.month);
+  const historicalStartYmd = histBoundaries[0]?.startYmd ?? monthStart;
+  const historicalEndYmd = addDaysAthensYmd(monthStart, -1);
+
   let linked = await listLinkedClarioSuiteModels();
   if (filters?.modelRecordId) {
     linked = linked.filter((l) => l.modelRecordId === filters.modelRecordId);
   }
 
-  const [allDaily, allTopPosts] = await Promise.all([
+  const [allDaily, historicalDailyRows, allTopPosts, ofDailyRows] = await Promise.all([
     linked.length
       ? queryClarioSuiteDailyInsights({ startYmd: monthStart, endYmd: monthEnd })
       : Promise.resolve([]),
+    linked.length && historicalEndYmd >= historicalStartYmd
+      ? queryClarioSuiteDailyInsights({
+          startYmd: historicalStartYmd,
+          endYmd: historicalEndYmd,
+        })
+      : Promise.resolve([]),
     Promise.all(
       linked.map(async (m) => {
-        const posts: Awaited<ReturnType<typeof queryClarioSuiteTopPosts>> = [];
+        const posts: FullTopPost[] = [];
         for (const a of m.accounts) {
-          posts.push(
-            ...(await queryClarioSuiteTopPosts({ igUserId: a.igUserId, limit: 50 }))
-          );
+          posts.push(...(await queryClarioSuiteTopPosts({ igUserId: a.igUserId, limit: 50 })));
         }
         return { modelId: m.modelRecordId, posts };
       })
     ),
+    linked.length
+      ? listCreatorDailyStats({ startYmd: monthStart, endYmd: monthEnd })
+      : Promise.resolve([]),
   ]);
 
+  const fullPostsByModel = new Map<string, FullTopPost[]>();
   const postsByModel = new Map<string, IgPostRow[]>();
   for (const row of allTopPosts) {
-    postsByModel.set(row.modelId, row.posts);
+    fullPostsByModel.set(row.modelId, row.posts);
+    postsByModel.set(
+      row.modelId,
+      row.posts.map((p) => ({
+        media_type: p.media_type,
+        media_product_type: p.media_product_type,
+        engagement_score: p.engagement_score,
+        reach: p.reach,
+        likes: p.likes,
+        comments: p.comments,
+        shares: p.shares,
+        saved: p.saved,
+        views: p.views,
+        posted_at: p.posted_at,
+      }))
+    );
+  }
+
+  function ingestDailyRows(
+    rows: typeof allDaily,
+    target: Map<string, IgDailyRow[]>
+  ): void {
+    for (const m of linked) {
+      if (!target.has(m.modelRecordId)) target.set(m.modelRecordId, []);
+    }
+    for (const row of rows) {
+      const modelId = row.model_record_id;
+      if (!modelId || !target.has(modelId)) continue;
+      target.get(modelId)!.push({
+        date: row.date,
+        reach: row.reach,
+        views: row.views,
+        total_interactions: row.total_interactions,
+        follower_count: row.follower_count,
+        engagement_rate: toFiniteRate(row.engagement_rate),
+      });
+    }
+    for (const [modelId, rows] of target) {
+      target.set(modelId, aggregateIgDailyByDate(rows));
+    }
   }
 
   const dailyByModel = new Map<string, IgDailyRow[]>();
-  for (const m of linked) {
-    dailyByModel.set(m.modelRecordId, []);
-  }
-  for (const row of allDaily) {
+  const historicalDailyByModel = new Map<string, IgDailyRow[]>();
+  ingestDailyRows(allDaily, dailyByModel);
+  ingestDailyRows(historicalDailyRows, historicalDailyByModel);
+
+  const ofByModelDate = new Map<string, Map<string, { new_subscribers: number }>>();
+  for (const row of ofDailyRows) {
     const modelId = row.model_record_id;
-    if (!modelId || !dailyByModel.has(modelId)) continue;
-    dailyByModel.get(modelId)!.push({
-      date: row.date,
-      reach: row.reach,
-      views: row.views,
-      total_interactions: row.total_interactions,
-      follower_count: row.follower_count,
-      engagement_rate: toFiniteRate(row.engagement_rate),
+    if (!modelId) continue;
+    if (!ofByModelDate.has(modelId)) ofByModelDate.set(modelId, new Map());
+    ofByModelDate.get(modelId)!.set(row.date, {
+      new_subscribers: row.new_subscribers ?? 0,
     });
-  }
-  for (const [modelId, rows] of dailyByModel) {
-    dailyByModel.set(modelId, aggregateIgDailyByDate(rows));
   }
 
   const modelWeekTotals = new Map<string, Map<CustomWeekIndex, IgWeekMetricTotals>>();
@@ -376,7 +657,28 @@ export async function getInstagramWeeklyProgressReport(
   const models: IgWeeklyModelProgress[] = linked.map((m) => {
     const daily = dailyByModel.get(m.modelRecordId) ?? [];
     const posts = postsByModel.get(m.modelRecordId) ?? [];
+    const fullPosts = fullPostsByModel.get(m.modelRecordId) ?? [];
     const totalsMap = modelWeekTotals.get(m.modelRecordId)!;
+    const historicalAvgs = buildHistoricalAvgs(
+      m.modelRecordId,
+      year,
+      month,
+      historicalDailyByModel,
+      postsByModel
+    );
+
+    const bestReachWeek = (() => {
+      let best: CustomWeekIndex | null = null;
+      let bestReach = -1;
+      for (const boundary of boundaries) {
+        const t = totalsMap.get(boundary.week) ?? emptyTotals();
+        if (t.reach > bestReach) {
+          bestReach = t.reach;
+          best = boundary.week;
+        }
+      }
+      return best;
+    })();
 
     const weekSlices: IgModelWeekSlice[] = boundaries.map((boundary, idx) => {
       const totals = totalsMap.get(boundary.week) ?? emptyTotals();
@@ -405,16 +707,52 @@ export async function getInstagramWeeklyProgressReport(
         comparable: wowComparable,
       });
 
-      const series = postingVsReachSeries(
-        posts,
-        daily,
-        boundary.startYmd,
-        boundary.endYmd
-      );
+      const series = postingVsReachSeries(posts, daily, boundary.startYmd, boundary.endYmd);
       const corr = pearsonCorrelation(
         series.map((r) => r.posts),
         series.map((r) => r.reach)
       );
+
+      const teamReaches = teamReachByWeek.get(boundary.week) ?? [];
+      const teamAvgReach = avg(teamReaches);
+      const teamErs = teamErByWeek.get(boundary.week) ?? [];
+      const teamAvgEngagement = avg(teamErs);
+      const teamMedianPosting = medianIgMetric(teamPostByWeek.get(boundary.week) ?? []);
+      const teamMedianEngagement = medianIgMetric(teamErs);
+
+      const hist = resolveHistoricalAvg(historicalAvgs.get(boundary.week));
+      const comparisons: IgWeekComparisons = {
+        vs_historical_reach_pct:
+          hist && hist.samples >= 1 ? pctVsBaseline(totals.reach, hist.reach) : null,
+        vs_historical_engagement_pct:
+          hist?.engagement != null && totals.avg_engagement_rate != null
+            ? pctVsBaseline(totals.avg_engagement_rate, hist.engagement)
+            : null,
+        vs_team_reach_pct:
+          teamAvgReach != null && teamAvgReach > 0
+            ? pctVsBaseline(totals.reach, teamAvgReach)
+            : null,
+        vs_team_engagement_pct:
+          teamAvgEngagement != null &&
+          teamAvgEngagement > 0 &&
+          totals.avg_engagement_rate != null
+            ? pctVsBaseline(totals.avg_engagement_rate, teamAvgEngagement)
+            : null,
+        historical_weeks_sampled: hist?.samples ?? 0,
+        team_avg_reach: teamAvgReach,
+        team_avg_engagement: teamAvgEngagement,
+        historical_avg_reach: hist?.reach ?? null,
+        historical_avg_engagement: hist?.engagement ?? null,
+      };
+
+      const isConsistentPoster =
+        totals.posts_in_week >= 3 &&
+        teamMedianPosting != null &&
+        totals.posting_frequency != null &&
+        totals.posting_frequency >= teamMedianPosting * 0.85 &&
+        totals.posting_frequency <= teamMedianPosting * 1.15;
+
+      const isBestWeekInMonth = bestReachWeek === boundary.week && totals.reach > 0;
 
       const insights = progress.hasStarted
         ? generateIgWeeklyInsights({
@@ -428,12 +766,55 @@ export async function getInstagramWeeklyProgressReport(
             follower_delta_wow_pct: wowComparable ? wow.follower_delta.pct_change : null,
             posting_wow_pct: wowComparable ? wow.posting_frequency.pct_change : null,
             prior_follower_delta: prevTotals?.follower_delta ?? null,
-            team_week_reach: teamReachByWeek.get(boundary.week) ?? [],
-            team_median_posting: medianIgMetric(teamPostByWeek.get(boundary.week) ?? []),
-            team_median_engagement: medianIgMetric(teamErByWeek.get(boundary.week) ?? []),
+            team_week_reach: teamReaches,
+            team_median_posting: teamMedianPosting,
+            team_median_engagement: teamMedianEngagement,
             posting_reach_correlation: corr,
+            is_best_week_in_month: isBestWeekInMonth,
+            is_consistent_poster: isConsistentPoster,
           })
         : [];
+
+      const weekAvgReach =
+        totals.daily_sparkline.filter((v) => v > 0).length > 0
+          ? totals.daily_sparkline.reduce((s, v) => s + v, 0) /
+            totals.daily_sparkline.filter((v) => v > 0).length
+          : null;
+      const topPost = progress.hasStarted
+        ? topPostInWeek(fullPosts, boundary, weekAvgReach)
+        : null;
+
+      const crossPlatform = progress.hasStarted
+        ? buildCrossPlatformNote({
+            modelId: m.modelRecordId,
+            boundary,
+            igReachWowPct: wowComparable ? wow.reach.pct_change : null,
+            ofByModelDate,
+          })
+        : null;
+
+      const talking_points = progress.hasStarted
+        ? generateIgWeeklyTalkingPoints({
+            modelName: m.modelName,
+            week: boundary.week,
+            reach: totals.reach,
+            reach_wow_pct: wowComparable ? wow.reach.pct_change : null,
+            avg_engagement_rate: totals.avg_engagement_rate,
+            engagement_wow_pct: wowComparable ? wow.engagement_rate.pct_change : null,
+            follower_delta: totals.follower_delta,
+            follower_growth_pct: totals.follower_growth_pct,
+            posts_in_week: totals.posts_in_week,
+            posting_frequency: totals.posting_frequency,
+            vs_historical_reach_pct: comparisons.vs_historical_reach_pct,
+            vs_historical_engagement_pct: comparisons.vs_historical_engagement_pct,
+            vs_team_reach_pct: comparisons.vs_team_reach_pct,
+            vs_team_engagement_pct: comparisons.vs_team_engagement_pct,
+            is_best_week_in_month: isBestWeekInMonth,
+            top_post_label: topPost?.content_label ?? null,
+            cross_platform_note: crossPlatform?.text ?? null,
+            historical_weeks_sampled: comparisons.historical_weeks_sampled,
+          })
+        : "";
 
       return {
         week: boundary.week,
@@ -451,6 +832,11 @@ export async function getInstagramWeeklyProgressReport(
         totals,
         wow,
         insights,
+        talking_points,
+        comparisons,
+        top_post: topPost,
+        cross_platform: crossPlatform,
+        is_best_week_in_month: isBestWeekInMonth,
       };
     });
 

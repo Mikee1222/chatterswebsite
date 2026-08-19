@@ -13,7 +13,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { CategoryTaskTimer } from "@/components/category-task-timer";
-import type { TaskStepType } from "@/lib/task-step-types";
+import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import { formatDateEuropean } from "@/lib/format";
 import { ymdInAthens } from "@/lib/airtable-datetime";
 import { getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
@@ -110,6 +110,24 @@ export function modelAccountsKeyForPhases(
       return `${id}:${accs.map((a) => `${a.id}:${a.account_status ?? "active"}`).join(",")}`;
     })
     .join("|");
+}
+
+function StepTypeBadge({ stepType }: { stepType: TaskStepType }) {
+  const isWarmup = stepType === "Warm-up";
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em]",
+        isWarmup
+          ? "border-[#FF1493]/35 bg-[#FF1493]/10 text-[#FF1493]"
+          : stepType === "Other"
+            ? "border-white/10 bg-white/[0.04] text-[#B8B4B8]/45"
+            : "border-[#D4AF8C]/25 bg-[#D4AF8C]/8 text-[#D4AF8C]/80",
+      )}
+    >
+      {stepType}
+    </span>
+  );
 }
 
 export type VaTaskCardProps = {
@@ -351,6 +369,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               )}
             >
               <div className="flex items-start gap-2">
+                <StepTypeBadge stepType={item.step_type ?? DEFAULT_TASK_STEP_TYPE} />
                 <p
                   className={cn(
                     "flex-1 text-sm leading-snug transition-colors duration-200 motion-reduce:transition-none",

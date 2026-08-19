@@ -7,11 +7,11 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, ChevronLeft, ChevronRight, Instagram, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Instagram, MessageSquare, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatMonthYyyyMm } from "@/lib/format";
 import { VA_CARD } from "@/lib/va-tasks-tokens";
-import { fmtNum, fmtPct } from "@/lib/instagram-insights-ui";
+import { fmtCompact, fmtNum, fmtPct, formatIgPostedAt } from "@/lib/instagram-insights-ui";
 import {
   CountUp,
   LuxuryStatCard,
@@ -21,6 +21,8 @@ import {
 } from "@/components/infloww-performance-ui";
 import type {
   IgModelWeekSlice,
+  IgWeekComparisons,
+  IgWeekTopPost,
   IgWeeklyModelProgress,
   IgWeeklyProgressReport,
 } from "@/services/instagram-weekly-progress";
@@ -65,6 +67,143 @@ function InsightPills({ tags }: { tags: IgWeeklyInsightTag[] }) {
           {t.label}
         </span>
       ))}
+    </div>
+  );
+}
+
+function comparisonTone(pct: number | null | undefined): string {
+  if (pct == null || !Number.isFinite(pct)) return "text-white/35";
+  if (pct > 8) return "text-emerald-300/90";
+  if (pct < -8) return "text-amber-200/85";
+  return "text-white/50";
+}
+
+function fmtComparisonPct(pct: number | null | undefined): string {
+  if (pct == null || !Number.isFinite(pct)) return "—";
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${pct.toFixed(0)}%`;
+}
+
+function ComparisonRow({
+  label,
+  pct,
+  detail,
+}: {
+  label: string;
+  pct: number | null;
+  detail?: string;
+}) {
+  return (
+    <div className="rounded-lg border border-white/6 bg-black/20 px-2 py-1.5">
+      <p className="text-[9px] uppercase tracking-wider text-white/30">{label}</p>
+      <p className={cn("text-[11px] font-semibold tabular-nums", comparisonTone(pct))}>
+        {fmtComparisonPct(pct)}
+      </p>
+      {detail ? <p className="text-[9px] text-white/25">{detail}</p> : null}
+    </div>
+  );
+}
+
+function TalkingPointsBlock({ text }: { text: string }) {
+  if (!text.trim()) return null;
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-[#D4AF8C]/25 bg-gradient-to-br from-[#D4AF8C]/10 via-[#FF1493]/5 to-black/30 px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      <div className="pointer-events-none absolute -right-4 -top-4 h-12 w-12 rounded-full bg-[#D4AF8C]/10 blur-xl" />
+      <div className="relative flex gap-2">
+        <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#D4AF8C]/80" />
+        <div>
+          <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/75">
+            Talking Points
+          </p>
+          <p className="mt-1 text-[12px] leading-relaxed text-white/85">{text}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TopPostMini({ post }: { post: IgWeekTopPost }) {
+  const caption = post.caption?.trim().slice(0, 72);
+  const posted = formatIgPostedAt(post.posted_at);
+  const inner = (
+    <>
+      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg border border-white/10 bg-white/5">
+        {post.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={post.image_url} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[10px] text-white/25">
+            IG
+          </div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[9px] font-semibold uppercase tracking-wider text-[#FF1493]/70">
+          Top post · {post.content_label}
+        </p>
+        <p className="truncate text-[11px] text-white/75">
+          {caption || "No caption"}
+          {caption && (post.caption?.length ?? 0) > 72 ? "…" : ""}
+        </p>
+        <p className="text-[10px] text-white/35">
+          {fmtCompact(post.reach)} reach
+          {post.engagement_score != null ? ` · ${fmtPct(post.engagement_score)} eng` : ""}
+          {posted ? ` · ${posted}` : ""}
+        </p>
+      </div>
+    </>
+  );
+
+  if (post.permalink) {
+    return (
+      <a
+        href={post.permalink}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/[0.03] p-2 transition hover:bg-white/[0.06]"
+      >
+        {inner}
+        <ExternalLink className="h-3 w-3 shrink-0 text-white/30" />
+      </a>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/[0.03] p-2">
+      {inner}
+    </div>
+  );
+}
+
+function WeekComparisons({ comparisons }: { comparisons: IgWeekComparisons }) {
+  const hasHistorical =
+    comparisons.vs_historical_reach_pct != null && comparisons.historical_weeks_sampled >= 1;
+  const hasTeam = comparisons.vs_team_reach_pct != null;
+  if (!hasHistorical && !hasTeam) return null;
+
+  return (
+    <div className="grid grid-cols-2 gap-1.5">
+      {hasHistorical ? (
+        <ComparisonRow
+          label="vs typical week"
+          pct={comparisons.vs_historical_reach_pct}
+          detail={
+            comparisons.historical_avg_reach != null
+              ? `avg ${fmtCompact(comparisons.historical_avg_reach)} · ${comparisons.historical_weeks_sampled} mo`
+              : undefined
+          }
+        />
+      ) : null}
+      {hasTeam ? (
+        <ComparisonRow
+          label="vs team avg"
+          pct={comparisons.vs_team_reach_pct}
+          detail={
+            comparisons.team_avg_reach != null
+              ? `team ${fmtCompact(comparisons.team_avg_reach)}`
+              : undefined
+          }
+        />
+      ) : null}
     </div>
   );
 }
@@ -151,7 +290,7 @@ function WeekCard({ slice }: { slice: IgModelWeekSlice }) {
   return (
     <div
       className={cn(
-        "relative flex min-w-[13rem] flex-1 flex-col gap-3 overflow-hidden rounded-2xl border p-3.5",
+        "relative flex min-w-[16rem] max-w-[22rem] flex-1 flex-col gap-3 overflow-hidden rounded-2xl border p-3.5 print:break-inside-avoid",
         "shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
         notStarted
           ? "border-white/6 bg-gradient-to-b from-white/[0.03] to-black/40 opacity-70"
@@ -245,7 +384,11 @@ function WeekCard({ slice }: { slice: IgModelWeekSlice }) {
               label="Followers"
               value={
                 t.follower_delta != null
-                  ? `${t.follower_delta >= 0 ? "+" : ""}${fmtNum(t.follower_delta)}`
+                  ? `${t.follower_delta >= 0 ? "+" : ""}${fmtNum(t.follower_delta)}${
+                      t.follower_growth_pct != null
+                        ? ` (${t.follower_growth_pct >= 0 ? "+" : ""}${t.follower_growth_pct.toFixed(1)}%)`
+                        : ""
+                    }`
                   : "—"
               }
               wow={slice.wow.follower_delta}
@@ -299,6 +442,30 @@ function WeekCard({ slice }: { slice: IgModelWeekSlice }) {
               </div>
             ) : null}
           </div>
+
+          {slice.talking_points ? (
+            <TalkingPointsBlock text={slice.talking_points} />
+          ) : null}
+
+          <WeekComparisons comparisons={slice.comparisons} />
+
+          {slice.top_post ? <TopPostMini post={slice.top_post} /> : null}
+
+          {slice.cross_platform ? (
+            <p
+              className={cn(
+                "rounded-lg border px-2 py-1.5 text-[10px] leading-relaxed",
+                slice.cross_platform.signal === "aligned"
+                  ? "border-emerald-500/25 bg-emerald-500/8 text-emerald-100/85"
+                  : slice.cross_platform.signal === "divergent"
+                    ? "border-amber-500/25 bg-amber-500/8 text-amber-100/85"
+                    : "border-white/10 bg-white/[0.03] text-white/55"
+              )}
+            >
+              <span className="font-semibold uppercase tracking-wider text-white/40">IG × OF · </span>
+              {slice.cross_platform.text}
+            </p>
+          ) : null}
         </>
       )}
 
@@ -434,7 +601,7 @@ export function AdminInstagramWeeklyProgressPanel({
   const monthLabel = formatMonthYyyyMm(`${year}-${String(month).padStart(2, "0")}`);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 print:space-y-4">
       <motion.div
         initial={reduce ? false : { opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}

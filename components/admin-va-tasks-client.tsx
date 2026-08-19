@@ -16,6 +16,7 @@ import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
+import { VA_TASK_PHASES_FETCH_INIT } from "@/lib/va-task-phases-fetch";
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import {
   filterTasksByAthensYmd,
@@ -397,6 +398,7 @@ export function AdminVaTasksClient({
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
   const taskPhasesRef = React.useRef(taskPhases);
   taskPhasesRef.current = taskPhases;
+  const phasesInflightRef = React.useRef(new Set<string>());
 
   React.useEffect(() => setLocalTasks(tasks), [tasks]);
 
@@ -556,7 +558,7 @@ export function AdminVaTasksClient({
       if (t.is_virtual_occurrence && t.virtual_source_task_id) {
         params.set("source_task_id", t.virtual_source_task_id);
       }
-      const res = await fetch(`/api/admin/task-phases?${params}`, { credentials: "include" });
+      const res = await fetch(`/api/admin/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
       const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
       const phases = data.phases ?? [];
       editPhasesCompletedCountRef.current = countCompletedPhaseItems(phases);
@@ -653,10 +655,7 @@ export function AdminVaTasksClient({
       if (sourceTaskIds.some((id) => id.length > 0)) {
         params.set("source_task_ids", sourceTaskIds.join(","));
       }
-      const res = await fetch(`/api/admin/task-phases?${params}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
+      const res = await fetch(`/api/admin/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
       if (!res.ok) throw new Error("fetch failed");
       const data = (await res.json().catch(() => ({}))) as {
         phases_by_task?: Record<string, TaskPhase[]>;
@@ -704,6 +703,7 @@ export function AdminVaTasksClient({
   useSupabaseRealtimeRefresh(
     ["va_tasks", "va_task_phases", "va_task_phase_items"],
     () => {
+      setTaskPhases({});
       router.refresh();
       if (viewMode === "progress" && canViewProgress) {
         void loadProgressPhases();
@@ -1127,14 +1127,19 @@ export function AdminVaTasksClient({
   }, [addToast]);
 
   const loadPhases = React.useCallback(async (taskId: string, sourceTaskId?: string | null) => {
-    if (taskPhasesRef.current[taskId]) return;
+    if (phasesInflightRef.current.has(taskId)) return;
+    phasesInflightRef.current.add(taskId);
     const params = new URLSearchParams({ task_id: taskId });
     if (sourceTaskId?.trim()) params.set("source_task_id", sourceTaskId.trim());
-    const res = await fetch(`/api/admin/task-phases?${params}`, { credentials: "include" });
-    const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-    React.startTransition(() => {
-      setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
-    });
+    try {
+      const res = await fetch(`/api/admin/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
+      const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
+      React.startTransition(() => {
+        setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
+      });
+    } finally {
+      phasesInflightRef.current.delete(taskId);
+    }
   }, []);
 
   const handleDeleteRequest = React.useCallback((task: VaTaskRecord) => {
