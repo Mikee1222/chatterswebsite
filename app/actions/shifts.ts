@@ -19,6 +19,8 @@ import {
 import { selectPreferredVaTaskShift } from "@/services/shifts-supabase";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify } from "@/services/notification-service";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { stopActiveTimerForVa } from "@/services/task-category-timer";
 
 /** Start a chatting shift (chatter only). */
 export async function startChattingShift() {
@@ -399,6 +401,12 @@ export async function pauseVaTaskShiftAction() {
     break_started_at: pauseIso,
   });
 
+  if (isSupabaseBackend()) {
+    void stopActiveTimerForVa(vaId, pauseIso).catch((err) =>
+      console.error("[task-shift/pause] stop active timer failed", err),
+    );
+  }
+
   return {
     success: true,
     shift: serializeVaTaskShift({
@@ -534,6 +542,12 @@ export async function endVaTaskShiftAction() {
     total_minutes: totalMinutes,
     total_hours_decimal: Math.round((activeSeconds / 3600) * 100) / 100,
   });
+
+  if (isSupabaseBackend()) {
+    void stopActiveTimerForVa(vaId, endIso).catch((err) =>
+      console.error("[task-shift/end] stop active timer failed", err),
+    );
+  }
 
   void createActivityLog({
     actor_user_id: user.id,

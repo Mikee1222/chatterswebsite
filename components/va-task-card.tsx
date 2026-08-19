@@ -6,15 +6,21 @@ import {
   Calendar,
   Camera,
   ChevronRight,
+  Clock,
   ExternalLink,
   ImageIcon,
   Pencil,
   Smartphone,
   Trash2,
 } from "lucide-react";
-import { CategoryTaskTimer, useVaActiveTaskTimer } from "@/components/category-task-timer";
+import {
+  CategoryTaskTimer,
+  useTaskItemTimerDurations,
+  type TaskTimerEndResult,
+  type TaskTimerEntry,
+} from "@/components/category-task-timer";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
-import { formatDateEuropean } from "@/lib/format";
+import { formatDateEuropean, formatTimerDurationSeconds } from "@/lib/format";
 import { ymdInAthens } from "@/lib/airtable-datetime";
 import { getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
 import { getSocialColor } from "@/lib/social-platform-config";
@@ -153,6 +159,9 @@ export type VaTaskCardProps = {
   onDelete?: (task: VaTaskRecord) => void;
   /** Step-type categories that admin has enabled for task timers */
   enabledTimerCategories?: TaskStepType[];
+  /** VA-wide active timer (lifted to parent for shift auto-stop) */
+  activeTimerEntry?: TaskTimerEntry | null;
+  onActiveTimerEntryChange?: (entry: TaskTimerEntry | null) => void;
 };
 
 function allPhasesCompleted(phases: TaskPhase[]): boolean {
@@ -186,10 +195,13 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   onEdit,
   onDelete,
   enabledTimerCategories = [],
+  activeTimerEntry = null,
+  onActiveTimerEntryChange,
 }: VaTaskCardProps) {
   const [expanded, setExpanded] = React.useState(false);
   const [observations, setObservations] = React.useState(task.completed_notes ?? "");
   const [observationsDirty, setObservationsDirty] = React.useState(false);
+  const [sessionItemDurations, setSessionItemDurations] = React.useState<Record<string, number>>({});
   const expandedRef = React.useRef(expanded);
   expandedRef.current = expanded;
 
@@ -200,8 +212,25 @@ export const VaTaskCard = React.memo(function VaTaskCard({
     phases.some((p) =>
       (p.items ?? []).some((i) => enabledTimerCategories.includes(i.step_type ?? DEFAULT_TASK_STEP_TYPE)),
     );
-  const { activeEntry: activeTimerEntry, setActiveEntry: setActiveTimerEntry } =
-    useVaActiveTaskTimer(hasTimerItems);
+  const persistedItemDurations = useTaskItemTimerDurations(
+    hasTimerItems ? task.id : null,
+    hasTimerItems,
+  );
+  const itemDurations = React.useMemo(
+    () => ({ ...persistedItemDurations, ...sessionItemDurations }),
+    [persistedItemDurations, sessionItemDurations],
+  );
+
+  const handleTimerEndComplete = React.useCallback(
+    (item: PhaseItem, result: TaskTimerEndResult) => {
+      setSessionItemDurations((prev) => ({
+        ...prev,
+        [result.entry.task_phase_item_id]: result.durationSeconds,
+      }));
+      onCompleteItem(item, task.id);
+    },
+    [onCompleteItem, task.id],
+  );
 
   React.useEffect(() => {
     if (!observationsDirty) {
@@ -346,11 +375,14 @@ export const VaTaskCard = React.memo(function VaTaskCard({
       const itemStepType = item.step_type ?? DEFAULT_TASK_STEP_TYPE;
       const showItemTimer =
         !isVirtual && enabledTimerCategories.includes(itemStepType);
+      const timerInProgress = activeTimerEntry?.task_phase_item_id === item.id;
+      const completedDuration = itemDurations[item.id];
       return (
         <div className="space-y-1">
           <div className="flex items-start gap-1">
             <ChampagneCheckbox
               checked={item.status === "completed"}
+              inProgress={timerInProgress}
               disabled={itemDisabled}
               title={hintTitle}
               aria-label={item.title ? `Complete: ${item.title}` : undefined}
@@ -392,8 +424,14 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                   {item.completed_at ? ` · ${timeAgoShort(item.completed_at)}` : ""}
                 </p>
               ) : null}
+              {item.status === "completed" && completedDuration != null ? (
+                <p className="mt-0.5 flex items-center gap-1 text-xs text-[#D4AF8C]/65 transition-opacity duration-300 motion-reduce:transition-none">
+                  <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                  Completed in {formatTimerDurationSeconds(completedDuration)}
+                </p>
+              ) : null}
             </button>
-            {showItemTimer ? (
+            {showItemTimer && onActiveTimerEntryChange ? (
               <CategoryTaskTimer
                 vaTaskId={task.id}
                 taskPhaseItemId={item.id}
@@ -401,7 +439,8 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                 enabledCategories={enabledTimerCategories}
                 onShift={onShift}
                 activeEntry={activeTimerEntry}
-                onActiveEntryChange={setActiveTimerEntry}
+                onActiveEntryChange={onActiveTimerEntryChange}
+                onTimerEndComplete={(result) => handleTimerEndComplete(item as PhaseItem, result)}
               />
             ) : null}
           </div>
@@ -433,7 +472,9 @@ export const VaTaskCard = React.memo(function VaTaskCard({
       task.is_virtual_occurrence,
       enabledTimerCategories,
       activeTimerEntry,
-      setActiveTimerEntry,
+      onActiveTimerEntryChange,
+      itemDurations,
+      handleTimerEndComplete,
     ],
   );
 
@@ -662,5 +703,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.canManage === next.canManage &&
   prev.onEdit === next.onEdit &&
   prev.onDelete === next.onDelete &&
-  prev.enabledTimerCategories === next.enabledTimerCategories,
+  prev.enabledTimerCategories === next.enabledTimerCategories &&
+  prev.activeTimerEntry === next.activeTimerEntry &&
+  prev.onActiveTimerEntryChange === next.onActiveTimerEntryChange,
 );

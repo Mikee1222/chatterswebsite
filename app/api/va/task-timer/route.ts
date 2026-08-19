@@ -15,20 +15,24 @@ import {
   startTimerEntry,
   endTimerEntry,
   getEnabledTimerCategories,
+  getLatestDurationsForTask,
 } from "@/services/task-category-timer";
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return Response.json({ error: "Unauthorized" }, { status: 401 });
   if (!hasPermission(session, PERMISSIONS.VA_TASKS_VIEW))
     return Response.json({ error: "Forbidden" }, { status: 403 });
 
+  const vaTaskId = new URL(req.url).searchParams.get("va_task_id")?.trim() || "";
+
   try {
-    const [entry, enabledCategories] = await Promise.all([
+    const [entry, enabledCategories, itemDurations] = await Promise.all([
       getActiveTimerForVa(session.id),
       getEnabledTimerCategories(),
+      vaTaskId ? getLatestDurationsForTask(vaTaskId, session.id) : Promise.resolve({}),
     ]);
-    return Response.json({ entry, enabledCategories });
+    return Response.json({ entry, enabledCategories, itemDurations });
   } catch (e) {
     return Response.json({ error: e instanceof Error ? e.message : "Failed" }, { status: 500 });
   }

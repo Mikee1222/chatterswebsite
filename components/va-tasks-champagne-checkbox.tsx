@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props = {
   checked: boolean;
+  /** Timer running for this item — distinct from empty (pending) and checked (completed). */
+  inProgress?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   title?: string;
@@ -24,6 +26,7 @@ type Props = {
  */
 export function ChampagneCheckbox({
   checked,
+  inProgress = false,
   disabled,
   onClick,
   title,
@@ -44,6 +47,8 @@ export function ChampagneCheckbox({
     }
   }, [checked, reduceMotion]);
 
+  const showInProgress = inProgress && !checked;
+
   return (
     <button
       type="button"
@@ -54,7 +59,9 @@ export function ChampagneCheckbox({
       }}
       disabled={disabled}
       title={title}
-      aria-label={ariaLabel ?? title ?? (checked ? "Completed" : "Mark complete")}
+      aria-label={
+        ariaLabel ?? title ?? (checked ? "Completed" : showInProgress ? "In progress" : "Mark complete")
+      }
       aria-pressed={checked}
       className={cn(
         // Real min 44px touch target in document flow (survives overflow:hidden parents)
@@ -80,11 +87,30 @@ export function ChampagneCheckbox({
           "transition-[border-color,box-shadow,background-color] duration-200 ease-out motion-reduce:transition-none",
           checked
             ? "border-[#FF1493]/80 bg-gradient-to-br from-[#FF1493] via-[#E91E8C] to-[#D4AF8C] shadow-[0_0_14px_-3px_rgba(255,20,147,0.55),inset_0_1px_0_rgba(255,255,255,0.25)]"
-            : disabled
-              ? "border-white/8 bg-white/[0.03] opacity-40"
-              : "border-[#D4AF8C]/50 bg-[#D4AF8C]/[0.04] shadow-[inset_0_1px_0_rgba(212,175,140,0.08)] hover:border-[#D4AF8C]/75 hover:bg-[#D4AF8C]/[0.08]",
+            : showInProgress
+              ? "border-[#D4AF8C]/70 bg-[#D4AF8C]/25 shadow-[0_0_10px_-2px_rgba(212,175,140,0.35),inset_0_1px_0_rgba(255,255,255,0.12)]"
+              : disabled
+                ? "border-white/8 bg-white/[0.03] opacity-40"
+                : "border-[#D4AF8C]/50 bg-[#D4AF8C]/[0.04] shadow-[inset_0_1px_0_rgba(212,175,140,0.08)] hover:border-[#D4AF8C]/75 hover:bg-[#D4AF8C]/[0.08]",
         )}
       >
+        {/* In-progress partial fill + pulse */}
+        {showInProgress ? (
+          <>
+            <span
+              className={cn(
+                "pointer-events-none absolute inset-x-0 bottom-0 rounded-b-[3px] bg-gradient-to-t from-[#D4AF8C]/55 to-[#D4AF8C]/20",
+                !reduceMotion && "animate-pulse motion-reduce:animate-none",
+              )}
+              style={{ height: "58%" }}
+            />
+            <Clock
+              className="relative z-[1] h-2.5 w-2.5 text-[#D4AF8C] drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]"
+              strokeWidth={2.75}
+              aria-hidden
+            />
+          </>
+        ) : null}
         {/* Soft fill wash on check — skipped when reduced motion */}
         {!reduceMotion && checked ? (
           <motion.span

@@ -152,17 +152,81 @@ export async function startTimerEntry(input: {
   return data as CategoryTimeEntry;
 }
 
-export async function endTimerEntry(entry_id: string, va_id: string): Promise<CategoryTimeEntry> {
+export async function endTimerEntry(
+  entry_id: string,
+  va_id: string,
+  ended_at?: string,
+): Promise<CategoryTimeEntry> {
   const sb = getSupabaseServiceClient();
+  const endedIso = ended_at ?? new Date().toISOString();
+
+  const { data: existing, error: fetchErr } = await sb
+    .from("task_category_time_entries")
+    .select("started_at, ended_at")
+    .eq("id", entry_id)
+    .eq("va_id", va_id)
+    .maybeSingle();
+  if (fetchErr) throw new Error(`endTimerEntry: ${fetchErr.message}`);
+  if (!existing) throw new Error("Timer entry not found");
+  if (existing.ended_at) {
+    const { data: done, error: doneErr } = await sb
+      .from("task_category_time_entries")
+      .select("*")
+      .eq("id", entry_id)
+      .single();
+    if (doneErr) throw new Error(`endTimerEntry: ${doneErr.message}`);
+    return done as CategoryTimeEntry;
+  }
+
+  const startMs = new Date(String(existing.started_at)).getTime();
+  const endMs = new Date(endedIso).getTime();
+  const duration_seconds =
+    Number.isFinite(startMs) && Number.isFinite(endMs)
+      ? Math.max(0, Math.floor((endMs - startMs) / 1000))
+      : null;
+
   const { data, error } = await sb
     .from("task_category_time_entries")
-    .update({ ended_at: new Date().toISOString() })
+    .update({ ended_at: endedIso, duration_seconds })
     .eq("id", entry_id)
     .eq("va_id", va_id)
     .select("*")
     .single();
   if (error) throw new Error(`endTimerEntry: ${error.message}`);
   return data as CategoryTimeEntry;
+}
+
+/** Stop any active item-timer for this VA (e.g. shift pause/end). Does not complete the checklist item. */
+export async function stopActiveTimerForVa(va_id: string, ended_at?: string): Promise<CategoryTimeEntry | null> {
+  const active = await getActiveTimerForVa(va_id);
+  if (!active) return null;
+  return endTimerEntry(active.id, va_id, ended_at);
+}
+
+/** Latest completed timer duration per checklist item for one task instance. */
+export async function getLatestDurationsForTask(
+  va_task_id: string,
+  va_id: string,
+): Promise<Record<string, number>> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("task_category_time_entries")
+    .select("task_phase_item_id, duration_seconds, ended_at")
+    .eq("va_task_id", va_task_id)
+    .eq("va_id", va_id)
+    .not("ended_at", "is", null)
+    .not("duration_seconds", "is", null)
+    .order("ended_at", { ascending: false });
+  if (error) throw new Error(`getLatestDurationsForTask: ${error.message}`);
+
+  const out: Record<string, number> = {};
+  for (const row of data ?? []) {
+    const itemId = String(row.task_phase_item_id ?? "").trim();
+    if (!itemId || out[itemId] != null) continue;
+    const sec = Math.floor(Number(row.duration_seconds));
+    if (Number.isFinite(sec) && sec >= 0) out[itemId] = sec;
+  }
+  return out;
 }
 
 // ─── Reporting ────────────────────────────────────────────────────────────────

@@ -215,6 +215,24 @@ export function displayName(value: string | null | undefined, fallback = "—"):
   return v;
 }
 
+/** Compact task-timer duration (e.g. 272 → "4m 32s", 45 → "45s", 3661 → "1h 1m 1s"). */
+export function formatTimerDurationSeconds(totalSeconds: number | null | undefined): string {
+  if (totalSeconds == null || totalSeconds < 0 || !Number.isFinite(totalSeconds)) return "—";
+  const s = Math.floor(totalSeconds);
+  if (s === 0) return "0s";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) {
+    const parts = [`${h}h`];
+    if (m > 0) parts.push(`${m}m`);
+    if (sec > 0) parts.push(`${sec}s`);
+    return parts.join(" ");
+  }
+  if (m > 0) return sec > 0 ? `${m}m ${sec}s` : `${m}m`;
+  return `${sec}s`;
+}
+
 /** Duration from minutes (e.g. 133 → "2h 13m", 380 → "6h 20m", 45 → "45m"). */
 export function formatDurationMinutes(totalMinutes: number | null | undefined): string {
   if (totalMinutes == null || totalMinutes < 0 || !Number.isFinite(totalMinutes)) return "—";

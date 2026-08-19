@@ -28,6 +28,7 @@ import { FilterBar, ManagerReviewFileDropzone } from "@/components/manager-revie
 import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { VaTaskCard, EMPTY_TASK_PHASES, modelAccountsKeyForPhases } from "@/components/va-task-card";
+import { useShiftTimerAutoStop, useVaActiveTaskTimer } from "@/components/category-task-timer";
 import { VaTasksSearchBar } from "@/components/va-tasks-search-bar";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
@@ -527,6 +528,12 @@ export function VaTasksClient({
     () => !!initialActiveShift && !isShiftPaused(initialActiveShift),
   );
   const handleShiftChange = React.useCallback((next: boolean) => setOnShift(next), []);
+
+  const timerTrackingEnabled = isViewingToday && enabledTimerCategories.length > 0;
+  const { activeEntry: activeTimerEntry, setActiveEntry: setActiveTimerEntry } =
+    useVaActiveTaskTimer(timerTrackingEnabled);
+  useShiftTimerAutoStop(onShift, activeTimerEntry, setActiveTimerEntry);
+
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
   const [phasesLoadingIds, setPhasesLoadingIds] = React.useState<Record<string, true>>({});
   const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});
@@ -1230,6 +1237,8 @@ export function VaTasksClient({
                   onEdit={canManage ? handleEditRequest : undefined}
                   onDelete={canManage ? handleDeleteRequest : undefined}
                   enabledTimerCategories={enabledTimerCategories}
+                  activeTimerEntry={activeTimerEntry}
+                  onActiveTimerEntryChange={setActiveTimerEntry}
                 />
               ))}
               {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (
@@ -1265,6 +1274,8 @@ export function VaTasksClient({
                       onEdit={canManage ? handleEditRequest : undefined}
                       onDelete={canManage ? handleDeleteRequest : undefined}
                       enabledTimerCategories={enabledTimerCategories}
+                      activeTimerEntry={activeTimerEntry}
+                      onActiveTimerEntryChange={setActiveTimerEntry}
                     />
                   ) : (
                     <div className="rounded-2xl border border-[#D4AF8C]/15 bg-[#151315] px-4 py-3">
