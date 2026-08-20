@@ -423,6 +423,15 @@ async function upsertTransactions(
       currency: p.currency,
     });
   }
+  // Final safety: never persist hex list ids when inflowwRowId is the numeric payment id.
+  for (const [key, t] of [...byId.entries()]) {
+    const link = (t.inflowwRowId ?? "").trim();
+    if (!/^[a-f0-9]{32}$/i.test(key) || !/^\d+$/.test(link)) continue;
+    byId.delete(key);
+    if (!byId.has(link)) {
+      byId.set(link, { ...t, transactionId: link });
+    }
+  }
   const payload = [...byId.values()].map((tx) =>
     txUpsertPayload(link, tx, perfByTxId.get(tx.transactionId), { markLoadingSync: true })
   );

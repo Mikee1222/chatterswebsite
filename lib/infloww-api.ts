@@ -919,6 +919,9 @@ function strField(r: Record<string, unknown>, keys: string[]): string | undefine
   for (const k of keys) {
     const v = r[k];
     if (typeof v === "string" && v.trim()) return v.trim();
+    // Infloww often sends numeric ids as JSON numbers — coerce so canonical tx ids match.
+    if (typeof v === "number" && Number.isFinite(v)) return String(Math.trunc(v));
+    if (typeof v === "bigint") return String(v);
   }
   return undefined;
 }
