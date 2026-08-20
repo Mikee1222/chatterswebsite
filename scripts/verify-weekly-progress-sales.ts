@@ -1,5 +1,11 @@
 /**
  * Verify Chatter Performance Weekly Progress sales vs raw infloww_daily_stats.
+ *
+ * Audit (2026-08-20): employee-report `salesAmount` / `ppvSalesAmount` / `tipsSalesAmount`
+ * are gross attributed fan-payment dollars (not creator net). Weekly Progress reads
+ * Athens YMD `date` rows via getCustomWeekBoundaries + customWeekIndexForYmd — no UTC
+ * boundary bug. UI totals must match raw DB sums (this script asserts that).
+ *
  * Usage: npx tsx scripts/verify-weekly-progress-sales.ts [YYYY] [MM]
  */
 import { config as loadEnv } from "dotenv";
