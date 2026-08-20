@@ -717,7 +717,8 @@ export async function getInstagramWeeklyProgressReport(
       ? listCreatorTransactions({
           startYmd: historicalStartYmd,
           endYmd: monthEnd,
-          limit: 8000,
+          fetchAll: true,
+          revenueOnly: true,
         })
       : Promise.resolve([]),
   ]);

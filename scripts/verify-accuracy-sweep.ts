@@ -282,7 +282,8 @@ async function main() {
         modelRecordId,
         startYmd: range.startYmd,
         endYmd: range.endYmd,
-        limit: 5000,
+        fetchAll: true,
+        revenueOnly: true,
       }),
       listCreatorRefunds({
         modelRecordId,
@@ -294,7 +295,8 @@ async function main() {
         modelRecordId,
         startYmd: prev.startYmd,
         endYmd: prev.endYmd,
-        limit: 5000,
+        fetchAll: true,
+        revenueOnly: true,
       }),
     ]);
     const prevGross = prevTxs.reduce((s, t) => s + (t.amount ?? 0), 0);

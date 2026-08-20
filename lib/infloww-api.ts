@@ -1572,6 +1572,17 @@ function centsToDollars(v: unknown): number {
   return n / 100;
 }
 
+function creatorTxMoneyField(r: Record<string, unknown>, keys: string[]): number {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number.parseFloat(String(v).replace(/,/g, ""));
+    if (!Number.isFinite(n)) continue;
+    return n / 100;
+  }
+  return 0;
+}
+
 function msField(r: Record<string, unknown>, keys: string[]): number {
   for (const k of keys) {
     const ms = coerceScalarToUnixMs(r[k]);
@@ -1656,9 +1667,15 @@ function mapCreatorTransaction(
     type: strField(r, ["type"]),
     tipSource: strField(r, ["tipSource", "tip_source"]),
     status: strField(r, ["status"]),
-    amount: centsToDollars(r["amount"]),
-    fee: centsToDollars(r["fee"]),
-    net: centsToDollars(r["net"]),
+    amount: creatorTxMoneyField(r, [
+      "transactionAmount",
+      "transaction_amount",
+      "amount",
+      "gross",
+      "grossAmount",
+    ]),
+    fee: creatorTxMoneyField(r, ["fee", "feeAmount", "fee_amount"]),
+    net: creatorTxMoneyField(r, ["net", "netAmount", "net_amount"]),
     currency: strField(r, ["currency"]) ?? "USD",
   };
 }

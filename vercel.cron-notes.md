@@ -8,9 +8,9 @@ break `vercel` CLI (`Couldn't parse JSON file …/vercel.json`).
 | Field | Value |
 | --- | --- |
 | `vercel.json` schedule | `15 3 * * *` (daily 03:15 UTC) |
-| Intended product cadence | **Every 2 hours** |
-| 2-hourly runner | `.github/workflows/sync-infloww-2h.yml` |
-| 2-hourly runner (template) | `docs/github-workflows/sync-infloww-2h.yml` |
+| Intended product cadence | **Every hour** |
+| Hourly runner | `.github/workflows/sync-infloww-2h.yml` (`0 * * * *` UTC) |
+| Hourly runner (template) | `docs/github-workflows/sync-infloww-2h.yml` |
 | External trigger script | `scripts/trigger-infloww-cron.sh` |
 
 **Why not every-2h in vercel.json?** Team plan is **Vercel Hobby**. Hobby only

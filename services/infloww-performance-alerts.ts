@@ -80,7 +80,8 @@ export async function runInflowwPerformanceAlerts(): Promise<InflowwPerformanceA
         listCreatorTransactions({
           startYmd: monthRange.startYmd,
           endYmd: monthRange.endYmd,
-          limit: 2000,
+          fetchAll: true,
+          revenueOnly: true,
         }),
         listCreatorRefunds({
           startYmd: monthRange.startYmd,
@@ -96,7 +97,8 @@ export async function runInflowwPerformanceAlerts(): Promise<InflowwPerformanceA
         listCreatorTransactions({
           startYmd: prev.startYmd,
           endYmd: prev.endYmd,
-          limit: 800,
+          fetchAll: true,
+          revenueOnly: true,
         }),
       ]);
 

@@ -52,7 +52,8 @@ export async function GET(req: NextRequest) {
         startYmd: range.startYmd,
         endYmd: range.endYmd,
         modelRecordId,
-        limit: 400,
+        fetchAll: true,
+        revenueOnly: true,
       }),
       listCreatorRefunds({
         startYmd: range.startYmd,
@@ -66,7 +67,8 @@ export async function GET(req: NextRequest) {
         startYmd: prev.startYmd,
         endYmd: prev.endYmd,
         modelRecordId,
-        limit: 400,
+        fetchAll: true,
+        revenueOnly: true,
       }),
     ]);
 

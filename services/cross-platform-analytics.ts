@@ -614,10 +614,11 @@ export async function getCrossPlatformAnalytics(params: {
         endYmd: params.endYmd,
       }),
       listCreatorTransactions({
-        modelRecordId: params.modelRecordId,
         startYmd: params.startYmd,
         endYmd: params.endYmd,
-        limit: 2000,
+        modelRecordId: params.modelRecordId,
+        fetchAll: true,
+        revenueOnly: true,
       }),
       queryClarioSuiteTopPosts({
         modelRecordId: params.modelRecordId,
@@ -634,10 +635,11 @@ export async function getCrossPlatformAnalytics(params: {
         endYmd: prev.endYmd,
       }),
       listCreatorTransactions({
-        modelRecordId: params.modelRecordId,
         startYmd: prev.startYmd,
         endYmd: prev.endYmd,
-        limit: 2000,
+        modelRecordId: params.modelRecordId,
+        fetchAll: true,
+        revenueOnly: true,
       }),
     ]);
 

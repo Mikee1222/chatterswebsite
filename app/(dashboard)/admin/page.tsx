@@ -114,7 +114,8 @@ export default async function AdminHomePage({
       listCreatorTransactions({
         startYmd: monthStart,
         endYmd: monthEnd,
-        limit: 10000,
+        fetchAll: true,
+        revenueOnly: true,
       }).catch(() => []),
       listCreatorTransactionTypeCounts({
         startYmd: monthStart,

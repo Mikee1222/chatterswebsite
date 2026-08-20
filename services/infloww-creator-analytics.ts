@@ -11,6 +11,7 @@ import type {
   MarketingLinkRow,
   PriorityMassMessageRow,
 } from "@/services/infloww-creator-earnings";
+import { isCreatorTxRevenueCountable } from "@/services/infloww-creator-earnings";
 
 /** Refund rate above this fraction surfaces a warning alert. */
 export const REFUND_RATE_WARN = 0.05;
@@ -457,6 +458,10 @@ function revenueByType(
     .sort((a, b) => b.gross - a.gross);
 }
 
+function revenueTransactions(transactions: CreatorTransactionRow[]): CreatorTransactionRow[] {
+  return transactions.filter((t) => isCreatorTxRevenueCountable(t.status));
+}
+
 export function deriveModelCreatorAnalytics(params: {
   creatorInflowwId: string;
   modelRecordId: string | null;
@@ -466,8 +471,9 @@ export function deriveModelCreatorAnalytics(params: {
   refunds: CreatorRefundRow[];
   previousGross?: number;
 }): CreatorModelAnalytics {
+  const txs = revenueTransactions(params.transactions);
   const profit = computeNetProfit({
-    transactions: params.transactions,
+    transactions: txs,
     refunds: params.refunds,
   });
   const refund_rate = computeRefundRate(profit);
@@ -497,7 +503,7 @@ export function deriveModelCreatorAnalytics(params: {
     refund_rate,
     churn,
     arpu,
-    revenue_mix: { by_type: revenueByType(params.transactions) },
+    revenue_mix: { by_type: revenueByType(txs) },
     growth: {
       new_subscribers: sum(params.daily.map((d) => d.new_subscribers)),
       renewals: sum(params.daily.map((d) => d.renewals)),
@@ -596,14 +602,14 @@ export function buildAgencyCreatorAnalytics(params: {
   }
 
   const agency_profit = computeNetProfit({
-    transactions: params.transactions,
+    transactions: revenueTransactions(params.transactions),
     refunds: params.refunds,
   });
   const agency_refund_rate = computeRefundRate(agency_profit);
 
   const heatmapMap = new Map<string, { employee_id: string; model_record_id: string | null; model_name: string; sales: number }>();
   const nameByRecord = new Map(params.linked.map((l) => [l.modelRecordId, l.modelName]));
-  for (const t of params.transactions) {
+  for (const t of revenueTransactions(params.transactions)) {
     const emp = (t.attribute_employee_id ?? "").trim();
     if (!emp) continue;
     const mid = t.model_record_id;

@@ -100,7 +100,7 @@ Folded into **`GET /api/cron/sync-infloww-stats`** (same daily Vercel cron).
 
 | Trigger | Schedule | Where |
 | --- | --- | --- |
-| Every 2h (intended) | `0 */2 * * *` UTC | `.github/workflows/sync-infloww-2h.yml` |
+| Every hour (intended) | `0 * * * *` UTC | `.github/workflows/sync-infloww-2h.yml` |
 | Vercel (Hobby-safe fallback) | `15 3 * * *` UTC daily | `vercel.json` |
 
 **Do not** put sub-daily schedules in `vercel.json` on Hobby — deploys fail.

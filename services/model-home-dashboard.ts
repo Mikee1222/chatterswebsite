@@ -68,13 +68,15 @@ async function loadEarningsSnapshot(modelRecordId: string): Promise<{
       startYmd: range.startYmd,
       endYmd: range.endYmd,
       modelRecordId,
-      limit: 200,
+      fetchAll: true,
+      revenueOnly: true,
     }),
     listCreatorTransactions({
       startYmd: prev.startYmd,
       endYmd: prev.endYmd,
       modelRecordId,
-      limit: 200,
+      fetchAll: true,
+      revenueOnly: true,
     }),
   ]);
 

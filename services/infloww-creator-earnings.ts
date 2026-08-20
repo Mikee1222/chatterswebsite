@@ -43,6 +43,15 @@ import type {
 import type { ModelRecord } from "@/types";
 
 const LOADING_RESYNC_MIN_MS = 12 * 60 * 60 * 1000;
+/** Supabase PostgREST max rows per request. */
+const SUPABASE_PAGE_SIZE = 1000;
+
+/** Statuses that count toward creator revenue totals (exclude loading/pending/undo). */
+export const CREATOR_TX_REVENUE_STATUSES = ["done"] as const;
+
+export function isCreatorTxRevenueCountable(status: string | null | undefined): boolean {
+  return (status ?? "").trim().toLowerCase() === "done";
+}
 
 export type LinkedCreatorModel = {
   creatorInflowwId: string;
@@ -839,39 +848,8 @@ export type CreatorTransactionRow = {
   sales_amount: number | null;
 };
 
-export async function listCreatorTransactions(params: {
-  startYmd: string;
-  endYmd: string;
-  modelRecordId?: string;
-  creatorInflowwId?: string;
-  type?: string;
-  status?: string;
-  search?: string;
-  limit?: number;
-}): Promise<CreatorTransactionRow[]> {
-  const sb = getSupabaseServiceClient();
-  const startIso = `${params.startYmd}T00:00:00.000Z`;
-  const endIso = `${params.endYmd}T23:59:59.999Z`;
-  let q = sb
-    .from("infloww_transactions")
-    .select(
-      "transaction_id, creator_infloww_id, model_record_id, fan_id, fan_name, created_time, type, status, amount, fee, net, sales_rule, attribute_employee_id, sales_amount"
-    )
-    .gte("created_time", startIso)
-    .lte("created_time", endIso)
-    .order("created_time", { ascending: false })
-    .limit(params.limit ?? 500);
-  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
-  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
-  if (params.type) q = q.eq("type", params.type);
-  if (params.status) q = q.eq("status", params.status);
-  if (params.search?.trim()) {
-    const s = params.search.trim();
-    q = q.or(`fan_name.ilike.%${s}%,fan_id.ilike.%${s}%,transaction_id.ilike.%${s}%`);
-  }
-  const { data, error } = await q;
-  if (error) throw new Error(`listCreatorTransactions: ${error.message}`);
-  return (data ?? []).map((row) => ({
+function mapCreatorTransactionRow(row: Record<string, unknown>): CreatorTransactionRow {
+  return {
     transaction_id: String(row.transaction_id),
     creator_infloww_id: String(row.creator_infloww_id),
     model_record_id: row.model_record_id ? String(row.model_record_id) : null,
@@ -886,7 +864,66 @@ export async function listCreatorTransactions(params: {
     sales_rule: row.sales_rule ? String(row.sales_rule) : null,
     attribute_employee_id: row.attribute_employee_id ? String(row.attribute_employee_id) : null,
     sales_amount: row.sales_amount == null ? null : n(row.sales_amount),
-  }));
+  };
+}
+
+export async function listCreatorTransactions(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+  creatorInflowwId?: string;
+  type?: string;
+  status?: string;
+  search?: string;
+  limit?: number;
+  /** Paginate through all matching rows (for month-wide revenue aggregation). */
+  fetchAll?: boolean;
+  /** When true, only `done` rows — safe for revenue totals. Default false for transaction lists. */
+  revenueOnly?: boolean;
+}): Promise<CreatorTransactionRow[]> {
+  const sb = getSupabaseServiceClient();
+  const startIso = `${params.startYmd}T00:00:00.000Z`;
+  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  const fetchAll = params.fetchAll === true;
+  const maxRows = fetchAll ? Number.POSITIVE_INFINITY : (params.limit ?? 500);
+  const selectCols =
+    "transaction_id, creator_infloww_id, model_record_id, fan_id, fan_name, created_time, type, status, amount, fee, net, sales_rule, attribute_employee_id, sales_amount";
+
+  const out: CreatorTransactionRow[] = [];
+  let offset = 0;
+
+  while (out.length < maxRows) {
+    const pageSize = Math.min(
+      SUPABASE_PAGE_SIZE,
+      fetchAll ? SUPABASE_PAGE_SIZE : maxRows - out.length
+    );
+    let q = sb
+      .from("infloww_transactions")
+      .select(selectCols)
+      .gte("created_time", startIso)
+      .lte("created_time", endIso)
+      .order("created_time", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+    if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+    if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+    if (params.type) q = q.eq("type", params.type);
+    if (params.status) q = q.eq("status", params.status);
+    else if (params.revenueOnly) q = q.in("status", [...CREATOR_TX_REVENUE_STATUSES]);
+    if (params.search?.trim()) {
+      const s = params.search.trim();
+      q = q.or(`fan_name.ilike.%${s}%,fan_id.ilike.%${s}%,transaction_id.ilike.%${s}%`);
+    }
+    const { data, error } = await q;
+    if (error) throw new Error(`listCreatorTransactions: ${error.message}`);
+    const rows = data ?? [];
+    for (const row of rows) {
+      out.push(mapCreatorTransactionRow(row as Record<string, unknown>));
+    }
+    if (rows.length < pageSize) break;
+    offset += rows.length;
+  }
+
+  return out;
 }
 
 export type CreatorTransactionTypeCount = {
@@ -902,27 +939,23 @@ export async function listCreatorTransactionTypeCounts(params: {
   endYmd: string;
   modelRecordId?: string;
   creatorInflowwId?: string;
+  revenueOnly?: boolean;
 }): Promise<CreatorTransactionTypeCount[]> {
-  const sb = getSupabaseServiceClient();
-  const startIso = `${params.startYmd}T00:00:00.000Z`;
-  const endIso = `${params.endYmd}T23:59:59.999Z`;
-  let q = sb
-    .from("infloww_transactions")
-    .select("type, amount, net")
-    .gte("created_time", startIso)
-    .lte("created_time", endIso)
-    .limit(10000);
-  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
-  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
-  const { data, error } = await q;
-  if (error) throw new Error(`listCreatorTransactionTypeCounts: ${error.message}`);
+  const txs = await listCreatorTransactions({
+    startYmd: params.startYmd,
+    endYmd: params.endYmd,
+    modelRecordId: params.modelRecordId,
+    creatorInflowwId: params.creatorInflowwId,
+    fetchAll: true,
+    revenueOnly: params.revenueOnly !== false,
+  });
   const map = new Map<string, { count: number; gross: number; net: number }>();
-  for (const row of data ?? []) {
-    const type = (row.type ? String(row.type) : "unknown").trim() || "unknown";
+  for (const row of txs) {
+    const type = (row.type ?? "unknown").trim() || "unknown";
     const prev = map.get(type) ?? { count: 0, gross: 0, net: 0 };
     prev.count += 1;
-    prev.gross += n(row.amount);
-    prev.net += n(row.net);
+    prev.gross += row.amount;
+    prev.net += row.net;
     map.set(type, prev);
   }
   return [...map.entries()]
@@ -1014,6 +1047,7 @@ export async function compareTransactionPerfVsEmployeeSales(params: {
     .select("created_time, attribute_employee_id, sales_amount")
     .gte("created_time", startIso)
     .lte("created_time", endIso)
+    .in("status", [...CREATOR_TX_REVENUE_STATUSES])
     .not("attribute_employee_id", "is", null);
   if (params.modelRecordId) txQ = txQ.eq("model_record_id", params.modelRecordId);
   const { data: txs, error: txErr } = await txQ;

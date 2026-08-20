@@ -51,7 +51,7 @@ intentionally restored to daily in `e062844` so Weekly Progress could ship.
 
 | Trigger | Schedule | Where |
 | --- | --- | --- |
-| **Every 2h (intended)** | `0 */2 * * *` UTC | `.github/workflows/sync-infloww-2h.yml` **or** external cron |
+| **Every hour (intended)** | `0 * * * *` UTC | `.github/workflows/sync-infloww-2h.yml` **or** external cron |
 | Vercel fallback | `15 3 * * *` UTC (daily) | `vercel.json` (Hobby-safe) |
 
 Do **not** change the Vercel schedule to sub-daily unless the team is upgraded
@@ -65,7 +65,7 @@ See also: `vercel.cron-notes.md`.
 
 1. Repo secret `CRON_SECRET` is already set (matches Vercel). Optional variable `APP_URL`.
 2. Workflow: `.github/workflows/sync-infloww-2h.yml` (template in `docs/github-workflows/`).
-3. Actions → **Infloww sync (every 2h)** → Run workflow (manual test).
+3. Actions → **Infloww sync (every 1h)** → Run workflow (manual test).
 
 **Option B — any external cron** (cron-job.org, system crontab, etc.)
 

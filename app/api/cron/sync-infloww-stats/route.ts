@@ -31,7 +31,7 @@ function isCronAuthorized(request: Request): boolean {
  *    priority mass messages; re-syncs status=loading txs)
  * 3) High-value performance alerts (declining chatter WoW, refunds, churn)
  *
- * Cadence: every 2h via GitHub Actions (`sync-infloww-2h.yml`); daily fallback in
+ * Cadence: every hour via GitHub Actions (`sync-infloww-2h.yml`, cron `0 * * * *`); daily fallback in
  * vercel.json (Hobby max). Sync window is always today+yesterday (incremental).
  * Do NOT set sub-daily schedules in vercel.json — see vercel.cron-notes.md.
  */

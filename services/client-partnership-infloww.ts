@@ -228,7 +228,8 @@ async function fetchScopedRows(
         startYmd: range.startYmd,
         endYmd: range.endYmd,
         modelRecordId: id,
-        limit: 2000,
+        fetchAll: true,
+        revenueOnly: true,
       })
     )
   );
@@ -248,7 +249,8 @@ async function fetchScopedRows(
         startYmd: prev.startYmd,
         endYmd: prev.endYmd,
         modelRecordId: id,
-        limit: 1500,
+        fetchAll: true,
+        revenueOnly: true,
       })
     )
   );
