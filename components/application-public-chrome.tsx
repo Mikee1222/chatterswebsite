@@ -34,15 +34,26 @@ export function ApplyAmbientBg() {
 export function ApplyBrandMark({ className }: { className?: string }) {
   return (
     <div className={cn("flex items-center gap-3", className)}>
-      <span className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/12 bg-gradient-to-br from-white/[0.12] to-[#FF1493]/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/icon.svg" alt="" width={28} height={28} className="h-7 w-7" />
+      {/* Same logo asset as login / spin wheel — pink serif G */}
+      <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#FF1493] via-[#E91E8C] to-[#DB2777] p-[1.5px] shadow-[0_0_24px_-6px_rgba(255,20,147,0.55),0_4px_12px_-6px_rgba(0,0,0,0.55)]">
+        <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-[#0D0B0D] p-[2px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/apple-touch-icon-v2.png"
+            alt="Gunzo"
+            width={36}
+            height={36}
+            className="h-full w-full rounded-full object-cover"
+          />
+        </span>
       </span>
       <div className="min-w-0 text-left">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-[#D4AF8C]/75">
-          Gunzo
+        <p className="truncate text-sm font-semibold tracking-tight text-white">
+          Careers
         </p>
-        <p className="truncate text-sm font-medium text-white/90">Careers</p>
+        <p className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#D4AF8C]/75">
+          Gunzo Team
+        </p>
       </div>
     </div>
   );
@@ -56,30 +67,34 @@ export function ApplyLanguageSwitcher({
   onChange: (l: PipelineLanguage) => void;
 }) {
   const ui = pipelineUi(lang);
+  const btn = (code: PipelineLanguage) => {
+    const active = lang === code;
+    return (
+      <button
+        type="button"
+        onClick={() => onChange(code)}
+        aria-pressed={active}
+        className={cn(
+          "min-w-[2.5rem] rounded-full px-3.5 py-1.5 font-semibold tracking-wide transition",
+          active
+            ? "bg-gradient-to-br from-[#FF1493] to-[#DB2777] text-white shadow-[0_4px_16px_-4px_rgba(255,20,147,0.5)]"
+            : "text-white/50 hover:bg-white/[0.06] hover:text-white/80",
+        )}
+      >
+        {code.toUpperCase()}
+      </button>
+    );
+  };
+
   return (
     <div
-      className="inline-flex items-center gap-0.5 rounded-full border border-white/10 bg-white/[0.04] p-0.5 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+      className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] p-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
       role="group"
       aria-label={ui.language}
     >
-      {(["en", "el"] as const).map((code) => {
-        const active = lang === code;
-        return (
-          <button
-            key={code}
-            type="button"
-            onClick={() => onChange(code)}
-            className={cn(
-              "rounded-full px-3 py-1.5 font-medium transition",
-              active
-                ? "bg-gradient-to-br from-[#FF1493] to-[#DB2777] text-white shadow-[0_4px_16px_-4px_rgba(255,20,147,0.5)]"
-                : "text-white/45 hover:text-white/75",
-            )}
-          >
-            {code.toUpperCase()}
-          </button>
-        );
-      })}
+      {btn("en")}
+      <span className="mx-0.5 h-3.5 w-px shrink-0 bg-white/25" aria-hidden />
+      {btn("el")}
     </div>
   );
 }
