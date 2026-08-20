@@ -12,7 +12,7 @@ import { resolveInflowwStatsRange } from "@/services/infloww-performance";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import {
   compareTransactionPerfVsEmployeeSales,
-  creatorTxRevenueAmount,
+  creatorTxGrossAmount,
   listCreatorDailyStats,
   listCreatorRefunds,
   listCreatorTransactionTypeCounts,
@@ -130,7 +130,7 @@ export async function GET(req: NextRequest) {
     for (const t of prevTxs) {
       previousGrossByCreator.set(
         t.creator_infloww_id,
-        (previousGrossByCreator.get(t.creator_infloww_id) ?? 0) + creatorTxRevenueAmount(t)
+        (previousGrossByCreator.get(t.creator_infloww_id) ?? 0) + creatorTxGrossAmount(t)
       );
     }
 

@@ -17,7 +17,7 @@ import {
   listCreatorDailyStats,
   listCreatorRefunds,
   listCreatorTransactions,
-  creatorTxRevenueAmount,
+  creatorTxGrossAmount,
   listMarketingLinks,
   type CreatorDailyStatsRow,
 } from "@/services/infloww-creator-earnings";
@@ -256,7 +256,7 @@ async function fetchScopedRows(
   const daily = mergeDailyStats(dailyChunks.flat());
   const transactions = txChunks.flat();
   const refunds = refundChunks.flat();
-  const prevGross = prevTxChunks.flat().reduce((s, t) => s + creatorTxRevenueAmount(t), 0);
+  const prevGross = prevTxChunks.flat().reduce((s, t) => s + creatorTxGrossAmount(t), 0);
 
   const marketing = computeAcquisitionEfficiency(marketingChunks.flat())
     .sort((a, b) => b.earnings_gross - a.earnings_gross)

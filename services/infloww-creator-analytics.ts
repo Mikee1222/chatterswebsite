@@ -12,7 +12,11 @@ import type {
   MarketingLinkRow,
   PriorityMassMessageRow,
 } from "@/services/infloww-creator-earnings";
-import { isCreatorTxRevenueCountable, creatorTxRevenueAmount } from "@/services/infloww-creator-earnings";
+import {
+  isCreatorTxRevenueCountable,
+  creatorTxGrossAmount,
+  creatorTxRevenueAmount,
+} from "@/services/infloww-creator-earnings";
 
 /** Refund rate above this fraction surfaces a warning alert. */
 export const REFUND_RATE_WARN = 0.05;
@@ -154,14 +158,17 @@ export function computeNetProfit(params: {
   transactions: Array<Pick<CreatorTransactionRow, "amount" | "fee" | "net">>;
   refunds: Array<Pick<CreatorRefundRow, "payment_amount">>;
 }): NetProfitBreakdown {
-  const gross = sum(params.transactions.map(creatorTxRevenueAmount));
-  const fees = sum(params.transactions.map((t) => t.fee));
+  // Gross = pre-OF fan payments (`amount`). Fees = OF platform cut.
+  // Net = Gross − Fees − Refunds (= post-OF creator share − refunds).
+  // Do NOT use transaction `net` as Gross — that already excludes Fees.
+  const gross = sum(params.transactions.map(creatorTxGrossAmount));
+  const fees = sum(params.transactions.map((t) => (t.fee > 0 ? t.fee : 0)));
   const refunds = sum(params.refunds.map((r) => r.payment_amount));
   return {
     gross,
     fees,
     refunds,
-    net_profit: gross - refunds,
+    net_profit: gross - fees - refunds,
     transaction_count: params.transactions.length,
     refund_count: params.refunds.length,
   };
@@ -439,7 +446,7 @@ function revenueByType(
   const map = new Map<string, number>();
   for (const t of txs) {
     const type = (t.type ?? "unknown").trim() || "unknown";
-    map.set(type, (map.get(type) ?? 0) + creatorTxRevenueAmount(t));
+    map.set(type, (map.get(type) ?? 0) + creatorTxGrossAmount(t));
   }
   const total = sum([...map.values()]);
   return [...map.entries()]
@@ -471,7 +478,7 @@ export function pickLatestCreatorDailySnapshot<
   return withFans ?? sorted[0]!;
 }
 
-/** Daily creator-share revenue (done txs only), bucketed on the Athens calendar. */
+/** Daily pre-OF gross revenue (done txs only), bucketed on the Athens calendar. */
 export function buildCreatorDailyRevenueTrend(
   transactions: CreatorTransactionRow[]
 ): Array<{ date: string; gross: number }> {
@@ -479,7 +486,7 @@ export function buildCreatorDailyRevenueTrend(
   for (const t of revenueTransactions(transactions)) {
     const day = ymdInAthens(t.created_time);
     if (!day) continue;
-    byDay.set(day, (byDay.get(day) ?? 0) + creatorTxRevenueAmount(t));
+    byDay.set(day, (byDay.get(day) ?? 0) + creatorTxGrossAmount(t));
   }
   return [...byDay.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
@@ -664,12 +671,12 @@ export function buildAgencyCreatorAnalytics(params: {
 /** Metric tooltip copy for creator earnings UIs. */
 export const CREATOR_EARNINGS_STAT_INFO = {
   gross:
-    "Sum of synced Infloww creator earnings after the OnlyFans platform fee — matches Infloww dashboard category totals.",
-  fees: "OnlyFans platform fees from transaction rows (pre-fee gross minus creator net).",
+    "Sum of fan payments before the OnlyFans platform fee (transaction amount). Fees are subtracted separately into Net Profit.",
+  fees: "OnlyFans platform fees from transaction rows (amount − creator net).",
   refunds: "Sum of refund payment amounts from GET /v1/refunds in the selected range.",
-  net_profit: "Creator earnings (gross) minus refunds in the selected range.",
-  tx_gross: "Creator share after the OnlyFans platform fee — matches Infloww dashboard totals.",
-  tx_net: "Creator gross minus any refund tied to that transaction.",
+  net_profit: "Gross − Fees − Refunds. Agency/creator take-home after OF cut and refunds.",
+  tx_gross: "Fan payment before the OnlyFans platform fee (transaction amount).",
+  tx_net: "Creator share after OF fee, minus any refund tied to that transaction.",
   refund_rate: "Refunds ÷ gross. Warns above 5%, critical above 10%.",
   visitors: "Profile visitors from Infloww creator-report reach.",
   active_fans: "Latest active fan count from creator-report in range.",

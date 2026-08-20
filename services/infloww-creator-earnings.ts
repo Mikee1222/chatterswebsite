@@ -59,6 +59,15 @@ export function isCreatorTxRevenueCountable(status: string | null | undefined): 
 }
 
 /**
+ * Pre-OnlyFans-fee fan payment for a transaction row (`amount`).
+ * Used for Creator Earnings "Gross" so Fees can be subtracted into Net Profit
+ * without double-counting the OF cut already reflected in `net`.
+ */
+export function creatorTxGrossAmount(row: { amount: number }): number {
+  return Number.isFinite(row.amount) ? Math.max(0, row.amount) : 0;
+}
+
+/**
  * Creator earnings in dollars for a transaction row — matches Infloww dashboard
  * category totals (creator share after OnlyFans platform fee). Prefer `net`; fall
  * back to amount − fee when net is missing.
@@ -1036,7 +1045,7 @@ export async function listCreatorTransactionTypeCounts(params: {
   for (const row of txs) {
     const type = (row.type ?? "unknown").trim() || "unknown";
     const prev = map.get(type) ?? { count: 0, gross: 0, net: 0 };
-    const gross = creatorTxRevenueAmount(row);
+    const gross = creatorTxGrossAmount(row);
     prev.count += 1;
     prev.gross += gross;
     prev.net += creatorTxNetAfterRefunds(row, refundByTxId);

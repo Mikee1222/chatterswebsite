@@ -43,8 +43,8 @@ import {
 import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import {
+  creatorTxGrossAmount,
   creatorTxNetAfterRefunds,
-  creatorTxRevenueAmount,
   refundsByTransactionId,
 } from "@/services/infloww-creator-earnings";
 import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
@@ -192,7 +192,7 @@ type DashboardPayload = {
   error?: string;
 };
 
-type SortKey = "name" | "gross" | "net" | "refund" | "churn" | "subs" | "rank";
+type SortKey = "name" | "gross" | "net" | "fees" | "refunds" | "refund" | "churn" | "subs" | "rank";
 
 function tip(key: keyof typeof CREATOR_EARNINGS_STAT_INFO) {
   return CREATOR_EARNINGS_STAT_INFO[key];
@@ -277,7 +277,7 @@ function TransactionsPanel({
     return grouped
       .map((g) => ({
         ...g,
-        gross: g.items.reduce((s, t) => s + creatorTxRevenueAmount(t), 0),
+        gross: g.items.reduce((s, t) => s + creatorTxGrossAmount(t), 0),
         net: g.items.reduce(
           (s, t) => s + creatorTxNetAfterRefunds(t, refundByTxId),
           0
@@ -304,7 +304,7 @@ function TransactionsPanel({
           <TxStatusBadge status={t.status} />
         </div>
         <p className="text-right text-sm tabular-nums text-white/70 sm:min-w-[4.5rem]">
-          {money(creatorTxRevenueAmount(t), 2)}
+          {money(creatorTxGrossAmount(t), 2)}
         </p>
         <p className="text-right text-sm font-semibold tabular-nums text-[#D4AF8C] sm:min-w-[4.5rem]">
           {money(creatorTxNetAfterRefunds(t, refundByTxId), 2)}
@@ -617,7 +617,7 @@ function ModelDrilldown({ row }: { row: ModelAnalytics }) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-white">{row.model_name}</p>
           <p className="mt-0.5 text-xs text-white/40">
-            Net {money(row.profit.net_profit, 0)} · Refund{" "}
+            Net {money(row.profit.net_profit, 0)} · Fees {money(row.profit.fees, 0)} · Refund{" "}
             {row.refund_rate.rate == null ? "—" : pct(row.refund_rate.rate)} · Renew-on{" "}
             {row.churn.renew_on_share == null ? "—" : pct(row.churn.renew_on_share)}
             {row.growth.latest_rank != null ? ` · Rank ${row.growth.latest_rank.toFixed(1)}%` : ""}
@@ -647,10 +647,22 @@ function ModelDrilldown({ row }: { row: ModelAnalytics }) {
         >
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <LuxuryStatCard
+              label="Gross"
+              value={<CountUp value={row.profit.gross} format={(n) => money(n, 0)} />}
+              tooltip={tip("gross")}
+              accent="champagne"
+            />
+            <LuxuryStatCard
               label="Net profit"
               value={<CountUp value={row.profit.net_profit} format={(n) => money(n, 0)} />}
+              hint={`Fees ${money(row.profit.fees, 0)} · Refunds ${money(row.profit.refunds, 0)}`}
               tooltip={tip("net_profit")}
-              accent="champagne"
+              accent="emerald"
+            />
+            <LuxuryStatCard
+              label="Fees"
+              value={<CountUp value={row.profit.fees} format={(n) => money(n, 0)} />}
+              tooltip={tip("fees")}
             />
             <LuxuryStatCard
               label="Refunds"
@@ -658,6 +670,8 @@ function ModelDrilldown({ row }: { row: ModelAnalytics }) {
               tooltip={tip("refunds")}
               accent="amber"
             />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <LuxuryStatCard
               label="ARPU"
               value={row.arpu == null ? "—" : money(row.arpu, 2)}
@@ -838,6 +852,10 @@ export function AdminEarningsDashboard() {
             return a.profit.gross;
           case "net":
             return a.profit.net_profit;
+          case "fees":
+            return a.profit.fees;
+          case "refunds":
+            return a.profit.refunds;
           case "refund":
             return a.refund_rate.rate ?? -1;
           case "churn":
@@ -858,6 +876,10 @@ export function AdminEarningsDashboard() {
             return b.profit.gross;
           case "net":
             return b.profit.net_profit;
+          case "fees":
+            return b.profit.fees;
+          case "refunds":
+            return b.profit.refunds;
           case "refund":
             return b.refund_rate.rate ?? -1;
           case "churn":
@@ -875,6 +897,14 @@ export function AdminEarningsDashboard() {
     });
     return rows;
   }, [data?.analytics.models, sortKey, sortAsc]);
+
+  function toggleModelSort(key: SortKey) {
+    if (sortKey === key) setSortAsc((v) => !v);
+    else {
+      setSortKey(key);
+      setSortAsc(false);
+    }
+  }
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "Overview" },
@@ -1056,6 +1086,7 @@ export function AdminEarningsDashboard() {
               value={
                 <CountUp value={profit?.gross ?? 0} format={(n) => money(n, 0)} duration={reduce ? 0 : 900} />
               }
+              hint="Pre–OnlyFans fee (fan payments)"
               tooltip={tip("gross")}
               accent="champagne"
               glow
@@ -1065,12 +1096,18 @@ export function AdminEarningsDashboard() {
               value={<CountUp value={profit?.net_profit ?? 0} format={(n) => money(n, 0)} />}
               hint={
                 profit
-                  ? `Fees ${money(profit.fees, 0)} · Refunds ${money(profit.refunds, 0)}`
+                  ? `Gross − Fees ${money(profit.fees, 0)} − Refunds ${money(profit.refunds, 0)}`
                   : undefined
               }
               tooltip={tip("net_profit")}
               accent="emerald"
               glow
+            />
+            <LuxuryStatCard
+              label="Fees"
+              value={<CountUp value={profit?.fees ?? 0} format={(n) => money(n, 0)} />}
+              hint="OnlyFans platform cut"
+              tooltip={tip("fees")}
             />
             <LuxuryStatCard
               label="Refund rate"
@@ -1079,6 +1116,9 @@ export function AdminEarningsDashboard() {
                   ? "—"
                   : pct(data.analytics.agency_refund_rate.rate)
               }
+              hint={
+                profit ? `Refunds ${money(profit.refunds, 0)}` : undefined
+              }
               tooltip={tip("refund_rate")}
               accent={
                 data.analytics.agency_refund_rate.flagged === "critical" ||
@@ -1086,12 +1126,6 @@ export function AdminEarningsDashboard() {
                   ? "amber"
                   : "white"
               }
-            />
-            <LuxuryStatCard
-              label="Linked models"
-              value={String(data.analytics.models.length)}
-              hint="With Infloww creator match"
-              tooltip="Models matched via infloww_creator_id (preferred) or fallback matching."
             />
           </div>
 
@@ -1190,22 +1224,106 @@ export function AdminEarningsDashboard() {
           <div className={cn(VA_CARD, "overflow-hidden")}>
             <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
               <div className="flex items-center gap-2">
-                <SectionLabel>Model leaderboard</SectionLabel>
-                <StatInfoTooltip text="Sortable by net profit, refund rate, auto-renew, growth, and rank." />
+                <SectionLabel>Per-model Gross / Net / Fees / Refunds</SectionLabel>
+                <StatInfoTooltip text="Same Gross − Fees − Refunds = Net formula as agency totals. Column headers sort the table." />
               </div>
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className={cn(VA_FILTER_INPUT, "text-xs")}
-              >
-                <option value="net">Net profit</option>
-                <option value="gross">Gross</option>
-                <option value="refund">Refund rate</option>
-                <option value="churn">Auto-renew</option>
-                <option value="subs">New subs</option>
-                <option value="rank">Rank</option>
-                <option value="name">Name</option>
-              </select>
+              <p className="text-[11px] text-white/35">
+                {sortedModels.length} models · Linked {data.analytics.models.length}
+              </p>
+            </div>
+            {sortedModels.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-left text-sm">
+                  <thead className="border-b border-white/8 text-[10px] uppercase tracking-wider text-white/40">
+                    <tr>
+                      {(
+                        [
+                          ["name", "Model", "text-left"],
+                          ["gross", "Gross", "text-right"],
+                          ["fees", "Fees", "text-right"],
+                          ["refunds", "Refunds", "text-right"],
+                          ["net", "Net profit", "text-right"],
+                          ["refund", "Refund rate", "text-right"],
+                        ] as const
+                      ).map(([key, label, align]) => (
+                        <th key={key} className={cn("px-4 py-3 font-medium", align)}>
+                          <button
+                            type="button"
+                            onClick={() => toggleModelSort(key)}
+                            className={cn(
+                              "inline-flex items-center gap-1 transition hover:text-[#D4AF8C]",
+                              sortKey === key ? "text-[#D4AF8C]" : "text-white/40"
+                            )}
+                          >
+                            {label}
+                            {sortKey === key ? (sortAsc ? " ↑" : " ↓") : ""}
+                          </button>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedModels.map((row) => (
+                      <tr key={row.creator_infloww_id} className="border-b border-white/5 hover:bg-white/[0.02]">
+                        <td className="px-4 py-2.5 font-medium text-white">{row.model_name}</td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-white/80">
+                          {money(row.profit.gross, 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-white/55">
+                          {money(row.profit.fees, 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-white/55">
+                          {money(row.profit.refunds, 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[#D4AF8C]">
+                          {money(row.profit.net_profit, 0)}
+                        </td>
+                        <td className="px-4 py-2.5 text-right tabular-nums text-white/70">
+                          {row.refund_rate.rate == null ? "—" : pct(row.refund_rate.rate)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  {profit ? (
+                    <tfoot className="border-t border-white/10 text-sm">
+                      <tr className="bg-white/[0.03]">
+                        <td className="px-4 py-3 font-semibold text-white/70">Agency total</td>
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-white">
+                          {money(profit.gross, 0)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-white/70">
+                          {money(profit.fees, 0)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-white/70">
+                          {money(profit.refunds, 0)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums font-semibold text-[#D4AF8C]">
+                          {money(profit.net_profit, 0)}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-white/55">
+                          {data.analytics.agency_refund_rate.rate == null
+                            ? "—"
+                            : pct(data.analytics.agency_refund_rate.rate)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  ) : null}
+                </table>
+              </div>
+            ) : (
+              <EmptyState
+                title="No linked models with data"
+                detail="Link models via Creator ID lookup, then sync."
+              />
+            )}
+          </div>
+
+          <div className={cn(VA_CARD, "overflow-hidden")}>
+            <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <SectionLabel>Model drilldown</SectionLabel>
+                <StatInfoTooltip text="Expand a model for fan funnel, revenue mix, ARPU, and auto-renew detail." />
+              </div>
             </div>
             {sortedModels.length ? (
               sortedModels.slice(0, 15).map((row) => (
@@ -1256,23 +1374,83 @@ export function AdminEarningsDashboard() {
       ) : null}
 
       {tab === "models" && data ? (
-        <div className={cn(VA_CARD, "overflow-hidden")}>
-          <div className="flex flex-wrap items-center gap-2 border-b border-white/8 px-4 py-3">
-            <SectionLabel>All models</SectionLabel>
-            <button
-              type="button"
-              className="ml-auto text-xs text-[#D4AF8C]"
-              onClick={() => setSortAsc((v) => !v)}
-            >
-              {sortAsc ? "Asc" : "Desc"}
-            </button>
+        <div className="space-y-4">
+          <div className={cn(VA_CARD, "overflow-hidden")}>
+            <div className="flex flex-wrap items-center gap-2 border-b border-white/8 px-4 py-3">
+              <SectionLabel>Per-model profit breakdown</SectionLabel>
+              <StatInfoTooltip text="Gross − Fees − Refunds = Net. Same shared computeNetProfit as agency totals." />
+              <select
+                value={sortKey}
+                onChange={(e) => {
+                  setSortKey(e.target.value as SortKey);
+                  setSortAsc(false);
+                }}
+                className={cn(VA_FILTER_INPUT, "ml-auto text-xs")}
+              >
+                <option value="net">Net profit</option>
+                <option value="gross">Gross</option>
+                <option value="fees">Fees</option>
+                <option value="refunds">Refunds</option>
+                <option value="refund">Refund rate</option>
+                <option value="churn">Auto-renew</option>
+                <option value="subs">New subs</option>
+                <option value="rank">Rank</option>
+                <option value="name">Name</option>
+              </select>
+              <button
+                type="button"
+                className="text-xs text-[#D4AF8C]"
+                onClick={() => setSortAsc((v) => !v)}
+              >
+                {sortAsc ? "Asc" : "Desc"}
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] text-left text-sm">
+                <thead className="border-b border-white/8 text-[10px] uppercase tracking-wider text-white/40">
+                  <tr>
+                    <th className="px-4 py-3">Model</th>
+                    <th className="px-4 py-3 text-right">Gross</th>
+                    <th className="px-4 py-3 text-right">Fees</th>
+                    <th className="px-4 py-3 text-right">Refunds</th>
+                    <th className="px-4 py-3 text-right">Net</th>
+                    <th className="px-4 py-3 text-right">Refund rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedModels.map((row) => (
+                    <tr key={row.creator_infloww_id} className="border-b border-white/5">
+                      <td className="px-4 py-2.5 font-medium text-white">{row.model_name}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">{money(row.profit.gross, 0)}</td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-white/55">
+                        {money(row.profit.fees, 0)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums text-white/55">
+                        {money(row.profit.refunds, 0)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-[#D4AF8C]">
+                        {money(row.profit.net_profit, 0)}
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        {row.refund_rate.rate == null ? "—" : pct(row.refund_rate.rate)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!sortedModels.length ? (
+              <EmptyState title="No models" detail="Link Infloww creator IDs on model profiles." />
+            ) : null}
           </div>
-          {sortedModels.map((row) => (
-            <ModelDrilldown key={row.creator_infloww_id} row={row} />
-          ))}
-          {!sortedModels.length ? (
-            <EmptyState title="No models" detail="Link Infloww creator IDs on model profiles." />
-          ) : null}
+          <div className={cn(VA_CARD, "overflow-hidden")}>
+            <div className="border-b border-white/8 px-4 py-3">
+              <SectionLabel>Model drilldown</SectionLabel>
+            </div>
+            {sortedModels.map((row) => (
+              <ModelDrilldown key={row.creator_infloww_id} row={row} />
+            ))}
+          </div>
         </div>
       ) : null}
 
