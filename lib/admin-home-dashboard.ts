@@ -4,11 +4,15 @@
  * fork a third copy of team sales rollups.
  */
 
-import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { addDaysAthensYmd, getTodayYmdAthens, ymdInAthens } from "@/lib/airtable-datetime";
 import { shiftWorkedMinutesFromActive } from "@/lib/shift-active-duration";
 import { computePctChange } from "@/services/infloww-analytics";
 import type { InflowwDailyStatsRow } from "@/services/infloww-daily-stats";
-import type { CreatorTransactionRow } from "@/services/infloww-creator-earnings";
+import {
+  creatorTxRevenueAmount,
+  filterCreatorTransactionsInAthensYmdRange,
+  type CreatorTransactionRow,
+} from "@/services/infloww-creator-earnings";
 import type {
   CustomRequest,
   ModelLiveStreamRecord,
@@ -280,6 +284,73 @@ export function buildDailyRevenueSeries(
   }));
 }
 
+type CreatorTxRevenueRow = Pick<
+  CreatorTransactionRow,
+  "amount" | "fee" | "net" | "created_time"
+>;
+
+/** Sum creator gross (post-OF net) for done txs on Athens calendar days. */
+export function sumCreatorTxRevenueInAthensRange(
+  transactions: CreatorTxRevenueRow[],
+  startYmd: string,
+  endYmd: string
+): number {
+  return filterCreatorTransactionsInAthensYmdRange(transactions, startYmd, endYmd).reduce(
+    (s, t) => s + creatorTxRevenueAmount(t),
+    0
+  );
+}
+
+/** Daily creator gross from synced transactions (matches Creator Earnings trend). */
+export function buildCreatorRevenueSeriesFromTxs(
+  transactions: CreatorTxRevenueRow[],
+  ymds: string[]
+): AdminDayAmount[] {
+  const allowed = new Set(ymds);
+  const byDay = new Map<string, number>();
+  for (const ymd of ymds) byDay.set(ymd, 0);
+  for (const t of transactions) {
+    const day = ymdInAthens(t.created_time);
+    if (!day || !allowed.has(day)) continue;
+    byDay.set(day, (byDay.get(day) ?? 0) + creatorTxRevenueAmount(t));
+  }
+  return ymds.map((ymd) => ({
+    ymd,
+    label: dayLabel(ymd),
+    usd: byDay.get(ymd) ?? 0,
+  }));
+}
+
+/** Last 7 days sparkline + WoW vs prior 7 (creator transaction gross). */
+export function buildAdminSparklineWowFromCreatorTxs(
+  transactions: CreatorTxRevenueRow[],
+  todayYmd = getTodayYmdAthens()
+): AdminSparklineWow {
+  const ymds = lastNAthensYmds(14, todayYmd);
+  const series = buildCreatorRevenueSeriesFromTxs(transactions, ymds);
+  const byDay = new Map(series.map((d) => [d.ymd, d.usd]));
+
+  const last7 = ymds.slice(-7);
+  const prev7 = ymds.slice(0, 7);
+
+  const sparkline7: AdminSparklineDay[] = last7.map((ymd) => ({
+    ymd,
+    label: dayLabel(ymd),
+    usd: byDay.get(ymd) ?? 0,
+  }));
+
+  const thisWeekUsd = last7.reduce((s, y) => s + (byDay.get(y) ?? 0), 0);
+  const prevWeekUsd = prev7.reduce((s, y) => s + (byDay.get(y) ?? 0), 0);
+  const change = computePctChange(thisWeekUsd, prevWeekUsd);
+
+  return {
+    sparkline7,
+    thisWeekUsd,
+    prevWeekUsd,
+    wowPercent: change.pct_change,
+  };
+}
+
 /** Rank chatters by sales in range (employee daily stats). */
 export function rankChattersBySales(
   rows: InflowwDailyStatsRow[],
@@ -305,18 +376,20 @@ export function rankChattersBySales(
 }
 
 /**
- * Rank models by gross from synced creator transactions.
- * (Creator daily stats have no sales column — transactions are the revenue source.)
+ * Rank models by creator gross from synced creator transactions.
+ * Uses post-OF creator share (transaction net) — matches Creator Earnings.
  */
 export function rankModelsByTransactionGross(
-  transactions: Array<Pick<CreatorTransactionRow, "amount" | "model_record_id">>,
+  transactions: Array<
+    Pick<CreatorTransactionRow, "amount" | "fee" | "net" | "model_record_id">
+  >,
   nameByModelRecordId: Map<string, string>
 ): AdminNamedAmount[] {
   const byModel = new Map<string, number>();
   for (const t of transactions) {
     const mid = t.model_record_id?.trim() || "";
     const key = mid || "__unknown__";
-    byModel.set(key, (byModel.get(key) ?? 0) + (t.amount ?? 0));
+    byModel.set(key, (byModel.get(key) ?? 0) + creatorTxRevenueAmount(t));
   }
   return [...byModel.entries()]
     .map(([key, usd]) => ({

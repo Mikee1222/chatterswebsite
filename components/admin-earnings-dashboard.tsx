@@ -42,6 +42,11 @@ import {
 } from "@/components/earnings-filter-list";
 import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
+import {
+  creatorTxNetAfterRefunds,
+  creatorTxRevenueAmount,
+  refundsByTransactionId,
+} from "@/services/infloww-creator-earnings";
 import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
@@ -117,6 +122,7 @@ type DashboardPayload = {
     type: string | null;
     status: string | null;
     amount: number;
+    fee: number;
     net: number;
     attribute_employee_id: string | null;
     sales_amount: number | null;
@@ -124,6 +130,7 @@ type DashboardPayload = {
   txTypeCounts?: TypeCount[];
   refunds: Array<{
     refund_id: string;
+    transaction_id: string;
     payment_amount: number;
     refund_time: string | null;
     transaction_type: string | null;
@@ -238,6 +245,8 @@ function TransactionsPanel({
     return countByType(transactions, (t) => t.type);
   }, [txTypeCounts, transactions]);
 
+  const refundByTxId = React.useMemo(() => refundsByTransactionId(refunds), [refunds]);
+
   const filtered = React.useMemo(() => {
     const q = txSearchLocal.trim().toLowerCase();
     return transactions.filter((t) => {
@@ -268,11 +277,14 @@ function TransactionsPanel({
     return grouped
       .map((g) => ({
         ...g,
-        gross: g.items.reduce((s, t) => s + t.amount, 0),
-        net: g.items.reduce((s, t) => s + t.net, 0),
+        gross: g.items.reduce((s, t) => s + creatorTxRevenueAmount(t), 0),
+        net: g.items.reduce(
+          (s, t) => s + creatorTxNetAfterRefunds(t, refundByTxId),
+          0
+        ),
       }))
       .sort((a, b) => b.gross - a.gross);
-  }, [filtered, groupAll]);
+  }, [filtered, groupAll, refundByTxId]);
 
   function renderTxRow(t: TxRow) {
     return (
@@ -292,10 +304,10 @@ function TransactionsPanel({
           <TxStatusBadge status={t.status} />
         </div>
         <p className="text-right text-sm tabular-nums text-white/70 sm:min-w-[4.5rem]">
-          {money(t.amount, 2)}
+          {money(creatorTxRevenueAmount(t), 2)}
         </p>
         <p className="text-right text-sm font-semibold tabular-nums text-[#D4AF8C] sm:min-w-[4.5rem]">
-          {money(t.net, 2)}
+          {money(creatorTxNetAfterRefunds(t, refundByTxId), 2)}
         </p>
         <p className="col-span-2 hidden text-right text-[11px] text-white/35 sm:col-span-1 sm:block sm:min-w-[7rem]">
           {t.created_time?.slice(0, 16)?.replace("T", " ") ?? "—"}
@@ -380,8 +392,14 @@ function TransactionsPanel({
             <div className="hidden border-b border-white/8 px-4 py-2 text-[10px] uppercase tracking-wider text-white/35 sm:grid sm:grid-cols-[minmax(0,1.4fr)_auto_auto_auto_auto] sm:gap-4">
               <span>Fan</span>
               <span>Type / status</span>
-              <span className="text-right">Gross</span>
-              <span className="text-right">Net</span>
+              <span className="text-right">
+                Gross
+                <StatInfoTooltip text={tip("tx_gross")} />
+              </span>
+              <span className="text-right">
+                Net
+                <StatInfoTooltip text={tip("tx_net")} />
+              </span>
               <span className="text-right">When</span>
             </div>
             {pagination.pageItems.map((t) => renderTxRow(t))}

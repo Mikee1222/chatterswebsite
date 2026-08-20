@@ -16,6 +16,7 @@ import {
   queryInflowwDailyStats,
 } from "@/services/infloww-daily-stats";
 import {
+  filterCreatorTransactionsInAthensYmdRange,
   listCreatorTransactions,
   listCreatorTransactionTypeCounts,
   listLinkedCreatorModels,
@@ -24,16 +25,15 @@ import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { AdminHomeClient } from "@/components/admin-home-client";
 import {
   buildAdminRecentActivity,
-  buildAdminSparklineWowFromDailyStats,
-  buildDailyRevenueSeries,
+  buildAdminSparklineWowFromCreatorTxs,
+  buildCreatorRevenueSeriesFromTxs,
   buildMonthlyTargetProgress,
   lastNAthensYmds,
   rankChattersBySales,
   rankModelsByTransactionGross,
   resolveMonthRangeAthens,
   latestSyncedAtForYmd,
-  sumSalesForYmd,
-  sumSalesInRange,
+  sumCreatorTxRevenueInAthensRange,
   sumShiftHoursForRole,
   toAdminHomeLiveShiftRows,
   type AdminHomeVaProgressSummary,
@@ -102,7 +102,7 @@ export default async function AdminHomePage({
   const uuids = linkedUsers.map((u) => u.uuid);
   const nameByUuid = new Map(linkedUsers.map((u) => [u.uuid, u.full_name || "—"]));
 
-  const [dailyRows, monthTxs, txTypeCounts, chatterShifts, vaShifts, shiftsThisMonth] =
+  const [dailyRows, creatorTxs, txTypeCounts, chatterShifts, vaShifts, shiftsThisMonth] =
     await Promise.all([
       uuids.length
         ? queryInflowwDailyStats({
@@ -112,8 +112,8 @@ export default async function AdminHomePage({
           }).catch(() => [])
         : Promise.resolve([]),
       listCreatorTransactions({
-        startYmd: monthStart,
-        endYmd: monthEnd,
+        startYmd: fetchStart,
+        endYmd: fetchEnd,
         fetchAll: true,
         revenueOnly: true,
       }).catch(() => []),
@@ -126,6 +126,12 @@ export default async function AdminHomePage({
       getShiftsForMonth(yearMonth).catch(() => []),
     ]);
 
+  const monthCreatorTxs = filterCreatorTransactionsInAthensYmdRange(
+    creatorTxs,
+    monthStart,
+    monthEnd
+  );
+
   const activityTxs = await listCreatorTransactions({
     startYmd: activityStart,
     endYmd: todayYmd,
@@ -136,17 +142,17 @@ export default async function AdminHomePage({
     .filter((u) => u.role === "chatter")
     .map((u) => ({ id: u.id, full_name: u.full_name ?? "" }));
 
-  const todaySalesUsd = sumSalesForYmd(dailyRows, todayYmd);
+  const todaySalesUsd = sumCreatorTxRevenueInAthensRange(creatorTxs, todayYmd, todayYmd);
   const inflowwLastSyncedAt = latestSyncedAtForYmd(dailyRows, todayYmd);
-  const totalRevenue = sumSalesInRange(dailyRows, monthStart, monthEnd);
-  const sparklineWow = buildAdminSparklineWowFromDailyStats(dailyRows, todayYmd);
-  const daily14 = buildDailyRevenueSeries(dailyRows, lastNAthensYmds(14, todayYmd));
+  const totalRevenue = sumCreatorTxRevenueInAthensRange(creatorTxs, monthStart, monthEnd);
+  const sparklineWow = buildAdminSparklineWowFromCreatorTxs(creatorTxs, todayYmd);
+  const daily14 = buildCreatorRevenueSeriesFromTxs(creatorTxs, lastNAthensYmds(14, todayYmd));
 
   const byChatter = rankChattersBySales(dailyRows, monthStart, monthEnd, nameByUuid);
   const nameByModelRecord = new Map(
     linkedCreators.linked.map((l) => [l.modelRecordId, l.modelName] as const)
   );
-  const byModel = rankModelsByTransactionGross(monthTxs, nameByModelRecord);
+  const byModel = rankModelsByTransactionGross(monthCreatorTxs, nameByModelRecord);
 
   const transactionCount = txTypeCounts.reduce((s, r) => s + r.count, 0);
   const transactionGross = txTypeCounts.reduce((s, r) => s + r.gross, 0);

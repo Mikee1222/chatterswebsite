@@ -91,6 +91,30 @@ export function sumCreatorTxRevenue(
   return rows.reduce((s, t) => s + creatorTxRevenueAmount(t), 0);
 }
 
+/** Refund totals keyed by transaction id (multiple partial refunds sum). */
+export function refundsByTransactionId(
+  refunds: Array<{ transaction_id: string; payment_amount: number }>
+): Map<string, number> {
+  const map = new Map<string, number>();
+  for (const r of refunds) {
+    const id = (r.transaction_id ?? "").trim();
+    if (!id) continue;
+    map.set(id, (map.get(id) ?? 0) + r.payment_amount);
+  }
+  return map;
+}
+
+/** Creator gross for one tx minus any linked refund rows. */
+export function creatorTxNetAfterRefunds(
+  row: { amount: number; fee: number; net: number; transaction_id?: string },
+  refundByTxId: Map<string, number>
+): number {
+  const gross = creatorTxRevenueAmount(row);
+  const txId = (row.transaction_id ?? "").trim();
+  const refunded = txId ? (refundByTxId.get(txId) ?? 0) : 0;
+  return Math.max(0, gross - refunded);
+}
+
 /** Filter pre-fetched txs to an Infloww stats YMD range on the Athens calendar. */
 export function filterCreatorTransactionsInAthensYmdRange<
   T extends { created_time: string | null },
@@ -990,21 +1014,32 @@ export async function listCreatorTransactionTypeCounts(params: {
   creatorInflowwId?: string;
   revenueOnly?: boolean;
 }): Promise<CreatorTransactionTypeCount[]> {
-  const txs = await listCreatorTransactions({
-    startYmd: params.startYmd,
-    endYmd: params.endYmd,
-    modelRecordId: params.modelRecordId,
-    creatorInflowwId: params.creatorInflowwId,
-    fetchAll: true,
-    revenueOnly: params.revenueOnly !== false,
-  });
+  const [txs, refunds] = await Promise.all([
+    listCreatorTransactions({
+      startYmd: params.startYmd,
+      endYmd: params.endYmd,
+      modelRecordId: params.modelRecordId,
+      creatorInflowwId: params.creatorInflowwId,
+      fetchAll: true,
+      revenueOnly: params.revenueOnly !== false,
+    }),
+    listCreatorRefunds({
+      startYmd: params.startYmd,
+      endYmd: params.endYmd,
+      modelRecordId: params.modelRecordId,
+      creatorInflowwId: params.creatorInflowwId,
+      limit: 5000,
+    }),
+  ]);
+  const refundByTxId = refundsByTransactionId(refunds);
   const map = new Map<string, { count: number; gross: number; net: number }>();
   for (const row of txs) {
     const type = (row.type ?? "unknown").trim() || "unknown";
     const prev = map.get(type) ?? { count: 0, gross: 0, net: 0 };
+    const gross = creatorTxRevenueAmount(row);
     prev.count += 1;
-    prev.gross += creatorTxRevenueAmount(row);
-    prev.net += row.net;
+    prev.gross += gross;
+    prev.net += creatorTxNetAfterRefunds(row, refundByTxId);
     map.set(type, prev);
   }
   return [...map.entries()]

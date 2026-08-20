@@ -48,7 +48,8 @@ import {
 import {
   listLinkedClarioSuiteModels,
   queryClarioSuiteDailyInsights,
-  queryClarioSuiteTopPosts,
+  queryClarioSuiteTopPostsForModels,
+  type ClarioSuiteTopPostRow,
 } from "@/services/clariosuite-sync";
 import {
   filterCreatorTransactionsInAthensYmdRange,
@@ -196,7 +197,7 @@ export type IgWeeklyProgressReport = {
   team_month_totals: IgWeekMetricTotals;
 };
 
-type FullTopPost = Awaited<ReturnType<typeof queryClarioSuiteTopPosts>>[number];
+type FullTopPost = ClarioSuiteTopPostRow;
 
 type HistoricalWeekAvg = {
   reachSum: number;
@@ -687,25 +688,19 @@ export async function getInstagramWeeklyProgressReport(
     linked = linked.filter((l) => l.modelRecordId === filters.modelRecordId);
   }
 
-  const [allDaily, historicalDailyRows, allTopPosts, ofDailyRows, ofTxRows] = await Promise.all([
+  const [allDailyCombined, allTopPostsMap, ofDailyRows, ofTxRows] = await Promise.all([
     linked.length
-      ? queryClarioSuiteDailyInsights({ startYmd: monthStart, endYmd: monthEnd })
-      : Promise.resolve([]),
-    linked.length && historicalEndYmd >= historicalStartYmd
       ? queryClarioSuiteDailyInsights({
           startYmd: historicalStartYmd,
-          endYmd: historicalEndYmd,
+          endYmd: monthEnd,
         })
       : Promise.resolve([]),
-    Promise.all(
-      linked.map(async (m) => {
-        const posts: FullTopPost[] = [];
-        for (const a of m.accounts) {
-          posts.push(...(await queryClarioSuiteTopPosts({ igUserId: a.igUserId, limit: 50 })));
-        }
-        return { modelId: m.modelRecordId, posts };
-      })
-    ),
+    linked.length
+      ? queryClarioSuiteTopPostsForModels({
+          modelRecordIds: linked.map((m) => m.modelRecordId),
+          limitPerModel: 50,
+        })
+      : Promise.resolve(new Map<string, FullTopPost[]>()),
     linked.length
       ? listCreatorDailyStats({ startYmd: historicalStartYmd, endYmd: monthEnd })
       : Promise.resolve([]),
@@ -718,6 +713,20 @@ export async function getInstagramWeeklyProgressReport(
         })
       : Promise.resolve([]),
   ]);
+
+  const allDaily = allDailyCombined.filter(
+    (d) => d.date >= monthStart && d.date <= monthEnd
+  );
+  const historicalDailyRows =
+    historicalEndYmd >= historicalStartYmd
+      ? allDailyCombined.filter(
+          (d) => d.date >= historicalStartYmd && d.date <= historicalEndYmd
+        )
+      : [];
+  const allTopPosts = linked.map((m) => ({
+    modelId: m.modelRecordId,
+    posts: allTopPostsMap.get(m.modelRecordId) ?? [],
+  }));
 
   const fullPostsByModel = new Map<string, FullTopPost[]>();
   const postsByModel = new Map<string, IgPostRow[]>();

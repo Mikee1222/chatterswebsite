@@ -638,6 +638,63 @@ export async function queryClarioSuiteTopPosts(params: {
   }));
 }
 
+export type ClarioSuiteTopPostRow = Awaited<ReturnType<typeof queryClarioSuiteTopPosts>>[number];
+
+/** Fetch top posts for many models in one query (avoids per-account round trips). */
+export async function queryClarioSuiteTopPostsForModels(params: {
+  modelRecordIds: string[];
+  limitPerModel?: number;
+}): Promise<Map<string, ClarioSuiteTopPostRow[]>> {
+  const out = new Map<string, ClarioSuiteTopPostRow[]>();
+  const ids = [...new Set(params.modelRecordIds.map((id) => id.trim()).filter(Boolean))];
+  if (!ids.length) return out;
+  for (const id of ids) out.set(id, []);
+
+  type PostRow = SbRow & Record<string, unknown>;
+  const rows = await sbSelectWhere<PostRow>(
+    "clariosuite_top_posts",
+    (q) => q.in("model_record_id", ids).order("engagement_score", { ascending: false }),
+    "id,media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,posted_at,rank,model_record_id"
+  );
+
+  const limitPerModel = params.limitPerModel ?? TOP_POSTS_PER_MODEL;
+  const grouped = new Map<string, PostRow[]>();
+  for (const row of rows) {
+    const modelId = row.model_record_id != null ? String(row.model_record_id) : "";
+    if (!modelId || !out.has(modelId)) continue;
+    const list = grouped.get(modelId) ?? [];
+    list.push(row);
+    grouped.set(modelId, list);
+  }
+
+  for (const [modelId, modelRows] of grouped) {
+    out.set(
+      modelId,
+      modelRows.slice(0, limitPerModel).map((row) => ({
+        media_id: String(row.media_id),
+        permalink: row.permalink != null ? String(row.permalink) : null,
+        media_type: row.media_type != null ? String(row.media_type) : null,
+        media_product_type:
+          row.media_product_type != null ? String(row.media_product_type) : null,
+        caption: row.caption != null ? String(row.caption) : null,
+        image_url: row.image_url != null ? String(row.image_url) : null,
+        engagement_score:
+          row.engagement_score == null ? null : n(row.engagement_score),
+        reach: n(row.reach),
+        likes: n(row.likes),
+        comments: n(row.comments),
+        shares: n(row.shares),
+        saved: n(row.saved),
+        views: n(row.views),
+        posted_at: row.posted_at != null ? String(row.posted_at) : null,
+        rank: n(row.rank),
+      }))
+    );
+  }
+
+  return out;
+}
+
 /** Look up a cached top-post row (for detail enrichment / auth scoping). */
 export async function getClarioSuiteTopPostByMediaId(params: {
   mediaId: string;

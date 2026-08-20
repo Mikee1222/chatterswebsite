@@ -654,7 +654,7 @@ export function AdminHomeClient(props: Props) {
                 </div>
               </div>
             }
-            tooltip="Sum of employee-report sales for today (Athens) across all linked chatters from infloww_daily_stats. Daily cron keeps Hobby limits; use Sync now for a fresh pull."
+            tooltip="Creator gross (post-OF net) for today from synced infloww_transactions — matches Creator Earnings. Daily cron keeps Hobby limits; use Sync now for a fresh pull."
             accent="pink"
             glow
           />
@@ -684,7 +684,7 @@ export function AdminHomeClient(props: Props) {
               <h2 className={sectionTitleClass}>
                 Revenue trend
                 <span className="ml-1.5 inline-flex align-middle">
-                  <StatInfoTooltip text="Team sales by day from infloww_daily_stats (last 7 Athens days)." />
+                  <StatInfoTooltip text="Creator gross by day from infloww_transactions (last 7 Athens days) — matches Creator Earnings trend." />
                 </span>
               </h2>
               <p className="mt-1 text-sm text-white/40">Last 7 days · synced sales</p>
@@ -795,8 +795,8 @@ export function AdminHomeClient(props: Props) {
                 ) : (
                   "—"
                 ),
-                hint: "Employee daily sales",
-                tooltip: "Team sales from infloww_daily_stats for the selected Athens month.",
+                hint: "Creator gross",
+                tooltip: "Sum of creator transaction gross (post-OF net) for the Athens month — matches Creator Earnings overview.",
                 highlight: true,
               },
               {
@@ -833,7 +833,7 @@ export function AdminHomeClient(props: Props) {
                   props.byModel.length === 0
                     ? "—"
                     : money(props.topModelRevenue ?? 0),
-                tooltip: "Highest gross from infloww_transactions by model.",
+                tooltip: "Highest creator gross from infloww_transactions by model — matches Creator Earnings.",
               },
               {
                 k: "tc",
@@ -1067,7 +1067,7 @@ export function AdminHomeClient(props: Props) {
           <h3 className={sectionTitleClass}>
             Revenue by model
             <span className="ml-1.5 inline-flex align-middle">
-              <StatInfoTooltip text="Gross from synced infloww_transactions grouped by model (Creator Earnings)." />
+              <StatInfoTooltip text="Creator gross (post-OF net) from synced infloww_transactions by model — matches Creator Earnings." />
             </span>
           </h3>
           <div className="mt-3 max-h-72 space-y-0 overflow-y-auto overscroll-contain pr-1">
