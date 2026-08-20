@@ -359,6 +359,10 @@ export async function submitTypingResult(input: {
   const existing = await getTypingBySession(input.sessionId);
   if (existing) return existing;
 
+  if (input.typed.length < input.passage.length) {
+    throw new Error("Please complete the full passage before submitting");
+  }
+
   const elapsedMs = Math.max(0, input.timeTakenSeconds) * 1000;
   const stats = computeTypingStats({
     passage: input.passage,

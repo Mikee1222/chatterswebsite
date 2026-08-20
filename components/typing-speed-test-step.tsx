@@ -104,6 +104,7 @@ export function TypingSpeedTestStep({
   const [passage, setPassage] = useState<TypingPassage | null>(null);
   const [highlightTyped, setHighlightTyped] = useState("");
   const [canFinish, setCanFinish] = useState(false);
+  const [typedCount, setTypedCount] = useState(0);
   const [displayStats, setDisplayStats] = useState({
     wpm: 0,
     accuracy_percent: 0,
@@ -145,7 +146,10 @@ export function TypingSpeedTestStep({
         accuracy_percent: typedRef.current.length ? stats.accuracy_percent : 0,
         elapsedMs,
       });
-      setCanFinish(typedRef.current.trim().length >= 20);
+      const typedLen = typedRef.current.length;
+      setTypedCount(typedLen);
+      // Full passage required — correct or incorrect characters both count toward length
+      setCanFinish(typedLen >= p.text.length);
     };
     tick();
     const id = setInterval(tick, STATS_INTERVAL_MS);
@@ -161,6 +165,7 @@ export function TypingSpeedTestStep({
     startedAt.current = null;
     setHighlightTyped("");
     setCanFinish(false);
+    setTypedCount(0);
     setDisplayStats({ wpm: 0, accuracy_percent: 0, elapsedMs: 0 });
     setFinalStats(null);
     setError(null);
@@ -190,6 +195,10 @@ export function TypingSpeedTestStep({
     }
 
     const p = passageRef.current;
+    // Cap at passage length so finish = every character position typed
+    if (p && next.length > p.text.length) {
+      next = next.slice(0, p.text.length);
+    }
     if (p) {
       let matchLen = 0;
       const limit = Math.min(next.length, p.text.length);
@@ -208,6 +217,8 @@ export function TypingSpeedTestStep({
     if (!startedAt.current && next.length > 0) {
       startedAt.current = Date.now();
     }
+    setTypedCount(next.length);
+    setCanFinish(!!p && next.length >= p.text.length);
     syncHighlight();
   }
 
@@ -224,6 +235,7 @@ export function TypingSpeedTestStep({
     const p = passageRef.current;
     if (!p || !startedAt.current) return;
     const typed = typedRef.current;
+    if (typed.length < p.text.length) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -380,16 +392,49 @@ export function TypingSpeedTestStep({
           placeholder="…"
           aria-label={ui.typingTitle}
         />
+        {passage ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3 text-xs tabular-nums text-white/45">
+              <span>
+                {typedCount} / {passage.text.length} {ui.typingCharsUnit}
+              </span>
+              <span>
+                {Math.min(100, Math.round((typedCount / Math.max(passage.text.length, 1)) * 100))}%
+              </span>
+            </div>
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-white/10"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={passage.text.length}
+              aria-valuenow={typedCount}
+            >
+              <div
+                className="h-full rounded-full bg-[#FF1493] transition-[width] duration-150 ease-out"
+                style={{
+                  width: `${Math.min(100, (typedCount / Math.max(passage.text.length, 1)) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        ) : null}
         {error && <p className="text-sm text-rose-400">{error}</p>}
-        <ApplyButton
-          variant="primary"
-          loading={submitting}
-          disabled={!canFinish}
-          iconRight={<Check className="h-4 w-4" aria-hidden />}
-          onClick={() => void finish()}
-        >
-          {submitting ? ui.submitting : ui.typingFinished}
-        </ApplyButton>
+        {canFinish ? (
+          <ApplyButton
+            variant="primary"
+            loading={submitting}
+            iconRight={<Check className="h-4 w-4" aria-hidden />}
+            onClick={() => void finish()}
+          >
+            {submitting ? ui.submitting : ui.typingFinished}
+          </ApplyButton>
+        ) : (
+          <p className="text-center text-xs text-white/40">
+            {preferredLanguage === "el"
+              ? "Ολοκλήρωσε ολόκληρο το κείμενο για να υποβάλεις."
+              : "Complete the full passage to finish."}
+          </p>
+        )}
       </div>
     </ApplyStepShell>
   );

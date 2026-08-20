@@ -51,7 +51,7 @@ export const PIPELINE_UI = {
     eqBody:
       "Short workplace scenarios. Choose the response that best reflects thoughtful interpersonal judgment. There is no single “perfect” answer; options are graded for practical EQ skills.",
     typingIntro:
-      "Type the passage as accurately and quickly as you can. Paste is disabled. Timing starts on your first keystroke.",
+      "Type the full passage as accurately and quickly as you can. Paste is disabled. Timing starts on your first keystroke. You must reach the end before finishing.",
     typingStart: "Start typing test",
     typingFinished: "Finish test",
     typingResults: "Your results",
@@ -61,6 +61,7 @@ export const PIPELINE_UI = {
     typingContinue: "Continue",
     typingPassageLang: "Passage language",
     typingReady: "Ready when you are",
+    typingCharsUnit: "characters",
     fieldRequiredMark: "*",
   },
   el: {
@@ -107,7 +108,7 @@ export const PIPELINE_UI = {
     eqBody:
       "Σύντομα σενάρια χώρου εργασίας. Επίλεξε την απάντηση που δείχνει προσεκτική διαπροσωπική κρίση. Δεν υπάρχει μία «τέλεια» απάντηση· οι επιλογές βαθμολογούνται για πρακτικές δεξιότητες EQ.",
     typingIntro:
-      "Πληκτρολόγησε το κείμενο όσο πιο σωστά και γρήγορα μπορείς. Η επικόλληση είναι απενεργοποιημένη. Ο χρόνος ξεκινά στο πρώτο πλήκτρο.",
+      "Πληκτρολόγησε ολόκληρο το κείμενο όσο πιο σωστά και γρήγορα μπορείς. Η επικόλληση είναι απενεργοποιημένη. Ο χρόνος ξεκινά στο πρώτο πλήκτρο. Πρέπει να φτάσεις μέχρι το τέλος για να ολοκληρώσεις.",
     typingStart: "Έναρξη τεστ πληκτρολόγησης",
     typingFinished: "Ολοκλήρωση τεστ",
     typingResults: "Τα αποτελέσματά σου",
@@ -117,6 +118,7 @@ export const PIPELINE_UI = {
     typingContinue: "Συνέχεια",
     typingPassageLang: "Γλώσσα κειμένου",
     typingReady: "Όποτε είσαι έτοιμος/η",
+    typingCharsUnit: "χαρακτήρες",
     fieldRequiredMark: "*",
   },
 } as const;
