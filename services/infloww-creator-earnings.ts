@@ -51,11 +51,35 @@ const LOADING_RESYNC_MIN_MS = 12 * 60 * 60 * 1000;
 /** Supabase PostgREST max rows per request. */
 const SUPABASE_PAGE_SIZE = 1000;
 
-/** Statuses that count toward creator revenue totals (exclude loading/pending/undo). */
-export const CREATOR_TX_REVENUE_STATUSES = ["done"] as const;
+/**
+ * Statuses that count toward creator revenue / Net Profit.
+ * Infloww dashboard "Total earnings" includes both settled (`done`) and still-settling
+ * (`loading`) payments; exclude undo/pending_return/etc.
+ */
+export const CREATOR_TX_REVENUE_STATUSES = ["done", "loading"] as const;
 
 export function isCreatorTxRevenueCountable(status: string | null | undefined): boolean {
-  return (status ?? "").trim().toLowerCase() === "done";
+  const s = (status ?? "").trim().toLowerCase();
+  return s === "done" || s === "loading";
+}
+
+/**
+ * Drop `/transactions` hex twins when a canonical (usually numeric / perf) row already
+ * exists: twin.infloww_row_id === canonical.transaction_id.
+ */
+export function dedupeCreatorTransactionsForRevenue<
+  T extends { transaction_id: string; infloww_row_id?: string | null },
+>(rows: T[]): T[] {
+  if (rows.length < 2) return rows;
+  const ids = new Set(rows.map((r) => r.transaction_id));
+  const isHex32 = (id: string) => /^[a-f0-9]{32}$/i.test(id);
+  return rows.filter((r) => {
+    // Only drop list-endpoint hex twins; numeric perf row ids can collide across payments.
+    if (!isHex32(r.transaction_id)) return true;
+    const link = (r.infloww_row_id ?? "").trim();
+    if (!link || link === r.transaction_id) return true;
+    return !ids.has(link);
+  });
 }
 
 /**
@@ -352,25 +376,52 @@ async function upsertTransactions(
 ): Promise<number> {
   if (!txs.length && !perfByTxId.size) return 0;
   const byId = new Map(txs.map((t) => [t.transactionId, t]));
+  /** inflowwRowId → key currently in byId (list endpoint often stores numeric id here). */
+  const byInflowwRowId = new Map<string, string>();
+  for (const t of byId.values()) {
+    if (t.inflowwRowId) byInflowwRowId.set(t.inflowwRowId, t.transactionId);
+  }
   for (const [id, p] of perfByTxId) {
-    if (!byId.has(id)) {
+    if (byId.has(id)) continue;
+    const listKey = byInflowwRowId.get(id);
+    if (listKey && byId.has(listKey)) {
+      // Same payment: re-key list row onto canonical perf transactionId so upsert merges.
+      const existing = byId.get(listKey)!;
+      byId.delete(listKey);
       byId.set(id, {
-        transactionId: p.transactionId,
-        inflowwRowId: p.inflowwRowId,
-        creatorId: p.creatorId,
-        platformPid: p.platformPid,
-        fanId: p.fanId,
-        fanName: p.fanName,
-        createdTimeMs: p.createdTimeMs,
-        type: p.type,
-        tipSource: p.tipSource,
-        status: p.status,
-        amount: p.amount,
-        fee: p.fee,
-        net: p.net,
-        currency: p.currency,
+        ...existing,
+        transactionId: id,
+        inflowwRowId: p.inflowwRowId ?? existing.inflowwRowId,
+        platformPid: existing.platformPid ?? p.platformPid,
+        fanId: existing.fanId ?? p.fanId,
+        fanName: existing.fanName ?? p.fanName,
+        createdTimeMs: existing.createdTimeMs || p.createdTimeMs,
+        type: existing.type ?? p.type,
+        tipSource: existing.tipSource ?? p.tipSource,
+        status: p.status || existing.status,
+        amount: existing.amount || p.amount,
+        fee: existing.fee || p.fee,
+        net: existing.net || p.net,
+        currency: existing.currency || p.currency,
       });
+      continue;
     }
+    byId.set(id, {
+      transactionId: p.transactionId,
+      inflowwRowId: p.inflowwRowId,
+      creatorId: p.creatorId,
+      platformPid: p.platformPid,
+      fanId: p.fanId,
+      fanName: p.fanName,
+      createdTimeMs: p.createdTimeMs,
+      type: p.type,
+      tipSource: p.tipSource,
+      status: p.status,
+      amount: p.amount,
+      fee: p.fee,
+      net: p.net,
+      currency: p.currency,
+    });
   }
   const payload = [...byId.values()].map((tx) =>
     txUpsertPayload(link, tx, perfByTxId.get(tx.transactionId), { markLoadingSync: true })
@@ -928,6 +979,7 @@ export async function listCreatorDailyStats(params: {
 
 export type CreatorTransactionRow = {
   transaction_id: string;
+  infloww_row_id: string | null;
   creator_infloww_id: string;
   model_record_id: string | null;
   model_name?: string | null;
@@ -947,6 +999,7 @@ export type CreatorTransactionRow = {
 function mapCreatorTransactionRow(row: Record<string, unknown>): CreatorTransactionRow {
   return {
     transaction_id: String(row.transaction_id),
+    infloww_row_id: row.infloww_row_id ? String(row.infloww_row_id) : null,
     creator_infloww_id: String(row.creator_infloww_id),
     model_record_id: row.model_record_id ? String(row.model_record_id) : null,
     fan_id: row.fan_id ? String(row.fan_id) : null,
@@ -974,7 +1027,7 @@ export async function listCreatorTransactions(params: {
   limit?: number;
   /** Paginate through all matching rows (for month-wide revenue aggregation). */
   fetchAll?: boolean;
-  /** When true, only `done` rows — safe for revenue totals. Default false for transaction lists. */
+  /** When true, only revenue-countable statuses (`done` + `loading`) — for totals. Default false for transaction lists. */
   revenueOnly?: boolean;
 }): Promise<CreatorTransactionRow[]> {
   const sb = getSupabaseServiceClient();
@@ -982,7 +1035,7 @@ export async function listCreatorTransactions(params: {
   const fetchAll = params.fetchAll === true;
   const maxRows = fetchAll ? Number.POSITIVE_INFINITY : (params.limit ?? 500);
   const selectCols =
-    "transaction_id, creator_infloww_id, model_record_id, fan_id, fan_name, created_time, type, status, amount, fee, net, sales_rule, attribute_employee_id, sales_amount";
+    "transaction_id, infloww_row_id, creator_infloww_id, model_record_id, fan_id, fan_name, created_time, type, status, amount, fee, net, sales_rule, attribute_employee_id, sales_amount";
 
   const out: CreatorTransactionRow[] = [];
   let offset = 0;
@@ -1018,7 +1071,7 @@ export async function listCreatorTransactions(params: {
     offset += rows.length;
   }
 
-  return out;
+  return params.revenueOnly ? dedupeCreatorTransactionsForRevenue(out) : out;
 }
 
 export type CreatorDailyRevenueRow = {
@@ -1028,7 +1081,7 @@ export type CreatorDailyRevenueRow = {
 };
 
 /**
- * Pre-aggregated creator revenue by Athens calendar day (status=done).
+ * Pre-aggregated creator revenue by Athens calendar day (done + loading, deduped).
  * Prefer this over fetchAll listCreatorTransactions when only daily totals are needed.
  */
 export async function listCreatorRevenueByAthensDay(params: {
@@ -1067,6 +1120,7 @@ export function syntheticCreatorTxFromDailyRevenue(
 ): CreatorTransactionRow[] {
   return rows.map((r) => ({
     transaction_id: `daily-agg:${r.model_record_id}:${r.date}`,
+    infloww_row_id: null,
     creator_infloww_id: "",
     model_record_id: r.model_record_id,
     fan_id: null,

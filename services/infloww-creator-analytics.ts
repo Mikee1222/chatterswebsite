@@ -478,7 +478,7 @@ export function pickLatestCreatorDailySnapshot<
   return withFans ?? sorted[0]!;
 }
 
-/** Daily pre-OF gross revenue (done txs only), bucketed on the Athens calendar. */
+/** Daily pre-OF gross revenue (done + loading, deduped), bucketed on the Athens calendar. */
 export function buildCreatorDailyRevenueTrend(
   transactions: CreatorTransactionRow[]
 ): Array<{ date: string; gross: number }> {
@@ -674,7 +674,7 @@ export const CREATOR_EARNINGS_STAT_INFO = {
     "Sum of fan payments before the OnlyFans platform fee (transaction amount). Fees are subtracted separately into Net Profit.",
   fees: "OnlyFans platform fees from transaction rows (amount − creator net).",
   refunds: "Sum of refund payment amounts from GET /v1/refunds in the selected range.",
-  net_profit: "Gross − Fees − Refunds. Agency/creator take-home after OF cut and refunds.",
+  net_profit: "Gross − Fees − Refunds after deduping Infloww list/perf twins. Includes done + loading (matches Infloww Total earnings); excludes undo/pending_return.",
   tx_gross: "Fan payment before the OnlyFans platform fee (transaction amount).",
   tx_net: "Creator share after OF fee, minus any refund tied to that transaction.",
   refund_rate: "Refunds ÷ gross. Warns above 5%, critical above 10%.",

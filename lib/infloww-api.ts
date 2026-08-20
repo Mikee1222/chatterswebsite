@@ -1648,14 +1648,30 @@ async function paginateCreatorList(
   return out;
 }
 
+/**
+ * Stable payment id shared by GET /v1/transactions and /v1/transaction-perf/details.
+ *
+ * /transactions often returns numeric `id` + hex `transactionId`; perf returns numeric
+ * `transactionId` + a different row `id`. Prefer the numeric payment id so both sources
+ * upsert onto one row (hex twins previously double-counted Net Profit).
+ */
+function resolveCreatorTransactionId(r: Record<string, unknown>, creatorId: string): string {
+  const txId = strField(r, ["transactionId", "transaction_id"]);
+  const rowId = strField(r, ["id"]);
+  const isNumeric = (s: string | null | undefined) => !!s && /^\d+$/.test(s);
+  if (isNumeric(txId)) return txId!;
+  if (isNumeric(rowId)) return rowId!;
+  if (txId) return txId;
+  if (rowId) return rowId;
+  return `${creatorId}-${msField(r, ["createdTime", "created_time", "timestamp"])}`;
+}
+
 function mapCreatorTransaction(
   row: unknown,
   creatorId: string
 ): import("@/types/infloww").InflowwCreatorTransaction {
   const r = (row ?? {}) as Record<string, unknown>;
-  const transactionId = String(
-    r["transactionId"] ?? r["transaction_id"] ?? r["id"] ?? `${creatorId}-${msField(r, ["createdTime"])}`
-  );
+  const transactionId = resolveCreatorTransactionId(r, creatorId);
   return {
     transactionId,
     inflowwRowId: strField(r, ["id"]),
