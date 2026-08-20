@@ -23,13 +23,24 @@ import {
   type ClarioSuiteModelAccount,
 } from "@/services/clariosuite-model-accounts";
 import { listAllModelss } from "@/services/modelss";
-import type { ClarioSuiteTimeSeriesPoint } from "@/types/clariosuite";
+import type {
+  ClarioSuiteMediaInsight,
+  ClarioSuiteMediaItem,
+  ClarioSuiteTimeSeriesPoint,
+} from "@/types/clariosuite";
 import type { ModelRecord } from "@/types";
 
-/** Cap per-account insight volume (shares general ClarioSuite 100 req/min budget). */
-const TOP_POSTS_PER_MODEL = 25;
-/** How many recent media items to score via GET /media/:id/insights (then keep top N). */
-const MEDIA_FETCH_LIMIT = 40;
+/**
+ * Cap per-account leaderboard size for daily sync + default queries.
+ * Weekly Progress / Compare pull up to 50 — keep at least that many ranked rows.
+ */
+const TOP_POSTS_PER_MODEL = 50;
+/** How many recent media items to score via GET /media/:id/insights on daily sync. */
+const MEDIA_FETCH_LIMIT = 80;
+/** Historical backfill ceiling per IG account (media list + insights). */
+const MEDIA_BACKFILL_LIMIT = 2000;
+/** Default historical lookback for per-post insights (media list has no 90-day cap). */
+export const MEDIA_INSIGHTS_BACKFILL_SINCE_YMD = "2026-01-01";
 /** Trailing days to refresh on each daily sync (late Meta updates). Views series is still ~2 weeks from Meta. */
 const DEFAULT_INSIGHTS_RANGE = 30;
 
@@ -267,177 +278,175 @@ async function upsertAudienceSnapshot(link: SyncLink): Promise<number> {
   return 1;
 }
 
-async function upsertTopPosts(link: SyncLink): Promise<number> {
-  const { data: media } = await listClarioSuiteMedia(link.igUserId, MEDIA_FETCH_LIMIT);
-  const scored: Array<{
-    media_id: string;
-    permalink: string | null;
-    media_type: string | null;
-    media_product_type: string | null;
-    caption: string | null;
-    image_url: string | null;
-    engagement_score: number | null;
-    reach: number;
-    likes: number;
-    comments: number;
-    shares: number;
-    saved: number;
-    views: number;
-    total_interactions: number;
-    video_views: number;
-    quartile_p95: number | null;
-    carousel_album_engagement: number | null;
-    carousel_album_impressions: number | null;
-    carousel_album_reach: number | null;
-    carousel_album_saved: number | null;
-    insights_available: boolean;
-    insights_error: string | null;
-    posted_at: string | null;
-  }> = [];
+type ScoredTopPost = {
+  media_id: string;
+  permalink: string | null;
+  media_type: string | null;
+  media_product_type: string | null;
+  caption: string | null;
+  image_url: string | null;
+  engagement_score: number | null;
+  reach: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saved: number;
+  views: number;
+  total_interactions: number;
+  video_views: number;
+  quartile_p95: number | null;
+  carousel_album_engagement: number | null;
+  carousel_album_impressions: number | null;
+  carousel_album_reach: number | null;
+  carousel_album_saved: number | null;
+  insights_available: boolean;
+  insights_error: string | null;
+  posted_at: string | null;
+};
 
-  let unavailableLogged = 0;
-  for (const item of media) {
-    if (!item?.id) continue;
-    try {
-      const insight = await fetchMediaInsights(item.id);
-      const unavailable = isMediaInsightUnavailable(insight);
-      const insightsError = unavailable ? mediaInsightUnavailableReason(insight) : null;
-      if (unavailable && unavailableLogged < 3) {
-        unavailableLogged += 1;
-        logClarioSuiteFailure("upsertTopPosts media insight unavailable", new Error(insightsError ?? "unavailable"), {
-          igUserId: link.igUserId,
-          mediaId: item.id,
-        });
-      }
+function compareScoredTopPosts(a: ScoredTopPost, b: ScoredTopPost): number {
+  const scoreDiff = (b.engagement_score ?? -1) - (a.engagement_score ?? -1);
+  if (scoreDiff !== 0) return scoreDiff;
+  const viewsDiff = b.views - a.views;
+  if (viewsDiff !== 0) return viewsDiff;
+  return b.likes + b.comments - (a.likes + a.comments);
+}
 
-      const likes = Math.round(insight.likes ?? item.likeCount ?? 0);
-      const comments = Math.round(insight.comments ?? item.commentsCount ?? 0);
-      const shares = Math.round(insight.shares ?? 0);
-      const saved = Math.round(insight.saved ?? 0);
-      const reachRaw = Math.round(
-        insight.reach ?? insight.carouselAlbumReach ?? 0
-      );
-      const videoViews = Math.round(insight.videoViews ?? 0);
-      const views = Math.round(insight.views ?? (videoViews > 0 ? videoViews : 0));
-      // REELS often omit reach from Meta; views/plays are the usable proxy at sync time.
-      const reach = reachRaw > 0 ? reachRaw : views;
-      const totalInteractions =
-        insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)
-          ? Math.round(insight.totalInteractions)
-          : likes + comments + shares + saved;
-      const insightsAvailable =
-        !unavailable &&
-        (reachRaw > 0 ||
-          views > 0 ||
-          videoViews > 0 ||
-          (insight.likes != null && Number.isFinite(insight.likes)) ||
-          (insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)));
+function scoreMediaWithInsight(
+  item: ClarioSuiteMediaItem,
+  insight: ClarioSuiteMediaInsight
+): ScoredTopPost {
+  const unavailable = isMediaInsightUnavailable(insight);
+  const insightsError = unavailable ? mediaInsightUnavailableReason(insight) : null;
+  const likes = Math.round(insight.likes ?? item.likeCount ?? 0);
+  const comments = Math.round(insight.comments ?? item.commentsCount ?? 0);
+  const shares = Math.round(insight.shares ?? 0);
+  const saved = Math.round(insight.saved ?? 0);
+  const reachRaw = Math.round(insight.reach ?? insight.carouselAlbumReach ?? 0);
+  const videoViews = Math.round(insight.videoViews ?? 0);
+  const views = Math.round(insight.views ?? (videoViews > 0 ? videoViews : 0));
+  // REELS often omit reach from Meta; views/plays are the usable proxy at sync time.
+  const reach = reachRaw > 0 ? reachRaw : views;
+  const totalInteractions =
+    insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)
+      ? Math.round(insight.totalInteractions)
+      : likes + comments + shares + saved;
+  const insightsAvailable =
+    !unavailable &&
+    (reachRaw > 0 ||
+      views > 0 ||
+      videoViews > 0 ||
+      (insight.likes != null && Number.isFinite(insight.likes)) ||
+      (insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)));
 
-      scored.push({
-        media_id: item.id,
-        permalink: item.permalink,
-        media_type: item.mediaType ?? null,
-        media_product_type: item.mediaProductType ?? null,
-        caption: item.caption,
-        image_url: item.imageUrl || null,
-        engagement_score: computePostEngagementScore({
-          likes,
-          comments,
-          shares,
-          saved,
-          reach: reachRaw > 0 ? reachRaw : 0,
-          views: views > 0 ? views : undefined,
-          totalInteractions: totalInteractions > 0 ? totalInteractions : undefined,
-        }),
-        reach,
-        likes,
-        comments,
-        shares,
-        saved,
-        views,
-        total_interactions: totalInteractions,
-        video_views: videoViews,
-        quartile_p95:
-          insight.quartileP95 != null && Number.isFinite(insight.quartileP95)
-            ? insight.quartileP95
-            : null,
-        carousel_album_engagement:
-          insight.carouselAlbumEngagement != null && Number.isFinite(insight.carouselAlbumEngagement)
-            ? Math.round(insight.carouselAlbumEngagement)
-            : null,
-        carousel_album_impressions:
-          insight.carouselAlbumImpressions != null && Number.isFinite(insight.carouselAlbumImpressions)
-            ? Math.round(insight.carouselAlbumImpressions)
-            : null,
-        carousel_album_reach:
-          insight.carouselAlbumReach != null && Number.isFinite(insight.carouselAlbumReach)
-            ? Math.round(insight.carouselAlbumReach)
-            : null,
-        carousel_album_saved:
-          insight.carouselAlbumSaved != null && Number.isFinite(insight.carouselAlbumSaved)
-            ? Math.round(insight.carouselAlbumSaved)
-            : null,
-        insights_available: insightsAvailable,
-        insights_error: insightsError,
-        posted_at: item.timestamp || null,
-      });
-    } catch (err) {
-      logClarioSuiteFailure("upsertTopPosts media insight", err, {
-        igUserId: link.igUserId,
-        mediaId: item.id,
-      });
-      // Keep media-list likes/comments so the post still appears while insights fail.
-      const likes = Math.round(item.likeCount ?? 0);
-      const comments = Math.round(item.commentsCount ?? 0);
-      scored.push({
-        media_id: item.id,
-        permalink: item.permalink,
-        media_type: item.mediaType ?? null,
-        media_product_type: item.mediaProductType ?? null,
-        caption: item.caption,
-        image_url: item.imageUrl || null,
-        engagement_score: null,
-        reach: 0,
-        likes,
-        comments,
-        shares: 0,
-        saved: 0,
-        views: 0,
-        total_interactions: likes + comments,
-        video_views: 0,
-        quartile_p95: null,
-        carousel_album_engagement: null,
-        carousel_album_impressions: null,
-        carousel_album_reach: null,
-        carousel_album_saved: null,
-        insights_available: false,
-        insights_error: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
-        posted_at: item.timestamp || null,
-      });
-    }
+  return {
+    media_id: item.id,
+    permalink: item.permalink,
+    media_type: item.mediaType ?? null,
+    media_product_type: item.mediaProductType ?? null,
+    caption: item.caption,
+    image_url: item.imageUrl || null,
+    engagement_score: computePostEngagementScore({
+      likes,
+      comments,
+      shares,
+      saved,
+      reach: reachRaw > 0 ? reachRaw : 0,
+      views: views > 0 ? views : undefined,
+      totalInteractions: totalInteractions > 0 ? totalInteractions : undefined,
+    }),
+    reach,
+    likes,
+    comments,
+    shares,
+    saved,
+    views,
+    total_interactions: totalInteractions,
+    video_views: videoViews,
+    quartile_p95:
+      insight.quartileP95 != null && Number.isFinite(insight.quartileP95)
+        ? insight.quartileP95
+        : null,
+    carousel_album_engagement:
+      insight.carouselAlbumEngagement != null && Number.isFinite(insight.carouselAlbumEngagement)
+        ? Math.round(insight.carouselAlbumEngagement)
+        : null,
+    carousel_album_impressions:
+      insight.carouselAlbumImpressions != null && Number.isFinite(insight.carouselAlbumImpressions)
+        ? Math.round(insight.carouselAlbumImpressions)
+        : null,
+    carousel_album_reach:
+      insight.carouselAlbumReach != null && Number.isFinite(insight.carouselAlbumReach)
+        ? Math.round(insight.carouselAlbumReach)
+        : null,
+    carousel_album_saved:
+      insight.carouselAlbumSaved != null && Number.isFinite(insight.carouselAlbumSaved)
+        ? Math.round(insight.carouselAlbumSaved)
+        : null,
+    insights_available: insightsAvailable,
+    insights_error: insightsError,
+    posted_at: item.timestamp || null,
+  };
+}
+
+function scoreMediaFallback(item: ClarioSuiteMediaItem, err: unknown): ScoredTopPost {
+  const likes = Math.round(item.likeCount ?? 0);
+  const comments = Math.round(item.commentsCount ?? 0);
+  return {
+    media_id: item.id,
+    permalink: item.permalink,
+    media_type: item.mediaType ?? null,
+    media_product_type: item.mediaProductType ?? null,
+    caption: item.caption,
+    image_url: item.imageUrl || null,
+    engagement_score: null,
+    reach: 0,
+    likes,
+    comments,
+    shares: 0,
+    saved: 0,
+    views: 0,
+    total_interactions: likes + comments,
+    video_views: 0,
+    quartile_p95: null,
+    carousel_album_engagement: null,
+    carousel_album_impressions: null,
+    carousel_album_reach: null,
+    carousel_album_saved: null,
+    insights_available: false,
+    insights_error: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+    posted_at: item.timestamp || null,
+  };
+}
+
+async function fetchAndScoreMediaItem(
+  link: SyncLink,
+  item: ClarioSuiteMediaItem,
+  logContext: string
+): Promise<ScoredTopPost> {
+  try {
+    const insight = await fetchMediaInsights(item.id);
+    return scoreMediaWithInsight(item, insight);
+  } catch (err) {
+    logClarioSuiteFailure(logContext, err, {
+      igUserId: link.igUserId,
+      mediaId: item.id,
+    });
+    return scoreMediaFallback(item, err);
   }
+}
 
-  scored.sort((a, b) => {
-    const scoreDiff = (b.engagement_score ?? -1) - (a.engagement_score ?? -1);
-    if (scoreDiff !== 0) return scoreDiff;
-    const viewsDiff = b.views - a.views;
-    if (viewsDiff !== 0) return viewsDiff;
-    return b.likes + b.comments - (a.likes + a.comments);
-  });
-  const top = scored.slice(0, TOP_POSTS_PER_MODEL);
+async function upsertScoredTopPosts(
+  link: SyncLink,
+  scored: ScoredTopPost[],
+  opts?: { keepLimit?: number; reRankAccount?: boolean }
+): Promise<number> {
+  if (!scored.length) return 0;
+  const keepLimit = opts?.keepLimit ?? TOP_POSTS_PER_MODEL;
+  const ranked = [...scored].sort(compareScoredTopPosts).slice(0, keepLimit);
   const sb = getSupabaseServiceClient();
-
-  // Replace this account's top posts set for a clean leaderboard.
-  const { error: delErr } = await sb
-    .from("clariosuite_top_posts")
-    .delete()
-    .eq("ig_user_id", link.igUserId);
-  if (delErr) throw new Error(`delete clariosuite_top_posts: ${delErr.message}`);
-
-  if (!top.length) return 0;
-
   const now = new Date().toISOString();
-  const payload = top.map((row, idx) => ({
+  const payload = ranked.map((row, idx) => ({
     ig_user_id: link.igUserId,
     clariosuite_model_account_id: link.accountId || null,
     model_record_id: link.modelRecordId,
@@ -453,7 +462,210 @@ async function upsertTopPosts(link: SyncLink): Promise<number> {
     onConflict: "ig_user_id,media_id",
   });
   if (error) throw new Error(`upsert clariosuite_top_posts: ${error.message}`);
+
+  if (opts?.reRankAccount) {
+    await reRankTopPostsForAccount(link.igUserId);
+  }
   return payload.length;
+}
+
+/** Recompute rank 1..N by engagement_score for one IG account (preserves historical rows). */
+async function reRankTopPostsForAccount(igUserId: string): Promise<void> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("clariosuite_top_posts")
+    .select("id,engagement_score,views,likes,comments")
+    .eq("ig_user_id", igUserId);
+  if (error) throw new Error(`reRank top posts select: ${error.message}`);
+  const rows = (data ?? []) as Array<{
+    id: string;
+    engagement_score: number | null;
+    views: number | null;
+    likes: number | null;
+    comments: number | null;
+  }>;
+  rows.sort((a, b) => {
+    const scoreDiff = (Number(b.engagement_score) || -1) - (Number(a.engagement_score) || -1);
+    if (scoreDiff !== 0) return scoreDiff;
+    const viewsDiff = (Number(b.views) || 0) - (Number(a.views) || 0);
+    if (viewsDiff !== 0) return viewsDiff;
+    return (Number(b.likes) || 0) + (Number(b.comments) || 0) - ((Number(a.likes) || 0) + (Number(a.comments) || 0));
+  });
+  const now = new Date().toISOString();
+  const chunkSize = 40;
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map((row, offset) =>
+        sb
+          .from("clariosuite_top_posts")
+          .update({ rank: i + offset + 1, updated_at: now })
+          .eq("id", row.id)
+          .then(({ error: upErr }) => {
+            if (upErr) throw new Error(`reRank top posts update: ${upErr.message}`);
+          })
+      )
+    );
+  }
+}
+
+async function upsertTopPosts(link: SyncLink): Promise<number> {
+  const { data: media } = await listClarioSuiteMedia(link.igUserId, MEDIA_FETCH_LIMIT);
+  const scored: ScoredTopPost[] = [];
+  for (const item of media) {
+    if (!item?.id) continue;
+    scored.push(await fetchAndScoreMediaItem(link, item, "upsertTopPosts media insight"));
+  }
+
+  // Upsert all scored recent media — do not wipe historical backfill rows.
+  return upsertScoredTopPosts(link, scored, {
+    keepLimit: scored.length,
+    reRankAccount: true,
+  });
+}
+
+export type MediaInsightsResyncResult = {
+  skipped: boolean;
+  skipReason?: string;
+  sinceYmd: string;
+  accountsTargeted: number;
+  mediaListed: number;
+  insightsFetched: number;
+  upserted: number;
+  availableTrue: number;
+  availableFalse: number;
+  errors: Array<{ igUserId: string; modelName?: string; mediaId?: string; message: string }>;
+};
+
+/**
+ * Full historical per-post insights resync for all linked models / multi-IG accounts.
+ * Media list + GET /media/:id/insights are not bound to the ~90-day daily insights window.
+ * Order: retry failed/unavailable rows first, then recent→older backfill since `sinceYmd`.
+ */
+export async function resyncClarioSuiteMediaInsights(opts?: {
+  sinceYmd?: string;
+  modelRecordId?: string;
+  mediaLimitPerAccount?: number;
+}): Promise<MediaInsightsResyncResult> {
+  const sinceYmd = opts?.sinceYmd ?? MEDIA_INSIGHTS_BACKFILL_SINCE_YMD;
+  const mediaLimit = opts?.mediaLimitPerAccount ?? MEDIA_BACKFILL_LIMIT;
+
+  if (!isClarioSuiteConfigured()) {
+    return {
+      skipped: true,
+      skipReason: "CLARIOSUITE_API_KEY not configured",
+      sinceYmd,
+      accountsTargeted: 0,
+      mediaListed: 0,
+      insightsFetched: 0,
+      upserted: 0,
+      availableTrue: 0,
+      availableFalse: 0,
+      errors: [],
+    };
+  }
+
+  let linked = await listLinkedClarioSuiteModels();
+  if (opts?.modelRecordId) {
+    linked = linked.filter((l) => l.modelRecordId === opts.modelRecordId);
+  }
+  const syncLinks = flattenSyncLinks(linked);
+  const result: MediaInsightsResyncResult = {
+    skipped: false,
+    sinceYmd,
+    accountsTargeted: syncLinks.length,
+    mediaListed: 0,
+    insightsFetched: 0,
+    upserted: 0,
+    availableTrue: 0,
+    availableFalse: 0,
+    errors: [],
+  };
+
+  const sb = getSupabaseServiceClient();
+
+  for (const link of syncLinks) {
+    try {
+      const { data: failedRows, error: failedErr } = await sb
+        .from("clariosuite_top_posts")
+        .select("media_id,posted_at,insights_available,insights_error")
+        .eq("ig_user_id", link.igUserId)
+        .or("insights_available.eq.false,insights_error.not.is.null");
+      if (failedErr) throw new Error(`load failed insights rows: ${failedErr.message}`);
+
+      const { data: media } = await listClarioSuiteMedia(link.igUserId, mediaLimit, {
+        sinceYmd,
+      });
+      result.mediaListed += media.length;
+
+      const byId = new Map<string, ClarioSuiteMediaItem>();
+      for (const item of media) {
+        if (item?.id) byId.set(item.id, item);
+      }
+
+      // Failed DB rows first (even if no longer in the media page — still retry when listed).
+      const failedIds: string[] = [];
+      const failedSeen = new Set<string>();
+      for (const row of failedRows ?? []) {
+        const mid = String((row as { media_id?: string }).media_id ?? "");
+        if (!mid || failedSeen.has(mid) || !byId.has(mid)) continue;
+        failedSeen.add(mid);
+        failedIds.push(mid);
+      }
+
+      const rest = media
+        .filter((m) => m?.id && !failedSeen.has(m.id))
+        .sort((a, b) => {
+          const ta = Date.parse(a.timestamp || "") || 0;
+          const tb = Date.parse(b.timestamp || "") || 0;
+          return tb - ta; // recent first
+        });
+
+      const orderedIds = [...failedIds, ...rest.map((m) => m.id)];
+      const scored: ScoredTopPost[] = [];
+
+      for (const mediaId of orderedIds) {
+        const item = byId.get(mediaId);
+        if (!item) continue;
+        const row = await fetchAndScoreMediaItem(
+          link,
+          item,
+          "resync media insight"
+        );
+        result.insightsFetched += 1;
+        if (row.insights_available) result.availableTrue += 1;
+        else {
+          result.availableFalse += 1;
+          if (row.insights_error) {
+            result.errors.push({
+              igUserId: link.igUserId,
+              modelName: link.modelName,
+              mediaId,
+              message: row.insights_error,
+            });
+          }
+        }
+        scored.push(row);
+      }
+
+      // Store all scored historical posts (not just top 50).
+      result.upserted += await upsertScoredTopPosts(link, scored, {
+        keepLimit: scored.length,
+        reRankAccount: true,
+      });
+    } catch (err) {
+      logClarioSuiteFailure("resync media insights account", err, {
+        igUserId: link.igUserId,
+      });
+      result.errors.push({
+        igUserId: link.igUserId,
+        modelName: link.modelName,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return result;
 }
 
 /**

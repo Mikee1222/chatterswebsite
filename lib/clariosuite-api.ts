@@ -392,17 +392,30 @@ export async function getClarioSuiteAudience(igUserId: string): Promise<ClarioSu
   return clariosuiteFetchJson<ClarioSuiteAudience>(`/accounts/${id}/audience`);
 }
 
-/** GET /accounts/:igUserId/media?limit=N — follows meta.has_more like /accounts. */
+/**
+ * GET /accounts/:igUserId/media?limit=N — follows meta.has_more like /accounts.
+ * Media is newest-first. Optional `sinceYmd` stops pagination once items are older
+ * than that date (inclusive start). Unlike daily account insights (plan-capped,
+ * often 90 days), the media list + GET /media/:id/insights have no documented
+ * trailing-day window — lookback is whatever Meta still returns for the account.
+ */
 export async function listClarioSuiteMedia(
   igUserId: string,
-  limit = 25
+  limit = 25,
+  opts?: { sinceYmd?: string }
 ): Promise<{ data: ClarioSuiteMediaItem[]; count: number }> {
   const id = encodeURIComponent(igUserId.trim());
-  const wanted = Math.min(100, Math.max(1, Math.round(limit)));
+  // Per-page max is 100; total can exceed that via cursor pagination.
+  const wanted = Math.max(1, Math.round(limit));
+  const sinceMs =
+    opts?.sinceYmd && /^\d{4}-\d{2}-\d{2}$/.test(opts.sinceYmd)
+      ? Date.parse(`${opts.sinceYmd}T00:00:00.000Z`)
+      : null;
   const all: ClarioSuiteMediaItem[] = [];
   const seen = new Set<string>();
   let cursor: string | null | undefined = undefined;
-  for (let page = 0; page < 10 && all.length < wanted; page++) {
+  const maxPages = Math.max(10, Math.ceil(wanted / 100) + 2);
+  for (let page = 0; page < maxPages && all.length < wanted; page++) {
     const pageLimit = Math.min(100, wanted - all.length);
     const qp = new URLSearchParams({ limit: String(pageLimit) });
     if (cursor) qp.set("cursor", cursor);
@@ -412,15 +425,24 @@ export async function listClarioSuiteMedia(
       meta?: { cursor?: string | null; has_more?: boolean };
     }>(`/accounts/${id}/media`, qp);
     const rows = Array.isArray(payload?.data) ? payload.data : [];
+    let hitOlderThanSince = false;
     for (const row of rows) {
       if (!row?.id || seen.has(row.id)) continue;
       seen.add(row.id);
+      if (sinceMs != null && Number.isFinite(sinceMs) && row.timestamp) {
+        const ts = Date.parse(row.timestamp);
+        if (Number.isFinite(ts) && ts < sinceMs) {
+          hitOlderThanSince = true;
+          continue;
+        }
+      }
       all.push(row);
       if (all.length >= wanted) break;
     }
+    if (hitOlderThanSince) break;
     if (!payload?.meta?.has_more) break;
     const next =
-      typeof payload.meta.cursor === "string" && payload.meta.cursor.trim()
+      typeof payload?.meta?.cursor === "string" && payload.meta.cursor.trim()
         ? payload.meta.cursor.trim()
         : null;
     if (!next || next === cursor) break;
