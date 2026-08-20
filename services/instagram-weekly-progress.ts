@@ -3,7 +3,7 @@
  * Mirrors Chatter Performance Weekly Progress (`services/infloww-performance.ts`).
  */
 
-import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { addDaysAthensYmd, getTodayYmdAthens, ymdInAthens } from "@/lib/airtable-datetime";
 import {
   classifyCustomWeekProgress,
   customWeekIndexForYmd,
@@ -52,10 +52,12 @@ import {
   type ClarioSuiteTopPostRow,
 } from "@/services/clariosuite-sync";
 import {
+  creatorTxRevenueAmount,
   filterCreatorTransactionsInAthensYmdRange,
   listCreatorDailyStats,
-  listCreatorTransactions,
+  listCreatorRevenueByAthensDay,
   sumCreatorTxRevenue,
+  syntheticCreatorTxFromDailyRevenue,
   type CreatorDailyStatsRow,
   type CreatorTransactionRow,
 } from "@/services/infloww-creator-earnings";
@@ -590,6 +592,25 @@ function toCrossPlatformTopPosts(posts: FullTopPost[]): Array<{
   }));
 }
 
+function slimCrossPlatformAnalytics(
+  analytics: CrossPlatformAnalytics
+): CrossPlatformAnalytics {
+  // Weekly Progress UI only needs the first content window + compact notes.
+  // Dropping unused series/windows keeps the API payload from ballooning per model×week.
+  return {
+    ...analytics,
+    series: [],
+    growth_alignment: {
+      ...analytics.growth_alignment,
+      series: [],
+    },
+    content_conversion: {
+      ...analytics.content_conversion,
+      windows: analytics.content_conversion.windows.slice(0, 1),
+    },
+  };
+}
+
 function buildWeeklyCrossPlatformSection(params: {
   modelId: string;
   modelName: string;
@@ -628,31 +649,54 @@ function buildWeeklyCrossPlatformSection(params: {
     )
   );
 
-  const analytics = deriveCrossPlatformAnalytics({
-    modelRecordId: params.modelId,
-    modelName: params.modelName,
-    startYmd,
-    endYmd,
-    igDaily: toCrossPlatformIgDaily(weekIg),
-    ofDaily: weekOf,
-    ofTransactions: weekTx,
-    topPosts: toCrossPlatformTopPosts(params.topPosts),
-    prevIgDaily: toCrossPlatformIgDaily(prevIg),
-    prevOfDaily: prevOf,
-    prevGross,
+  // Only posts near this week matter for content→conversion windows.
+  const weekPosts = params.topPosts.filter((p) => {
+    if (!p.posted_at) return false;
+    const ymd = p.posted_at.slice(0, 10);
+    return ymd >= addDaysAthensYmd(startYmd, -1) && ymd <= addDaysAthensYmd(endYmd, 3);
   });
 
-  const erByDate = new Map(weekIg.map((d) => [d.date, d.engagement_rate]));
-  const chart: IgCrossPlatformChartPoint[] = analytics.series
-    .filter((d) => d.date >= startYmd && d.date <= endYmd)
-    .map((d) => ({
-      date: d.date,
-      reach: d.reach,
-      engagement_rate: erByDate.get(d.date) ?? null,
-      new_subscribers: d.new_subscribers,
-      revenue: d.of_revenue,
-      profile_visitors: d.profile_visitors,
-    }));
+  const analytics = slimCrossPlatformAnalytics(
+    deriveCrossPlatformAnalytics({
+      modelRecordId: params.modelId,
+      modelName: params.modelName,
+      startYmd,
+      endYmd,
+      igDaily: toCrossPlatformIgDaily(weekIg),
+      ofDaily: weekOf,
+      ofTransactions: weekTx,
+      topPosts: toCrossPlatformTopPosts(weekPosts),
+      prevIgDaily: toCrossPlatformIgDaily(prevIg),
+      prevOfDaily: prevOf,
+      prevGross,
+    })
+  );
+
+  const igByDate = new Map(weekIg.map((d) => [d.date, d]));
+  const ofByDate = new Map(weekOf.map((d) => [d.date, d]));
+  const revByDate = new Map<string, number>();
+  for (const t of weekTx) {
+    if (!t.created_time) continue;
+    const ymd = ymdInAthens(t.created_time);
+    if (!ymd) continue;
+    revByDate.set(ymd, (revByDate.get(ymd) ?? 0) + creatorTxRevenueAmount(t));
+  }
+
+  const chart: IgCrossPlatformChartPoint[] = [];
+  let cursor = startYmd;
+  while (cursor <= endYmd) {
+    const ig = igByDate.get(cursor);
+    const of = ofByDate.get(cursor);
+    chart.push({
+      date: cursor,
+      reach: ig?.reach ?? 0,
+      engagement_rate: ig?.engagement_rate ?? null,
+      new_subscribers: of?.new_subscribers ?? 0,
+      revenue: revByDate.get(cursor) ?? 0,
+      profile_visitors: of?.profile_visitors ?? 0,
+    });
+    cursor = addDaysAthensYmd(cursor, 1);
+  }
 
   const of_totals = {
     new_subscribers: analytics.growth_alignment.of_new_subscribers_total,
@@ -682,13 +726,16 @@ export async function getInstagramWeeklyProgressReport(
   const histBoundaries = getCustomWeekBoundaries(histStart.year, histStart.month);
   const historicalStartYmd = histBoundaries[0]?.startYmd ?? monthStart;
   const historicalEndYmd = addDaysAthensYmd(monthStart, -1);
+  // Cross-platform OF lookback only needs prior-week overlap for week 1 — not 3 months of txs.
+  // Fetching ~4 months of done txs was a sequential scan of tens of thousands of rows.
+  const ofLookbackStartYmd = addDaysAthensYmd(monthStart, -14);
 
   let linked = await listLinkedClarioSuiteModels();
   if (filters?.modelRecordId) {
     linked = linked.filter((l) => l.modelRecordId === filters.modelRecordId);
   }
 
-  const [allDailyCombined, allTopPostsMap, ofDailyRows, ofTxRows] = await Promise.all([
+  const [allDailyCombined, allTopPostsMap, ofDailyRows, ofRevenueRows] = await Promise.all([
     linked.length
       ? queryClarioSuiteDailyInsights({
           startYmd: historicalStartYmd,
@@ -702,17 +749,17 @@ export async function getInstagramWeeklyProgressReport(
         })
       : Promise.resolve(new Map<string, FullTopPost[]>()),
     linked.length
-      ? listCreatorDailyStats({ startYmd: historicalStartYmd, endYmd: monthEnd })
+      ? listCreatorDailyStats({ startYmd: ofLookbackStartYmd, endYmd: monthEnd })
       : Promise.resolve([]),
     linked.length
-      ? listCreatorTransactions({
-          startYmd: historicalStartYmd,
+      ? listCreatorRevenueByAthensDay({
+          startYmd: ofLookbackStartYmd,
           endYmd: monthEnd,
-          fetchAll: true,
-          revenueOnly: true,
         })
       : Promise.resolve([]),
   ]);
+
+  const ofTxRows = syntheticCreatorTxFromDailyRevenue(ofRevenueRows);
 
   const allDaily = allDailyCombined.filter(
     (d) => d.date >= monthStart && d.date <= monthEnd

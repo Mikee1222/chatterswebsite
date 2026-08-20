@@ -878,39 +878,52 @@ export async function listCreatorDailyStats(params: {
   creatorInflowwId?: string;
 }): Promise<CreatorDailyStatsRow[]> {
   const sb = getSupabaseServiceClient();
-  let q = sb
-    .from("infloww_creator_daily_stats")
-    .select(
-      "creator_infloww_id, model_record_id, model_stable_id, model_name, date, performance_rank, profile_visitors, guest_visitors, logged_in_visitors, active_fans, expired_fans, new_subscribers, renewals, messages_sent, ppvs_sent, fans_chatted, reply_time_ms, fans_with_renew_on"
-    )
-    .gte("date", params.startYmd)
-    .lte("date", params.endYmd)
-    .order("date", { ascending: true });
-  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
-  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
-  const { data, error } = await q;
-  if (error) throw new Error(`listCreatorDailyStats: ${error.message}`);
-  return (data ?? []).map((row) => ({
-    creator_infloww_id: String(row.creator_infloww_id),
-    model_record_id: row.model_record_id ? String(row.model_record_id) : null,
-    model_stable_id: row.model_stable_id ? String(row.model_stable_id) : null,
-    model_name: row.model_name ? String(row.model_name) : null,
-    date: String(row.date).slice(0, 10),
-    performance_rank: row.performance_rank == null ? null : n(row.performance_rank),
-    profile_visitors: Math.round(n(row.profile_visitors)),
-    guest_visitors: Math.round(n(row.guest_visitors)),
-    logged_in_visitors: Math.round(n(row.logged_in_visitors)),
-    active_fans: Math.round(n(row.active_fans)),
-    expired_fans: Math.round(n(row.expired_fans)),
-    new_subscribers: Math.round(n(row.new_subscribers)),
-    renewals: Math.round(n(row.renewals)),
-    messages_sent: Math.round(n(row.messages_sent)),
-    ppvs_sent: Math.round(n(row.ppvs_sent)),
-    fans_chatted: Math.round(n(row.fans_chatted)),
-    reply_time_ms: row.reply_time_ms == null ? null : n(row.reply_time_ms),
-    fans_with_renew_on:
-      row.fans_with_renew_on == null ? null : Math.round(n(row.fans_with_renew_on)),
-  }));
+  const selectCols =
+    "creator_infloww_id, model_record_id, model_stable_id, model_name, date, performance_rank, profile_visitors, guest_visitors, logged_in_visitors, active_fans, expired_fans, new_subscribers, renewals, messages_sent, ppvs_sent, fans_chatted, reply_time_ms, fans_with_renew_on";
+  const out: CreatorDailyStatsRow[] = [];
+  let offset = 0;
+
+  while (true) {
+    let q = sb
+      .from("infloww_creator_daily_stats")
+      .select(selectCols)
+      .gte("date", params.startYmd)
+      .lte("date", params.endYmd)
+      .order("date", { ascending: true })
+      .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
+    if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+    if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+    const { data, error } = await q;
+    if (error) throw new Error(`listCreatorDailyStats: ${error.message}`);
+    const rows = data ?? [];
+    for (const row of rows) {
+      out.push({
+        creator_infloww_id: String(row.creator_infloww_id),
+        model_record_id: row.model_record_id ? String(row.model_record_id) : null,
+        model_stable_id: row.model_stable_id ? String(row.model_stable_id) : null,
+        model_name: row.model_name ? String(row.model_name) : null,
+        date: String(row.date).slice(0, 10),
+        performance_rank: row.performance_rank == null ? null : n(row.performance_rank),
+        profile_visitors: Math.round(n(row.profile_visitors)),
+        guest_visitors: Math.round(n(row.guest_visitors)),
+        logged_in_visitors: Math.round(n(row.logged_in_visitors)),
+        active_fans: Math.round(n(row.active_fans)),
+        expired_fans: Math.round(n(row.expired_fans)),
+        new_subscribers: Math.round(n(row.new_subscribers)),
+        renewals: Math.round(n(row.renewals)),
+        messages_sent: Math.round(n(row.messages_sent)),
+        ppvs_sent: Math.round(n(row.ppvs_sent)),
+        fans_chatted: Math.round(n(row.fans_chatted)),
+        reply_time_ms: row.reply_time_ms == null ? null : n(row.reply_time_ms),
+        fans_with_renew_on:
+          row.fans_with_renew_on == null ? null : Math.round(n(row.fans_with_renew_on)),
+      });
+    }
+    if (rows.length < SUPABASE_PAGE_SIZE) break;
+    offset += rows.length;
+  }
+
+  return out;
 }
 
 export type CreatorTransactionRow = {
@@ -1006,6 +1019,68 @@ export async function listCreatorTransactions(params: {
   }
 
   return out;
+}
+
+export type CreatorDailyRevenueRow = {
+  model_record_id: string;
+  date: string;
+  revenue: number;
+};
+
+/**
+ * Pre-aggregated creator revenue by Athens calendar day (status=done).
+ * Prefer this over fetchAll listCreatorTransactions when only daily totals are needed.
+ */
+export async function listCreatorRevenueByAthensDay(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+}): Promise<CreatorDailyRevenueRow[]> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.rpc("infloww_creator_revenue_by_athens_day", {
+    p_start_ymd: params.startYmd,
+    p_end_ymd: params.endYmd,
+  });
+  if (error) throw new Error(`listCreatorRevenueByAthensDay: ${error.message}`);
+  const rows = (data ?? []) as Array<{
+    model_record_id: string | null;
+    day: string;
+    revenue: number | string | null;
+  }>;
+  const out: CreatorDailyRevenueRow[] = [];
+  for (const row of rows) {
+    const modelId = row.model_record_id ? String(row.model_record_id) : "";
+    if (!modelId) continue;
+    if (params.modelRecordId && modelId !== params.modelRecordId) continue;
+    out.push({
+      model_record_id: modelId,
+      date: String(row.day).slice(0, 10),
+      revenue: n(row.revenue),
+    });
+  }
+  return out;
+}
+
+/** Expand daily revenue aggregates into synthetic tx rows for helpers that expect CreatorTransactionRow. */
+export function syntheticCreatorTxFromDailyRevenue(
+  rows: CreatorDailyRevenueRow[]
+): CreatorTransactionRow[] {
+  return rows.map((r) => ({
+    transaction_id: `daily-agg:${r.model_record_id}:${r.date}`,
+    creator_infloww_id: "",
+    model_record_id: r.model_record_id,
+    fan_id: null,
+    fan_name: null,
+    created_time: `${r.date}T12:00:00+03:00`,
+    type: "aggregate",
+    status: "done",
+    amount: r.revenue,
+    fee: 0,
+    net: r.revenue,
+    sales_rule: null,
+    attribute_employee_id: null,
+    sales_amount: null,
+  }));
 }
 
 export type CreatorTransactionTypeCount = {
