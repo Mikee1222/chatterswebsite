@@ -53,6 +53,32 @@ export function isCreatorTxRevenueCountable(status: string | null | undefined): 
   return (status ?? "").trim().toLowerCase() === "done";
 }
 
+/**
+ * Creator earnings in dollars for a transaction row — matches Infloww dashboard
+ * category totals (creator share after OnlyFans platform fee). Prefer `net`; fall
+ * back to amount − fee when net is missing.
+ */
+export function creatorTxRevenueAmount(row: {
+  amount: number;
+  fee: number;
+  net: number;
+}): number {
+  if (row.net > 0) return row.net;
+  const fee = row.fee > 0 ? row.fee : 0;
+  return Math.max(0, row.amount - fee);
+}
+
+/** Athens (+3) created_time ISO bounds for an Infloww stats YMD range. */
+export function inflowwStatsRangeToCreatedTimeIso(params: {
+  startYmd: string;
+  endYmd: string;
+}): { startIso: string; endIso: string } {
+  return {
+    startIso: new Date(athensYmdStartUtcMs(params.startYmd)).toISOString(),
+    endIso: new Date(athensYmdEndUtcMs(params.endYmd)).toISOString(),
+  };
+}
+
 export type LinkedCreatorModel = {
   creatorInflowwId: string;
   platformPid?: string;
@@ -882,8 +908,7 @@ export async function listCreatorTransactions(params: {
   revenueOnly?: boolean;
 }): Promise<CreatorTransactionRow[]> {
   const sb = getSupabaseServiceClient();
-  const startIso = `${params.startYmd}T00:00:00.000Z`;
-  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  const { startIso, endIso } = inflowwStatsRangeToCreatedTimeIso(params);
   const fetchAll = params.fetchAll === true;
   const maxRows = fetchAll ? Number.POSITIVE_INFINITY : (params.limit ?? 500);
   const selectCols =
@@ -954,7 +979,7 @@ export async function listCreatorTransactionTypeCounts(params: {
     const type = (row.type ?? "unknown").trim() || "unknown";
     const prev = map.get(type) ?? { count: 0, gross: 0, net: 0 };
     prev.count += 1;
-    prev.gross += row.amount;
+    prev.gross += creatorTxRevenueAmount(row);
     prev.net += row.net;
     map.set(type, prev);
   }
@@ -1040,8 +1065,7 @@ export async function compareTransactionPerfVsEmployeeSales(params: {
   }>
 > {
   const sb = getSupabaseServiceClient();
-  const startIso = `${params.startYmd}T00:00:00.000Z`;
-  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  const { startIso, endIso } = inflowwStatsRangeToCreatedTimeIso(params);
   let txQ = sb
     .from("infloww_transactions")
     .select("created_time, attribute_employee_id, sales_amount")
@@ -1135,8 +1159,7 @@ export async function listCreatorRefunds(params: {
   limit?: number;
 }): Promise<CreatorRefundRow[]> {
   const sb = getSupabaseServiceClient();
-  const startIso = `${params.startYmd}T00:00:00.000Z`;
-  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  const { startIso, endIso } = inflowwStatsRangeToCreatedTimeIso(params);
   let q = sb
     .from("infloww_refunds")
     .select(

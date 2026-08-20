@@ -15,6 +15,7 @@ import {
   listCreatorDailyStats,
   listCreatorRefunds,
   listCreatorTransactions,
+  creatorTxRevenueAmount,
   listMarketingLinks,
   type CreatorDailyStatsRow,
   type CreatorTransactionRow,
@@ -160,7 +161,7 @@ function buildDailyRevenueTrend(transactions: CreatorTransactionRow[]): ClientPa
   for (const t of transactions) {
     const day = t.created_time?.slice(0, 10);
     if (!day) continue;
-    byDay.set(day, (byDay.get(day) ?? 0) + t.amount);
+    byDay.set(day, (byDay.get(day) ?? 0) + creatorTxRevenueAmount(t));
   }
   return [...byDay.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
@@ -266,7 +267,7 @@ async function fetchScopedRows(
   const daily = mergeDailyStats(dailyChunks.flat());
   const transactions = txChunks.flat();
   const refunds = refundChunks.flat();
-  const prevGross = prevTxChunks.flat().reduce((s, t) => s + t.amount, 0);
+  const prevGross = prevTxChunks.flat().reduce((s, t) => s + creatorTxRevenueAmount(t), 0);
 
   const marketing = computeAcquisitionEfficiency(marketingChunks.flat())
     .sort((a, b) => b.earnings_gross - a.earnings_gross)

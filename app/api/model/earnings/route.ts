@@ -12,6 +12,7 @@ import {
   listCreatorDailyStats,
   listCreatorRefunds,
   listCreatorTransactions,
+  creatorTxRevenueAmount,
   listMarketingLinks,
 } from "@/services/infloww-creator-earnings";
 import {
@@ -84,7 +85,7 @@ export async function GET(req: NextRequest) {
       daily,
       transactions,
       refunds,
-      previousGross: prevTxs.reduce((s, t) => s + t.amount, 0),
+      previousGross: prevTxs.reduce((s, t) => s + creatorTxRevenueAmount(t), 0),
     });
 
     const acquisition = computeAcquisitionEfficiency(marketingLinks).slice(0, 12);

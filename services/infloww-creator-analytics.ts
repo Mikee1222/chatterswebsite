@@ -11,7 +11,7 @@ import type {
   MarketingLinkRow,
   PriorityMassMessageRow,
 } from "@/services/infloww-creator-earnings";
-import { isCreatorTxRevenueCountable } from "@/services/infloww-creator-earnings";
+import { isCreatorTxRevenueCountable, creatorTxRevenueAmount } from "@/services/infloww-creator-earnings";
 
 /** Refund rate above this fraction surfaces a warning alert. */
 export const REFUND_RATE_WARN = 0.05;
@@ -153,22 +153,14 @@ export function computeNetProfit(params: {
   transactions: Array<Pick<CreatorTransactionRow, "amount" | "fee" | "net">>;
   refunds: Array<Pick<CreatorRefundRow, "payment_amount">>;
 }): NetProfitBreakdown {
-  const gross = sum(params.transactions.map((t) => t.amount));
+  const gross = sum(params.transactions.map(creatorTxRevenueAmount));
   const fees = sum(params.transactions.map((t) => t.fee));
   const refunds = sum(params.refunds.map((r) => r.payment_amount));
-  // Prefer explicit fee field; fall back to gross − net when fees are zero but net < gross.
-  const feeFallback =
-    fees > 0
-      ? fees
-      : Math.max(
-          0,
-          gross - sum(params.transactions.map((t) => t.net))
-        );
   return {
     gross,
-    fees: feeFallback,
+    fees,
     refunds,
-    net_profit: gross - feeFallback - refunds,
+    net_profit: gross - refunds,
     transaction_count: params.transactions.length,
     refund_count: params.refunds.length,
   };
@@ -446,7 +438,7 @@ function revenueByType(
   const map = new Map<string, number>();
   for (const t of txs) {
     const type = (t.type ?? "unknown").trim() || "unknown";
-    map.set(type, (map.get(type) ?? 0) + t.amount);
+    map.set(type, (map.get(type) ?? 0) + creatorTxRevenueAmount(t));
   }
   const total = sum([...map.values()]);
   return [...map.entries()]
@@ -620,7 +612,7 @@ export function buildAgencyCreatorAnalytics(params: {
       model_name: mid ? nameByRecord.get(mid) ?? "Unknown" : "Unknown",
       sales: 0,
     };
-    cur.sales += t.sales_amount ?? t.amount;
+    cur.sales += t.sales_amount ?? creatorTxRevenueAmount(t);
     heatmapMap.set(k, cur);
   }
 
@@ -644,10 +636,11 @@ export function buildAgencyCreatorAnalytics(params: {
 
 /** Metric tooltip copy for creator earnings UIs. */
 export const CREATOR_EARNINGS_STAT_INFO = {
-  gross: "Sum of synced Infloww transaction amounts (gross) in the selected range.",
-  fees: "Platform fees from transaction rows (or gross − net when fee fields are empty).",
+  gross:
+    "Sum of synced Infloww creator earnings after the OnlyFans platform fee — matches Infloww dashboard category totals.",
+  fees: "OnlyFans platform fees from transaction rows (pre-fee gross minus creator net).",
   refunds: "Sum of refund payment amounts from GET /v1/refunds in the selected range.",
-  net_profit: "Gross revenue minus platform fees minus refunds — closer to true take-home.",
+  net_profit: "Creator earnings minus refunds in the selected range.",
   refund_rate: "Refunds ÷ gross. Warns above 5%, critical above 10%.",
   visitors: "Profile visitors from Infloww creator-report reach.",
   active_fans: "Latest active fan count from creator-report in range.",

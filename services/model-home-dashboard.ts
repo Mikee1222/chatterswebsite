@@ -25,6 +25,7 @@ import { deriveModelCreatorAnalytics } from "@/services/infloww-creator-analytic
 import {
   listCreatorDailyStats,
   listCreatorTransactions,
+  creatorTxRevenueAmount,
 } from "@/services/infloww-creator-earnings";
 import { resolveInflowwStatsRange } from "@/services/infloww-performance";
 import {
@@ -83,7 +84,7 @@ async function loadEarningsSnapshot(modelRecordId: string): Promise<{
   const creatorInflowwId =
     daily[0]?.creator_infloww_id ?? transactions[0]?.creator_infloww_id ?? "";
   const linked = Boolean(creatorInflowwId) || daily.length > 0 || transactions.length > 0;
-  const previousGross = prevTxs.reduce((s, t) => s + (t.amount ?? 0), 0);
+  const previousGross = prevTxs.reduce((s, t) => s + creatorTxRevenueAmount(t), 0);
   const analytics = deriveModelCreatorAnalytics({
     creatorInflowwId: creatorInflowwId || "unlinked",
     modelRecordId,

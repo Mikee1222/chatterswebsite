@@ -11,6 +11,7 @@ import {
 import {
   listCreatorDailyStats,
   listCreatorTransactions,
+  creatorTxRevenueAmount,
   type CreatorDailyStatsRow,
   type CreatorTransactionRow,
 } from "@/services/infloww-creator-earnings";
@@ -197,7 +198,7 @@ function revenueByDate(txs: CreatorTransactionRow[]): Map<string, number> {
   for (const t of txs) {
     if (!t.created_time) continue;
     const ymd = toYmd(t.created_time);
-    map.set(ymd, (map.get(ymd) ?? 0) + (Number.isFinite(t.amount) ? t.amount : 0));
+    map.set(ymd, (map.get(ymd) ?? 0) + creatorTxRevenueAmount(t));
   }
   return map;
 }
@@ -500,7 +501,7 @@ export function deriveCrossPlatformAnalytics(input: {
         ? trendToScore(pctChangeSafe(totalNewSubs, prevNewSubs), true)
         : clamp01to100(40 + Math.min(50, totalNewSubs / 2));
 
-  const curGross = ofTransactions.reduce((s, t) => s + t.amount, 0);
+  const curGross = ofTransactions.reduce((s, t) => s + creatorTxRevenueAmount(t), 0);
   const ofRevenueTrendScore =
     ofTransactions.length === 0 && (prevGross == null || prevGross === 0)
       ? null
@@ -654,7 +655,7 @@ export async function getCrossPlatformAnalytics(params: {
     topPosts,
     prevIgDaily: prevIg,
     prevOfDaily: prevOf,
-    prevGross: prevTxs.reduce((s, t) => s + t.amount, 0),
+    prevGross: prevTxs.reduce((s, t) => s + creatorTxRevenueAmount(t), 0),
   });
 }
 
