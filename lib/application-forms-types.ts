@@ -120,9 +120,45 @@ export type ApplicationFormWithQuestions = ApplicationFormRecord & {
   response_count?: number;
 };
 
+export type ApplicationFormFunnel = Record<ApplicationResponseStatus, number>;
+
 export type ApplicationFormListItem = ApplicationFormRecord & {
   response_count: number;
+  funnel: ApplicationFormFunnel;
+  /** Submissions in the last 7 days (inclusive of today). */
+  responses_last_7d: number;
+  /** Submissions in the 7 days before that (trend baseline). */
+  responses_prev_7d: number;
 };
+
+export type ApplicationRecentActivityItem = {
+  response_id: string;
+  form_id: string;
+  form_title: string;
+  form_slug: string;
+  status: ApplicationResponseStatus;
+  submitted_at: string;
+  candidate_label: string;
+};
+
+export type ApplicationFormsOverview = {
+  total_candidates: number;
+  awaiting_review: number;
+  hired_this_month: number;
+  hired_this_quarter: number;
+  avg_cognitive_percentile: number | null;
+  avg_eq_score: number | null;
+  most_active_form: { id: string; title: string; response_count: number } | null;
+  volume_by_day: { date: string; count: number }[];
+  recent_activity: ApplicationRecentActivityItem[];
+  published_count: number;
+  draft_count: number;
+  closed_count: number;
+};
+
+export function emptyFunnel(): ApplicationFormFunnel {
+  return { new: 0, reviewed: 0, shortlisted: 0, rejected: 0, hired: 0 };
+}
 
 export type ApplicationFormAnswer = {
   id: string;

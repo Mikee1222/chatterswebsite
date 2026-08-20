@@ -11,16 +11,20 @@ import {
   parseOptionsJson,
   parsePipelineConfig,
   slugifyFormTitle,
+  emptyFunnel,
   type ApplicationFormAnalytics,
   type ApplicationFormAnswer,
+  type ApplicationFormFunnel,
   type ApplicationFormListItem,
   type ApplicationFormQuestion,
   type ApplicationFormRecord,
   type ApplicationFormResponse,
   type ApplicationFormResponseWithAnswers,
+  type ApplicationFormsOverview,
   type ApplicationFormStatus,
   type ApplicationFormWithQuestions,
   type ApplicationQuestionType,
+  type ApplicationRecentActivityItem,
   type ApplicationResponseStatus,
   type PipelineStepConfig,
 } from "@/lib/application-forms-types";
@@ -158,6 +162,16 @@ async function ensureUniqueSlug(base: string, excludeId?: string): Promise<strin
   }
 }
 
+function startOfUtcDay(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function daysAgoUtc(n: number): Date {
+  const d = startOfUtcDay(new Date());
+  d.setUTCDate(d.getUTCDate() - n);
+  return d;
+}
+
 export async function listApplicationForms(): Promise<ApplicationFormListItem[]> {
   const sb = getSupabaseServiceClient();
   const { data: forms, error } = await sb
@@ -172,20 +186,47 @@ export async function listApplicationForms(): Promise<ApplicationFormListItem[]>
   const ids = formRows.map((f) => f.id);
   const { data: responses, error: rErr } = await sb
     .from("application_form_responses")
-    .select("form_id")
+    .select("form_id, status, submitted_at")
     .in("form_id", ids);
   if (rErr) throw new Error(rErr.message);
 
-  const counts = new Map<string, number>();
-  for (const r of responses ?? []) {
-    const fid = (r as { form_id: string }).form_id;
-    counts.set(fid, (counts.get(fid) ?? 0) + 1);
+  const last7Start = daysAgoUtc(6).toISOString();
+  const prev7Start = daysAgoUtc(13).toISOString();
+  const prev7End = daysAgoUtc(7).toISOString();
+
+  type Agg = {
+    count: number;
+    funnel: ApplicationFormFunnel;
+    last7: number;
+    prev7: number;
+  };
+  const byForm = new Map<string, Agg>();
+  for (const id of ids) {
+    byForm.set(id, { count: 0, funnel: emptyFunnel(), last7: 0, prev7: 0 });
   }
 
-  return formRows.map((row) => ({
-    ...mapForm(row),
-    response_count: counts.get(row.id) ?? 0,
-  }));
+  for (const raw of responses ?? []) {
+    const r = raw as { form_id: string; status: string; submitted_at: string };
+    const agg = byForm.get(r.form_id);
+    if (!agg) continue;
+    agg.count += 1;
+    if (isApplicationResponseStatus(r.status)) {
+      agg.funnel[r.status] += 1;
+    }
+    if (r.submitted_at >= last7Start) agg.last7 += 1;
+    else if (r.submitted_at >= prev7Start && r.submitted_at < prev7End) agg.prev7 += 1;
+  }
+
+  return formRows.map((row) => {
+    const agg = byForm.get(row.id)!;
+    return {
+      ...mapForm(row),
+      response_count: agg.count,
+      funnel: agg.funnel,
+      responses_last_7d: agg.last7,
+      responses_prev_7d: agg.prev7,
+    };
+  });
 }
 
 export async function getApplicationFormById(
@@ -358,6 +399,184 @@ export async function deleteApplicationForm(id: string): Promise<void> {
   const sb = getSupabaseServiceClient();
   const { error } = await sb.from("application_forms").delete().eq("id", id);
   if (error) throw new Error(error.message);
+}
+
+export async function duplicateApplicationForm(
+  id: string,
+  createdBy?: string | null,
+): Promise<ApplicationFormWithQuestions> {
+  const source = await getApplicationFormById(id);
+  if (!source) throw new Error("Form not found");
+
+  const copy = await createApplicationForm({
+    title: `${source.title} (Copy)`,
+    description: source.description,
+    description_el: source.description_el,
+    footer_text: source.footer_text,
+    footer_text_el: source.footer_text_el,
+    status: "draft",
+    pipeline_config: source.pipeline_config,
+    created_by: createdBy ?? null,
+  });
+
+  for (const q of source.questions) {
+    await createQuestion(copy.id, {
+      question_text: q.question_text,
+      question_text_el: q.question_text_el,
+      question_type: q.question_type,
+      options: q.options,
+      options_el: q.options_el,
+      is_required: q.is_required,
+    });
+  }
+
+  const full = await getApplicationFormById(copy.id);
+  if (!full) throw new Error("Failed to load duplicated form");
+  return full;
+}
+
+export async function getApplicationFormsOverview(): Promise<ApplicationFormsOverview> {
+  const forms = await listApplicationForms();
+  const sb = getSupabaseServiceClient();
+
+  const total_candidates = forms.reduce((n, f) => n + f.response_count, 0);
+  const awaiting_review = forms.reduce((n, f) => n + f.funnel.new, 0);
+  const published_count = forms.filter((f) => f.status === "published").length;
+  const draft_count = forms.filter((f) => f.status === "draft").length;
+  const closed_count = forms.filter((f) => f.status === "closed").length;
+
+  const most_active_form =
+    forms.length === 0
+      ? null
+      : [...forms].sort((a, b) => b.response_count - a.response_count)[0]!;
+  const mostActive =
+    most_active_form && most_active_form.response_count > 0
+      ? {
+          id: most_active_form.id,
+          title: most_active_form.title,
+          response_count: most_active_form.response_count,
+        }
+      : null;
+
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  const quarterMonth = Math.floor(now.getUTCMonth() / 3) * 3;
+  const quarterStart = new Date(Date.UTC(now.getUTCFullYear(), quarterMonth, 1)).toISOString();
+
+  const [{ count: hiredMonth }, { count: hiredQuarter }, cogRes, eqRes, recentRows] =
+    await Promise.all([
+      sb
+        .from("application_form_responses")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "hired")
+        .gte("updated_at", monthStart),
+      sb
+        .from("application_form_responses")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "hired")
+        .gte("updated_at", quarterStart),
+      sb
+        .from("application_cognitive_results")
+        .select("percentile_at_time_of_completion")
+        .not("response_id", "is", null)
+        .not("percentile_at_time_of_completion", "is", null),
+      sb
+        .from("application_eq_results")
+        .select("overall_score")
+        .not("response_id", "is", null),
+      sb
+        .from("application_form_responses")
+        .select("id, form_id, status, submitted_at")
+        .order("submitted_at", { ascending: false })
+        .limit(5),
+    ]);
+
+  let cogSum = 0;
+  let cogN = 0;
+  for (const row of cogRes.data ?? []) {
+    const p = (row as { percentile_at_time_of_completion: number | null })
+      .percentile_at_time_of_completion;
+    if (p == null) continue;
+    cogSum += Number(p);
+    cogN += 1;
+  }
+
+  let eqSum = 0;
+  let eqN = 0;
+  for (const row of eqRes.data ?? []) {
+    const s = Number((row as { overall_score: number }).overall_score);
+    if (!Number.isFinite(s)) continue;
+    eqSum += s;
+    eqN += 1;
+  }
+
+  const volumeStart = daysAgoUtc(29).toISOString().slice(0, 10);
+  const { data: volumeRows, error: volErr } = await sb
+    .from("application_form_responses")
+    .select("submitted_at")
+    .gte("submitted_at", `${volumeStart}T00:00:00.000Z`);
+  if (volErr) throw new Error(volErr.message);
+
+  const dayMap = new Map<string, number>();
+  for (let i = 29; i >= 0; i--) {
+    dayMap.set(daysAgoUtc(i).toISOString().slice(0, 10), 0);
+  }
+  for (const row of volumeRows ?? []) {
+    const day = String((row as { submitted_at: string }).submitted_at).slice(0, 10);
+    if (dayMap.has(day)) dayMap.set(day, (dayMap.get(day) ?? 0) + 1);
+  }
+  const volume_by_day = [...dayMap.entries()].map(([date, count]) => ({ date, count }));
+
+  const recent = (recentRows.data ?? []) as {
+    id: string;
+    form_id: string;
+    status: string;
+    submitted_at: string;
+  }[];
+  const formById = new Map(forms.map((f) => [f.id, f]));
+  const recentIds = recent.map((r) => r.id);
+  const labelByResponse = new Map<string, string>();
+  if (recentIds.length > 0) {
+    const { data: answers } = await sb
+      .from("application_form_answers")
+      .select("response_id, answer_text, created_at")
+      .in("response_id", recentIds)
+      .order("created_at", { ascending: true });
+    for (const a of answers ?? []) {
+      const row = a as { response_id: string; answer_text: string | null };
+      if (labelByResponse.has(row.response_id)) continue;
+      const text = (row.answer_text ?? "").trim();
+      if (text) labelByResponse.set(row.response_id, text.slice(0, 80));
+    }
+  }
+
+  const recent_activity: ApplicationRecentActivityItem[] = recent.map((r) => {
+    const form = formById.get(r.form_id);
+    return {
+      response_id: r.id,
+      form_id: r.form_id,
+      form_title: form?.title ?? "Unknown form",
+      form_slug: form?.slug ?? "",
+      status: isApplicationResponseStatus(r.status) ? r.status : "new",
+      submitted_at: r.submitted_at,
+      candidate_label: labelByResponse.get(r.id) || "Candidate",
+    };
+  });
+
+  return {
+    total_candidates,
+    awaiting_review,
+    hired_this_month: hiredMonth ?? 0,
+    hired_this_quarter: hiredQuarter ?? 0,
+    avg_cognitive_percentile: cogN ? Math.round((cogSum / cogN) * 10) / 10 : null,
+    avg_eq_score: eqN ? Math.round((eqSum / eqN) * 10) / 10 : null,
+    most_active_form: mostActive,
+    volume_by_day,
+    recent_activity,
+    published_count,
+    draft_count,
+    closed_count,
+  };
 }
 
 export async function createQuestion(
