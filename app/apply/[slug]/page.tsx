@@ -5,11 +5,11 @@ import {
   getPublishedFormBySlug,
 } from "@/services/application-forms";
 import { PublicApplicationFlowClient } from "@/components/public-application-flow-client";
+import { COGNITIVE_TIME_LIMIT_SECONDS } from "@/lib/application-screening-banks";
 import {
-  COGNITIVE_TIME_LIMIT_SECONDS,
-  toPublicCognitiveQuestions,
-  toPublicEqScenarios,
-} from "@/lib/application-screening-banks";
+  toPublicCognitiveQuestionsLocalized,
+  toPublicEqScenariosLocalized,
+} from "@/lib/application-screening-i18n";
 import { getEnabledPipelineSteps } from "@/lib/application-forms-types";
 
 export const dynamic = "force-dynamic";
@@ -57,10 +57,15 @@ export default async function PublicApplyPage({ params }: Props) {
       slug={form.slug}
       title={form.title}
       description={form.description}
+      descriptionEl={form.description_el}
+      footerText={form.footer_text}
+      footerTextEl={form.footer_text_el}
       questions={form.questions}
       pipelineConfig={form.pipeline_config}
-      cognitiveQuestions={hasCognitive ? toPublicCognitiveQuestions() : null}
-      eqScenarios={hasEq ? toPublicEqScenarios() : null}
+      cognitiveQuestionsEn={hasCognitive ? toPublicCognitiveQuestionsLocalized("en") : null}
+      cognitiveQuestionsEl={hasCognitive ? toPublicCognitiveQuestionsLocalized("el") : null}
+      eqScenariosEn={hasEq ? toPublicEqScenariosLocalized("en") : null}
+      eqScenariosEl={hasEq ? toPublicEqScenariosLocalized("el") : null}
       cognitiveTimeLimit={COGNITIVE_TIME_LIMIT_SECONDS}
     />
   );

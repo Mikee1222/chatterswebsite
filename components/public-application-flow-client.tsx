@@ -2,18 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApplicationFormPreview } from "@/components/application-form-preview";
+import { TypingSpeedTestStep } from "@/components/typing-speed-test-step";
 import {
   CHOICE_QUESTION_TYPES,
   getEnabledPipelineSteps,
+  localizeQuestion,
   type ApplicationFormQuestion,
   type PipelineStepConfig,
   type PipelineStepType,
 } from "@/lib/application-forms-types";
 import {
   COGNITIVE_TIME_LIMIT_SECONDS,
-  SCREENING_FRAMING_COPY,
   type PublicCognitiveQuestion,
 } from "@/lib/application-screening-banks";
+import {
+  pickLocalized,
+  pipelineUi,
+  type PipelineLanguage,
+} from "@/lib/application-pipeline-i18n";
 
 type AnswerState = Record<string, { text?: string; options?: string[] }>;
 
@@ -23,71 +29,162 @@ type Props = {
   slug: string;
   title: string;
   description: string;
+  descriptionEl: string;
+  footerText: string;
+  footerTextEl: string;
   questions: ApplicationFormQuestion[];
   pipelineConfig: PipelineStepConfig[];
-  cognitiveQuestions: PublicCognitiveQuestion[] | null;
-  eqScenarios: EqScenarioPublic[] | null;
+  cognitiveQuestionsEn: PublicCognitiveQuestion[] | null;
+  cognitiveQuestionsEl: PublicCognitiveQuestion[] | null;
+  eqScenariosEn: EqScenarioPublic[] | null;
+  eqScenariosEl: EqScenarioPublic[] | null;
   cognitiveTimeLimit?: number;
 };
 
-type Phase = "intro" | PipelineStepType | "done";
+type Phase = "language" | "intro" | PipelineStepType | "done";
+
+function LanguageSwitcher({
+  lang,
+  onChange,
+}: {
+  lang: PipelineLanguage;
+  onChange: (l: PipelineLanguage) => void;
+}) {
+  const ui = pipelineUi(lang);
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white/80 p-0.5 text-xs">
+      <button
+        type="button"
+        onClick={() => onChange("en")}
+        className={`rounded-full px-2.5 py-1 ${lang === "en" ? "bg-[#1a1512] text-white" : "text-zinc-600"}`}
+      >
+        EN
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("el")}
+        className={`rounded-full px-2.5 py-1 ${lang === "el" ? "bg-[#1a1512] text-white" : "text-zinc-600"}`}
+      >
+        EL
+      </button>
+      <span className="sr-only">{ui.language}</span>
+    </div>
+  );
+}
 
 export function PublicApplicationFlowClient({
   slug,
   title,
   description,
+  descriptionEl,
+  footerText,
+  footerTextEl,
   questions,
   pipelineConfig,
-  cognitiveQuestions,
-  eqScenarios,
+  cognitiveQuestionsEn,
+  cognitiveQuestionsEl,
+  eqScenariosEn,
+  eqScenariosEl,
   cognitiveTimeLimit = COGNITIVE_TIME_LIMIT_SECONDS,
 }: Props) {
   const enabled = useMemo(
     () => getEnabledPipelineSteps(pipelineConfig).map((s) => s.step),
     [pipelineConfig],
   );
-  const needsIntro = enabled.some(
-    (s) => s === "cognitive_screening" || s === "eq_screening",
+  const needsScreeningIntro = enabled.some(
+    (s) =>
+      s === "cognitive_screening" || s === "eq_screening" || s === "typing_speed_test",
   );
 
-  const [phase, setPhase] = useState<Phase>(needsIntro ? "intro" : enabled[0] ?? "application_form");
+  const [lang, setLang] = useState<PipelineLanguage | null>(null);
+  const [phase, setPhase] = useState<Phase>("language");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const startSession = useCallback(async () => {
-    setStarting(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/apply/${encodeURIComponent(slug)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "start_session" }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Could not start");
-      setSessionId(data.session_id);
+  const ui = pipelineUi(lang ?? "en");
+  const desc = pickLocalized(lang ?? "en", description, descriptionEl);
+  const footer = pickLocalized(lang ?? "en", footerText, footerTextEl);
+
+  const cognitiveQuestions =
+    lang === "el" ? cognitiveQuestionsEl ?? cognitiveQuestionsEn : cognitiveQuestionsEn;
+  const eqScenarios = lang === "el" ? eqScenariosEl ?? eqScenariosEn : eqScenariosEn;
+
+  const persistLang = useCallback(
+    async (next: PipelineLanguage, sid?: string | null) => {
+      const id = sid ?? sessionId;
+      if (!id) return;
       try {
-        localStorage.setItem(`apply_session:${slug}`, data.session_id);
+        await fetch(`/api/apply/${encodeURIComponent(slug)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "set_language",
+            session_id: id,
+            preferred_language: next,
+          }),
+        });
       } catch {
         /* ignore */
       }
-      return data.session_id as string;
-    } finally {
-      setStarting(false);
-    }
-  }, [slug]);
+      try {
+        localStorage.setItem(`apply_lang:${slug}`, next);
+      } catch {
+        /* ignore */
+      }
+    },
+    [sessionId, slug],
+  );
+
+  const startSession = useCallback(
+    async (preferred: PipelineLanguage) => {
+      setStarting(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/apply/${encodeURIComponent(slug)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "start_session",
+            preferred_language: preferred,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Could not start");
+        setSessionId(data.session_id);
+        try {
+          localStorage.setItem(`apply_session:${slug}`, data.session_id);
+          localStorage.setItem(`apply_lang:${slug}`, preferred);
+        } catch {
+          /* ignore */
+        }
+        return data.session_id as string;
+      } finally {
+        setStarting(false);
+      }
+    },
+    [slug],
+  );
 
   useEffect(() => {
     try {
       const existing = localStorage.getItem(`apply_session:${slug}`);
+      const savedLang = localStorage.getItem(`apply_lang:${slug}`);
       if (existing) setSessionId(existing);
+      if (savedLang === "en" || savedLang === "el") {
+        setLang(savedLang);
+        setPhase(needsScreeningIntro ? "intro" : enabled[0] ?? "application_form");
+      }
     } catch {
       /* ignore */
     }
-  }, [slug]);
+  }, [slug, needsScreeningIntro, enabled]);
 
   function advanceFrom(current: Phase) {
+    if (current === "language") {
+      setPhase(needsScreeningIntro ? "intro" : enabled[0] ?? "application_form");
+      return;
+    }
     if (current === "intro") {
       setPhase(enabled[0] ?? "application_form");
       return;
@@ -102,7 +199,23 @@ export function PublicApplicationFlowClient({
 
   async function ensureSession(): Promise<string> {
     if (sessionId) return sessionId;
-    return startSession();
+    return startSession(lang ?? "en");
+  }
+
+  async function onPickLanguage(next: PipelineLanguage) {
+    setLang(next);
+    try {
+      const sid = await startSession(next);
+      await persistLang(next, sid);
+      advanceFrom("language");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not start");
+    }
+  }
+
+  async function onSwitchLanguage(next: PipelineLanguage) {
+    setLang(next);
+    void persistLang(next);
   }
 
   if (phase === "done") {
@@ -110,115 +223,187 @@ export function PublicApplicationFlowClient({
       <div className="mx-auto max-w-lg px-4 py-20 text-center">
         <div className="rounded-3xl border border-black/5 bg-gradient-to-b from-[#F7F3EE] to-[#EFE8DF] px-8 py-12 shadow-xl">
           <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#8B6914]">
-            Thank you
+            {ui.thankYou}
           </p>
-          <h1 className="mt-3 font-serif text-3xl text-[#1a1512]">Application received</h1>
-          <p className="mt-4 text-sm leading-relaxed text-zinc-600">
-            We’ve received your submission. Our team will review it and get in touch if there’s a
-            fit.
-          </p>
+          <h1 className="mt-3 font-serif text-3xl text-[#1a1512]">{ui.applicationReceived}</h1>
+          <p className="mt-4 text-sm leading-relaxed text-zinc-600">{ui.applicationReceivedBody}</p>
         </div>
       </div>
     );
   }
 
-  if (phase === "intro") {
+  if (phase === "language" || !lang) {
     return (
       <div className="mx-auto max-w-xl px-4 py-12 sm:py-16">
         <div className="overflow-hidden rounded-3xl border border-black/5 bg-gradient-to-b from-[#F7F3EE] to-[#EFE8DF] shadow-xl">
           <div className="bg-[#1a1512] px-6 py-8 text-white">
-            <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#D4AF8C]/80">
-              {SCREENING_FRAMING_COPY.shortTitle}
-            </p>
-            <h1 className="mt-2 font-serif text-3xl tracking-tight">{title}</h1>
-            {description ? (
-              <p className="mt-3 text-sm text-white/65">{description}</p>
-            ) : null}
+            <h1 className="font-serif text-3xl tracking-tight">{title}</h1>
+            <p className="mt-3 text-sm text-white/65">{PIPELINE_UI_CHOOSE}</p>
           </div>
-          <div className="space-y-4 px-6 py-6 text-sm leading-relaxed text-zinc-700">
-            <h2 className="font-medium text-[#1a1512]">{SCREENING_FRAMING_COPY.introHeadline}</h2>
-            <p>{SCREENING_FRAMING_COPY.introBody}</p>
-            <ol className="list-decimal space-y-2 pl-5 text-zinc-600">
-              {enabled.map((s) => (
-                <li key={s}>
-                  {s === "cognitive_screening" && SCREENING_FRAMING_COPY.cognitiveTitle}
-                  {s === "eq_screening" && SCREENING_FRAMING_COPY.eqTitle}
-                  {s === "application_form" && "Application questions"}
-                </li>
-              ))}
-            </ol>
+          <div className="space-y-4 px-6 py-6">
+            <p className="text-sm text-zinc-600">{pipelineUi("en").chooseLanguageHint}</p>
             {error && <p className="text-sm text-red-600">{error}</p>}
-            <button
-              type="button"
-              disabled={starting}
-              onClick={() => {
-                void (async () => {
-                  try {
-                    await ensureSession();
-                    advanceFrom("intro");
-                  } catch (e) {
-                    setError(e instanceof Error ? e.message : "Could not start");
-                  }
-                })();
-              }}
-              className="mt-2 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white disabled:opacity-60"
-            >
-              {starting ? "Starting…" : "Begin"}
-            </button>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={starting}
+                onClick={() => void onPickLanguage("en")}
+                className="rounded-2xl border border-black/10 bg-white py-4 text-sm font-medium text-[#1a1512] hover:border-[#C4A484]"
+              >
+                English
+              </button>
+              <button
+                type="button"
+                disabled={starting}
+                onClick={() => void onPickLanguage("el")}
+                className="rounded-2xl border border-black/10 bg-white py-4 text-sm font-medium text-[#1a1512] hover:border-[#C4A484]"
+              >
+                Ελληνικά
+              </button>
+            </div>
           </div>
         </div>
       </div>
+    );
+  }
+
+  const headerBar = (
+    <div className="mx-auto flex max-w-xl items-center justify-end px-4 pt-4">
+      <LanguageSwitcher lang={lang} onChange={(l) => void onSwitchLanguage(l)} />
+    </div>
+  );
+
+  if (phase === "intro") {
+    return (
+      <>
+        {headerBar}
+        <div className="mx-auto max-w-xl px-4 py-8 sm:py-12">
+          <div className="overflow-hidden rounded-3xl border border-black/5 bg-gradient-to-b from-[#F7F3EE] to-[#EFE8DF] shadow-xl">
+            <div className="bg-[#1a1512] px-6 py-8 text-white">
+              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#D4AF8C]/80">
+                {ui.cognitiveTitle} · {ui.eqTitle}
+              </p>
+              <h1 className="mt-2 font-serif text-3xl tracking-tight">{title}</h1>
+              {desc ? <p className="mt-3 text-sm text-white/65 whitespace-pre-line">{desc}</p> : null}
+            </div>
+            <div className="space-y-4 px-6 py-6 text-sm leading-relaxed text-zinc-700">
+              <h2 className="font-medium text-[#1a1512]">{ui.screeningIntroHeadline}</h2>
+              <p>{ui.screeningIntroBody}</p>
+              <ol className="list-decimal space-y-2 pl-5 text-zinc-600">
+                {enabled.map((s) => (
+                  <li key={s}>
+                    {s === "cognitive_screening" && ui.cognitiveTitle}
+                    {s === "eq_screening" && ui.eqTitle}
+                    {s === "typing_speed_test" && ui.typingTitle}
+                    {s === "application_form" && ui.applicationQuestions}
+                  </li>
+                ))}
+              </ol>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <button
+                type="button"
+                disabled={starting}
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      await ensureSession();
+                      advanceFrom("intro");
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Could not start");
+                    }
+                  })();
+                }}
+                className="mt-2 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white disabled:opacity-60"
+              >
+                {starting ? ui.starting : ui.begin}
+              </button>
+            </div>
+          </div>
+        </div>
+      </>
     );
   }
 
   if (phase === "cognitive_screening" && cognitiveQuestions) {
     return (
-      <CognitiveStep
-        slug={slug}
-        questions={cognitiveQuestions}
-        timeLimit={cognitiveTimeLimit}
-        ensureSession={ensureSession}
-        onComplete={() => advanceFrom("cognitive_screening")}
-      />
+      <>
+        {headerBar}
+        <CognitiveStep
+          slug={slug}
+          lang={lang}
+          questions={cognitiveQuestions}
+          timeLimit={cognitiveTimeLimit}
+          ensureSession={ensureSession}
+          onComplete={() => advanceFrom("cognitive_screening")}
+        />
+      </>
     );
   }
 
   if (phase === "eq_screening" && eqScenarios) {
     return (
-      <EqStep
-        slug={slug}
-        scenarios={eqScenarios}
-        ensureSession={ensureSession}
-        onComplete={() => advanceFrom("eq_screening")}
-      />
+      <>
+        {headerBar}
+        <EqStep
+          slug={slug}
+          lang={lang}
+          scenarios={eqScenarios}
+          ensureSession={ensureSession}
+          onComplete={() => advanceFrom("eq_screening")}
+        />
+      </>
+    );
+  }
+
+  if (phase === "typing_speed_test") {
+    return (
+      <>
+        {headerBar}
+        <TypingSpeedTestStep
+          slug={slug}
+          preferredLanguage={lang}
+          ensureSession={ensureSession}
+          onComplete={() => advanceFrom("typing_speed_test")}
+        />
+      </>
     );
   }
 
   return (
-    <ApplicationFormStep
-      slug={slug}
-      title={title}
-      description={description}
-      questions={questions}
-      ensureSession={ensureSession}
-      onComplete={() => setPhase("done")}
-    />
+    <>
+      {headerBar}
+      <ApplicationFormStep
+        slug={slug}
+        title={title}
+        description={desc}
+        footer={footer}
+        lang={lang}
+        questions={questions}
+        ensureSession={ensureSession}
+        onComplete={() => setPhase("done")}
+      />
+    </>
   );
 }
 
+const PIPELINE_UI_CHOOSE = "Choose your language / Επίλεξε γλώσσα";
+
 function CognitiveStep({
   slug,
+  lang,
   questions,
   timeLimit,
   ensureSession,
   onComplete,
 }: {
   slug: string;
+  lang: PipelineLanguage;
   questions: PublicCognitiveQuestion[];
   timeLimit: number;
   ensureSession: () => Promise<string>;
   onComplete: () => void;
 }) {
+  const ui = pipelineUi(lang);
   const [answers, setAnswers] = useState<Record<string, number | null>>({});
   const [secondsLeft, setSecondsLeft] = useState(timeLimit);
   const [submitting, setSubmitting] = useState(false);
@@ -281,9 +466,7 @@ function CognitiveStep({
     <div className="mx-auto max-w-xl px-4 py-10">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">
-            {SCREENING_FRAMING_COPY.cognitiveTitle}
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">{ui.cognitiveTitle}</p>
           <p className="mt-1 text-xs text-zinc-500">
             {idx + 1} / {questions.length}
           </p>
@@ -331,7 +514,7 @@ function CognitiveStep({
             onClick={() => setIdx((i) => i - 1)}
             className="rounded-xl border border-black/10 px-4 py-2 text-sm disabled:opacity-40"
           >
-            Back
+            {ui.back}
           </button>
           {idx < questions.length - 1 ? (
             <button
@@ -339,7 +522,7 @@ function CognitiveStep({
               onClick={() => setIdx((i) => i + 1)}
               className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white"
             >
-              Next
+              {ui.next}
             </button>
           ) : (
             <button
@@ -348,29 +531,30 @@ function CognitiveStep({
               onClick={() => void submit()}
               className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white disabled:opacity-60"
             >
-              {submitting ? "Submitting…" : "Finish section"}
+              {submitting ? ui.submitting : ui.finishSection}
             </button>
           )}
         </div>
       </div>
-      <p className="mt-3 text-center text-[11px] text-zinc-500">
-        {SCREENING_FRAMING_COPY.cognitiveBody}
-      </p>
+      <p className="mt-3 text-center text-[11px] text-zinc-500">{ui.cognitiveBody}</p>
     </div>
   );
 }
 
 function EqStep({
   slug,
+  lang,
   scenarios,
   ensureSession,
   onComplete,
 }: {
   slug: string;
+  lang: PipelineLanguage;
   scenarios: EqScenarioPublic[];
   ensureSession: () => Promise<string>;
   onComplete: () => void;
 }) {
+  const ui = pipelineUi(lang);
   const [answers, setAnswers] = useState<Record<string, number | null>>({});
   const [idx, setIdx] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -409,11 +593,9 @@ function EqStep({
 
   return (
     <div className="mx-auto max-w-xl px-4 py-10">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">
-        {SCREENING_FRAMING_COPY.eqTitle}
-      </p>
+      <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">{ui.eqTitle}</p>
       <p className="mt-1 text-xs text-zinc-500">
-        Scenario {idx + 1} / {scenarios.length}
+        {idx + 1} / {scenarios.length}
       </p>
       <div className="mt-3 mb-4 h-1.5 overflow-hidden rounded-full bg-black/10">
         <div
@@ -450,7 +632,7 @@ function EqStep({
             onClick={() => setIdx((i) => i - 1)}
             className="rounded-xl border border-black/10 px-4 py-2 text-sm disabled:opacity-40"
           >
-            Back
+            {ui.back}
           </button>
           {idx < scenarios.length - 1 ? (
             <button
@@ -459,7 +641,7 @@ function EqStep({
               onClick={() => setIdx((i) => i + 1)}
               className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white disabled:opacity-40"
             >
-              Next
+              {ui.next}
             </button>
           ) : (
             <button
@@ -468,12 +650,12 @@ function EqStep({
               onClick={() => void submit()}
               className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white disabled:opacity-60"
             >
-              {submitting ? "Submitting…" : "Finish section"}
+              {submitting ? ui.submitting : ui.finishSection}
             </button>
           )}
         </div>
       </div>
-      <p className="mt-3 text-center text-[11px] text-zinc-500">{SCREENING_FRAMING_COPY.eqBody}</p>
+      <p className="mt-3 text-center text-[11px] text-zinc-500">{ui.eqBody}</p>
     </div>
   );
 }
@@ -482,6 +664,8 @@ function ApplicationFormStep({
   slug,
   title,
   description,
+  footer,
+  lang,
   questions,
   ensureSession,
   onComplete,
@@ -489,15 +673,27 @@ function ApplicationFormStep({
   slug: string;
   title: string;
   description: string;
+  footer: string;
+  lang: PipelineLanguage;
   questions: ApplicationFormQuestion[];
   ensureSession: () => Promise<string>;
   onComplete: () => void;
 }) {
+  const ui = pipelineUi(lang);
   const [values, setValues] = useState<AnswerState>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [honeypot, setHoneypot] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const localizedQuestions = useMemo(
+    () =>
+      questions.map((q) => {
+        const loc = localizeQuestion(q, lang);
+        return { ...q, question_text: loc.question_text, options: loc.options };
+      }),
+    [questions, lang],
+  );
 
   const answeredCount = useMemo(() => {
     return questions.filter((q) => {
@@ -516,9 +712,9 @@ function ApplicationFormStep({
       if (!q.is_required) continue;
       const v = values[q.id];
       if (q.question_type === "checkboxes") {
-        if (!v?.options?.length) next[q.id] = "Please select at least one option";
+        if (!v?.options?.length) next[q.id] = ui.selectOne;
       } else if (!(v?.text ?? "").trim() && !(v?.options ?? []).length) {
-        next[q.id] = "This field is required";
+        next[q.id] = ui.required;
       }
     }
     setErrors(next);
@@ -550,6 +746,7 @@ function ApplicationFormStep({
         body: JSON.stringify({
           action: "submit_form",
           session_id,
+          preferred_language: lang,
           answers,
           website: honeypot,
         }),
@@ -574,7 +771,7 @@ function ApplicationFormStep({
       {questions.length > 3 && (
         <div className="mb-6">
           <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
-            <span>Progress</span>
+            <span>{ui.progress}</span>
             <span>
               {answeredCount}/{questions.length}
             </span>
@@ -591,8 +788,9 @@ function ApplicationFormStep({
       <ApplicationFormPreview
         title={title}
         description={description}
-        questions={questions}
+        questions={localizedQuestions}
         interactive
+        lang={lang}
         values={values}
         errors={errors}
         onChange={(qid, value) => {
@@ -605,6 +803,10 @@ function ApplicationFormStep({
           });
         }}
       />
+
+      {footer ? (
+        <p className="mt-4 text-center text-xs text-zinc-500">{footer}</p>
+      ) : null}
 
       <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden opacity-0" aria-hidden>
         <label>
@@ -629,7 +831,7 @@ function ApplicationFormStep({
         disabled={submitting}
         className="mt-6 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white shadow-lg transition hover:bg-[#2a221c] disabled:opacity-60"
       >
-        {submitting ? "Submitting…" : "Submit application"}
+        {submitting ? ui.submitting : ui.submit}
       </button>
     </form>
   );

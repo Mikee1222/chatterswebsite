@@ -76,6 +76,7 @@ function SortableQuestionCard({
     opacity: isDragging ? 0.7 : 1,
   };
   const needsOptions = CHOICE_QUESTION_TYPES.has(question.question_type);
+  const [langTab, setLangTab] = useState<"en" | "el">("en");
 
   return (
     <div
@@ -96,14 +97,41 @@ function SortableQuestionCard({
           </button>
         )}
         <div className="min-w-0 flex-1 space-y-3">
-          <input
-            value={question.question_text}
-            disabled={!canManage}
-            onChange={(e) => onChange({ question_text: e.target.value })}
-            onBlur={() => canManage && onSave()}
-            placeholder="Question text"
-            className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 py-2.5 text-sm text-white placeholder:text-white/30 disabled:opacity-60"
-          />
+          <div className="inline-flex rounded-lg border border-white/10 p-0.5 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setLangTab("en")}
+              className={`rounded-md px-2.5 py-1 ${langTab === "en" ? "bg-white/15 text-white" : "text-white/45"}`}
+            >
+              EN *
+            </button>
+            <button
+              type="button"
+              onClick={() => setLangTab("el")}
+              className={`rounded-md px-2.5 py-1 ${langTab === "el" ? "bg-white/15 text-white" : "text-white/45"}`}
+            >
+              EL
+            </button>
+          </div>
+          {langTab === "en" ? (
+            <input
+              value={question.question_text}
+              disabled={!canManage}
+              onChange={(e) => onChange({ question_text: e.target.value })}
+              onBlur={() => canManage && onSave()}
+              placeholder="Question text (English, required)"
+              className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 py-2.5 text-sm text-white placeholder:text-white/30 disabled:opacity-60"
+            />
+          ) : (
+            <input
+              value={question.question_text_el}
+              disabled={!canManage}
+              onChange={(e) => onChange({ question_text_el: e.target.value })}
+              onBlur={() => canManage && onSave()}
+              placeholder="Ελληνικό κείμενο (optional — fallback EN)"
+              className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 py-2.5 text-sm text-white placeholder:text-white/30 disabled:opacity-60"
+            />
+          )}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative">
               <select
@@ -117,6 +145,11 @@ function SortableQuestionCard({
                       ? question.options.length
                         ? question.options
                         : ["Option 1", "Option 2"]
+                      : [],
+                    options_el: CHOICE_QUESTION_TYPES.has(question_type)
+                      ? question.options_el.length
+                        ? question.options_el
+                        : ["", ""]
                       : [],
                   };
                   onChange(patch);
@@ -159,26 +192,37 @@ function SortableQuestionCard({
           </div>
           {needsOptions && (
             <div className="space-y-2">
-              <p className="text-[11px] uppercase tracking-wider text-white/35">Options</p>
+              <p className="text-[11px] uppercase tracking-wider text-white/35">
+                Options ({langTab.toUpperCase()})
+              </p>
               {question.options.map((opt, idx) => (
                 <div key={idx} className="flex gap-2">
                   <input
-                    value={opt}
+                    value={langTab === "en" ? opt : question.options_el[idx] ?? ""}
                     disabled={!canManage}
                     onChange={(e) => {
-                      const options = [...question.options];
-                      options[idx] = e.target.value;
-                      onChange({ options });
+                      if (langTab === "en") {
+                        const options = [...question.options];
+                        options[idx] = e.target.value;
+                        onChange({ options });
+                      } else {
+                        const options_el = [...question.options_el];
+                        while (options_el.length < question.options.length) options_el.push("");
+                        options_el[idx] = e.target.value;
+                        onChange({ options_el });
+                      }
                     }}
                     onBlur={() => canManage && onSave()}
+                    placeholder={langTab === "el" ? "Greek option (optional)" : "Option"}
                     className="h-9 flex-1 rounded-lg border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white"
                   />
-                  {canManage && (
+                  {canManage && langTab === "en" && (
                     <button
                       type="button"
                       onClick={() => {
                         const options = question.options.filter((_, i) => i !== idx);
-                        const patch = { options };
+                        const options_el = question.options_el.filter((_, i) => i !== idx);
+                        const patch = { options, options_el };
                         onChange(patch);
                         onSave(patch);
                       }}
@@ -189,12 +233,13 @@ function SortableQuestionCard({
                   )}
                 </div>
               ))}
-              {canManage && (
+              {canManage && langTab === "en" && (
                 <button
                   type="button"
                   onClick={() => {
                     const patch = {
                       options: [...question.options, `Option ${question.options.length + 1}`],
+                      options_el: [...question.options_el, ""],
                     };
                     onChange(patch);
                     onSave(patch);
@@ -231,6 +276,9 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
     patch: Partial<{
       title: string;
       description: string;
+      description_el: string;
+      footer_text: string;
+      footer_text_el: string;
       slug: string;
       pipeline_config: PipelineStepConfig[];
     }>,
@@ -311,8 +359,10 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           question_text: merged.question_text,
+          question_text_el: merged.question_text_el,
           question_type: merged.question_type,
           options: merged.options,
+          options_el: merged.options_el,
           is_required: merged.is_required,
         }),
       });
@@ -479,7 +529,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
               className="h-11 w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 text-sm text-white disabled:opacity-60"
             />
             <label className="block text-[11px] uppercase tracking-wider text-white/35">
-              Description
+              Description (EN)
             </label>
             <textarea
               defaultValue={form.description}
@@ -491,6 +541,46 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
                 }
               }}
               className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 py-3 text-sm text-white disabled:opacity-60"
+            />
+            <label className="block text-[11px] uppercase tracking-wider text-white/35">
+              Description (EL)
+            </label>
+            <textarea
+              defaultValue={form.description_el}
+              disabled={!canManage}
+              rows={3}
+              onBlur={(e) => {
+                if (canManage && e.target.value !== form.description_el) {
+                  void saveMeta({ description_el: e.target.value });
+                }
+              }}
+              className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 py-3 text-sm text-white disabled:opacity-60"
+            />
+            <label className="block text-[11px] uppercase tracking-wider text-white/35">
+              Footer (EN)
+            </label>
+            <input
+              defaultValue={form.footer_text}
+              disabled={!canManage}
+              onBlur={(e) => {
+                if (canManage && e.target.value !== form.footer_text) {
+                  void saveMeta({ footer_text: e.target.value });
+                }
+              }}
+              className="h-10 w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white disabled:opacity-60"
+            />
+            <label className="block text-[11px] uppercase tracking-wider text-white/35">
+              Footer (EL)
+            </label>
+            <input
+              defaultValue={form.footer_text_el}
+              disabled={!canManage}
+              onBlur={(e) => {
+                if (canManage && e.target.value !== form.footer_text_el) {
+                  void saveMeta({ footer_text_el: e.target.value });
+                }
+              }}
+              className="h-10 w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white disabled:opacity-60"
             />
             <label className="block text-[11px] uppercase tracking-wider text-white/35">
               Public slug

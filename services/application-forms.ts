@@ -28,11 +28,16 @@ import {
   getScreeningByResponseIds,
   linkSessionToResponse,
 } from "@/services/application-screening";
+import type { PipelineLanguage } from "@/lib/application-pipeline-i18n";
+import { isPipelineLanguage } from "@/lib/application-pipeline-i18n";
 
 type FormRow = {
   id: string;
   title: string;
   description: string | null;
+  description_el?: string | null;
+  footer_text?: string | null;
+  footer_text_el?: string | null;
   slug: string;
   status: string;
   pipeline_config?: unknown;
@@ -45,8 +50,10 @@ type QuestionRow = {
   id: string;
   form_id: string;
   question_text: string;
+  question_text_el?: string | null;
   question_type: string;
   options: unknown;
+  options_el?: unknown;
   is_required: boolean;
   display_order: number;
   created_at: string;
@@ -60,6 +67,7 @@ type ResponseRow = {
   respondent_ip: string | null;
   status: string;
   internal_notes: string | null;
+  preferred_language?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -78,6 +86,9 @@ function mapForm(row: FormRow): ApplicationFormRecord {
     id: row.id,
     title: row.title,
     description: row.description ?? "",
+    description_el: row.description_el ?? "",
+    footer_text: row.footer_text ?? "",
+    footer_text_el: row.footer_text_el ?? "",
     slug: row.slug,
     status: isApplicationFormStatus(row.status) ? row.status : "draft",
     pipeline_config: parsePipelineConfig(row.pipeline_config),
@@ -92,10 +103,12 @@ function mapQuestion(row: QuestionRow): ApplicationFormQuestion {
     id: row.id,
     form_id: row.form_id,
     question_text: row.question_text,
+    question_text_el: row.question_text_el ?? "",
     question_type: isApplicationQuestionType(row.question_type)
       ? row.question_type
       : "short_text",
     options: parseOptionsJson(row.options),
+    options_el: parseOptionsJson(row.options_el),
     is_required: !!row.is_required,
     display_order: row.display_order ?? 0,
     created_at: row.created_at,
@@ -111,6 +124,9 @@ function mapResponse(row: ResponseRow): ApplicationFormResponse {
     respondent_ip: row.respondent_ip,
     status: isApplicationResponseStatus(row.status) ? row.status : "new",
     internal_notes: row.internal_notes,
+    preferred_language: isPipelineLanguage(row.preferred_language)
+      ? row.preferred_language
+      : null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -246,7 +262,12 @@ export async function getFormBySlugAnyStatus(
 export async function createApplicationForm(input: {
   title: string;
   description?: string;
+  description_el?: string;
+  footer_text?: string;
+  footer_text_el?: string;
   slug?: string;
+  status?: ApplicationFormStatus;
+  pipeline_config?: PipelineStepConfig[];
   created_by?: string | null;
 }): Promise<ApplicationFormRecord> {
   const title = input.title.trim();
@@ -262,8 +283,12 @@ export async function createApplicationForm(input: {
     .insert({
       title,
       description: (input.description ?? "").trim(),
+      description_el: (input.description_el ?? "").trim(),
+      footer_text: (input.footer_text ?? "").trim(),
+      footer_text_el: (input.footer_text_el ?? "").trim(),
       slug,
-      status: "draft",
+      status: input.status && isApplicationFormStatus(input.status) ? input.status : "draft",
+      pipeline_config: parsePipelineConfig(input.pipeline_config),
       created_by: input.created_by ?? null,
       created_at: now,
       updated_at: now,
@@ -279,6 +304,9 @@ export async function updateApplicationForm(
   patch: {
     title?: string;
     description?: string;
+    description_el?: string;
+    footer_text?: string;
+    footer_text_el?: string;
     slug?: string;
     status?: ApplicationFormStatus;
     pipeline_config?: PipelineStepConfig[];
@@ -294,6 +322,15 @@ export async function updateApplicationForm(
   }
   if (patch.description !== undefined) {
     updates.description = patch.description.trim();
+  }
+  if (patch.description_el !== undefined) {
+    updates.description_el = patch.description_el.trim();
+  }
+  if (patch.footer_text !== undefined) {
+    updates.footer_text = patch.footer_text.trim();
+  }
+  if (patch.footer_text_el !== undefined) {
+    updates.footer_text_el = patch.footer_text_el.trim();
   }
   if (patch.status !== undefined) {
     if (!isApplicationFormStatus(patch.status)) throw new Error("Invalid status");
@@ -327,8 +364,10 @@ export async function createQuestion(
   formId: string,
   input: {
     question_text: string;
+    question_text_el?: string;
     question_type: ApplicationQuestionType;
     options?: string[];
+    options_el?: string[];
     is_required?: boolean;
   },
 ): Promise<ApplicationFormQuestion> {
@@ -351,6 +390,9 @@ export async function createQuestion(
   const options = CHOICE_QUESTION_TYPES.has(input.question_type)
     ? (input.options ?? []).map((o) => o.trim()).filter(Boolean)
     : [];
+  const options_el = CHOICE_QUESTION_TYPES.has(input.question_type)
+    ? (input.options_el ?? []).map((o) => o.trim())
+    : [];
 
   const now = new Date().toISOString();
   const { data, error } = await sb
@@ -358,8 +400,10 @@ export async function createQuestion(
     .insert({
       form_id: formId,
       question_text: text,
+      question_text_el: (input.question_text_el ?? "").trim(),
       question_type: input.question_type,
       options,
+      options_el,
       is_required: !!input.is_required,
       display_order: nextOrder,
       created_at: now,
@@ -375,8 +419,10 @@ export async function updateQuestion(
   questionId: string,
   patch: {
     question_text?: string;
+    question_text_el?: string;
     question_type?: ApplicationQuestionType;
     options?: string[];
+    options_el?: string[];
     is_required?: boolean;
   },
 ): Promise<ApplicationFormQuestion> {
@@ -388,15 +434,22 @@ export async function updateQuestion(
     if (!text) throw new Error("Question text is required");
     updates.question_text = text;
   }
+  if (patch.question_text_el !== undefined) {
+    updates.question_text_el = patch.question_text_el.trim();
+  }
   if (patch.question_type !== undefined) {
     if (!isApplicationQuestionType(patch.question_type)) throw new Error("Invalid question type");
     updates.question_type = patch.question_type;
     if (!CHOICE_QUESTION_TYPES.has(patch.question_type) && patch.options === undefined) {
       updates.options = [];
+      updates.options_el = [];
     }
   }
   if (patch.options !== undefined) {
     updates.options = patch.options.map((o) => o.trim()).filter(Boolean);
+  }
+  if (patch.options_el !== undefined) {
+    updates.options_el = patch.options_el.map((o) => o.trim());
   }
   if (patch.is_required !== undefined) {
     updates.is_required = !!patch.is_required;
@@ -454,6 +507,7 @@ export async function submitApplicationResponse(input: {
   respondentIp?: string | null;
   answers: SubmitAnswerInput[];
   sessionId?: string | null;
+  preferredLanguage?: PipelineLanguage | null;
 }): Promise<ApplicationFormResponse> {
   const form = await getApplicationFormById(input.formId);
   if (!form) throw new Error("Form not found");
@@ -467,11 +521,26 @@ export async function submitApplicationResponse(input: {
     const opts = ans?.answer_options ?? [];
     if (q.question_type === "checkboxes") {
       if (opts.length === 0) throw new Error(`Required: ${q.question_text}`);
-    } else if (CHOICE_QUESTION_TYPES.has(q.question_type) || q.question_type === "yes_no" || q.question_type === "rating") {
+    } else if (
+      CHOICE_QUESTION_TYPES.has(q.question_type) ||
+      q.question_type === "yes_no" ||
+      q.question_type === "rating" ||
+      q.question_type === "date"
+    ) {
       if (!text && opts.length === 0) throw new Error(`Required: ${q.question_text}`);
     } else if (!text) {
       throw new Error(`Required: ${q.question_text}`);
     }
+  }
+
+  let preferred: PipelineLanguage | null =
+    input.preferredLanguage && isPipelineLanguage(input.preferredLanguage)
+      ? input.preferredLanguage
+      : null;
+  if (!preferred && input.sessionId) {
+    const { getCandidateSession } = await import("@/services/application-screening");
+    const session = await getCandidateSession(input.sessionId);
+    if (session?.preferred_language) preferred = session.preferred_language;
   }
 
   const sb = getSupabaseServiceClient();
@@ -483,6 +552,7 @@ export async function submitApplicationResponse(input: {
       submitted_at: now,
       respondent_ip: input.respondentIp ?? null,
       status: "new",
+      preferred_language: preferred,
       created_at: now,
       updated_at: now,
     })
@@ -527,7 +597,15 @@ export async function listResponses(
   formId: string,
   opts?: {
     status?: ApplicationResponseStatus | "all";
-    sort?: "newest" | "oldest" | "cognitive_desc" | "cognitive_asc" | "eq_desc" | "eq_asc";
+    sort?:
+      | "newest"
+      | "oldest"
+      | "cognitive_desc"
+      | "cognitive_asc"
+      | "eq_desc"
+      | "eq_asc"
+      | "typing_desc"
+      | "typing_asc";
     search?: string;
   },
 ): Promise<ApplicationFormResponseWithAnswers[]> {
@@ -564,17 +642,18 @@ export async function listResponses(
     answers: answersByResponse.get(r.id) ?? [],
     cognitive: screening.cognitiveByResponse.get(r.id) ?? null,
     eq: screening.eqByResponse.get(r.id) ?? null,
+    typing: screening.typingByResponse.get(r.id) ?? null,
   }));
 
   const search = opts?.search?.trim().toLowerCase();
   if (search) {
-    result = result.filter((r) =>
-      r.answers.some(
-        (a) =>
-          (a.answer_text ?? "").toLowerCase().includes(search) ||
-          a.answer_options.some((o) => o.toLowerCase().includes(search)),
-      ) ||
-      (r.internal_notes ?? "").toLowerCase().includes(search),
+    result = result.filter(
+      (r) =>
+        r.answers.some(
+          (a) =>
+            (a.answer_text ?? "").toLowerCase().includes(search) ||
+            a.answer_options.some((o) => o.toLowerCase().includes(search)),
+        ) || (r.internal_notes ?? "").toLowerCase().includes(search),
     );
   }
 
@@ -590,6 +669,13 @@ export async function listResponses(
     result = [...result].sort((a, b) => {
       const av = a.eq?.overall_score ?? -1;
       const bv = b.eq?.overall_score ?? -1;
+      return (av - bv) * dir;
+    });
+  } else if (opts?.sort === "typing_desc" || opts?.sort === "typing_asc") {
+    const dir = opts.sort === "typing_desc" ? -1 : 1;
+    result = [...result].sort((a, b) => {
+      const av = a.typing?.wpm ?? -1;
+      const bv = b.typing?.wpm ?? -1;
       return (av - bv) * dir;
     });
   }
@@ -621,6 +707,7 @@ export async function getResponseDetail(
     answers: ((answers ?? []) as AnswerRow[]).map(mapAnswer),
     cognitive: screening.cognitiveByResponse.get(responseId) ?? null,
     eq: screening.eqByResponse.get(responseId) ?? null,
+    typing: screening.typingByResponse.get(responseId) ?? null,
   };
 }
 
@@ -752,6 +839,15 @@ export async function getFormAnalytics(formId: string): Promise<ApplicationFormA
     }
   }
 
+  let typingSum = 0;
+  let typingN = 0;
+  for (const r of responses) {
+    if (r.typing) {
+      typingSum += r.typing.wpm;
+      typingN += 1;
+    }
+  }
+
   return {
     total: responses.length,
     by_status,
@@ -767,6 +863,7 @@ export async function getFormAnalytics(formId: string): Promise<ApplicationFormA
     })),
     avg_cognitive_percentile: cogPctN ? Math.round((cogPctSum / cogPctN) * 10) / 10 : null,
     avg_eq_score: eqN ? Math.round((eqSum / eqN) * 10) / 10 : null,
+    avg_typing_wpm: typingN ? Math.round((typingSum / typingN) * 10) / 10 : null,
   };
 }
 
@@ -778,12 +875,17 @@ export function responsesToCsv(
     "response_id",
     "submitted_at",
     "status",
+    "preferred_language",
     "respondent_ip",
     "internal_notes",
     "cognitive_raw",
     "cognitive_total",
     "cognitive_percentile",
     "eq_score",
+    "typing_wpm",
+    "typing_accuracy",
+    "typing_language",
+    "typing_device",
     ...form.questions.map((q) => q.question_text),
   ];
 
@@ -799,12 +901,17 @@ export function responsesToCsv(
       r.id,
       r.submitted_at,
       r.status,
+      r.preferred_language ?? "",
       r.respondent_ip ?? "",
       r.internal_notes ?? "",
       r.cognitive?.raw_score ?? "",
       r.cognitive?.total_questions ?? "",
       r.cognitive?.percentile_at_time_of_completion ?? "",
       r.eq?.overall_score ?? "",
+      r.typing?.wpm ?? "",
+      r.typing?.accuracy_percent ?? "",
+      r.typing?.passage_language ?? "",
+      r.typing?.device_type ?? "",
       ...form.questions.map((q) => {
         const a = byQ.get(q.id);
         if (!a) return "";

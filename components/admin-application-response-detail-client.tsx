@@ -62,6 +62,7 @@ export function AdminApplicationResponseDetailClient({
         answers: prev.answers,
         cognitive: prev.cognitive,
         eq: prev.eq,
+        typing: prev.typing,
       }));
       toast.success("Updated");
     } catch (e) {
@@ -88,8 +89,8 @@ export function AdminApplicationResponseDetailClient({
         {response.respondent_ip ? ` · ${response.respondent_ip}` : ""}
       </p>
 
-      {(response.cognitive || response.eq) && (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+      {(response.cognitive || response.eq || response.typing) && (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {response.cognitive && (
             <div
               className="rounded-2xl border p-4"
@@ -145,6 +146,27 @@ export function AdminApplicationResponseDetailClient({
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+          {response.typing && (
+            <div
+              className="rounded-2xl border p-4"
+              style={{
+                borderColor: "rgba(147,197,253,0.25)",
+                background: "linear-gradient(135deg, rgba(147,197,253,0.12), transparent)",
+              }}
+            >
+              <p className="text-[11px] uppercase tracking-wider text-[#93C5FD]/80">
+                Typing speed
+              </p>
+              <p className="mt-2 text-2xl font-semibold text-white">
+                {response.typing.wpm}{" "}
+                <span className="text-base font-normal text-white/50">WPM</span>
+              </p>
+              <p className="mt-1 text-sm text-white/60">
+                {response.typing.accuracy_percent}% accuracy ·{" "}
+                {response.typing.passage_language.toUpperCase()} · {response.typing.device_type}
+              </p>
             </div>
           )}
         </div>

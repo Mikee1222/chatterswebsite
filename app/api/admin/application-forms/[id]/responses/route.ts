@@ -27,7 +27,9 @@ export async function GET(request: Request, ctx: Ctx) {
     sortParam === "cognitive_desc" ||
     sortParam === "cognitive_asc" ||
     sortParam === "eq_desc" ||
-    sortParam === "eq_asc"
+    sortParam === "eq_asc" ||
+    sortParam === "typing_desc" ||
+    sortParam === "typing_asc"
       ? sortParam
       : "newest";
   const search = url.searchParams.get("search") ?? undefined;

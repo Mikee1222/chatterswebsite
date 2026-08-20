@@ -45,6 +45,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const body = (await request.json().catch(() => null)) as {
     title?: string;
     description?: string;
+    description_el?: string;
+    footer_text?: string;
+    footer_text_el?: string;
     slug?: string;
     status?: string;
     pipeline_config?: unknown;
@@ -54,6 +57,9 @@ export async function PATCH(request: Request, ctx: Ctx) {
     const form = await updateApplicationForm(id, {
       title: body?.title,
       description: body?.description,
+      description_el: body?.description_el,
+      footer_text: body?.footer_text,
+      footer_text_el: body?.footer_text_el,
       slug: body?.slug,
       status: body?.status && isApplicationFormStatus(body.status) ? body.status : undefined,
       pipeline_config: Array.isArray(body?.pipeline_config)

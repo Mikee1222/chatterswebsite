@@ -1,5 +1,5 @@
 /**
- * Candidate sessions + Cognitive / EQ screening results.
+ * Candidate sessions + Cognitive / EQ / Typing screening results.
  */
 
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -8,10 +8,14 @@ import {
   scoreEq,
   COGNITIVE_QUESTIONS,
 } from "@/lib/application-screening-banks";
+import { computeTypingStats } from "@/lib/application-typing-passages";
 import type {
   CognitiveResultSummary,
   EqResultSummary,
+  TypingResultSummary,
 } from "@/lib/application-forms-types";
+import type { PipelineLanguage } from "@/lib/application-pipeline-i18n";
+import { isPipelineLanguage } from "@/lib/application-pipeline-i18n";
 
 export type CandidateSession = {
   id: string;
@@ -19,6 +23,7 @@ export type CandidateSession = {
   response_id: string | null;
   status: "in_progress" | "completed" | "abandoned";
   respondent_ip: string | null;
+  preferred_language: PipelineLanguage | null;
   started_at: string;
   completed_at: string | null;
 };
@@ -26,6 +31,7 @@ export type CandidateSession = {
 export async function createCandidateSession(input: {
   formId: string;
   respondentIp?: string | null;
+  preferredLanguage?: PipelineLanguage | null;
 }): Promise<CandidateSession> {
   const sb = getSupabaseServiceClient();
   const now = new Date().toISOString();
@@ -34,11 +40,34 @@ export async function createCandidateSession(input: {
     .insert({
       form_id: input.formId,
       respondent_ip: input.respondentIp ?? null,
+      preferred_language:
+        input.preferredLanguage && isPipelineLanguage(input.preferredLanguage)
+          ? input.preferredLanguage
+          : null,
       status: "in_progress",
       started_at: now,
       created_at: now,
       updated_at: now,
     })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return mapSession(data);
+}
+
+export async function updateSessionLanguage(
+  sessionId: string,
+  preferredLanguage: PipelineLanguage,
+): Promise<CandidateSession> {
+  if (!isPipelineLanguage(preferredLanguage)) throw new Error("Invalid language");
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("application_candidate_sessions")
+    .update({
+      preferred_language: preferredLanguage,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sessionId)
     .select("*")
     .single();
   if (error) throw new Error(error.message);
@@ -63,6 +92,9 @@ function mapSession(row: Record<string, unknown>): CandidateSession {
     response_id: row.response_id ? String(row.response_id) : null,
     status: (row.status as CandidateSession["status"]) || "in_progress",
     respondent_ip: row.respondent_ip ? String(row.respondent_ip) : null,
+    preferred_language: isPipelineLanguage(row.preferred_language)
+      ? row.preferred_language
+      : null,
     started_at: String(row.started_at),
     completed_at: row.completed_at ? String(row.completed_at) : null,
   };
@@ -93,6 +125,23 @@ function mapEq(row: Record<string, unknown>): EqResultSummary {
     overall_score: Number(row.overall_score) || 0,
     dimension_breakdown: (row.dimension_breakdown as EqResultSummary["dimension_breakdown"]) ?? {},
     time_taken_seconds: Number(row.time_taken_seconds) || 0,
+    completed_at: String(row.completed_at),
+  };
+}
+
+function mapTyping(row: Record<string, unknown>): TypingResultSummary {
+  const device = String(row.device_type ?? "unknown");
+  return {
+    id: String(row.id),
+    session_id: String(row.session_id),
+    response_id: row.response_id ? String(row.response_id) : null,
+    wpm: Number(row.wpm) || 0,
+    accuracy_percent: Number(row.accuracy_percent) || 0,
+    passage_language: isPipelineLanguage(row.passage_language) ? row.passage_language : "en",
+    device_type:
+      device === "desktop" || device === "mobile" || device === "tablet" || device === "unknown"
+        ? device
+        : "unknown",
     completed_at: String(row.completed_at),
   };
 }
@@ -248,21 +297,90 @@ export async function linkSessionToResponse(
       .from("application_eq_results")
       .update({ response_id: responseId })
       .eq("session_id", sessionId),
+    sb
+      .from("application_typing_results")
+      .update({ response_id: responseId })
+      .eq("session_id", sessionId),
   ]);
+}
+
+export async function submitTypingResult(input: {
+  sessionId: string;
+  formId: string;
+  passage: string;
+  typed: string;
+  passageLanguage: PipelineLanguage;
+  passageId?: string | null;
+  deviceType: TypingResultSummary["device_type"];
+  timeTakenSeconds: number;
+}): Promise<TypingResultSummary> {
+  const session = await getCandidateSession(input.sessionId);
+  if (!session || session.form_id !== input.formId) {
+    throw new Error("Invalid session");
+  }
+  if (session.status === "completed") throw new Error("Session already completed");
+
+  const existing = await getTypingBySession(input.sessionId);
+  if (existing) return existing;
+
+  const elapsedMs = Math.max(0, input.timeTakenSeconds) * 1000;
+  const stats = computeTypingStats({
+    passage: input.passage,
+    typed: input.typed,
+    elapsedMs: Math.max(elapsedMs, 1000),
+  });
+
+  const now = new Date().toISOString();
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("application_typing_results")
+    .insert({
+      session_id: input.sessionId,
+      wpm: stats.wpm,
+      accuracy_percent: stats.accuracy_percent,
+      passage_language: isPipelineLanguage(input.passageLanguage) ? input.passageLanguage : "en",
+      device_type: input.deviceType,
+      passage_id: input.passageId ?? null,
+      time_taken_seconds: Math.max(0, Math.min(input.timeTakenSeconds, 24 * 3600)),
+      completed_at: now,
+      created_at: now,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return mapTyping(data as Record<string, unknown>);
+}
+
+export async function getTypingBySession(
+  sessionId: string,
+): Promise<TypingResultSummary | null> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("application_typing_results")
+    .select("*")
+    .eq("session_id", sessionId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? mapTyping(data as Record<string, unknown>) : null;
 }
 
 export async function getScreeningByResponseIds(responseIds: string[]): Promise<{
   cognitiveByResponse: Map<string, CognitiveResultSummary>;
   eqByResponse: Map<string, EqResultSummary>;
+  typingByResponse: Map<string, TypingResultSummary>;
 }> {
   const cognitiveByResponse = new Map<string, CognitiveResultSummary>();
   const eqByResponse = new Map<string, EqResultSummary>();
-  if (responseIds.length === 0) return { cognitiveByResponse, eqByResponse };
+  const typingByResponse = new Map<string, TypingResultSummary>();
+  if (responseIds.length === 0) {
+    return { cognitiveByResponse, eqByResponse, typingByResponse };
+  }
 
   const sb = getSupabaseServiceClient();
-  const [{ data: cog }, { data: eq }] = await Promise.all([
+  const [{ data: cog }, { data: eq }, { data: typing }] = await Promise.all([
     sb.from("application_cognitive_results").select("*").in("response_id", responseIds),
     sb.from("application_eq_results").select("*").in("response_id", responseIds),
+    sb.from("application_typing_results").select("*").in("response_id", responseIds),
   ]);
 
   for (const row of cog ?? []) {
@@ -273,7 +391,11 @@ export async function getScreeningByResponseIds(responseIds: string[]): Promise<
     const mapped = mapEq(row as Record<string, unknown>);
     if (mapped.response_id) eqByResponse.set(mapped.response_id, mapped);
   }
-  return { cognitiveByResponse, eqByResponse };
+  for (const row of typing ?? []) {
+    const mapped = mapTyping(row as Record<string, unknown>);
+    if (mapped.response_id) typingByResponse.set(mapped.response_id, mapped);
+  }
+  return { cognitiveByResponse, eqByResponse, typingByResponse };
 }
 
 export function cognitiveQuestionCount(): number {

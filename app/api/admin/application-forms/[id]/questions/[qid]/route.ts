@@ -21,19 +21,23 @@ export async function PATCH(request: Request, ctx: Ctx) {
   const { qid } = await ctx.params;
   const body = (await request.json().catch(() => null)) as {
     question_text?: string;
+    question_text_el?: string;
     question_type?: string;
     options?: string[];
+    options_el?: string[];
     is_required?: boolean;
   } | null;
 
   try {
     const question = await updateQuestion(qid, {
       question_text: body?.question_text,
+      question_text_el: body?.question_text_el,
       question_type:
         body?.question_type && isApplicationQuestionType(body.question_type)
           ? body.question_type
           : undefined,
       options: body?.options,
+      options_el: body?.options_el,
       is_required: body?.is_required,
     });
     return NextResponse.json({ question });

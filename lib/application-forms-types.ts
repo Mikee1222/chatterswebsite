@@ -1,5 +1,7 @@
 /** Shared types for recruitment / application form builder. */
 
+import type { PipelineLanguage } from "@/lib/application-pipeline-i18n";
+
 export const APPLICATION_FORM_STATUSES = ["draft", "published", "closed"] as const;
 export type ApplicationFormStatus = (typeof APPLICATION_FORM_STATUSES)[number];
 
@@ -11,6 +13,7 @@ export const APPLICATION_QUESTION_TYPES = [
   "dropdown",
   "rating",
   "yes_no",
+  "date",
 ] as const;
 export type ApplicationQuestionType = (typeof APPLICATION_QUESTION_TYPES)[number];
 
@@ -27,6 +30,7 @@ export type ApplicationResponseStatus = (typeof APPLICATION_RESPONSE_STATUSES)[n
 export const PIPELINE_STEP_TYPES = [
   "cognitive_screening",
   "eq_screening",
+  "typing_speed_test",
   "application_form",
 ] as const;
 export type PipelineStepType = (typeof PIPELINE_STEP_TYPES)[number];
@@ -40,13 +44,15 @@ export type PipelineStepConfig = {
 export const PIPELINE_STEP_LABELS: Record<PipelineStepType, string> = {
   cognitive_screening: "Cognitive screening",
   eq_screening: "EQ screening",
+  typing_speed_test: "Typing speed test",
   application_form: "Application form",
 };
 
 export const DEFAULT_PIPELINE_CONFIG: PipelineStepConfig[] = [
   { step: "cognitive_screening", enabled: false, order: 0 },
   { step: "eq_screening", enabled: false, order: 1 },
-  { step: "application_form", enabled: true, order: 2 },
+  { step: "typing_speed_test", enabled: false, order: 2 },
+  { step: "application_form", enabled: true, order: 3 },
 ];
 
 export const QUESTION_TYPE_LABELS: Record<ApplicationQuestionType, string> = {
@@ -57,6 +63,7 @@ export const QUESTION_TYPE_LABELS: Record<ApplicationQuestionType, string> = {
   dropdown: "Dropdown",
   rating: "Rating (1–5)",
   yes_no: "Yes / No",
+  date: "Date",
 };
 
 export const FORM_STATUS_LABELS: Record<ApplicationFormStatus, string> = {
@@ -83,6 +90,9 @@ export type ApplicationFormRecord = {
   id: string;
   title: string;
   description: string;
+  description_el: string;
+  footer_text: string;
+  footer_text_el: string;
   slug: string;
   status: ApplicationFormStatus;
   pipeline_config: PipelineStepConfig[];
@@ -95,8 +105,10 @@ export type ApplicationFormQuestion = {
   id: string;
   form_id: string;
   question_text: string;
+  question_text_el: string;
   question_type: ApplicationQuestionType;
   options: string[];
+  options_el: string[];
   is_required: boolean;
   display_order: number;
   created_at: string;
@@ -128,6 +140,7 @@ export type ApplicationFormResponse = {
   respondent_ip: string | null;
   status: ApplicationResponseStatus;
   internal_notes: string | null;
+  preferred_language: PipelineLanguage | null;
   created_at: string;
   updated_at: string;
 };
@@ -154,10 +167,22 @@ export type EqResultSummary = {
   completed_at: string;
 };
 
+export type TypingResultSummary = {
+  id: string;
+  session_id: string;
+  response_id: string | null;
+  wpm: number;
+  accuracy_percent: number;
+  passage_language: PipelineLanguage;
+  device_type: "desktop" | "mobile" | "tablet" | "unknown";
+  completed_at: string;
+};
+
 export type ApplicationFormResponseWithAnswers = ApplicationFormResponse & {
   answers: ApplicationFormAnswer[];
   cognitive?: CognitiveResultSummary | null;
   eq?: EqResultSummary | null;
+  typing?: TypingResultSummary | null;
   session_id?: string | null;
 };
 
@@ -175,6 +200,7 @@ export type ApplicationFormAnalytics = {
   eq_score_distribution: { bucket: string; count: number }[];
   avg_cognitive_percentile: number | null;
   avg_eq_score: number | null;
+  avg_typing_wpm: number | null;
 };
 
 export function isApplicationFormStatus(v: unknown): v is ApplicationFormStatus {
@@ -241,4 +267,18 @@ export function parseOptionsJson(raw: unknown): string[] {
   return raw
     .map((o) => (typeof o === "string" ? o.trim() : String(o ?? "").trim()))
     .filter(Boolean);
+}
+
+/** Localized question text/options for candidate UI (English required; Greek optional). */
+export function localizeQuestion(
+  q: ApplicationFormQuestion,
+  lang: PipelineLanguage,
+): { question_text: string; options: string[] } {
+  const question_text =
+    lang === "el" && q.question_text_el.trim() ? q.question_text_el : q.question_text;
+  const options =
+    lang === "el" && q.options_el.length > 0
+      ? q.options.map((en, i) => q.options_el[i]?.trim() || en)
+      : q.options;
+  return { question_text, options };
 }

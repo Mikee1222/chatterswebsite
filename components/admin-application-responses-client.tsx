@@ -73,7 +73,14 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
   const [analytics, setAnalytics] = useState<ApplicationFormAnalytics | null>(null);
   const [status, setStatus] = useState<string>("all");
   const [sort, setSort] = useState<
-    "newest" | "oldest" | "cognitive_desc" | "cognitive_asc" | "eq_desc" | "eq_asc"
+    | "newest"
+    | "oldest"
+    | "cognitive_desc"
+    | "cognitive_asc"
+    | "eq_desc"
+    | "eq_asc"
+    | "typing_desc"
+    | "typing_asc"
   >("newest");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -322,7 +329,9 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                 | "cognitive_desc"
                 | "cognitive_asc"
                 | "eq_desc"
-                | "eq_asc",
+                | "eq_asc"
+                | "typing_desc"
+                | "typing_asc",
             )
           }
           className="h-11 rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white/85"
@@ -333,6 +342,8 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
           <option value="cognitive_asc">Cognitive %ile ↑</option>
           <option value="eq_desc">EQ score ↓</option>
           <option value="eq_asc">EQ score ↑</option>
+          <option value="typing_desc">Typing WPM ↓</option>
+          <option value="typing_asc">Typing WPM ↑</option>
         </select>
       </div>
 
@@ -370,6 +381,10 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                 </span>
                 <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/55">
                   EQ {r.eq?.overall_score != null ? r.eq.overall_score : "—"}
+                </span>
+                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/55">
+                  WPM {r.typing?.wpm != null ? r.typing.wpm : "—"}
+                  {r.typing?.accuracy_percent != null ? ` · ${r.typing.accuracy_percent}%` : ""}
                 </span>
                 <span
                   className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLE[r.status]}`}

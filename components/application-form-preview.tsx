@@ -2,11 +2,9 @@
 
 import type { ApplicationFormQuestion } from "@/lib/application-forms-types";
 import { QUESTION_TYPE_LABELS } from "@/lib/application-forms-types";
+import { pipelineUi, type PipelineLanguage } from "@/lib/application-pipeline-i18n";
 
-type AnswerState = Record<
-  string,
-  { text?: string; options?: string[] }
->;
+type AnswerState = Record<string, { text?: string; options?: string[] }>;
 
 type Props = {
   title: string;
@@ -17,6 +15,7 @@ type Props = {
   errors?: Record<string, string>;
   onChange?: (questionId: string, value: { text?: string; options?: string[] }) => void;
   className?: string;
+  lang?: PipelineLanguage;
 };
 
 const fieldClass =
@@ -31,7 +30,9 @@ export function ApplicationFormPreview({
   errors = {},
   onChange,
   className = "",
+  lang = "en",
 }: Props) {
+  const ui = pipelineUi(lang);
   return (
     <div
       className={`overflow-hidden rounded-3xl border border-black/5 bg-gradient-to-b from-[#F7F3EE] to-[#EFE8DF] shadow-[0_20px_60px_rgba(0,0,0,0.25)] ${className}`}
@@ -40,9 +41,13 @@ export function ApplicationFormPreview({
         <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#D4AF8C]/80">
           Application
         </p>
-        <h2 className="mt-2 font-serif text-2xl tracking-tight sm:text-3xl">{title || "Untitled form"}</h2>
+        <h2 className="mt-2 font-serif text-2xl tracking-tight sm:text-3xl">
+          {title || "Untitled form"}
+        </h2>
         {description ? (
-          <p className="mt-3 max-w-prose text-sm leading-relaxed text-white/65">{description}</p>
+          <p className="mt-3 max-w-prose whitespace-pre-line text-sm leading-relaxed text-white/65">
+            {description}
+          </p>
         ) : null}
       </div>
       <div className="space-y-6 px-5 py-6 sm:px-6">
@@ -57,12 +62,16 @@ export function ApplicationFormPreview({
                 <label className="block text-sm font-medium text-zinc-800">
                   <span className="mr-2 text-xs font-normal text-zinc-400">{idx + 1}.</span>
                   {q.question_text || "Untitled question"}
-                  {q.is_required ? <span className="ml-1 text-[#B45309]">*</span> : null}
+                  {q.is_required ? (
+                    <span className="ml-1 text-[#B45309]">{ui.fieldRequiredMark}</span>
+                  ) : null}
                 </label>
                 {!interactive && (
-                  <p className="text-[11px] text-zinc-400">{QUESTION_TYPE_LABELS[q.question_type]}</p>
+                  <p className="text-[11px] text-zinc-400">
+                    {QUESTION_TYPE_LABELS[q.question_type]}
+                  </p>
                 )}
-                {renderField(q, interactive, val, onChange)}
+                {renderField(q, interactive, val, onChange, ui)}
                 {err ? <p className="text-xs text-red-600">{err}</p> : null}
               </div>
             );
@@ -77,7 +86,8 @@ function renderField(
   q: ApplicationFormQuestion,
   interactive: boolean,
   val: { text?: string; options?: string[] },
-  onChange?: Props["onChange"],
+  onChange: Props["onChange"],
+  ui: ReturnType<typeof pipelineUi>,
 ) {
   const disabled = !interactive;
   const setText = (text: string) => onChange?.(q.id, { text, options: val.options });
@@ -92,7 +102,17 @@ function renderField(
           value={val.text ?? ""}
           onChange={(e) => setText(e.target.value)}
           className={fieldClass}
-          placeholder={interactive ? "Your answer" : "Long text answer"}
+          placeholder={interactive ? ui.yourAnswer : "Long text answer"}
+        />
+      );
+    case "date":
+      return (
+        <input
+          type="date"
+          disabled={disabled}
+          value={val.text ?? ""}
+          onChange={(e) => setText(e.target.value)}
+          className={fieldClass}
         />
       );
     case "multiple_choice":
@@ -105,7 +125,7 @@ function renderField(
             onChange={(e) => setText(e.target.value)}
             className={fieldClass}
           >
-            <option value="">Select…</option>
+            <option value="">{ui.select}</option>
             {q.options.map((o) => (
               <option key={o} value={o}>
                 {o}
@@ -186,14 +206,15 @@ function renderField(
     case "yes_no":
       return (
         <div className="flex gap-2">
-          {["Yes", "No"].map((o) => {
-            const active = (val.text ?? "") === o;
+          {[ui.yes, ui.no].map((o, i) => {
+            const canonical = i === 0 ? "Yes" : "No";
+            const active = (val.text ?? "") === canonical || (val.text ?? "") === o;
             return (
               <button
-                key={o}
+                key={canonical}
                 type="button"
                 disabled={disabled}
-                onClick={() => setText(o)}
+                onClick={() => setText(canonical)}
                 className={`rounded-full border px-5 py-2 text-sm font-medium transition ${
                   active
                     ? "border-[#C4A484] bg-[#C4A484] text-white"
@@ -213,7 +234,7 @@ function renderField(
           value={val.text ?? ""}
           onChange={(e) => setText(e.target.value)}
           className={fieldClass}
-          placeholder={interactive ? "Your answer" : "Short text answer"}
+          placeholder={interactive ? ui.yourAnswer : "Short text answer"}
         />
       );
   }

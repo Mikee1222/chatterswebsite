@@ -17,7 +17,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDown, ArrowUp, Brain, ClipboardList, GripVertical, HeartHandshake } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, ClipboardList, GripVertical, HeartHandshake, Keyboard } from "lucide-react";
 import {
   PIPELINE_STEP_LABELS,
   type PipelineStepConfig,
@@ -40,6 +40,11 @@ const STEP_META: Record<
     icon: HeartHandshake,
     accent: "#E8A0BF",
     blurb: "Situational judgment scenarios",
+  },
+  typing_speed_test: {
+    icon: Keyboard,
+    accent: "#93C5FD",
+    blurb: "In-app WPM + accuracy (Greek/English)",
   },
   application_form: {
     icon: ClipboardList,
@@ -207,7 +212,7 @@ export function ApplicationPipelineBuilder({ config, canManage, onChange }: Prop
       <div>
         <h2 className="text-sm font-medium text-white/85">Candidate pipeline</h2>
         <p className="mt-1 text-xs leading-relaxed text-white/40">
-          Drag to reorder. Toggle Cognitive / EQ independently.{" "}
+          Drag to reorder. Toggle Cognitive / EQ / Typing independently.{" "}
           {SCREENING_FRAMING_COPY.adminDisclaimer}
         </p>
       </div>
