@@ -72,6 +72,7 @@ export interface WinnerVideoRecord {
   bunch_id: string;
   bunch_name: string;
   quality_rating: WinnerVideoQualityRating | null;
+  admin_instructions: string;
 }
 
 export interface WinnerVideoFilters {
@@ -127,6 +128,7 @@ type Row = SbRow & {
   bunch_id?: string | null;
   bunch_name?: string | null;
   quality_rating?: string | null;
+  admin_instructions?: string | null;
 };
 
 function coerceViews(raw: unknown): number | null {
@@ -188,6 +190,7 @@ async function mapRow(row: Row): Promise<WinnerVideoRecord> {
     bunch_id: row.bunch_id ? String(row.bunch_id) : "",
     bunch_name: String(row.bunch_name ?? ""),
     quality_rating: coerceWinnerVideoQualityRating(row.quality_rating),
+    admin_instructions: String(row.admin_instructions ?? ""),
   };
 }
 
@@ -301,4 +304,30 @@ export async function appendWinnerVideoScreenshotUrls(id: string, urls: string[]
 export async function listAllRaw(): Promise<WinnerVideoRecord[]> {
   const rows = await sbSelectAll<Row>(TABLE);
   return Promise.all(rows.map(mapRow));
+}
+
+export async function findDuplicateVideoLinkForModel(input: {
+  model_id: string;
+  video_link: string;
+  exclude_id?: string;
+}): Promise<WinnerVideoRecord | null> {
+  const sb = getSupabaseServiceClient();
+  let q = sb
+    .from(TABLE)
+    .select("*")
+    .eq("reference_model_id", input.model_id.trim())
+    .eq("video_link", input.video_link.trim())
+    .limit(1);
+  if (input.exclude_id?.trim()) q = q.neq("id", input.exclude_id.trim());
+  const { data, error } = await q;
+  if (error) throw new Error(`findDuplicateVideoLinkForModel: ${error.message}`);
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  return mapRow(row as Row);
+}
+
+export async function deleteWinnerVideoRow(id: string): Promise<void> {
+  const sb = getSupabaseServiceClient();
+  const { error } = await sb.from(TABLE).delete().eq("id", id);
+  if (error) throw new Error(`deleteWinnerVideoRow: ${error.message}`);
 }

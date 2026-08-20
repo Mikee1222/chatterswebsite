@@ -179,9 +179,17 @@ export async function POST(
       video_type_other: String(body.video_type_other ?? ""),
       submitted_by_id: session.airtableUserId ?? session.id,
       submitted_by_name: (session.fullName || session.email || "").trim(),
+      force_duplicate: Boolean(body.force_duplicate),
     });
     return NextResponse.json({ video });
   } catch (e) {
+    const err = e as Error & { code?: string; duplicate_id?: string };
+    if (err.code === "DUPLICATE_LINK") {
+      return NextResponse.json(
+        { error: err.message, duplicate: true, duplicate_id: err.duplicate_id },
+        { status: 409 },
+      );
+    }
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed" },
       { status: 400 },

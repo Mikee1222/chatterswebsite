@@ -14,6 +14,7 @@ import {
   Link2,
   Sparkles,
   StickyNote,
+  Trophy,
   User,
   Users,
 } from "lucide-react";
@@ -49,6 +50,9 @@ const INFLOWW_CREATOR_TOOLTIP =
 
 const CLARIOSUITE_IG_TOOLTIP =
   "Instagram account ID from Marketing → Instagram Insights → IG account lookup. Links this model to ClarioSuite analytics.";
+
+const WINNER_THRESHOLD_TOOLTIP =
+  "Per-model view thresholds for Winner Videos Hub auto-detect from ClarioSuite. Changing these does NOT reclassify already-detected videos.";
 
 const STORY_LINK_A_TOOLTIP =
   "Link A for the weekly Story CTA rotation — used Monday and Saturday (48h story w/ Instagram Plus).";
@@ -113,6 +117,9 @@ export function EditModelForm({
   const [storyLinkA, setStoryLinkA] = React.useState("");
   const [storyLinkB, setStoryLinkB] = React.useState("");
   const [storyLinksLoaded, setStoryLinksLoaded] = React.useState(false);
+  const [winnerThresholdViews, setWinnerThresholdViews] = React.useState("100000");
+  const [superWinnerThresholdViews, setSuperWinnerThresholdViews] = React.useState("300000");
+  const [winnerThresholdsLoaded, setWinnerThresholdsLoaded] = React.useState(false);
   const [linkedUserId, setLinkedUserId] = React.useState(currentLinkedUserId);
   const [clientId, setClientId] = React.useState(
     () => clientAssignments.find((a) => a.client[0])?.client[0] ?? ""
@@ -158,6 +165,31 @@ export function EditModelForm({
         setStoryLinksLoaded(true);
       })
       .catch(() => setStoryLinksLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [model.id]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/models/${encodeURIComponent(model.id)}/winner-thresholds`)
+      .then((res) => res.json())
+      .then(
+        (data: {
+          thresholds?: {
+            winner_threshold_views?: number;
+            super_winner_threshold_views?: number;
+          };
+        }) => {
+          if (cancelled) return;
+          setWinnerThresholdViews(String(data.thresholds?.winner_threshold_views ?? 100000));
+          setSuperWinnerThresholdViews(
+            String(data.thresholds?.super_winner_threshold_views ?? 300000),
+          );
+          setWinnerThresholdsLoaded(true);
+        },
+      )
+      .catch(() => setWinnerThresholdsLoaded(true));
     return () => {
       cancelled = true;
     };
@@ -256,6 +288,17 @@ export function EditModelForm({
           body: JSON.stringify({
             link_a_url: storyLinkA.trim() || null,
             link_b_url: storyLinkB.trim() || null,
+          }),
+        });
+      }
+      if (winnerThresholdsLoaded) {
+        await fetch(`/api/admin/models/${encodeURIComponent(model.id)}/winner-thresholds`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            winner_threshold_views: Number.parseInt(winnerThresholdViews, 10) || 100000,
+            super_winner_threshold_views:
+              Number.parseInt(superWinnerThresholdViews, 10) || 300000,
           }),
         });
       }
@@ -444,6 +487,41 @@ export function EditModelForm({
           ) : (
             <p className="text-sm text-white/40">Loading linked accounts…</p>
           )}
+        </FormField>
+        <FormField
+          label={
+            <IntegrationFieldLabel
+              label="Winner / Super Winner thresholds"
+              tooltip={WINNER_THRESHOLD_TOOLTIP}
+            />
+          }
+          icon={<Trophy />}
+          description="View counts that auto-classify ClarioSuite Reels into Winner Videos Hub. Not retroactive."
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            <FormInput
+              id="winner_threshold_views"
+              type="number"
+              min={0}
+              step={1000}
+              value={winnerThresholdViews}
+              onChange={(e) => setWinnerThresholdViews(e.target.value)}
+              placeholder="100000"
+              disabled={!winnerThresholdsLoaded}
+              aria-label="Winner threshold views"
+            />
+            <FormInput
+              id="super_winner_threshold_views"
+              type="number"
+              min={0}
+              step={1000}
+              value={superWinnerThresholdViews}
+              onChange={(e) => setSuperWinnerThresholdViews(e.target.value)}
+              placeholder="300000"
+              disabled={!winnerThresholdsLoaded}
+              aria-label="Super Winner threshold views"
+            />
+          </div>
         </FormField>
         <FormField
           label={<IntegrationFieldLabel label="Story CTA — Link A" tooltip={STORY_LINK_A_TOOLTIP} />}

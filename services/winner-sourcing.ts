@@ -10,6 +10,7 @@ import { coerceEditingStatus } from "@/lib/editing-helpers";
 import { coerceFilmingStatus } from "@/lib/filming-helpers";
 import { coerceIcloudStatus } from "@/lib/icloud-helpers";
 import {
+  DEFAULT_MODEL_WINNER_THRESHOLDS,
   SUPER_WINNER_RECREATE_COUNT_SETTING_KEY,
   TIER_RECREATE_COUNTS,
   WINNER_RECREATE_COUNT_SETTING_KEY,
@@ -21,12 +22,14 @@ import {
   mapSlotTypeToScriptFields,
   mapScriptFieldsToSlotType,
   parsePositiveInt,
+  resolveWinnerSubmissionSource,
   slotFilled,
   tierFromViewCount,
   type BunchStatus,
   type SlotSource,
   type SlotVideoType,
   type WinnerSourcingRecreateConfig,
+  type WinnerSubmissionSource,
   type WinnerSubmissionStatus,
   type WinnerTier,
 } from "@/lib/winner-sourcing-helpers";
@@ -96,6 +99,25 @@ export type WinnerSubmission = {
   tier: WinnerTier;
   status: WinnerSubmissionStatus;
   created_at: string;
+  /**
+   * Origin of the find. Optional until auto-detection migration lands —
+   * UI resolves via resolveWinnerSubmissionSource when missing.
+   */
+  source: WinnerSubmissionSource;
+  /** Optional caption / notes from auto-detection or submit form. */
+  caption: string;
+  /** Optional media thumbnail URL when provided by ClarioSuite / IG sync. */
+  thumbnail_url: string;
+  /** Instagram post date when known; falls back to created_at in UI. */
+  posted_at: string | null;
+  clariosuite_media_id: string | null;
+  auto_classified_at: string | null;
+  threshold_at_classification: {
+    winner: number;
+    super_winner: number;
+  } | null;
+  winner_threshold_at_classification: number | null;
+  super_winner_threshold_at_classification: number | null;
 };
 
 export type RecreationQueueItem = {
@@ -114,6 +136,7 @@ export type RecreateVideoSlot = {
   source: SlotSource;
   sequence_number: number;
   description: string;
+  admin_instructions: string;
   video_link: string;
   video_type: SlotVideoType | "";
   video_type_other: string;
@@ -166,19 +189,68 @@ export function slotInheritsBunchCreative(status: ScriptStatus): boolean {
   return status === "Not Applicable" || status === "Needs Script";
 }
 
+function mapThresholdSnapshot(row: Record<string, unknown>): {
+  winner: number;
+  super_winner: number;
+} | null {
+  const raw = row.threshold_at_classification;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as Record<string, unknown>;
+    const winner = Number(obj.winner ?? obj.winner_threshold_views);
+    const superWinner = Number(obj.super_winner ?? obj.super_winner_threshold_views);
+    if (Number.isFinite(winner) && Number.isFinite(superWinner)) {
+      return { winner, super_winner: superWinner };
+    }
+  }
+  const w = row.winner_threshold_at_classification;
+  const s = row.super_winner_threshold_at_classification;
+  if (w != null && s != null && Number.isFinite(Number(w)) && Number.isFinite(Number(s))) {
+    return { winner: Number(w), super_winner: Number(s) };
+  }
+  return null;
+}
+
 function mapSubmission(row: Record<string, unknown>): WinnerSubmission {
   const tier = coerceWinnerTier(row.tier) ?? "winner";
+  const submittedById = String(row.submitted_by_id ?? "");
+  const submittedByName = String(row.submitted_by_name ?? "");
+  const snapshot = mapThresholdSnapshot(row);
   return {
     id: String(row.id),
     model_id: String(row.model_id ?? ""),
     model_name: String(row.model_name ?? ""),
-    submitted_by_id: String(row.submitted_by_id ?? ""),
-    submitted_by_name: String(row.submitted_by_name ?? ""),
+    submitted_by_id: submittedById,
+    submitted_by_name: submittedByName,
     video_link: String(row.video_link ?? ""),
     view_count: Number(row.view_count) || 0,
     tier,
     status: coerceWinnerSubmissionStatus(row.status),
     created_at: String(row.created_at ?? ""),
+    source: resolveWinnerSubmissionSource({
+      source: row.source ?? row.detection_source ?? row.submission_source,
+      submitted_by_id: submittedById,
+      submitted_by_name: submittedByName,
+    }),
+    caption: String(row.caption ?? row.notes ?? row.description ?? "").trim(),
+    thumbnail_url: String(row.thumbnail_url ?? row.thumb_url ?? row.cover_url ?? "").trim(),
+    posted_at: row.posted_at
+      ? String(row.posted_at)
+      : row.instagram_posted_at
+        ? String(row.instagram_posted_at)
+        : null,
+    clariosuite_media_id: row.clariosuite_media_id
+      ? String(row.clariosuite_media_id)
+      : null,
+    auto_classified_at: row.auto_classified_at ? String(row.auto_classified_at) : null,
+    threshold_at_classification: snapshot,
+    winner_threshold_at_classification:
+      row.winner_threshold_at_classification != null
+        ? Number(row.winner_threshold_at_classification)
+        : snapshot?.winner ?? null,
+    super_winner_threshold_at_classification:
+      row.super_winner_threshold_at_classification != null
+        ? Number(row.super_winner_threshold_at_classification)
+        : snapshot?.super_winner ?? null,
   };
 }
 
@@ -199,6 +271,7 @@ function mapSlot(row: Record<string, unknown>): RecreateVideoSlot {
     source: coerceSlotSource(row.source),
     sequence_number: Number(row.sequence_number) || 1,
     description: String(row.description ?? ""),
+    admin_instructions: String(row.admin_instructions ?? ""),
     video_link: String(row.video_link ?? ""),
     video_type: coerceSlotVideoType(row.video_type),
     video_type_other: String(row.video_type_other ?? ""),
@@ -225,16 +298,54 @@ export async function createWinnerSubmission(input: {
   view_count: number;
   submitted_by_id: string;
   submitted_by_name: string;
+  source?: WinnerSubmissionSource;
+  clariosuite_media_id?: string | null;
+  thumbnail_url?: string;
+  caption?: string;
+  posted_at?: string | null;
+  thresholds?: {
+    winner_threshold_views: number;
+    super_winner_threshold_views: number;
+  } | null;
+  skipNotify?: boolean;
 }): Promise<WinnerSubmission> {
   const viewCount = Math.round(Number(input.view_count));
-  const tier = tierFromViewCount(viewCount);
+  let thresholds = input.thresholds ?? null;
+  if (!thresholds) {
+    try {
+      const { getModelWinnerThresholds } = await import("./model-winner-thresholds");
+      thresholds = await getModelWinnerThresholds(input.model_id);
+    } catch {
+      thresholds = null;
+    }
+  }
+  const tier = tierFromViewCount(viewCount, thresholds);
   if (!tier) {
-    throw new Error(`View count must be at least 100,000 (got ${viewCount})`);
+    const min =
+      thresholds?.winner_threshold_views ??
+      DEFAULT_MODEL_WINNER_THRESHOLDS.winner_threshold_views;
+    throw new Error(`View count must be at least ${min.toLocaleString()} (got ${viewCount})`);
   }
   const link = input.video_link.trim();
   if (!link) throw new Error("Video link is required");
   const modelId = input.model_id.trim();
   if (!modelId) throw new Error("Model is required");
+
+  const source =
+    resolveWinnerSubmissionSource({
+      source: input.source,
+      submitted_by_id: input.submitted_by_id,
+      submitted_by_name: input.submitted_by_name,
+    }) ?? "va_submitted";
+
+  const winnerThreshold =
+    thresholds?.winner_threshold_views ??
+    DEFAULT_MODEL_WINNER_THRESHOLDS.winner_threshold_views;
+  const superThreshold =
+    thresholds?.super_winner_threshold_views ??
+    DEFAULT_MODEL_WINNER_THRESHOLDS.super_winner_threshold_views;
+  const now = new Date().toISOString();
+  const mediaId = input.clariosuite_media_id?.trim() || null;
 
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
@@ -248,6 +359,18 @@ export async function createWinnerSubmission(input: {
       view_count: viewCount,
       tier,
       status: "pending",
+      source,
+      clariosuite_media_id: mediaId,
+      thumbnail_url: (input.thumbnail_url ?? "").trim(),
+      caption: (input.caption ?? "").trim(),
+      posted_at: input.posted_at || null,
+      auto_classified_at: source === "auto_detected" ? now : null,
+      threshold_at_classification: {
+        winner: winnerThreshold,
+        super_winner: superThreshold,
+      },
+      winner_threshold_at_classification: winnerThreshold,
+      super_winner_threshold_at_classification: superThreshold,
     })
     .select("*")
     .single();
@@ -255,20 +378,29 @@ export async function createWinnerSubmission(input: {
   if (error) throw new Error(`createWinnerSubmission: ${error.message}`);
   const submission = mapSubmission(data as Record<string, unknown>);
 
-  const holders = await listUsersWithPermission(PERMISSIONS.WINNER_SOURCING_MANAGE).catch(() => []);
-  for (const u of holders) {
-    if (!u.id || u.id === input.submitted_by_id) continue;
-    await notify({
-      user_id: u.id,
-      event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
-      priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: `${tier === "super_winner" ? "🔥 Super Winner" : "🏆 Winner"} submitted`,
-      body: `${submission.submitted_by_name} submitted a ${tier === "super_winner" ? "Super Winner" : "Winner"} for ${submission.model_name} (${viewCount.toLocaleString()} views).`,
-      entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
-      entity_id: submission.id,
-      actor_user_id: input.submitted_by_id,
-      _triggerSource: "winner_sourcing_submit",
-    }).catch(() => {});
+  if (!input.skipNotify) {
+    const holders = await listUsersWithPermission(PERMISSIONS.WINNER_SOURCING_MANAGE).catch(
+      () => [],
+    );
+    const autoLabel = source === "auto_detected" ? " (auto-detected)" : "";
+    for (const u of holders) {
+      if (!u.id || u.id === input.submitted_by_id) continue;
+      await notify({
+        user_id: u.id,
+        event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: `${tier === "super_winner" ? "🔥 Super Winner" : "🏆 Winner"}${autoLabel}`,
+        body:
+          source === "auto_detected"
+            ? `${submission.model_name} hit ${viewCount.toLocaleString()} views — classified as ${tier === "super_winner" ? "Super Winner" : "Winner"}.`
+            : `${submission.submitted_by_name} submitted a ${tier === "super_winner" ? "Super Winner" : "Winner"} for ${submission.model_name} (${viewCount.toLocaleString()} views).`,
+        entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
+        entity_id: submission.id,
+        actor_user_id: input.submitted_by_id,
+        _triggerSource:
+          source === "auto_detected" ? "winner_auto_detect" : "winner_sourcing_submit",
+      }).catch(() => {});
+    }
   }
 
   return submission;
@@ -1050,6 +1182,7 @@ export async function submitResearcherBunchFind(input: {
   video_type_other?: string;
   submitted_by_id: string;
   submitted_by_name: string;
+  force_duplicate?: boolean;
 }): Promise<WinnerVideoRecord> {
   const bunch = await getVideoBunch(input.bunch_id);
   if (!bunch) throw new Error("Bunch not found");
@@ -1059,13 +1192,28 @@ export async function submitResearcherBunchFind(input: {
 
   const description = input.description.trim();
   const video_link = input.video_link.trim();
-  if (!description) throw new Error("Description is required");
   if (!video_link) throw new Error("Video link is required");
   if (!input.video_type) throw new Error("Video type is required");
   const video_type_other =
     input.video_type === "other" ? String(input.video_type_other ?? "").trim() : "";
   if (input.video_type === "other" && !video_type_other) {
     throw new Error("Custom type text is required when Other is selected");
+  }
+
+  if (!input.force_duplicate && bunch.model_id?.trim()) {
+    const { findDuplicateVideoLinkForModel } = await import("./winner-videos");
+    const dup = await findDuplicateVideoLinkForModel({
+      model_id: bunch.model_id,
+      video_link,
+    });
+    if (dup) {
+      const err = new Error(
+        "This exact link was already submitted for this model. Submit anyway to override.",
+      ) as Error & { code?: string; duplicate_id?: string };
+      err.code = "DUPLICATE_LINK";
+      err.duplicate_id = dup.id;
+      throw err;
+    }
   }
 
   const { content_type, script_video_type } = mapSlotTypeToScriptFields(input.video_type);
@@ -1164,6 +1312,7 @@ export async function createSlotFromApprovedWinnerVideo(input: {
       source: "researcher_submitted",
       sequence_number: nextSeq,
       description: wv.note || "",
+      admin_instructions: String(wv.admin_instructions ?? "").trim(),
       video_link: wv.video_link || "",
       video_type,
       video_type_other,
@@ -1257,6 +1406,7 @@ export async function syncSlotVideoTypeForWinnerVideo(
     })
     .eq("winner_video_id", winnerVideoId);
 }
+
 
 /**
  * Assign a creative to a filled slot and spawn a Creative Scripts work item
@@ -1794,4 +1944,15 @@ export async function syncSlotsForWinnerVideoId(
     .from("recreate_video_slots")
     .update({ status: scriptStatus, updated_at: new Date().toISOString() })
     .eq("winner_video_id", id);
+}
+
+export async function syncAdminInstructionsForWinnerVideo(
+  winnerVideoId: string,
+  adminInstructions: string,
+): Promise<void> {
+  const sb = getSupabaseServiceClient();
+  await sb
+    .from("recreate_video_slots")
+    .update({ admin_instructions: adminInstructions.trim(), updated_at: new Date().toISOString() })
+    .eq("winner_video_id", winnerVideoId);
 }

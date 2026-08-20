@@ -52,6 +52,8 @@ export type ClarioSuiteSyncResult = {
   dailyRowsUpserted: number;
   audienceUpserted: number;
   topPostsUpserted: number;
+  winnersAutoDetected: number;
+  winnerAutoDetectErrors: number;
   errors: Array<{ igUserId: string; modelName?: string; message: string; code?: string }>;
 };
 
@@ -377,6 +379,8 @@ export async function syncClarioSuiteInsights(opts?: {
       dailyRowsUpserted: 0,
       audienceUpserted: 0,
       topPostsUpserted: 0,
+      winnersAutoDetected: 0,
+      winnerAutoDetectErrors: 0,
       errors: [],
     };
   }
@@ -394,6 +398,8 @@ export async function syncClarioSuiteInsights(opts?: {
     dailyRowsUpserted: 0,
     audienceUpserted: 0,
     topPostsUpserted: 0,
+    winnersAutoDetected: 0,
+    winnerAutoDetectErrors: 0,
     errors: [],
   };
 
@@ -433,6 +439,31 @@ export async function syncClarioSuiteInsights(opts?: {
         code: err instanceof ClarioSuiteApiError ? err.code : undefined,
       });
     }
+  }
+
+  // After insights + top posts: classify newly qualifying Reels into Winner Videos Hub.
+  // Threshold changes are non-retroactive — already-classified media_ids are skipped.
+  try {
+    const { detectWinnersFromClarioSuitePosts } = await import(
+      "@/services/winner-auto-detect"
+    );
+    const detect = await detectWinnersFromClarioSuitePosts({
+      modelRecordId: opts?.modelRecordId,
+    });
+    result.winnersAutoDetected = detect.classified;
+    result.winnerAutoDetectErrors = detect.errors.length;
+    for (const err of detect.errors) {
+      result.errors.push({
+        igUserId: "auto-detect",
+        message: `${err.media_id}: ${err.message}`,
+      });
+    }
+  } catch (err) {
+    logClarioSuiteFailure("winner auto-detect", err, {});
+    result.errors.push({
+      igUserId: "auto-detect",
+      message: err instanceof Error ? err.message : String(err),
+    });
   }
 
   return result;

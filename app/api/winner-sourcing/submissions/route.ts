@@ -50,14 +50,18 @@ export async function POST(req: Request) {
   if (!Number.isFinite(view_count) || view_count < 0) {
     return NextResponse.json({ error: "View count is required" }, { status: 400 });
   }
-  if (view_count < 100_000) {
-    return NextResponse.json(
-      { error: "View count must be at least 100,000 to qualify as Winner or Super Winner" },
-      { status: 400 },
-    );
-  }
-
   try {
+    const { getModelWinnerThresholds } = await import("@/services/model-winner-thresholds");
+    const thresholds = await getModelWinnerThresholds(model_id);
+    if (view_count < thresholds.winner_threshold_views) {
+      return NextResponse.json(
+        {
+          error: `View count must be at least ${thresholds.winner_threshold_views.toLocaleString()} to qualify as Winner or Super Winner`,
+        },
+        { status: 400 },
+      );
+    }
+
     const submission = await createWinnerSubmission({
       model_id,
       model_name: model_name || "Creator",
@@ -65,6 +69,8 @@ export async function POST(req: Request) {
       view_count,
       submitted_by_id: session.airtableUserId ?? session.id,
       submitted_by_name: (session.fullName || session.email || "").trim(),
+      source: "va_submitted",
+      thresholds,
     });
     return NextResponse.json({ submission });
   } catch (e) {

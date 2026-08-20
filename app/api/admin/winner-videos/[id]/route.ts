@@ -6,13 +6,11 @@ import {
   approveWinnerVideo,
   getWinnerVideoById,
   rejectWinnerVideo,
+  updateWinnerVideoAdminInstructions,
   updateWinnerVideoSourcingType,
   updateWinnerVideoStatus,
 } from "@/services/winner-videos";
-import {
-  coerceWinnerVideoQualityRating,
-  coerceWinnerVideoStatus,
-} from "@/lib/winner-videos-helpers";
+import { coerceWinnerVideoQualityRating, coerceWinnerVideoStatus } from "@/lib/winner-videos-helpers";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -20,40 +18,42 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!(await hasPermission(session, PERMISSIONS.WINNER_VIDEOS_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-
   const { id } = await ctx.params;
   const body = (await req.json()) as Record<string, unknown>;
   const action = String(body.action ?? "").trim();
   const reviewerName = (session.fullName || session.email || "").trim();
 
-  if (action === "approve") {
-    // Bunch finds inherit target model + creative from the bunch; ungrouped still need a creator.
+  if (action === "approve" || action === "approve_and_move") {
     const existing = await getWinnerVideoById(id);
     const isBunchFind = Boolean(existing?.bunch_id?.trim());
     const assigned_creator_name = String(body.assigned_creator_name ?? "").trim();
     if (!isBunchFind && !assigned_creator_name) {
       return NextResponse.json({ error: "Creator name is required" }, { status: 400 });
     }
-    const assigned_creative_id = String(body.assigned_creative_id ?? "").trim();
-    const assigned_creative_name = String(body.assigned_creative_name ?? "").trim();
-    const quality_rating = coerceWinnerVideoQualityRating(body.quality_rating);
-    const video = await approveWinnerVideo(id, {
-      assigned_creator_name,
-      recreation_deadline: null,
-      assigned_creative_id: assigned_creative_id || undefined,
-      assigned_creative_name: assigned_creative_name || undefined,
-      reviewed_by_name: reviewerName,
-      reviewed_by_id: session.airtableUserId ?? session.id,
-      quality_rating,
-    });
-    return NextResponse.json({ video });
+    const target_bunch_id = action === "approve_and_move" ? String(body.target_bunch_id ?? "").trim() : "";
+    if (action === "approve_and_move" && !target_bunch_id) {
+      return NextResponse.json({ error: "Target bunch is required" }, { status: 400 });
+    }
+    try {
+      const video = await approveWinnerVideo(id, {
+        assigned_creator_name,
+        recreation_deadline: null,
+        assigned_creative_id: String(body.assigned_creative_id ?? "").trim() || undefined,
+        assigned_creative_name: String(body.assigned_creative_name ?? "").trim() || undefined,
+        reviewed_by_name: reviewerName,
+        reviewed_by_id: session.airtableUserId ?? session.id,
+        quality_rating: coerceWinnerVideoQualityRating(body.quality_rating),
+        admin_instructions: body.admin_instructions !== undefined ? String(body.admin_instructions ?? "") : undefined,
+        target_bunch_id: target_bunch_id || undefined,
+      });
+      return NextResponse.json({ video });
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Could not approve" }, { status: 400 });
+    }
   }
-
   if (action === "reject") {
     const rejection_reason = String(body.rejection_reason ?? "").trim();
-    if (!rejection_reason) {
-      return NextResponse.json({ error: "Rejection reason is required" }, { status: 400 });
-    }
+    if (!rejection_reason) return NextResponse.json({ error: "Rejection reason is required" }, { status: 400 });
     const video = await rejectWinnerVideo(id, {
       rejection_reason,
       reviewed_by_name: reviewerName,
@@ -61,18 +61,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     });
     return NextResponse.json({ video });
   }
-
   if (action === "status") {
-    const status = coerceWinnerVideoStatus(body.status);
     const video = await updateWinnerVideoStatus(id, {
-      status,
+      status: coerceWinnerVideoStatus(body.status),
       recreation_link: body.recreation_link != null ? String(body.recreation_link) : undefined,
       reviewed_by_name: reviewerName,
       reviewed_by_id: session.airtableUserId ?? session.id,
     });
     return NextResponse.json({ video });
   }
-
   if (action === "update_video_type") {
     try {
       const video = await updateWinnerVideoSourcingType(id, {
@@ -81,10 +78,16 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
       return NextResponse.json({ video });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Could not update video type";
-      return NextResponse.json({ error: message }, { status: 400 });
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Could not update video type" }, { status: 400 });
     }
   }
-
+  if (action === "update_admin_instructions") {
+    try {
+      const video = await updateWinnerVideoAdminInstructions(id, String(body.admin_instructions ?? ""));
+      return NextResponse.json({ video });
+    } catch (err) {
+      return NextResponse.json({ error: err instanceof Error ? err.message : "Could not update" }, { status: 400 });
+    }
+  }
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });
 }

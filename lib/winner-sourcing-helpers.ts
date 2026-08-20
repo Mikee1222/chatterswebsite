@@ -9,11 +9,38 @@ export type WinnerTier = (typeof WINNER_TIERS)[number];
 export const WINNER_SUBMISSION_STATUSES = ["pending", "queued_for_recreation"] as const;
 export type WinnerSubmissionStatus = (typeof WINNER_SUBMISSION_STATUSES)[number];
 
+/** Provenance of a Winner Videos Hub submission (VA FAB vs ClarioSuite auto-detect). */
+export const WINNER_SUBMISSION_SOURCES = [
+  "va_submitted",
+  "researcher_submitted",
+  "auto_detected",
+] as const;
+export type WinnerSubmissionSource = (typeof WINNER_SUBMISSION_SOURCES)[number];
+
+export const WINNER_SUBMISSION_SOURCE_LABELS: Record<WinnerSubmissionSource, string> = {
+  auto_detected: "Auto-detected",
+  va_submitted: "VA Submitted",
+  researcher_submitted: "Researcher Submitted",
+};
+
 export const BUNCH_STATUSES = ["open", "closed"] as const;
 export type BunchStatus = (typeof BUNCH_STATUSES)[number];
 
 export const SLOT_SOURCES = ["from_winner", "researcher_submitted"] as const;
 export type SlotSource = (typeof SLOT_SOURCES)[number];
+
+export type ModelWinnerThresholds = {
+  model_id: string;
+  winner_threshold_views: number;
+  super_winner_threshold_views: number;
+  updated_at: string;
+  updated_by: string;
+};
+
+export const DEFAULT_MODEL_WINNER_THRESHOLDS = {
+  winner_threshold_views: WINNER_VIEW_THRESHOLD,
+  super_winner_threshold_views: SUPER_WINNER_VIEW_THRESHOLD,
+} as const;
 
 export const SLOT_VIDEO_TYPES = [
   "skit",
@@ -69,9 +96,49 @@ export function parsePositiveInt(raw: unknown, fallback: number): number {
   return Math.min(Math.round(n), 500);
 }
 
-export function tierFromViewCount(viewCount: number): WinnerTier | null {
-  if (!Number.isFinite(viewCount) || viewCount < WINNER_VIEW_THRESHOLD) return null;
-  if (viewCount >= SUPER_WINNER_VIEW_THRESHOLD) return "super_winner";
+/** Non-negative view threshold (0 allowed for tests); caps at 100M. */
+export function parseViewThreshold(raw: unknown, fallback: number): number {
+  const n = typeof raw === "number" ? raw : Number.parseInt(String(raw ?? "").trim(), 10);
+  if (!Number.isFinite(n) || n < 0) return fallback;
+  return Math.min(Math.round(n), 100_000_000);
+}
+
+export function normalizeModelWinnerThresholds(input: {
+  winner_threshold_views: number;
+  super_winner_threshold_views: number;
+}): {
+  winner_threshold_views: number;
+  super_winner_threshold_views: number;
+} {
+  const winner = parseViewThreshold(
+    input.winner_threshold_views,
+    DEFAULT_MODEL_WINNER_THRESHOLDS.winner_threshold_views,
+  );
+  let superWinner = parseViewThreshold(
+    input.super_winner_threshold_views,
+    DEFAULT_MODEL_WINNER_THRESHOLDS.super_winner_threshold_views,
+  );
+  if (superWinner < winner) superWinner = winner;
+  return {
+    winner_threshold_views: winner,
+    super_winner_threshold_views: superWinner,
+  };
+}
+
+export function tierFromViewCount(
+  viewCount: number,
+  thresholds?: {
+    winner_threshold_views?: number;
+    super_winner_threshold_views?: number;
+  } | null,
+): WinnerTier | null {
+  const winner =
+    thresholds?.winner_threshold_views ?? DEFAULT_MODEL_WINNER_THRESHOLDS.winner_threshold_views;
+  const superWinner =
+    thresholds?.super_winner_threshold_views ??
+    DEFAULT_MODEL_WINNER_THRESHOLDS.super_winner_threshold_views;
+  if (!Number.isFinite(viewCount) || viewCount < winner) return null;
+  if (viewCount >= superWinner) return "super_winner";
   return "winner";
 }
 
@@ -86,6 +153,45 @@ export function coerceWinnerSubmissionStatus(raw: unknown): WinnerSubmissionStat
     return s as WinnerSubmissionStatus;
   }
   return "pending";
+}
+
+export function coerceWinnerSubmissionSource(raw: unknown): WinnerSubmissionSource | null {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if ((WINNER_SUBMISSION_SOURCES as readonly string[]).includes(s)) {
+    return s as WinnerSubmissionSource;
+  }
+  if (s === "auto" || s === "clariosuite" || s === "auto_detect") return "auto_detected";
+  if (s === "va" || s === "manual" || s === "me_submitted" || s === "marketing") return "va_submitted";
+  if (s === "researcher" || s === "research") return "researcher_submitted";
+  return null;
+}
+
+export function winnerSubmissionSourceLabel(source: WinnerSubmissionSource): string {
+  return WINNER_SUBMISSION_SOURCE_LABELS[source];
+}
+
+/** Resolve source from explicit column or submitter heuristics (pre–auto-detection rows). */
+export function resolveWinnerSubmissionSource(input: {
+  source?: unknown;
+  submitted_by_id?: string | null;
+  submitted_by_name?: string | null;
+}): WinnerSubmissionSource {
+  const explicit = coerceWinnerSubmissionSource(input.source);
+  if (explicit) return explicit;
+  const id = String(input.submitted_by_id ?? "").trim().toLowerCase();
+  const name = String(input.submitted_by_name ?? "").trim().toLowerCase();
+  if (
+    id === "system" ||
+    id === "auto" ||
+    id === "clariosuite_auto" ||
+    name.includes("auto") ||
+    name.includes("clario") ||
+    name.includes("detection")
+  ) {
+    return "auto_detected";
+  }
+  if (name.includes("research")) return "researcher_submitted";
+  return "va_submitted";
 }
 
 export function coerceBunchStatus(raw: unknown): BunchStatus {

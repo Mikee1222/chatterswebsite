@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Pencil, Search, Trash2 } from "lucide-react";
 import { InflowwCustomDateRange } from "@/components/infloww-performance-ui";
 import { WinnerVideoStatusBadge } from "@/components/manager-review-ui";
 import {
@@ -28,7 +28,7 @@ import { VA_CARD, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 
-const PAGE_SIZE = 12;
+const BUNCHES_PER_PAGE = 8;
 
 function submittedAtMs(video: WinnerVideoRecord): number {
   if (!video.submitted_at?.trim()) return 0;
@@ -46,8 +46,10 @@ function endOfDayMs(ymd: string): number {
 
 export function ResearcherSubmissionsHistory({
   submissions,
+  onChanged,
 }: {
   submissions: WinnerVideoRecord[];
+  onChanged?: () => void;
 }) {
   const today = getTodayYmdAthens();
   const [bunchId, setBunchId] = React.useState("");
@@ -98,10 +100,10 @@ export function ResearcherSubmissionsHistory({
     setPage(1);
   }, [bunchId, status, videoType, rating, search, dateRange, dateFrom, dateTo]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const allGroups = React.useMemo(() => groupWinnerVideosByBunch(filtered), [filtered]);
+  const totalPages = Math.max(1, Math.ceil(allGroups.length / BUNCHES_PER_PAGE));
   const safePage = Math.min(page, totalPages);
-  const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const groups = groupWinnerVideosByBunch(pageItems);
+  const groups = allGroups.slice((safePage - 1) * BUNCHES_PER_PAGE, safePage * BUNCHES_PER_PAGE);
 
   function toggleBunch(key: string) {
     setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -282,6 +284,24 @@ export function ResearcherSubmissionsHistory({
                           <span className="text-[11px] text-[#B8B4B8]/45">
                             {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : "—"}
                           </span>
+                          {v.status === "Pending" ? (
+                            <span className="ml-auto flex gap-1.5">
+                              <button type="button" className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/70" onClick={async () => {
+                                const note = window.prompt("Description (optional)", v.note ?? ""); if (note === null) return;
+                                const link = window.prompt("Video link", v.video_link ?? ""); if (link === null) return;
+                                const res = await fetch(`/api/winner-videos/${encodeURIComponent(v.id)}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note, video_link: link }) });
+                                if (res.status === 409 && window.confirm("Duplicate for this model. Save anyway?")) {
+                                  await fetch(`/api/winner-videos/${encodeURIComponent(v.id)}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ note, video_link: link, force_duplicate: true }) });
+                                }
+                                onChanged?.();
+                              }}><Pencil className="h-3 w-3" /> Edit</button>
+                              <button type="button" className="inline-flex items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-1 text-[11px] text-red-200" onClick={async () => {
+                                if (!window.confirm("Delete this pending submission?")) return;
+                                await fetch(`/api/winner-videos/${encodeURIComponent(v.id)}`, { method: "DELETE", credentials: "include" });
+                                onChanged?.();
+                              }}><Trash2 className="h-3 w-3" /> Delete</button>
+                            </span>
+                          ) : null}
                         </div>
                         <p className="text-sm leading-relaxed text-[#B8B4B8]/80">
                           {v.note?.trim() || "—"}
@@ -311,10 +331,10 @@ export function ResearcherSubmissionsHistory({
 
           <div className="flex flex-col gap-3 border-t border-white/10 pt-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-white/35">
-              Showing {filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
-              {Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
+              Showing {allGroups.length === 0 ? 0 : (safePage - 1) * BUNCHES_PER_PAGE + 1}–
+              {Math.min(safePage * BUNCHES_PER_PAGE, allGroups.length)} of {allGroups.length} bunches
             </p>
-            {filtered.length > 0 ? (
+            {allGroups.length > 0 ? (
               <div className="flex items-center gap-2">
                 <button
                   type="button"

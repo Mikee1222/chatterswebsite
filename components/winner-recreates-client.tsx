@@ -287,6 +287,23 @@ export function WinnerRecreatesClient({
     setSubmissions(d.videos ?? []);
   }
 
+  async function postFind(forceDuplicate: boolean) {
+    const res = await fetch(`/api/winner-sourcing/bunches/${bunchId}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        description,
+        video_link: videoLink,
+        video_type: videoType,
+        video_type_other: videoType === "other" ? videoTypeOther.trim() : "",
+        force_duplicate: forceDuplicate,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { res, data };
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -306,38 +323,95 @@ export function WinnerRecreatesClient({
       setError("Enter a custom type when Other is selected");
       return;
     }
+    const snap = {
+      description,
+      videoLink,
+      videoType,
+      videoTypeOther,
+      bunchLabel: selected?.name ?? "bunch",
+    };
+    setDescription("");
+    setVideoLink("");
+    setVideoType("");
+    setVideoTypeOther("");
     setSubmitting(true);
+    addToast(
+      winnerVideoLocalToast(
+        `ws-rs-${Date.now()}`,
+        "Submitted for review",
+        `Pending in Research Manage · ${snap.bunchLabel}`,
+        "normal",
+      ),
+    );
     try {
-      const res = await fetch(`/api/winner-sourcing/bunches/${bunchId}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          description,
-          video_link: videoLink,
-          video_type: videoType,
-          video_type_other: videoType === "other" ? videoTypeOther.trim() : "",
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
+      const { res, data } = await postFind(false);
+      if (res.status === 409 && data.duplicate) {
+        setDescription(snap.description);
+        setVideoLink(snap.videoLink);
+        setVideoType(snap.videoType as typeof videoType);
+        setVideoTypeOther(snap.videoTypeOther);
+        setError((data.error || "Duplicate link") + " — use Submit anyway.");
+        return;
+      }
       if (!res.ok) {
+        setDescription(snap.description);
+        setVideoLink(snap.videoLink);
+        setVideoType(snap.videoType as typeof videoType);
+        setVideoTypeOther(snap.videoTypeOther);
         setError(data.error || "Submit failed");
         return;
       }
-      addToast(
-        winnerVideoLocalToast(
-          `ws-rs-${Date.now()}`,
-          "Submitted for review",
-          `Pending in Research Manage · ${selected?.name ?? "bunch"}`,
-          "normal",
-        ),
-      );
-      setDescription("");
-      setVideoLink("");
-      setVideoType("");
-      setVideoTypeOther("");
-      await Promise.all([refreshBunches(), refreshSubmissions()]);
+      void Promise.all([refreshBunches(), refreshSubmissions()]);
     } catch {
+      setDescription(snap.description);
+      setVideoLink(snap.videoLink);
+      setVideoType(snap.videoType as typeof videoType);
+      setVideoTypeOther(snap.videoTypeOther);
+      setError("Network error");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleSubmitAnyway() {
+    setError(null);
+    if (!bunchId || !videoType) return;
+    const snap = {
+      description,
+      videoLink,
+      videoType,
+      videoTypeOther,
+      bunchLabel: selected?.name ?? "bunch",
+    };
+    setDescription("");
+    setVideoLink("");
+    setVideoType("");
+    setVideoTypeOther("");
+    setSubmitting(true);
+    addToast(
+      winnerVideoLocalToast(
+        `ws-rs-${Date.now()}`,
+        "Submitted for review",
+        `Pending in Research Manage · ${snap.bunchLabel}`,
+        "normal",
+      ),
+    );
+    try {
+      const { res, data } = await postFind(true);
+      if (!res.ok) {
+        setDescription(snap.description);
+        setVideoLink(snap.videoLink);
+        setVideoType(snap.videoType as typeof videoType);
+        setVideoTypeOther(snap.videoTypeOther);
+        setError(data.error || "Submit failed");
+        return;
+      }
+      void Promise.all([refreshBunches(), refreshSubmissions()]);
+    } catch {
+      setDescription(snap.description);
+      setVideoLink(snap.videoLink);
+      setVideoType(snap.videoType as typeof videoType);
+      setVideoTypeOther(snap.videoTypeOther);
       setError("Network error");
     } finally {
       setSubmitting(false);
@@ -402,7 +476,7 @@ export function WinnerRecreatesClient({
       </div>
 
       {tab === "history" ? (
-        <ResearcherSubmissionsHistory submissions={submissions} />
+        <ResearcherSubmissionsHistory submissions={submissions} onChanged={() => void Promise.all([refreshBunches(), refreshSubmissions()])} />
       ) : (
         <>
       <section className="space-y-4" aria-labelledby="bunch-overview-heading">
@@ -503,8 +577,7 @@ export function WinnerRecreatesClient({
             className={cn(VA_FILTER_INPUT, "min-h-[88px] w-full py-2")}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="What should be recreated?"
-            required
+            placeholder="What should be recreated? (optional)"
             disabled={submitting}
           />
         </label>

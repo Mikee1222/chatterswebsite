@@ -344,6 +344,7 @@ export async function setSlotFilmed(input: {
     source: (updated.source as RecreateVideoSlot["source"]) || "researcher_submitted",
     sequence_number: Number(updated.sequence_number) || 1,
     description: String(updated.description ?? ""),
+    admin_instructions: String(updated.admin_instructions ?? ""),
     video_link: String(updated.video_link ?? ""),
     video_type: (updated.video_type as RecreateVideoSlot["video_type"]) || "",
     video_type_other: String(updated.video_type_other ?? ""),

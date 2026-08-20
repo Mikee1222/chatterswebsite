@@ -399,11 +399,13 @@ export function FilterBar({ children, className }: { children: React.ReactNode; 
 
 export function QuickActionMarkFixed({
   onClick,
+  onMouseDown,
   disabled,
   className,
   children = "Mark Fixed",
 }: {
   onClick: () => void;
+  onMouseDown?: (e: React.MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
   className?: string;
   children?: React.ReactNode;
@@ -412,6 +414,7 @@ export function QuickActionMarkFixed({
     <button
       type="button"
       disabled={disabled}
+      onMouseDown={onMouseDown}
       onClick={onClick}
       className={cn(
         "inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500/50 hover:bg-gradient-to-br hover:from-emerald-500/20 hover:to-emerald-600/10 hover:shadow-[0_0_16px_-4px_rgba(16,185,129,0.35)] disabled:opacity-50",

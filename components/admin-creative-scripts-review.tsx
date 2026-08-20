@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, ChevronDown, FileText, Loader2, X } from "lucide-react";
+import { ExternalLink, ChevronDown, ChevronRight, FileText, FolderOpen, Loader2, X } from "lucide-react";
 import {
   FindingCard,
   ManagerReviewTextarea,
@@ -18,6 +18,7 @@ import {
   displayOrDash,
 } from "@/components/manager-review-ui";
 import { WinnerVideoCopyButton, winnerVideoLocalToast } from "@/components/winner-videos-shared";
+import { groupWinnerVideosByBunch } from "@/lib/winner-videos-filters";
 import { useToast } from "@/contexts/toast-context";
 import { formatCreativeScriptCopy } from "@/lib/creative-scripts-copy";
 import { formatDateTimeAthens } from "@/lib/format";
@@ -44,6 +45,8 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
   const [briefOpen, setBriefOpen] = React.useState<Record<string, boolean>>({});
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
+  const skipBlurSaveRef = React.useRef(false);
+  const [expandedBunches, setExpandedBunches] = React.useState<Record<string, boolean>>({});
 
   React.useEffect(() => setScripts(initialScripts), [initialScripts]);
 
@@ -120,6 +123,12 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
     }
   }
 
+  const groupedScripts = React.useMemo(() => groupWinnerVideosByBunch(scripts), [scripts]);
+
+  function toggleBunch(bunchKey: string) {
+    setExpandedBunches((prev) => ({ ...prev, [bunchKey]: !(prev[bunchKey] ?? true) }));
+  }
+
   async function copyScript(video: WinnerVideoRecord) {
     const draft = drafts[video.id] ?? video.script_text ?? "";
     const ok = await copyTextToClipboard(
@@ -156,7 +165,34 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
           description="Submitted scripts will appear here for approval."
         />
       ) : (
-        scripts.map((v) => {
+        <div className="space-y-6">
+        {groupedScripts.map((group) => {
+          const bunchKey = group.bunchId || "ungrouped";
+          const expanded = expandedBunches[bunchKey] ?? true;
+          return (
+            <section key={bunchKey} className="space-y-3">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 text-left transition hover:border-white/12"
+                onClick={() => toggleBunch(bunchKey)}
+                aria-expanded={expanded}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <FolderOpen className="h-4 w-4 shrink-0 text-[#D4AF8C]/80" aria-hidden />
+                  <span className="truncate text-sm font-semibold text-white">
+                    {group.bunchId ? group.bunchName : "Ungrouped"}
+                  </span>
+                  <span className="rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-2 py-0.5 text-[10px] tabular-nums text-[#D4AF8C]">
+                    {group.videos.length}
+                  </span>
+                </span>
+                {expanded ? (
+                  <ChevronDown className="h-4 w-4 text-[#B8B4B8]/60" aria-hidden />
+                ) : (
+                  <ChevronRight className="h-4 w-4 text-[#B8B4B8]/60" aria-hidden />
+                )}
+              </button>
+              {expanded ? group.videos.map((v) => {
           const draft = drafts[v.id] ?? v.script_text ?? "";
           const textDraft = textDrafts[v.id] ?? v.text_on_screen_suggestion ?? "";
           const briefDraft = briefDrafts[v.id] ?? v.script_brief ?? "";
@@ -190,12 +226,17 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                 <div className="flex flex-wrap gap-2">
                   <QuickActionMarkFixed
                     disabled={pendingId === v.id}
+                    onMouseDown={() => {
+                      skipBlurSaveRef.current = true;
+                    }}
                     onClick={() =>
                       void patchScript(v.id, {
                         action: "approve",
                         script_text: draft,
                         text_on_screen_suggestion: textDraft,
                         script_brief: briefDraft,
+                      }).finally(() => {
+                        skipBlurSaveRef.current = false;
                       })
                     }
                   >
@@ -225,12 +266,22 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                 </a>
               ) : null}
 
+              {v.admin_instructions?.trim() ? (
+                <div className="mt-3 rounded-lg border border-[#D4AF8C]/20 bg-[#D4AF8C]/[0.06] px-3 py-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/80">
+                    Admin guidance
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#D4AF8C]/90">{v.admin_instructions}</p>
+                </div>
+              ) : null}
+
               <div className="mt-4">
                 <ReviewFieldLabel>Script (editable)</ReviewFieldLabel>
                 <ManagerReviewTextarea
                   value={draft}
                   onChange={(e) => setDrafts((prev) => ({ ...prev, [v.id]: e.target.value }))}
                   onBlur={() => {
+                    if (skipBlurSaveRef.current) return;
                     const changedScript = draft.trim() && draft !== v.script_text;
                     const changedTos = textDraft !== (v.text_on_screen_suggestion ?? "");
                     const changedBrief = briefDraft !== (v.script_brief ?? "");
@@ -272,6 +323,7 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                       value={textDraft}
                       onChange={(e) => setTextDrafts((prev) => ({ ...prev, [v.id]: e.target.value }))}
                       onBlur={() => {
+                        if (skipBlurSaveRef.current) return;
                         if (textDraft !== (v.text_on_screen_suggestion ?? "")) {
                           void patchScript(v.id, {
                             action: "save",
@@ -312,6 +364,7 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                       value={briefDraft}
                       onChange={(e) => setBriefDrafts((prev) => ({ ...prev, [v.id]: e.target.value }))}
                       onBlur={() => {
+                        if (skipBlurSaveRef.current) return;
                         if (briefDraft !== (v.script_brief ?? "")) {
                           void patchScript(v.id, {
                             action: "save",
@@ -343,7 +396,11 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
               ) : null}
             </FindingCard>
           );
-        })
+              }) : null}
+            </section>
+          );
+        })}
+        </div>
       )}
 
       {rejectId ? (

@@ -350,12 +350,12 @@ export function CreativeScriptsQueueClient({
 
   async function handleSubmit(video: WinnerVideoRecord) {
     const modelName = modelNameFromSelection(modelId, gunzoModels).trim();
-    if (!modelName || !scriptText.trim()) {
+    if (!modelName || (!scriptText.trim() && !textOnScreen.trim())) {
       addToast(
         winnerVideoLocalToast(
           `cs-val-${Date.now()}`,
           "Missing fields",
-          "Model and script are required.",
+          "Model plus script and/or text-on-screen required.",
           "high",
         ),
       );
@@ -665,6 +665,12 @@ export function CreativeScriptsQueueClient({
                                   {description}
                                 </p>
                               ) : null}
+                              {v.admin_instructions?.trim() ? (
+                                <div className="mt-2 rounded-lg border border-[#D4AF8C]/20 bg-[#D4AF8C]/[0.06] px-3 py-2">
+                                  <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/80">Admin guidance</p>
+                                  <p className="mt-1 whitespace-pre-wrap text-xs text-[#D4AF8C]/90">{v.admin_instructions}</p>
+                                </div>
+                              ) : null}
 
                               {isRejected && rejection ? (
                                 <div className="mt-3 flex gap-2.5 rounded-xl border border-red-500/30 bg-red-500/10 px-3.5 py-3">
@@ -738,8 +744,7 @@ export function CreativeScriptsQueueClient({
                                           value={scriptText}
                                           onChange={(e) => setScriptText(e.target.value)}
                                           rows={10}
-                                          placeholder="Write the full script here…"
-                                          required
+                                          placeholder="Write the full script here (or Text on Screen)…"
                                         />
                                       </div>
 

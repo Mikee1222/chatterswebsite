@@ -166,6 +166,9 @@ export function AdminWinnerVideosClient({
   const [applied, setApplied] = React.useState<FilterDraft>(EMPTY_FILTERS);
 
   const [approveId, setApproveId] = React.useState<string | null>(null);
+  const [approveMode, setApproveMode] = React.useState<"approve" | "approve_and_move">("approve");
+  const [moveBunchId, setMoveBunchId] = React.useState("");
+  const [adminInstructionsDraft, setAdminInstructionsDraft] = React.useState("");
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [creatorId, setCreatorId] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
@@ -412,7 +415,7 @@ export function AdminWinnerVideosClient({
         return false;
       }
       setVideos((prev) => prev.map((v) => (v.id === id ? data.video! : v)));
-      if (body.action === "approve" && data.video.bunch_id?.trim()) {
+      if ((body.action === "approve" || body.action === "approve_and_move") && data.video.bunch_id?.trim()) {
         const bunchesRes = await fetch("/api/winner-sourcing/bunches", { credentials: "include" });
         if (bunchesRes.ok) {
           const bunchesData = (await bunchesRes.json()) as { bunches?: VideoBunch[] };
@@ -522,8 +525,11 @@ export function AdminWinnerVideosClient({
     }
   }
 
-  function openApprove(video: WinnerVideoRecord) {
+  function openApprove(video: WinnerVideoRecord, mode: "approve" | "approve_and_move" = "approve") {
     setApproveId(video.id);
+    setApproveMode(mode);
+    setMoveBunchId("");
+    setAdminInstructionsDraft(video.admin_instructions ?? "");
     if (video.bunch_id?.trim()) {
       setCreatorId("");
     } else {
@@ -1103,6 +1109,7 @@ export function AdminWinnerVideosClient({
                             onCopy={() => void copySubmission(v)}
                             onRefresh={() => void reload()}
                             onApprove={() => openApprove(v)}
+                            onApproveAndMove={() => openApprove(v, "approve_and_move")}
                             onReject={() => {
                               setRejectId(v.id);
                               setRejectReason("");
@@ -1129,7 +1136,10 @@ export function AdminWinnerVideosClient({
           )}
 
           {approveId ? (
-            <ReviewModalShell title="Approve research find" onClose={() => setApproveId(null)}>
+            <ReviewModalShell
+              title={approveMode === "approve_and_move" ? "Approve and Move" : "Approve research find"}
+              onClose={() => setApproveId(null)}
+            >
               <p className="mb-4 text-sm text-[#B8B4B8]/60">
                 {isBunchApprove
                   ? `Approving spawns a recreate slot into “${approveTarget?.bunch_name || "the linked bunch"}”. Target model and creative are inherited from the bunch.`
@@ -1180,24 +1190,62 @@ export function AdminWinnerVideosClient({
                     <ReviewFieldLabel>Quality rating</ReviewFieldLabel>
                     <QualityRatingPicker value={qualityRating} onChange={setQualityRating} />
                   </div>
+                  <div>
+                    <ReviewFieldLabel>Admin guidance (optional)</ReviewFieldLabel>
+                    <p className="mb-1.5 text-[11px] text-[#B8B4B8]/50">
+                      Shown downstream in Creative Scripts, Shoot, and Edit — separate from researcher description.
+                    </p>
+                    <ManagerReviewTextarea
+                      value={adminInstructionsDraft}
+                      onChange={(e) => setAdminInstructionsDraft(e.target.value)}
+                      rows={3}
+                      placeholder="Instructions for creative / shoot / edit…"
+                    />
+                  </div>
+                  {approveMode === "approve_and_move" && isBunchApprove ? (
+                    <div>
+                      <ReviewFieldLabel>Move into bunch</ReviewFieldLabel>
+                      <ManagerReviewSelect
+                        value={moveBunchId}
+                        onChange={setMoveBunchId}
+                        options={[
+                          { value: "", label: "Select target bunch…" },
+                          ...bunches
+                            .filter((b) => b.status === "open" && (b.remaining_count ?? 0) > 0 && b.id !== approveTarget?.bunch_id)
+                            .map((b) => ({
+                              value: b.id,
+                              label: `${b.name} — ${b.model_name} (${b.remaining_count ?? 0} left)`,
+                            })),
+                        ]}
+                        placeholder="Select target bunch…"
+                        required
+                      />
+                    </div>
+                  ) : null}
                   <div className="flex justify-end gap-2 pt-2">
                     <button type="button" className={VA_BTN_SECONDARY} onClick={() => setApproveId(null)}>
                       Cancel
                     </button>
                     <button
                       type="button"
-                      disabled={!isBunchApprove && (!creatorId || !selectedCreatorName.trim())}
+                      disabled={(!isBunchApprove && (!creatorId || !selectedCreatorName.trim())) || (approveMode === "approve_and_move" && !moveBunchId.trim())}
                       className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
                       onClick={() => {
                         if (!approveId) return;
                         if (!isBunchApprove && (!creatorId || !selectedCreatorName.trim())) return;
                         void (async () => {
+                          if (approveMode === "approve_and_move" && !moveBunchId.trim()) return;
                           const ok = await patchVideo(approveId, {
-                            action: "approve",
+                            action: approveMode,
                             assigned_creator_name: isBunchApprove
-                              ? approveInheritedModel
+                              ? (approveMode === "approve_and_move"
+                                  ? (bunches.find((b) => b.id === moveBunchId)?.model_name ?? approveInheritedModel)
+                                  : approveInheritedModel)
                               : selectedCreatorName.trim(),
                             quality_rating: qualityRating,
+                            admin_instructions: adminInstructionsDraft,
+                            target_bunch_id:
+                              approveMode === "approve_and_move" ? moveBunchId.trim() : undefined,
                           });
                           if (ok) setApproveId(null);
                         })();
@@ -1283,6 +1331,7 @@ function ResearchSubmissionCard({
   onCopy,
   onRefresh,
   onApprove,
+  onApproveAndMove,
   onReject,
   onRemoveSlot,
   onMarkPublished,
@@ -1296,6 +1345,7 @@ function ResearchSubmissionCard({
   onCopy: () => void;
   onRefresh: () => void;
   onApprove: () => void;
+  onApproveAndMove?: () => void;
   onReject: () => void;
   onRemoveSlot?: () => void;
   onMarkPublished: () => void;
@@ -1391,6 +1441,19 @@ function ResearchSubmissionCard({
               <QuickActionMarkFixed disabled={busy} onClick={onApprove}>
                 Approve
               </QuickActionMarkFixed>
+              {onApproveAndMove && video.bunch_id?.trim() ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={onApproveAndMove}
+                  className={cn(
+                    VA_BTN_SECONDARY,
+                    "inline-flex min-h-[44px] items-center gap-1.5 border-[#D4AF8C]/35 text-[#D4AF8C]",
+                  )}
+                >
+                  Approve and Move
+                </button>
+              ) : null}
               <QuickActionEscalate disabled={busy} onClick={onReject}>
                 <X className="h-3.5 w-3.5" aria-hidden />
                 Reject
@@ -1435,6 +1498,44 @@ function ResearchSubmissionCard({
 
       {video.note?.trim() ? (
         <p className="mt-2 text-sm leading-relaxed text-[#B8B4B8]/75">{video.note}</p>
+      ) : null}
+
+      {(video.status === "Approved" ||
+        video.status === "Recreated" ||
+        video.status === "Published" ||
+        video.admin_instructions?.trim()) ? (
+        <div className="mt-3 rounded-lg border border-[#D4AF8C]/20 bg-[#D4AF8C]/[0.06] px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/80">
+            Admin guidance (Scripts / Shoot / Edit)
+          </p>
+          {video.admin_instructions?.trim() ? (
+            <p className="mt-1 text-sm text-[#D4AF8C]/90">{video.admin_instructions}</p>
+          ) : (
+            <p className="mt-1 text-xs text-[#B8B4B8]/45">No admin instructions yet.</p>
+          )}
+          {video.status !== "Pending" && video.status !== "Rejected" ? (
+            <button
+              type="button"
+              className="mt-2 text-[11px] font-medium text-[#FF1493] hover:underline"
+              disabled={busy}
+              onClick={() => {
+                const next = window.prompt(
+                  "Admin guidance for Creative Scripts / Shoot / Edit",
+                  video.admin_instructions ?? "",
+                );
+                if (next === null) return;
+                void fetch(`/api/admin/winner-videos/${encodeURIComponent(video.id)}`, {
+                  method: "PATCH",
+                  credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ action: "update_admin_instructions", admin_instructions: next }),
+                }).then(() => onRefresh());
+              }}
+            >
+              Edit admin guidance
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {onUpdateVideoType ? (

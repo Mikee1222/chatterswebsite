@@ -55,6 +55,12 @@ async function persistWinnerVideoFields(id: string, fields: Record<string, unkno
 }
 
 /** Notify every active user whose role grants `permission` (e.g. winner_videos:manage reviewers). */
+function assertScriptOrTextOnScreen(scriptText: string, textOnScreen: string): void {
+  if (!scriptText.trim() && !textOnScreen.trim()) {
+    throw new Error("Provide a script and/or a text-on-screen suggestion");
+  }
+}
+
 async function notifyPermissionHolders(params: {
   permission: Permission;
   event_type: NotificationEventType;
@@ -68,21 +74,23 @@ async function notifyPermissionHolders(params: {
   triggerSource: string;
 }): Promise<void> {
   const holders = await listUsersWithPermission(params.permission).catch(() => []);
-  for (const u of holders) {
-    if (!u.id) continue;
-    if (params.excludeUserId && u.id === params.excludeUserId) continue;
-    await notify({
-      user_id: u.id,
-      event_type: params.event_type,
-      priority: params.priority,
-      title: params.title,
-      body: params.body,
-      entity_type: params.entity_type,
-      entity_id: params.entity_id,
-      actor_user_id: params.actor_user_id,
-      _triggerSource: params.triggerSource,
-    }).catch((err) => console.error(`[${params.event_type}] notify holder failed`, err));
-  }
+  await Promise.all(
+    holders
+      .filter((u) => u.id && !(params.excludeUserId && u.id === params.excludeUserId))
+      .map((u) =>
+        notify({
+          user_id: u.id,
+          event_type: params.event_type,
+          priority: params.priority,
+          title: params.title,
+          body: params.body,
+          entity_type: params.entity_type,
+          entity_id: params.entity_id,
+          actor_user_id: params.actor_user_id,
+          _triggerSource: params.triggerSource,
+        }).catch((err) => console.error(`[${params.event_type}] notify holder failed`, err)),
+      ),
+  );
 }
 
 export type WinnerVideoAttachment = { url: string; filename?: string };
@@ -137,6 +145,8 @@ export interface WinnerVideoRecord {
   bunch_name: string;
   /** Optional quality rating set on approve (👍 / 🌟 / 🔥). */
   quality_rating: WinnerVideoQualityRating | null;
+  /** Admin guidance for Scripts / Shoot / Edit (distinct from researcher note). */
+  admin_instructions: string;
 }
 
 export interface WinnerVideoFilters {
@@ -190,6 +200,7 @@ type WinnerVideoFields = {
   bunch_id?: string | null;
   bunch_name?: string;
   quality_rating?: string | null;
+  admin_instructions?: string | null;
 };
 
 function escapeFormulaString(value: string): string {
@@ -258,6 +269,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     bunch_id: String(f.bunch_id ?? ""),
     bunch_name: String(f.bunch_name ?? ""),
     quality_rating: coerceWinnerVideoQualityRating(f.quality_rating),
+    admin_instructions: String(f.admin_instructions ?? ""),
   };
 }
 
@@ -374,7 +386,7 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
     ? await (await import("./winner-videos-supabase")).createWinnerVideoRow(fields)
     : mapWinnerVideo(await createRecord<WinnerVideoFields>(TABLE, fields as WinnerVideoFields));
 
-  await notifyPermissionHolders({
+  void notifyPermissionHolders({
     permission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
     event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
@@ -387,7 +399,7 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
     actor_user_id: data.submitted_by_id.trim() || undefined,
     excludeUserId: data.submitted_by_id.trim() || undefined,
     triggerSource: "create_winner_video",
-  });
+  }).catch((err) => console.error("[create_winner_video] notify failed", err));
 
   return video;
 }
@@ -429,24 +441,55 @@ export type ApproveWinnerVideoInput = {
   reviewed_by_id?: string;
   /** Optional 👍 / 🌟 / 🔥 rating for the submitting researcher. */
   quality_rating?: WinnerVideoQualityRating | null;
+  admin_instructions?: string | null;
+  /** Approve and Move: reassign into a different open bunch before creating the slot. */
+  target_bunch_id?: string | null;
 };
 
 export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInput): Promise<WinnerVideoRecord> {
   const existing = await getWinnerVideoById(id);
   if (!existing) throw new Error("Winner video not found");
+  if (existing.status !== "Pending") throw new Error("Only pending submissions can be approved");
 
   const now = new Date().toISOString();
   const isBunchFind = Boolean(existing.bunch_id?.trim());
+  const targetBunchId = data.target_bunch_id?.trim() || "";
+  const adminInstructions =
+    data.admin_instructions !== undefined
+      ? String(data.admin_instructions ?? "").trim()
+      : existing.admin_instructions?.trim() || "";
+  let workingVideo: WinnerVideoRecord = { ...existing, admin_instructions: adminInstructions };
+
+  if (targetBunchId) {
+    if (!isBunchFind) throw new Error("Approve and Move is only available for Fill Bunches finds");
+    if (!isSupabaseBackend()) throw new Error("Approve and Move requires Supabase backend");
+    const { getVideoBunch } = await import("./winner-sourcing");
+    const target = await getVideoBunch(targetBunchId);
+    if (!target) throw new Error("Target bunch not found");
+    if (target.status !== "open") throw new Error("Target bunch is closed");
+    if ((target.remaining_count ?? 0) < 1) throw new Error("Target bunch has no remaining capacity");
+    await persistWinnerVideoFields(id, {
+      bunch_id: target.id,
+      bunch_name: target.name,
+      reference_model_id: target.model_id || existing.reference_model_id,
+      reference_model_name: target.model_name || existing.reference_model_name,
+      admin_instructions: adminInstructions,
+    });
+    const reloaded = await getWinnerVideoById(id);
+    if (!reloaded) throw new Error("Winner video not found after move");
+    workingVideo = { ...reloaded, admin_instructions: adminInstructions };
+  } else if (data.admin_instructions !== undefined) {
+    await persistWinnerVideoFields(id, { admin_instructions: adminInstructions });
+  }
 
   let creatorName = data.assigned_creator_name.trim();
   let creativeId = String(data.assigned_creative_id ?? "").trim();
   let creativeName = String(data.assigned_creative_name ?? "").trim();
 
-  // Fill Bunches: inherit target model + creative from the parent bunch (source of truth).
-  if (isBunchFind && isSupabaseBackend()) {
+  if (workingVideo.bunch_id?.trim() && isSupabaseBackend()) {
     try {
       const { getVideoBunch } = await import("./winner-sourcing");
-      const bunch = await getVideoBunch(existing.bunch_id);
+      const bunch = await getVideoBunch(workingVideo.bunch_id);
       if (bunch) {
         if (!creatorName) {
           creatorName = bunch.model_name.trim();
@@ -467,8 +510,7 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     throw new Error("Creator name is required");
   }
 
-  // Standalone (non-bunch) finds may still assign a creative; bunch finds inherit or stay unassigned.
-  if (!isBunchFind && creativeId && !creativeName) {
+  if (!workingVideo.bunch_id?.trim() && creativeId && !creativeName) {
     throw new Error("Creative name is required when assigning a creative");
   }
 
@@ -482,26 +524,23 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     reviewed_at: now,
     rejection_reason: "",
     quality_rating: qualityRating,
+    admin_instructions: adminInstructions,
   };
 
-  // Bunch finds: copy creative onto winner_videos so Scripts to Write can filter by it.
   if (creativeId) {
     patch.assigned_creative_id = creativeId;
     if (creativeName) patch.assigned_creative_name = creativeName;
-    const currentScriptStatus = existing.script_status;
+    const currentScriptStatus = workingVideo.script_status;
     if (!currentScriptStatus || currentScriptStatus === "Not Applicable") {
       patch.script_status = "Needs Script";
     }
   }
 
-  // Fill Bunches finds: materialize recreate_video_slot BEFORE flipping to Approved.
-  // winner_videos realtime reloads fire on status change; creating the slot first prevents
-  // a window where pending dropped but provided_count has not incremented yet (stuck N/35).
-  if (existing.bunch_id && isSupabaseBackend()) {
+  if (workingVideo.bunch_id && isSupabaseBackend()) {
     try {
       const { createSlotFromApprovedWinnerVideo } = await import("./winner-sourcing");
       await createSlotFromApprovedWinnerVideo({
-        winner_video: existing,
+        winner_video: workingVideo,
         assigned_creative_id: creativeId,
         assigned_creative_name: creativeName,
       });
@@ -745,7 +784,8 @@ async function writeCreativeScriptSubmission(
   }
   if (!modelName) throw new Error("Model is required");
   if (!videoType) throw new Error("Video type is missing — ask a researcher or admin to set it");
-  if (!scriptText) throw new Error("Script text is required");
+  const textOnScreen = (data.text_on_screen_suggestion ?? "").trim();
+  assertScriptOrTextOnScreen(scriptText, textOnScreen);
 
   const now = new Date().toISOString();
   const fields: Record<string, unknown> = {
@@ -753,7 +793,7 @@ async function writeCreativeScriptSubmission(
     script_status: "Pending Review",
     script_video_type: videoType,
     script_text: scriptText,
-    text_on_screen_suggestion: (data.text_on_screen_suggestion ?? "").trim(),
+    text_on_screen_suggestion: textOnScreen,
     script_brief: (data.script_brief ?? "").trim(),
     script_submitted_by_name: data.script_submitted_by_name.trim(),
     script_submitted_by_id: data.script_submitted_by_id.trim(),
@@ -849,7 +889,8 @@ export async function approveCreativeScript(
   }
 
   const scriptText = data.script_text.trim();
-  if (!scriptText) throw new Error("Script text is required");
+  const tosApprove = (data.text_on_screen_suggestion ?? "").trim() || (existing.text_on_screen_suggestion ?? "").trim();
+  assertScriptOrTextOnScreen(scriptText, tosApprove);
 
   const now = new Date().toISOString();
   const fields: Record<string, unknown> = {
@@ -901,7 +942,8 @@ export async function rejectCreativeScript(
   if (!reason) throw new Error("Rejection reason is required");
 
   const scriptText = data.script_text.trim();
-  if (!scriptText) throw new Error("Script text is required");
+  const tosReject = (data.text_on_screen_suggestion ?? "").trim() || (existing.text_on_screen_suggestion ?? "").trim();
+  assertScriptOrTextOnScreen(scriptText, tosReject);
 
   const now = new Date().toISOString();
   const fields: Record<string, unknown> = {
@@ -948,7 +990,10 @@ export async function saveCreativeScriptText(
   const existing = await getWinnerVideoById(id);
   if (!existing) throw new Error("Winner video not found");
   const text = script_text.trim();
-  if (!text) throw new Error("Script text is required");
+  const tos = text_on_screen_suggestion !== undefined
+    ? text_on_screen_suggestion.trim()
+    : (existing.text_on_screen_suggestion ?? "").trim();
+  assertScriptOrTextOnScreen(text, tos);
 
   const fields: Record<string, unknown> = { script_text: text };
   if (text_on_screen_suggestion !== undefined) {
@@ -1002,3 +1047,114 @@ export async function updateWinnerVideoSourcingType(
   return updated;
 }
 
+export async function updateWinnerVideoAdminInstructions(
+  id: string,
+  admin_instructions: string,
+): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  const value = admin_instructions.trim();
+  await persistWinnerVideoFields(id, { admin_instructions: value });
+  if (isSupabaseBackend()) {
+    try {
+      const { syncAdminInstructionsForWinnerVideo } = await import("./winner-sourcing");
+      await syncAdminInstructionsForWinnerVideo(id, value);
+    } catch (err) {
+      console.error("[winner-sourcing] admin_instructions sync failed", err);
+    }
+  }
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after update");
+  return updated;
+}
+
+export async function findDuplicateVideoLinkForModel(input: {
+  model_id: string;
+  video_link: string;
+  exclude_id?: string;
+}): Promise<WinnerVideoRecord | null> {
+  const modelId = input.model_id.trim();
+  const link = input.video_link.trim();
+  if (!modelId || !link) return null;
+  if (isSupabaseBackend()) {
+    return (await import("./winner-videos-supabase")).findDuplicateVideoLinkForModel({
+      model_id: modelId,
+      video_link: link,
+      exclude_id: input.exclude_id,
+    });
+  }
+  const all = await getAllWinnerVideos();
+  return (
+    all.find(
+      (v) =>
+        v.reference_model_id === modelId &&
+        v.video_link.trim() === link &&
+        (!input.exclude_id || v.id !== input.exclude_id),
+    ) ?? null
+  );
+}
+
+export async function updateOwnPendingWinnerVideo(
+  id: string,
+  submitterId: string,
+  patch: {
+    note?: string;
+    video_link?: string;
+    sourcing_video_type?: string;
+    video_type_other?: string;
+    force_duplicate?: boolean;
+  },
+): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  if (existing.submitted_by_id !== submitterId.trim()) throw new Error("You can only edit your own submissions");
+  if (existing.status !== "Pending") throw new Error("Only pending submissions can be edited");
+  const fields: Record<string, unknown> = {};
+  if (patch.note !== undefined) fields.note = patch.note.trim();
+  if (patch.video_link !== undefined) {
+    const link = patch.video_link.trim();
+    if (!link) throw new Error("Video link is required");
+    if (!patch.force_duplicate && existing.reference_model_id) {
+      const dup = await findDuplicateVideoLinkForModel({
+        model_id: existing.reference_model_id,
+        video_link: link,
+        exclude_id: id,
+      });
+      if (dup) {
+        const err = new Error(
+          "This exact link was already submitted for this model. Submit anyway to override.",
+        ) as Error & { code?: string; duplicate_id?: string };
+        err.code = "DUPLICATE_LINK";
+        err.duplicate_id = dup.id;
+        throw err;
+      }
+    }
+    fields.video_link = link;
+  }
+  if (patch.sourcing_video_type !== undefined) {
+    const { coerceSlotVideoType, mapSlotTypeToScriptFields } = await import("@/lib/winner-sourcing-helpers");
+    const videoType = coerceSlotVideoType(patch.sourcing_video_type);
+    if (!videoType) throw new Error("Valid video type is required");
+    const other = videoType === "other" ? String(patch.video_type_other ?? "").trim() : "";
+    if (videoType === "other" && !other) throw new Error("Custom type text is required when Other is selected");
+    const mapped = mapSlotTypeToScriptFields(videoType);
+    fields.sourcing_video_type = videoType;
+    fields.video_type_other = other;
+    fields.content_type = mapped.content_type;
+    fields.script_video_type = mapped.script_video_type;
+  }
+  if (!Object.keys(fields).length) throw new Error("No fields to update");
+  await persistWinnerVideoFields(id, fields);
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after edit");
+  return updated;
+}
+
+export async function deleteOwnPendingWinnerVideo(id: string, submitterId: string): Promise<void> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  if (existing.submitted_by_id !== submitterId.trim()) throw new Error("You can only delete your own submissions");
+  if (existing.status !== "Pending") throw new Error("Only pending submissions can be deleted");
+  if (!isSupabaseBackend()) throw new Error("Delete requires Supabase backend");
+  await (await import("./winner-videos-supabase")).deleteWinnerVideoRow(id);
+}

@@ -397,6 +397,13 @@ export function ShootAssignmentsClient({
                               ) : null}
                               {detailOpen ? (
                                 <div className="mt-3 space-y-3 border-t border-white/[0.05] pt-3">
+                                  {slot.admin_instructions?.trim() ? (
+                                    <SlotChecklistSection title="Admin guidance">
+                                      <p className="whitespace-pre-wrap text-[#D4AF8C]/90">
+                                        {slot.admin_instructions}
+                                      </p>
+                                    </SlotChecklistSection>
+                                  ) : null}
                                   <SlotChecklistSection title="Script">
                                     <p className="whitespace-pre-wrap">
                                       {slot.script_text?.trim() || "—"}
