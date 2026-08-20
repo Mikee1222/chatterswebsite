@@ -153,19 +153,16 @@ export function PublicApplicationFlowClient({
     [slug],
   );
 
+  // Restore an in-progress apply session id only — never auto-select language or
+  // skip the picker. Candidates must explicitly click EN/EL every fresh visit.
   useEffect(() => {
     try {
       const existing = localStorage.getItem(`apply_session:${slug}`);
-      const savedLang = localStorage.getItem(`apply_lang:${slug}`);
       if (existing) setSessionId(existing);
-      if (savedLang === "en" || savedLang === "el") {
-        setLang(savedLang);
-        setPhase(needsScreeningIntro ? "intro" : enabled[0] ?? "application_form");
-      }
     } catch {
       /* ignore */
     }
-  }, [slug, needsScreeningIntro, enabled]);
+  }, [slug]);
 
   function advanceFrom(current: Phase) {
     if (current === "language") {
