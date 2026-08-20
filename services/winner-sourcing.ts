@@ -426,6 +426,241 @@ export async function getWinnerSubmission(id: string): Promise<WinnerSubmission 
   return data ? mapSubmission(data as Record<string, unknown>) : null;
 }
 
+export type WinnerSubmissionDeleteImpact = {
+  submission_id: string;
+  model_name: string;
+  tier: WinnerTier;
+  video_link: string;
+  status: WinnerSubmissionStatus;
+  source: WinnerSubmissionSource;
+  recreation_queue_items: number;
+  assigned_to_bunch: boolean;
+  bunch_id: string | null;
+  bunch_name: string;
+  recreate_video_slots: number;
+  winner_videos: number;
+  filming_filmed_slots: number;
+  filming_edited_slots: number;
+  scripts_with_progress: number;
+  /**
+   * True when unassigned/pending (or queued only) with no recreate slots —
+   * UI can use a simple confirm.
+   */
+  is_simple_delete: boolean;
+  /**
+   * True when slots have scripts/filming/editing progress — UI should require
+   * typing the model name (same pattern as bunch delete with valuable work).
+   */
+  has_valuable_work: boolean;
+  valuable_work_reasons: string[];
+};
+
+/** Preview cascade before permanently deleting a Winner / Super Winner submission. */
+export async function getWinnerSubmissionDeleteImpact(
+  submissionId: string,
+): Promise<WinnerSubmissionDeleteImpact | null> {
+  const submission = await getWinnerSubmission(submissionId);
+  if (!submission) return null;
+
+  const sb = getSupabaseServiceClient();
+  const [{ data: queueRows }, { data: slotRows }] = await Promise.all([
+    sb
+      .from("recreation_queue_items")
+      .select("id, bunch_id")
+      .eq("winner_submission_id", submissionId),
+    sb
+      .from("recreate_video_slots")
+      .select("id, status, filmed, edited, winner_video_id, bunch_id")
+      .eq("winner_submission_id", submissionId),
+  ]);
+
+  const queue = (queueRows ?? []) as Array<{ id: string; bunch_id?: string | null }>;
+  const slots = (slotRows ?? []) as Array<{
+    id: string;
+    status?: string;
+    filmed?: boolean;
+    edited?: boolean;
+    winner_video_id?: string | null;
+    bunch_id?: string;
+  }>;
+
+  const assignedQueue = queue.find((q) => Boolean(q.bunch_id?.trim()));
+  const bunchId = assignedQueue?.bunch_id?.trim() || slots[0]?.bunch_id?.trim() || null;
+  let bunchName = "";
+  if (bunchId) {
+    const bunch = await getVideoBunch(bunchId);
+    bunchName = bunch?.name ?? "";
+  }
+
+  const filming_filmed_slots = slots.filter((s) => Boolean(s.filmed)).length;
+  const filming_edited_slots = slots.filter((s) => Boolean(s.edited)).length;
+  const scripts_with_progress = slots.filter((s) => {
+    const st = String(s.status ?? "");
+    return st === "Pending Review" || st === "Approved" || st === "Rejected";
+  }).length;
+  const winnerVideoIds = [
+    ...new Set(
+      slots
+        .map((s) => String(s.winner_video_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  const valuable_work_reasons: string[] = [];
+  if (scripts_with_progress > 0) {
+    valuable_work_reasons.push(
+      `${scripts_with_progress} script${scripts_with_progress === 1 ? "" : "s"} already written/reviewed`,
+    );
+  }
+  if (filming_filmed_slots > 0) {
+    valuable_work_reasons.push(
+      `${filming_filmed_slots} slot${filming_filmed_slots === 1 ? "" : "s"} marked filmed`,
+    );
+  }
+  if (filming_edited_slots > 0) {
+    valuable_work_reasons.push(
+      `${filming_edited_slots} slot${filming_edited_slots === 1 ? "" : "s"} marked edited`,
+    );
+  }
+  if (winnerVideoIds.length > 0 && scripts_with_progress === 0) {
+    valuable_work_reasons.push(
+      `${winnerVideoIds.length} Creative Scripts work item${winnerVideoIds.length === 1 ? "" : "s"} linked`,
+    );
+  }
+
+  const assigned_to_bunch = Boolean(bunchId);
+  const recreate_video_slots = slots.length;
+  const is_simple_delete =
+    !assigned_to_bunch && recreate_video_slots === 0 && winnerVideoIds.length === 0;
+
+  return {
+    submission_id: submission.id,
+    model_name: submission.model_name,
+    tier: submission.tier,
+    video_link: submission.video_link,
+    status: submission.status,
+    source: submission.source,
+    recreation_queue_items: queue.length,
+    assigned_to_bunch,
+    bunch_id: bunchId,
+    bunch_name: bunchName,
+    recreate_video_slots,
+    winner_videos: winnerVideoIds.length,
+    filming_filmed_slots,
+    filming_edited_slots,
+    scripts_with_progress,
+    is_simple_delete,
+    has_valuable_work: valuable_work_reasons.length > 0,
+    valuable_work_reasons,
+  };
+}
+
+export function formatWinnerSubmissionDeleteDescription(
+  impact: WinnerSubmissionDeleteImpact | null,
+  loading: boolean,
+): string {
+  if (loading || !impact) return "Checking linked records…";
+  const tierLabel = impact.tier === "super_winner" ? "Super Winner" : "Winner";
+  const who = impact.model_name.trim() || "this model";
+
+  if (impact.is_simple_delete) {
+    return `Permanently delete this ${tierLabel} entry for ${who}? This cannot be undone.`;
+  }
+
+  const lines: string[] = [];
+  if (impact.recreation_queue_items > 0) {
+    lines.push(
+      `${impact.recreation_queue_items} recreation queue item${impact.recreation_queue_items === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.recreate_video_slots > 0) {
+    lines.push(
+      `${impact.recreate_video_slots} recreate slot${impact.recreate_video_slots === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.winner_videos > 0) {
+    lines.push(
+      `${impact.winner_videos} Creative Scripts work item${impact.winner_videos === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.filming_filmed_slots > 0) {
+    lines.push(
+      `${impact.filming_filmed_slots} filmed slot${impact.filming_filmed_slots === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.filming_edited_slots > 0) {
+    lines.push(
+      `${impact.filming_edited_slots} edited slot${impact.filming_edited_slots === 1 ? "" : "s"}`,
+    );
+  }
+
+  const bunchBit = impact.bunch_name
+    ? ` assigned to bunch “${impact.bunch_name}”`
+    : impact.assigned_to_bunch
+      ? " assigned to a bunch"
+      : "";
+
+  let text = `This will permanently delete this ${tierLabel} for ${who}${bunchBit}`;
+  if (lines.length) text += ` and remove: ${lines.join(", ")}`;
+  text += ". Deleting cannot be undone.";
+  if (impact.has_valuable_work) {
+    text += ` Warning: this entry has valuable in-progress work (${impact.valuable_work_reasons.join("; ")}). Type the model name to confirm.`;
+  }
+  return text;
+}
+
+/**
+ * Permanently delete a Winner / Super Winner submission and cascade linked
+ * recreate slots + Creative Scripts rows. Queue items CASCADE from the
+ * submission FK; slots only SET NULL so they are deleted explicitly.
+ */
+export async function deleteWinnerSubmission(
+  submissionId: string,
+): Promise<WinnerSubmissionDeleteImpact> {
+  const impact = await getWinnerSubmissionDeleteImpact(submissionId);
+  if (!impact) throw new Error("Submission not found");
+
+  const sb = getSupabaseServiceClient();
+
+  const { data: slotRows, error: slotSelectErr } = await sb
+    .from("recreate_video_slots")
+    .select("id, winner_video_id")
+    .eq("winner_submission_id", submissionId);
+  if (slotSelectErr) throw new Error(`list slots for delete: ${slotSelectErr.message}`);
+
+  const slots = (slotRows ?? []) as Array<{ id: string; winner_video_id?: string | null }>;
+  const winnerVideoIds = [
+    ...new Set(
+      slots
+        .map((s) => String(s.winner_video_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  // 1) Slots first (FK would only SET NULL on submission delete).
+  if (slots.length > 0) {
+    const { error } = await sb
+      .from("recreate_video_slots")
+      .delete()
+      .eq("winner_submission_id", submissionId);
+    if (error) throw new Error(`delete recreate_video_slots: ${error.message}`);
+  }
+
+  // 2) Linked Creative Scripts / winner_videos rows spawned from those slots.
+  if (winnerVideoIds.length > 0) {
+    const { error } = await sb.from("winner_videos").delete().in("id", winnerVideoIds);
+    if (error) throw new Error(`delete winner_videos: ${error.message}`);
+  }
+
+  // 3) Submission (recreation_queue_items CASCADE).
+  {
+    const { error } = await sb.from("winner_submissions").delete().eq("id", submissionId);
+    if (error) throw new Error(`delete winner_submissions: ${error.message}`);
+  }
+
+  return impact;
+}
+
 // ── Recreate count settings (system_settings) ────────────────────────────────
 
 export async function getWinnerSourcingRecreateConfig(): Promise<WinnerSourcingRecreateConfig> {

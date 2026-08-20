@@ -14,6 +14,7 @@ import {
   Search,
   Settings2,
   Sparkles,
+  Trash2,
   Trophy,
   X,
 } from "lucide-react";
@@ -21,6 +22,7 @@ import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { CountUp, LuxuryStatCard, StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { FilterBar, FilterChip } from "@/components/manager-review-ui";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import {
   VA_BTN_PRIMARY,
@@ -45,8 +47,65 @@ import type {
   RecreationQueueItem,
   VideoBunch,
   WinnerSubmission,
+  WinnerSubmissionDeleteImpact,
 } from "@/services/winner-sourcing";
 import { cn } from "@/lib/utils";
+
+function formatSubmissionDeleteDescription(
+  impact: WinnerSubmissionDeleteImpact | null,
+  loading: boolean,
+): string {
+  if (loading || !impact) return "Checking linked records…";
+  const tier = impact.tier === "super_winner" ? "Super Winner" : "Winner";
+  const who = impact.model_name.trim() || "this model";
+
+  if (impact.is_simple_delete) {
+    return `Permanently delete this ${tier} entry for ${who}? This cannot be undone.`;
+  }
+
+  const lines: string[] = [];
+  if (impact.recreation_queue_items > 0) {
+    lines.push(
+      `${impact.recreation_queue_items} recreation queue item${impact.recreation_queue_items === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.recreate_video_slots > 0) {
+    lines.push(
+      `${impact.recreate_video_slots} recreate slot${impact.recreate_video_slots === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.winner_videos > 0) {
+    lines.push(
+      `${impact.winner_videos} Creative Scripts work item${impact.winner_videos === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.filming_filmed_slots > 0) {
+    lines.push(
+      `${impact.filming_filmed_slots} filmed slot${impact.filming_filmed_slots === 1 ? "" : "s"}`,
+    );
+  }
+  if (impact.filming_edited_slots > 0) {
+    lines.push(
+      `${impact.filming_edited_slots} edited slot${impact.filming_edited_slots === 1 ? "" : "s"}`,
+    );
+  }
+
+  const bunchBit = impact.bunch_name
+    ? ` assigned to bunch “${impact.bunch_name}”`
+    : impact.assigned_to_bunch
+      ? " assigned to a bunch"
+      : "";
+
+  let text = `This will permanently delete this ${tier} for ${who}${bunchBit}`;
+  if (lines.length) text += ` and remove: ${lines.join(", ")}`;
+  text += ". Deleting cannot be undone.";
+  if (impact.has_valuable_work) {
+    text += ` Warning: this entry has valuable in-progress work (${impact.valuable_work_reasons.join("; ")}). Type the model name to confirm.`;
+  } else {
+    text += " Type the model name to confirm.";
+  }
+  return text;
+}
 
 export type HubModelOption = { model_id: string; model_name: string };
 export type HubCreativeOption = {
@@ -363,6 +422,89 @@ export function WinnerVideosHubClient({
   const [dateRange, setDateRange] = React.useState<DateRangeId>("all");
   const [assignFilter, setAssignFilter] = React.useState<AssignFilter>("all");
   const [collapsedModels, setCollapsedModels] = React.useState<Record<string, boolean>>({});
+
+  const [deleteTarget, setDeleteTarget] = React.useState<WinnerSubmission | null>(null);
+  const [deleteImpact, setDeleteImpact] = React.useState<WinnerSubmissionDeleteImpact | null>(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = React.useState(false);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
+
+  async function openDeleteConfirm(submission: WinnerSubmission) {
+    setDeleteTarget(submission);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(true);
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/submissions/${encodeURIComponent(submission.id)}?delete_impact=1`,
+        { credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        impact?: WinnerSubmissionDeleteImpact;
+        error?: string;
+      };
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-del-impact-${Date.now()}`,
+            "Could not check delete impact",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        setDeleteTarget(null);
+        return;
+      }
+      setDeleteImpact(data.impact ?? null);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  }
+
+  function closeDeleteConfirm() {
+    if (deleteLoading) return;
+    setDeleteTarget(null);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(false);
+  }
+
+  async function confirmDeleteSubmission() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
+    const deletedId = deleteTarget.id;
+    const deletedTier = deleteTarget.tier;
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/submissions/${encodeURIComponent(deletedId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-del-err-${Date.now()}`,
+            "Delete failed",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        return;
+      }
+      setWinners((prev) => prev.filter((s) => s.id !== deletedId));
+      setSupers((prev) => prev.filter((s) => s.id !== deletedId));
+      setQueue((prev) => prev.filter((q) => q.winner_submission_id !== deletedId));
+      setDeleteTarget(null);
+      setDeleteImpact(null);
+      addToast(
+        winnerVideoLocalToast(
+          `ws-del-ok-${Date.now()}`,
+          deletedTier === "super_winner" ? "Super Winner deleted" : "Winner deleted",
+          "Entry and linked recreate progress were removed",
+          "normal",
+        ),
+      );
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
 
   async function refreshAll() {
     setRefreshing(true);
@@ -946,6 +1088,7 @@ export function WinnerVideosHubClient({
               }
               onAddToQueue={(id) => void addToQueue(id)}
               onAssignSubmission={(s, bunchId) => void assignSubmissionToBunch(s, bunchId)}
+              onDelete={(s) => void openDeleteConfirm(s)}
             />
           ) : null}
           {tab === "super" ? (
@@ -964,6 +1107,7 @@ export function WinnerVideosHubClient({
               }
               onAddToQueue={(id) => void addToQueue(id)}
               onAssignSubmission={(s, bunchId) => void assignSubmissionToBunch(s, bunchId)}
+              onDelete={(s) => void openDeleteConfirm(s)}
               superTier
             />
           ) : null}
@@ -989,6 +1133,23 @@ export function WinnerVideosHubClient({
           ) : null}
         </motion.div>
       </AnimatePresence>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => void confirmDeleteSubmission()}
+        title={
+          deleteTarget
+            ? `Delete ${deleteTarget.tier === "super_winner" ? "Super Winner" : "Winner"}?`
+            : "Delete entry?"
+        }
+        description={formatSubmissionDeleteDescription(deleteImpact, deleteImpactLoading)}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={deleteLoading || deleteImpactLoading}
+        requireNameConfirmation={Boolean(deleteImpact && !deleteImpact.is_simple_delete)}
+        nameToConfirm={deleteImpact?.model_name || deleteTarget?.model_name || ""}
+      />
     </div>
   );
 }
@@ -1017,6 +1178,7 @@ function SubmissionGallery({
   onToggleModel,
   onAddToQueue,
   onAssignSubmission,
+  onDelete,
   superTier,
 }: {
   items: WinnerSubmission[];
@@ -1031,6 +1193,7 @@ function SubmissionGallery({
   onToggleModel: (modelId: string) => void;
   onAddToQueue: (id: string) => void;
   onAssignSubmission: (s: WinnerSubmission, bunchId: string) => void;
+  onDelete: (s: WinnerSubmission) => void;
   superTier?: boolean;
 }) {
   if (!items.length) {
@@ -1056,6 +1219,7 @@ function SubmissionGallery({
               queueItem={queueBySubmission.get(s.id)}
               onAddToQueue={onAddToQueue}
               onAssign={(bunchId) => onAssignSubmission(s, bunchId)}
+              onDelete={() => onDelete(s)}
               superTier={superTier}
             />
           </li>
@@ -1124,6 +1288,7 @@ function SubmissionGallery({
                           queueItem={queueBySubmission.get(s.id)}
                           onAddToQueue={onAddToQueue}
                           onAssign={(bunchId) => onAssignSubmission(s, bunchId)}
+                          onDelete={() => onDelete(s)}
                           superTier={superTier || s.tier === "super_winner"}
                         />
                       </li>
@@ -1147,6 +1312,7 @@ function WinnerCard({
   queueItem,
   onAddToQueue,
   onAssign,
+  onDelete,
   superTier,
 }: {
   submission: WinnerSubmission;
@@ -1156,6 +1322,7 @@ function WinnerCard({
   queueItem?: RecreationQueueItem;
   onAddToQueue: (id: string) => void;
   onAssign: (bunchId: string) => void;
+  onDelete: () => void;
   superTier?: boolean;
 }) {
   const [expanded, setExpanded] = React.useState(false);
@@ -1274,12 +1441,23 @@ function WinnerCard({
               type="button"
               disabled={busy}
               onClick={() => onAddToQueue(s.id)}
-              className="ml-auto text-[11px] text-[#B8B4B8]/45 underline-offset-2 hover:text-[#B8B4B8] hover:underline disabled:opacity-40"
+              className="text-[11px] text-[#B8B4B8]/45 underline-offset-2 hover:text-[#B8B4B8] hover:underline disabled:opacity-40"
               title={`Queue only (${recreateCount}× recreates)`}
             >
               Queue only ({recreateCount}×)
             </button>
           ) : null}
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onDelete}
+            className="ml-auto inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] text-red-300/70 transition hover:bg-red-500/10 hover:text-red-200 disabled:opacity-40"
+            aria-label={`Delete ${s.tier === "super_winner" ? "Super Winner" : "Winner"} for ${s.model_name}`}
+            title="Delete entry"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </button>
         </div>
       </div>
     </article>
