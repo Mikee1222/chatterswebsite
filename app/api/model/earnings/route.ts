@@ -5,6 +5,7 @@ import {
   CREATOR_EARNINGS_STAT_INFO,
   deriveModelCreatorAnalytics,
   computeAcquisitionEfficiency,
+  pickLatestCreatorDailySnapshot,
 } from "@/services/infloww-creator-analytics";
 import { resolveInflowwStatsRange } from "@/services/infloww-performance";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
@@ -90,9 +91,7 @@ export async function GET(req: NextRequest) {
 
     const acquisition = computeAcquisitionEfficiency(marketingLinks).slice(0, 12);
 
-    const latest = daily.length
-      ? daily.reduce((a, b) => (a.date >= b.date ? a : b))
-      : null;
+    const latest = pickLatestCreatorDailySnapshot(daily);
 
     let crossPlatformCard = null;
     try {

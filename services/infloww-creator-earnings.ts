@@ -1221,11 +1221,22 @@ export async function listPriorityMassMessages(params: {
   if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
   if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
   if (params.employeeId) q = q.eq("employee_id", params.employeeId);
-  if (params.startYmd) {
-    q = q.gte("sent_time", `${params.startYmd}T00:00:00.000Z`);
-  }
-  if (params.endYmd) {
-    q = q.lte("sent_time", `${params.endYmd}T23:59:59.999Z`);
+  if (params.startYmd && params.endYmd) {
+    const { startIso, endIso } = inflowwStatsRangeToCreatedTimeIso({
+      startYmd: params.startYmd,
+      endYmd: params.endYmd,
+    });
+    q = q.gte("sent_time", startIso).lte("sent_time", endIso);
+  } else if (params.startYmd) {
+    q = q.gte("sent_time", inflowwStatsRangeToCreatedTimeIso({
+      startYmd: params.startYmd,
+      endYmd: params.startYmd,
+    }).startIso);
+  } else if (params.endYmd) {
+    q = q.lte("sent_time", inflowwStatsRangeToCreatedTimeIso({
+      startYmd: params.endYmd,
+      endYmd: params.endYmd,
+    }).endIso);
   }
   const { data, error } = await q;
   if (error) throw new Error(`listPriorityMassMessages: ${error.message}`);

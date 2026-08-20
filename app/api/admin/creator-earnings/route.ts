@@ -3,7 +3,11 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { previousPeriodRange } from "@/services/infloww-analytics";
-import { buildAgencyCreatorAnalytics } from "@/services/infloww-creator-analytics";
+import {
+  buildAgencyCreatorAnalytics,
+  buildCreatorDailyRevenueTrend,
+  pickLatestCreatorDailySnapshot,
+} from "@/services/infloww-creator-analytics";
 import { resolveInflowwStatsRange } from "@/services/infloww-performance";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import {
@@ -163,10 +167,16 @@ export async function GET(req: NextRequest) {
     }));
 
     const latestByModel = new Map<string, (typeof daily)[number]>();
+    const dailyByModel = new Map<string, (typeof daily)[number][]>();
     for (const row of daily) {
       const key = row.model_record_id ?? row.creator_infloww_id;
-      const prevRow = latestByModel.get(key);
-      if (!prevRow || row.date >= prevRow.date) latestByModel.set(key, row);
+      const list = dailyByModel.get(key) ?? [];
+      list.push(row);
+      dailyByModel.set(key, list);
+    }
+    for (const [key, rows] of dailyByModel) {
+      const snap = pickLatestCreatorDailySnapshot(rows);
+      if (snap) latestByModel.set(key, snap);
     }
 
     return NextResponse.json({
@@ -180,6 +190,7 @@ export async function GET(req: NextRequest) {
       priorityMassMessages: pmm,
       discrepancies,
       analytics,
+      revenueTrend: buildCreatorDailyRevenueTrend(analyticsTxs),
       latestFanSnapshot: [...latestByModel.values()],
       unmatchedModels: linked.length ? undefined : undefined,
       linkedCount: linked.length,

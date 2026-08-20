@@ -9,6 +9,8 @@ import {
   computeChurnRisk,
   computeNetProfit,
   deriveModelCreatorAnalytics,
+  pickLatestCreatorDailySnapshot,
+  buildCreatorDailyRevenueTrend,
 } from "@/services/infloww-creator-analytics";
 import type { PeriodChangeMetric } from "@/services/infloww-analytics";
 import {
@@ -18,7 +20,6 @@ import {
   creatorTxRevenueAmount,
   listMarketingLinks,
   type CreatorDailyStatsRow,
-  type CreatorTransactionRow,
 } from "@/services/infloww-creator-earnings";
 import { sbResolveUuidToAirtableMap } from "@/lib/supabase-data";
 import { resolveInflowwStatsRange, type InflowwStatsPreset } from "@/services/infloww-performance";
@@ -154,18 +155,6 @@ export async function resolveClientPartnershipModelIds(clientId: string): Promis
     )
   );
   return { modelRecordIds, modelNames };
-}
-
-function buildDailyRevenueTrend(transactions: CreatorTransactionRow[]): ClientPartnershipDailyRevenuePoint[] {
-  const byDay = new Map<string, number>();
-  for (const t of transactions) {
-    const day = t.created_time?.slice(0, 10);
-    if (!day) continue;
-    byDay.set(day, (byDay.get(day) ?? 0) + creatorTxRevenueAmount(t));
-  }
-  return [...byDay.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, gross]) => ({ date, gross }));
 }
 
 function mergeDailyStats(rows: CreatorDailyStatsRow[]): CreatorDailyStatsRow[] {
@@ -333,8 +322,7 @@ export async function getClientPartnershipInflowwStats(
     previousGross: prevGross,
   });
 
-  const latest =
-    daily.length > 0 ? daily.reduce((a, b) => (a.date >= b.date ? a : b)) : null;
+  const latest = pickLatestCreatorDailySnapshot(daily);
   const churn = computeChurnRisk({
     active_fans: latest?.active_fans ?? analytics.churn.active_fans,
     fans_with_renew_on: latest?.fans_with_renew_on ?? analytics.churn.fans_with_renew_on,
@@ -352,7 +340,7 @@ export async function getClientPartnershipInflowwStats(
       fees: profit.fees,
       refunds: profit.refunds,
       change: analytics.revenue_change,
-      dailyTrend: buildDailyRevenueTrend(transactions),
+      dailyTrend: buildCreatorDailyRevenueTrend(transactions),
     },
     fans: {
       active: churn.active_fans,

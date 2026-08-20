@@ -21,7 +21,10 @@ import {
   summarizeIgDaily,
 } from "@/lib/instagram-insights-stats";
 import { previousPeriodRange, computePctChange } from "@/services/infloww-analytics";
-import { deriveModelCreatorAnalytics } from "@/services/infloww-creator-analytics";
+import {
+  deriveModelCreatorAnalytics,
+  pickLatestCreatorDailySnapshot,
+} from "@/services/infloww-creator-analytics";
 import {
   listCreatorDailyStats,
   listCreatorTransactions,
@@ -95,9 +98,7 @@ async function loadEarningsSnapshot(modelRecordId: string): Promise<{
     previousGross,
   });
   const change = analytics.revenue_change ?? computePctChange(analytics.profit.gross, previousGross);
-  const latest = daily.length
-    ? daily.reduce((a, b) => (a.date >= b.date ? a : b))
-    : null;
+  const latest = pickLatestCreatorDailySnapshot(daily);
 
   return {
     snapshot: {

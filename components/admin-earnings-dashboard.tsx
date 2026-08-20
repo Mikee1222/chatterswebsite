@@ -181,6 +181,7 @@ type DashboardPayload = {
       sales: number;
     }>;
   };
+  revenueTrend?: Array<{ date: string; gross: number }>;
   error?: string;
 };
 
@@ -805,17 +806,7 @@ export function AdminEarningsDashboard() {
     return runSync("366", { lookbackDays: 366 });
   }
 
-  const revenueTrend = React.useMemo(() => {
-    const byDay = new Map<string, number>();
-    for (const tx of data?.transactions ?? []) {
-      if (!tx.created_time) continue;
-      const d = tx.created_time.slice(0, 10);
-      byDay.set(d, (byDay.get(d) ?? 0) + tx.amount);
-    }
-    return [...byDay.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, gross]) => ({ date, gross }));
-  }, [data?.transactions]);
+  const revenueTrend = data?.revenueTrend ?? [];
 
   const sortedModels = React.useMemo(() => {
     const rows = [...(data?.analytics.models ?? [])];

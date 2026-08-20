@@ -3,6 +3,7 @@
  * Pure compute where possible — no fabricated insights when data is sparse.
  */
 
+import { ymdInAthens } from "@/lib/airtable-datetime";
 import { computePctChange, type PerformanceAlert, type PeriodChangeMetric } from "@/services/infloww-analytics";
 import type {
   CreatorDailyStatsRow,
@@ -454,6 +455,37 @@ function revenueTransactions(transactions: CreatorTransactionRow[]): CreatorTran
   return transactions.filter((t) => isCreatorTxRevenueCountable(t.status));
 }
 
+/**
+ * Infloww often writes a stub "today" creator-report row (active_fans=0, renew-on null)
+ * before the day is complete. Point-in-time metrics must use the latest *complete*
+ * snapshot, not the newest calendar date.
+ */
+export function pickLatestCreatorDailySnapshot<
+  T extends { date: string; active_fans: number; fans_with_renew_on?: number | null },
+>(daily: T[]): T | null {
+  if (!daily.length) return null;
+  const sorted = [...daily].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const withRenew = sorted.find((d) => d.fans_with_renew_on != null);
+  if (withRenew) return withRenew;
+  const withFans = sorted.find((d) => d.active_fans > 0);
+  return withFans ?? sorted[0]!;
+}
+
+/** Daily creator-share revenue (done txs only), bucketed on the Athens calendar. */
+export function buildCreatorDailyRevenueTrend(
+  transactions: CreatorTransactionRow[]
+): Array<{ date: string; gross: number }> {
+  const byDay = new Map<string, number>();
+  for (const t of revenueTransactions(transactions)) {
+    const day = ymdInAthens(t.created_time);
+    if (!day) continue;
+    byDay.set(day, (byDay.get(day) ?? 0) + creatorTxRevenueAmount(t));
+  }
+  return [...byDay.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, gross]) => ({ date, gross }));
+}
+
 export function deriveModelCreatorAnalytics(params: {
   creatorInflowwId: string;
   modelRecordId: string | null;
@@ -470,10 +502,7 @@ export function deriveModelCreatorAnalytics(params: {
   });
   const refund_rate = computeRefundRate(profit);
 
-  // Latest fan snapshot in range
-  const latest = params.daily.length
-    ? params.daily.reduce((a, b) => (a.date >= b.date ? a : b))
-    : null;
+  const latest = pickLatestCreatorDailySnapshot(params.daily);
   const churn = computeChurnRisk({
     active_fans: latest?.active_fans ?? 0,
     fans_with_renew_on: latest?.fans_with_renew_on ?? null,
@@ -569,9 +598,7 @@ export function buildAgencyCreatorAnalytics(params: {
     });
     models.push(analytics);
 
-    const latest = daily.length
-      ? daily.reduce((a, b) => (a.date >= b.date ? a : b))
-      : null;
+    const latest = pickLatestCreatorDailySnapshot(daily);
     const first = daily.length
       ? daily.reduce((a, b) => (a.date <= b.date ? a : b))
       : null;
