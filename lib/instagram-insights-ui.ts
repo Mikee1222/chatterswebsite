@@ -5,11 +5,12 @@
 export const IG_STAT_INFO = {
   reach:
     "Unique accounts that saw this creator’s content at least once in the selected range (sum of daily reach).",
-  views: "Total content views (plays/impressions-style) across the selected range.",
+  views:
+    "Period content views from ClarioSuite totals.views (same field as the ClarioSuite dashboard). Daily views series is incomplete beyond ~2 weeks, so we never sum stored daily zeros as if they were a full-range total.",
   engagement_rate:
     "Account engagement when ClarioSuite provides daily interactions (interactions ÷ reach × 100). If that series is missing, we use the average engagement score of synced top posts in the range — never a fake 0.00%.",
   follower_growth:
-    "Change in reconstructed follower count from the first to last day with follower data in this range.",
+    "Change from the first reconstructed daily follower count in range to the latest audience snapshot. Multi-account models show the sum across linked Instagram profiles — filter to one account to match a single IG page.",
   follower_trend: "Daily follower count reconstructed from growth deltas + current followers.",
   age: "Audience age mix from Instagram demographics (latest audience snapshot).",
   countries: "Top countries where followers are located (latest audience snapshot).",

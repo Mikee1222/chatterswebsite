@@ -19,15 +19,19 @@ import {
   postingVsReachSeries,
   priorEqualLengthRange,
   summarizeIgDaily,
+  trailingClarioSuiteRangeDays,
 } from "@/lib/instagram-insights-stats";
 import {
   resolveInflowwStatsRange,
   type InflowwStatsPreset,
 } from "@/services/infloww-performance";
 import {
+  fetchClarioSuitePeriodViewTotals,
   getClarioSuiteAudienceSnapshot,
+  queryClarioSuiteAudienceSnapshots,
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
+  sumAudienceFollowers,
 } from "@/services/clariosuite-sync";
 import {
   listClarioSuiteModelAccounts,
@@ -125,7 +129,13 @@ export async function GET(request: Request) {
   const range = resolveInflowwStatsRange(preset, customFrom, customTo);
   const priorRange = priorEqualLengthRange(range.startYmd, range.endYmd);
 
-  const [dailyRaw, priorDailyRaw, audienceRow, topPostsRaw, crossPlatform] = await Promise.all([
+  const selectedIgIds = selectedIgUserId
+    ? [selectedIgUserId]
+    : igAccounts.map((a) => a.igUserId);
+  const trailingDays = trailingClarioSuiteRangeDays(range.startYmd, range.endYmd);
+
+  const [dailyRaw, priorDailyRaw, audienceRow, audienceRows, topPostsRaw, crossPlatform, periodViews] =
+    await Promise.all([
     queryClarioSuiteDailyInsights({
       modelRecordId: modelRecord.id,
       igUserId: selectedIgUserId,
@@ -142,10 +152,14 @@ export async function GET(request: Request) {
       modelRecordId: modelRecord.id,
       igUserId: selectedIgUserId ?? primaryIg!,
     }),
+    queryClarioSuiteAudienceSnapshots({
+      modelRecordId: modelRecord.id,
+      igUserId: selectedIgUserId,
+    }),
     queryClarioSuiteTopPosts({
       modelRecordId: modelRecord.id,
       igUserId: selectedIgUserId,
-      limit: 25,
+      limit: 50,
     }),
     getCrossPlatformAnalytics({
       modelRecordId: modelRecord.id,
@@ -153,6 +167,9 @@ export async function GET(request: Request) {
       startYmd: range.startYmd,
       endYmd: range.endYmd,
     }),
+    trailingDays
+      ? fetchClarioSuitePeriodViewTotals(selectedIgIds, trailingDays)
+      : Promise.resolve(null),
   ]);
   const crossPlatformCard = toModelCrossPlatformCard(crossPlatform);
 
@@ -165,7 +182,16 @@ export async function GET(request: Request) {
       );
 
   const rangeOpts = { startYmd: range.startYmd, endYmd: range.endYmd };
-  const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts);
+  const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts, {
+    periodViews,
+  });
+  const snapshotFollowers = sumAudienceFollowers(audienceRows);
+  if (snapshotFollowers != null) {
+    totals.follower_end = snapshotFollowers;
+    if (totals.follower_start != null) {
+      totals.follower_delta = snapshotFollowers - totals.follower_start;
+    }
+  }
   const priorTotals = summarizeIgDaily(priorDaily);
   const {
     reach,

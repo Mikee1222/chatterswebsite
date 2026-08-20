@@ -13,7 +13,7 @@ import {
   listClarioSuiteMedia,
   logClarioSuiteFailure,
 } from "@/lib/clariosuite-api";
-import { publicId } from "@/lib/supabase-data";
+import { publicId, sbSelectWhere, type SbRow } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   listAllClarioSuiteModelAccounts,
@@ -26,8 +26,8 @@ import type { ModelRecord } from "@/types";
 
 const TOP_POSTS_PER_MODEL = 25;
 const MEDIA_FETCH_LIMIT = 25;
-/** Trailing days to refresh on each daily sync (late Meta updates). */
-const DEFAULT_INSIGHTS_RANGE = 14;
+/** Trailing days to refresh on each daily sync (late Meta updates). Views series is still ~2 weeks from Meta. */
+const DEFAULT_INSIGHTS_RANGE = 30;
 
 export type LinkedClarioSuiteAccount = {
   accountId: string;
@@ -456,20 +456,32 @@ export async function queryClarioSuiteDailyInsights(params: {
     model_name: string | null;
   }>
 > {
-  const sb = getSupabaseServiceClient();
-  let q = sb
-    .from("clariosuite_daily_insights")
-    .select(
-      "date,reach,views,total_interactions,follower_count,engagement_rate,ig_user_id,model_record_id,model_name"
-    )
-    .gte("date", params.startYmd)
-    .lte("date", params.endYmd)
-    .order("date", { ascending: true });
-  if (params.igUserId) q = q.eq("ig_user_id", params.igUserId);
-  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
-  const { data, error } = await q;
-  if (error) throw new Error(`query clariosuite_daily_insights: ${error.message}`);
-  return (data ?? []).map((row) => ({
+  type DailyRow = SbRow & {
+    date: string;
+    reach: unknown;
+    views: unknown;
+    total_interactions: unknown;
+    follower_count: unknown;
+    engagement_rate: unknown;
+    ig_user_id: string;
+    model_record_id: string | null;
+    model_name: string | null;
+  };
+  const rows = await sbSelectWhere<DailyRow>(
+    "clariosuite_daily_insights",
+    (q) => {
+      let next = q
+        .gte("date", params.startYmd)
+        .lte("date", params.endYmd)
+        .order("date", { ascending: true })
+        .order("ig_user_id", { ascending: true });
+      if (params.igUserId) next = next.eq("ig_user_id", params.igUserId);
+      if (params.modelRecordId) next = next.eq("model_record_id", params.modelRecordId);
+      return next;
+    },
+    "date,reach,views,total_interactions,follower_count,engagement_rate,ig_user_id,model_record_id,model_name,id"
+  );
+  return rows.map((row) => ({
     date: String(row.date).slice(0, 10),
     reach: n(row.reach),
     views: n(row.views),
@@ -482,17 +494,94 @@ export async function queryClarioSuiteDailyInsights(params: {
   }));
 }
 
+/**
+ * Period `totals.views` from ClarioSuite (trailing N days). Daily `series.views` only
+ * covers ~2 weeks, so summing stored daily views under/over-states the dashboard card.
+ */
+export async function fetchClarioSuitePeriodViewsByAccount(
+  igUserIds: string[],
+  rangeDays: number
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (!isClarioSuiteConfigured()) return out;
+  const unique = [...new Set(igUserIds.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) return out;
+  const results = await Promise.allSettled(
+    unique.map(async (id) => {
+      const insights = await getClarioSuiteAccountInsights(id, rangeDays);
+      return { id, insights };
+    })
+  );
+  for (const result of results) {
+    if (result.status !== "fulfilled") {
+      logClarioSuiteFailure("fetchClarioSuitePeriodViewsByAccount", result.reason, {});
+      continue;
+    }
+    const raw = result.value.insights.totals?.views;
+    const v = typeof raw === "number" ? raw : Number(raw);
+    if (Number.isFinite(v) && v > 0) out.set(result.value.id, Math.round(v));
+  }
+  return out;
+}
+
+export function sumClarioSuitePeriodViews(
+  byAccount: Map<string, number>,
+  igUserIds: string[]
+): number | null {
+  let views = 0;
+  let any = false;
+  for (const id of igUserIds) {
+    const v = byAccount.get(id);
+    if (v != null && v > 0) {
+      views += v;
+      any = true;
+    }
+  }
+  return any ? views : null;
+}
+
+export async function fetchClarioSuitePeriodViewTotals(
+  igUserIds: string[],
+  rangeDays: number
+): Promise<number | null> {
+  const byAccount = await fetchClarioSuitePeriodViewsByAccount(igUserIds, rangeDays);
+  return sumClarioSuitePeriodViews(byAccount, igUserIds);
+}
+
+export async function queryClarioSuiteAudienceSnapshots(params: {
+  igUserId?: string;
+  modelRecordId?: string;
+}): Promise<Array<Record<string, unknown>>> {
+  type SnapRow = SbRow & Record<string, unknown>;
+  return sbSelectWhere<SnapRow>("clariosuite_audience_snapshots", (q) => {
+    let next = q.order("synced_at", { ascending: false });
+    if (params.igUserId) next = next.eq("ig_user_id", params.igUserId);
+    if (params.modelRecordId) next = next.eq("model_record_id", params.modelRecordId);
+    return next;
+  });
+}
+
+export function sumAudienceFollowers(rows: Array<Record<string, unknown>>): number | null {
+  if (!rows.length) return null;
+  let sum = 0;
+  let any = false;
+  for (const row of rows) {
+    const raw = row.followers_count;
+    const v = typeof raw === "number" ? raw : Number(raw);
+    if (Number.isFinite(v) && v > 0) {
+      sum += v;
+      any = true;
+    }
+  }
+  return any ? sum : null;
+}
+
 export async function getClarioSuiteAudienceSnapshot(params: {
   igUserId?: string;
   modelRecordId?: string;
 }): Promise<Record<string, unknown> | null> {
-  const sb = getSupabaseServiceClient();
-  let q = sb.from("clariosuite_audience_snapshots").select("*").limit(1);
-  if (params.igUserId) q = q.eq("ig_user_id", params.igUserId);
-  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
-  const { data, error } = await q.maybeSingle();
-  if (error) throw new Error(`query clariosuite_audience_snapshots: ${error.message}`);
-  return data;
+  const rows = await queryClarioSuiteAudienceSnapshots(params);
+  return rows[0] ?? null;
 }
 
 export async function queryClarioSuiteTopPosts(params: {
@@ -518,19 +607,19 @@ export async function queryClarioSuiteTopPosts(params: {
     rank: number;
   }>
 > {
-  const sb = getSupabaseServiceClient();
-  let q = sb
-    .from("clariosuite_top_posts")
-    .select(
-      "media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,posted_at,rank"
-    )
-    .order("rank", { ascending: true })
-    .limit(params.limit ?? TOP_POSTS_PER_MODEL);
-  if (params.igUserId) q = q.eq("ig_user_id", params.igUserId);
-  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
-  const { data, error } = await q;
-  if (error) throw new Error(`query clariosuite_top_posts: ${error.message}`);
-  return (data ?? []).map((row) => ({
+  type PostRow = SbRow & Record<string, unknown>;
+  const rows = await sbSelectWhere<PostRow>(
+    "clariosuite_top_posts",
+    (q) => {
+      let next = q.order("engagement_score", { ascending: false });
+      if (params.igUserId) next = next.eq("ig_user_id", params.igUserId);
+      if (params.modelRecordId) next = next.eq("model_record_id", params.modelRecordId);
+      return next;
+    },
+    "id,media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,posted_at,rank"
+  );
+  const limit = params.limit ?? TOP_POSTS_PER_MODEL;
+  return rows.slice(0, limit).map((row) => ({
     media_id: String(row.media_id),
     permalink: row.permalink != null ? String(row.permalink) : null,
     media_type: row.media_type != null ? String(row.media_type) : null,

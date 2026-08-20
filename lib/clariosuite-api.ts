@@ -345,6 +345,17 @@ export async function listClarioSuiteAccounts(): Promise<ClarioSuiteIgProfile[]>
  * GET /accounts/:igUserId/insights?range=N
  * On `range_too_large`, retries with smaller ranges and merges series.
  */
+function parseAccountInsightsPayload(payload: unknown): ClarioSuiteAccountInsights {
+  if (payload && typeof payload === "object") {
+    const o = payload as Record<string, unknown>;
+    const nested = o["data"];
+    if (nested && typeof nested === "object" && ("totals" in nested || "series" in nested)) {
+      return nested as ClarioSuiteAccountInsights;
+    }
+  }
+  return (payload ?? {}) as ClarioSuiteAccountInsights;
+}
+
 export async function getClarioSuiteAccountInsights(
   igUserId: string,
   rangeDays = 30
@@ -352,10 +363,11 @@ export async function getClarioSuiteAccountInsights(
   const id = encodeURIComponent(igUserId.trim());
   const range = clampInsightsRange(rangeDays);
   try {
-    return await clariosuiteFetchJson<ClarioSuiteAccountInsights>(
+    const payload = await clariosuiteFetchJson<unknown>(
       `/accounts/${id}/insights`,
       new URLSearchParams({ range: String(range) })
     );
+    return parseAccountInsightsPayload(payload);
   } catch (err) {
     if (
       err instanceof ClarioSuiteApiError &&
@@ -380,19 +392,41 @@ export async function getClarioSuiteAudience(igUserId: string): Promise<ClarioSu
   return clariosuiteFetchJson<ClarioSuiteAudience>(`/accounts/${id}/audience`);
 }
 
-/** GET /accounts/:igUserId/media?limit=N */
+/** GET /accounts/:igUserId/media?limit=N — follows meta.has_more like /accounts. */
 export async function listClarioSuiteMedia(
   igUserId: string,
   limit = 25
 ): Promise<{ data: ClarioSuiteMediaItem[]; count: number }> {
   const id = encodeURIComponent(igUserId.trim());
-  const capped = Math.min(100, Math.max(1, Math.round(limit)));
-  const payload = await clariosuiteFetchJson<{ data?: ClarioSuiteMediaItem[]; count?: number }>(
-    `/accounts/${id}/media`,
-    new URLSearchParams({ limit: String(capped) })
-  );
-  const data = Array.isArray(payload?.data) ? payload.data : [];
-  return { data, count: typeof payload?.count === "number" ? payload.count : data.length };
+  const wanted = Math.min(100, Math.max(1, Math.round(limit)));
+  const all: ClarioSuiteMediaItem[] = [];
+  const seen = new Set<string>();
+  let cursor: string | null | undefined = undefined;
+  for (let page = 0; page < 10 && all.length < wanted; page++) {
+    const pageLimit = Math.min(100, wanted - all.length);
+    const qp = new URLSearchParams({ limit: String(pageLimit) });
+    if (cursor) qp.set("cursor", cursor);
+    const payload = await clariosuiteFetchJson<{
+      data?: ClarioSuiteMediaItem[];
+      count?: number;
+      meta?: { cursor?: string | null; has_more?: boolean };
+    }>(`/accounts/${id}/media`, qp);
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    for (const row of rows) {
+      if (!row?.id || seen.has(row.id)) continue;
+      seen.add(row.id);
+      all.push(row);
+      if (all.length >= wanted) break;
+    }
+    if (!payload?.meta?.has_more) break;
+    const next =
+      typeof payload.meta.cursor === "string" && payload.meta.cursor.trim()
+        ? payload.meta.cursor.trim()
+        : null;
+    if (!next || next === cursor) break;
+    cursor = next;
+  }
+  return { data: all, count: all.length };
 }
 
 /** GET /media/:id/insights */

@@ -21,16 +21,21 @@ import {
   priorEqualLengthRange,
   summarizeIgDaily,
   toFiniteRate,
+  trailingClarioSuiteRangeDays,
 } from "@/lib/instagram-insights-stats";
 import {
   resolveInflowwStatsRange,
   type InflowwStatsPreset,
 } from "@/services/infloww-performance";
 import {
+  fetchClarioSuitePeriodViewsByAccount,
   getClarioSuiteAudienceSnapshot,
   listLinkedClarioSuiteModels,
+  queryClarioSuiteAudienceSnapshots,
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
+  sumAudienceFollowers,
+  sumClarioSuitePeriodViews,
 } from "@/services/clariosuite-sync";
 import { getCrossPlatformAnalytics } from "@/services/cross-platform-analytics";
 import { getInstagramWeeklyProgressReport } from "@/services/instagram-weekly-progress";
@@ -170,8 +175,23 @@ export async function GET(request: Request) {
       ? igUserIdFilter
       : undefined;
 
-  const [dailyRaw, audienceRow, topPostsRaw, allDaily, priorDaily, allTopPosts, crossPlatform] =
-    await Promise.all([
+  const selectedIgIds = selectedIgUserId
+    ? [selectedIgUserId]
+    : selected.accounts.map((a) => a.igUserId);
+  const trailingDays = trailingClarioSuiteRangeDays(range.startYmd, range.endYmd);
+  const allIgUserIds = [...new Set(linked.flatMap((m) => m.accounts.map((a) => a.igUserId)))];
+
+  const [
+    dailyRaw,
+    audienceRow,
+    audienceRows,
+    topPostsRaw,
+    allDaily,
+    priorDaily,
+    allTopPosts,
+    crossPlatform,
+    periodViewsByAccount,
+  ] = await Promise.all([
       queryClarioSuiteDailyInsights({
         modelRecordId: selected.modelRecordId,
         igUserId: selectedIgUserId,
@@ -182,10 +202,14 @@ export async function GET(request: Request) {
         modelRecordId: selected.modelRecordId,
         igUserId: selectedIgUserId ?? selected.igUserId,
       }),
+      queryClarioSuiteAudienceSnapshots({
+        modelRecordId: selected.modelRecordId,
+        igUserId: selectedIgUserId,
+      }),
       queryClarioSuiteTopPosts({
         modelRecordId: selected.modelRecordId,
         igUserId: selectedIgUserId,
-        limit: 25,
+        limit: 50,
       }),
       queryClarioSuiteDailyInsights({
         startYmd: range.startYmd,
@@ -218,6 +242,9 @@ export async function GET(request: Request) {
         startYmd: range.startYmd,
         endYmd: range.endYmd,
       }),
+      trailingDays
+        ? fetchClarioSuitePeriodViewsByAccount(allIgUserIds, trailingDays)
+        : Promise.resolve(new Map<string, number>()),
     ]);
 
   const daily = selectedIgUserId ? dailyRaw : aggregateIgDailyByDate(dailyRaw);
@@ -233,7 +260,17 @@ export async function GET(request: Request) {
     if (row.igUserId) postsByModel.set(row.igUserId, row.posts);
   }
   const rangeOpts = { startYmd: range.startYmd, endYmd: range.endYmd };
-  const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts);
+  const selectedPeriodViews = sumClarioSuitePeriodViews(periodViewsByAccount, selectedIgIds);
+  const totals = computeModelEngagementTotals(daily, topPosts, rangeOpts, {
+    periodViews: selectedPeriodViews,
+  });
+  const snapshotFollowers = sumAudienceFollowers(audienceRows);
+  if (snapshotFollowers != null) {
+    totals.follower_end = snapshotFollowers;
+    if (totals.follower_start != null) {
+      totals.follower_delta = snapshotFollowers - totals.follower_start;
+    }
+  }
   const linkedForCompare = linked.map((l) => ({
     modelRecordId: l.modelRecordId,
     modelName: l.modelName,
@@ -241,11 +278,22 @@ export async function GET(request: Request) {
     accountCount: l.accounts.length,
     allIgUserIds: l.accounts.map((a) => a.igUserId),
   }));
+  const periodViewsByModel = new Map<string, number | null>();
+  for (const m of linked) {
+    periodViewsByModel.set(
+      m.modelRecordId,
+      sumClarioSuitePeriodViews(
+        periodViewsByAccount,
+        m.accounts.map((a) => a.igUserId)
+      )
+    );
+  }
   const comparison = buildModelComparisonRows(
     linkedForCompare,
     allDaily,
     postsByModel,
-    rangeOpts
+    rangeOpts,
+    periodViewsByModel
   ).sort((a, b) => b.reach - a.reach);
   const priorComparison = buildModelComparisonRows(linkedForCompare, priorDaily, postsByModel, {
     startYmd: priorRange.startYmd,
@@ -253,7 +301,8 @@ export async function GET(request: Request) {
   });
   const callouts = buildCompareCallouts(comparison, priorComparison);
 
-  const agency = summarizeIgDaily(allDaily);
+  const agencyPeriodViews = sumClarioSuitePeriodViews(periodViewsByAccount, allIgUserIds);
+  const agency = summarizeIgDaily(allDaily, { periodViews: agencyPeriodViews });
   const overviewAvgEr = computeAgencyAvgEngagementRate(
     comparison,
     allDaily,

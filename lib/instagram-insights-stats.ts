@@ -2,8 +2,12 @@
  * Pure Instagram Insights stats helpers (agency overview, compare, consistency).
  */
 
-import { addDaysAthensYmd } from "@/lib/airtable-datetime";
-import { computePostEngagementScore } from "@/lib/clariosuite-api";
+import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
+import {
+  CLARIOSUITE_MAX_INSIGHTS_RANGE,
+  CLARIOSUITE_MIN_INSIGHTS_RANGE,
+  computePostEngagementScore,
+} from "@/lib/clariosuite-api";
 import { classifyIgPost, type IgPostGroup } from "@/lib/instagram-insights-ui";
 import { computeConsistencyScore } from "@/services/infloww-analytics";
 
@@ -119,10 +123,10 @@ export function resolvePostEngagementScore(
  * so we ignore non-positive rates unless there are real interactions to back them up.
  * Callers should pass the result through `resolveEngagementRate` for top-post fallback.
  */
-export function summarizeIgDaily(daily: IgDailyRow[]) {
+export function summarizeIgDaily(daily: IgDailyRow[], opts?: { periodViews?: number | null }) {
   const reach = daily.reduce((s, d) => s + coalesceIgMetric(d.reach), 0);
   const viewsRaw = daily.reduce((s, d) => s + coalesceIgMetric(d.views), 0);
-  const views = resolveViewsTotal(daily);
+  const views = resolveViewsTotal(daily, opts);
   // Only count interactions on days with reach — avoids inflated ER when sync gaps store 0 reach
   // but still report interactions (e.g. Frika Aug 19–20 partial week).
   const interactions = daily.reduce((s, d) => {
@@ -161,12 +165,64 @@ export function summarizeIgDaily(daily: IgDailyRow[]) {
   };
 }
 
+/**
+ * Inclusive calendar-day length of an Athens YMD range.
+ * Used to map this_week / this_month onto ClarioSuite `?range=N` (trailing N days).
+ */
+export function inclusiveYmdDayCount(startYmd: string, endYmd: string): number {
+  const start = startYmd.slice(0, 10);
+  const end = endYmd.slice(0, 10);
+  const startMs = Date.parse(`${start}T12:00:00Z`);
+  const endMs = Date.parse(`${end}T12:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || end < start) return 0;
+  return Math.round((endMs - startMs) / 86_400_000) + 1;
+}
+
+/**
+ * If `startYmd`–`endYmd` is a contiguous trailing window ending today or yesterday
+ * (Athens), return the day count to pass to ClarioSuite GET /insights?range=N.
+ * Otherwise null — API totals are trailing-only and must not be applied to last_month/custom.
+ */
+export function trailingClarioSuiteRangeDays(
+  startYmd: string,
+  endYmd: string,
+  todayYmd = getTodayYmdAthens()
+): number | null {
+  const start = startYmd.slice(0, 10);
+  const end = endYmd.slice(0, 10);
+  const yesterday = addDaysAthensYmd(todayYmd, -1);
+  if (end !== todayYmd && end !== yesterday) return null;
+  const days = inclusiveYmdDayCount(start, end);
+  if (days < CLARIOSUITE_MIN_INSIGHTS_RANGE || days > CLARIOSUITE_MAX_INSIGHTS_RANGE) return null;
+  if (addDaysAthensYmd(end, -(days - 1)) !== start) return null;
+  return days;
+}
+
+/** True when some reach days have no daily views — Meta/ClarioSuite often omit views beyond ~2 weeks. */
+export function igDailyViewsSeriesIncomplete(daily: IgDailyRow[]): boolean {
+  let reachDays = 0;
+  let viewDays = 0;
+  for (const d of daily) {
+    if (coalesceIgMetric(d.reach) > 0) reachDays += 1;
+    if (coalesceIgMetric(d.views) > 0) viewDays += 1;
+  }
+  return reachDays > 0 && viewDays > 0 && viewDays < reachDays;
+}
+
 /** Sum views, or null when Meta/ClarioSuite hasn't reported views yet (reach exists, all views 0). */
-export function resolveViewsTotal(daily: IgDailyRow[]): number | null {
+export function resolveViewsTotal(
+  daily: IgDailyRow[],
+  opts?: { periodViews?: number | null }
+): number | null {
+  const period = opts?.periodViews;
+  if (period != null && Number.isFinite(period) && period > 0) {
+    return Math.round(period);
+  }
   if (!daily.length) return null;
   const total = daily.reduce((s, d) => s + coalesceIgMetric(d.views), 0);
-  if (total > 0) return total;
   const reach = daily.reduce((s, d) => s + coalesceIgMetric(d.reach), 0);
+  if (total > 0 && igDailyViewsSeriesIncomplete(daily)) return null;
+  if (total > 0) return total;
   if (reach > 0) return null;
   return 0;
 }
@@ -233,9 +289,10 @@ export type IgEngagementRange = { startYmd: string; endYmd: string };
 export function computeModelEngagementTotals(
   daily: IgDailyRow[],
   posts: IgPostRow[],
-  range?: IgEngagementRange
+  range?: IgEngagementRange,
+  opts?: { periodViews?: number | null }
 ) {
-  const summary = summarizeIgDaily(daily);
+  const summary = summarizeIgDaily(daily, opts);
   return {
     ...summary,
     avg_engagement_rate: resolveEngagementRate(summary.avg_engagement_rate, posts, {
@@ -268,7 +325,12 @@ export type IgDailyInsightRow = IgDailyRow & {
   model_record_id?: string | null;
 };
 
-/** Combine daily rows from multiple IG accounts (same model) by date — sums reach/views/interactions. */
+/** Combine daily rows from multiple IG accounts (same model) by date.
+ * Reach / views / interactions are summed (additive volume).
+ * Followers are also summed for that calendar day = total across linked accounts,
+ * not a single Instagram profile. Callers that want "current followers" should
+ * prefer audience snapshots (per account or summed with an explicit label).
+ */
 export function aggregateIgDailyByDate(rows: IgDailyInsightRow[]): IgDailyRow[] {
   const byDate = new Map<string, IgDailyRow>();
   for (const row of rows) {
@@ -327,7 +389,8 @@ export function buildModelComparisonRows(
   linked: LinkedIgModel[],
   allDaily: IgDailyInsightRow[],
   postsByModel: Map<string, IgPostRow[]>,
-  range?: IgEngagementRange
+  range?: IgEngagementRange,
+  periodViewsByModel?: Map<string, number | null>
 ): ModelComparisonRow[] {
   const byIgUserId = new Map<string, LinkedIgModel>();
   const byModelRecordId = new Map(linked.map((m) => [m.modelRecordId, m]));
@@ -361,7 +424,9 @@ export function buildModelComparisonRows(
       postsByModel.get(model.modelRecordId) ??
       postsByModel.get(model.igUserId) ??
       [];
-    const totals = computeModelEngagementTotals(aggregated, posts, range);
+    const totals = computeModelEngagementTotals(aggregated, posts, range, {
+      periodViews: periodViewsByModel?.get(model.modelRecordId) ?? null,
+    });
     const freq = postingFrequency(posts, range?.startYmd ?? "", range?.endYmd ?? "");
     const topEng = resolveTopPostEngagementInRange(posts, range, aggregated);
     return {
