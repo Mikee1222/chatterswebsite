@@ -46,7 +46,7 @@ export const PIPELINE_UI = {
     eqBody:
       "Short workplace scenarios. Choose the response that best reflects thoughtful interpersonal judgment. There is no single “perfect” answer; options are graded for practical EQ skills.",
     typingIntro:
-      "Type the passage as accurately and quickly as you can. Paste is disabled. Choose the language that matches how you chat.",
+      "Type the passage as accurately and quickly as you can. Paste is disabled. Timing starts on your first keystroke.",
     typingStart: "Start typing test",
     typingFinished: "Finish test",
     typingResults: "Your results",
@@ -97,7 +97,7 @@ export const PIPELINE_UI = {
     eqBody:
       "Σύντομα σενάρια χώρου εργασίας. Επίλεξε την απάντηση που δείχνει προσεκτική διαπροσωπική κρίση. Δεν υπάρχει μία «τέλεια» απάντηση· οι επιλογές βαθμολογούνται για πρακτικές δεξιότητες EQ.",
     typingIntro:
-      "Πληκτρολόγησε το κείμενο όσο πιο σωστά και γρήγορα μπορείς. Η επικόλληση είναι απενεργοποιημένη. Επίλεξε τη γλώσσα με την οποία συνομιλείς.",
+      "Πληκτρολόγησε το κείμενο όσο πιο σωστά και γρήγορα μπορείς. Η επικόλληση είναι απενεργοποιημένη. Ο χρόνος ξεκινά στο πρώτο πλήκτρο.",
     typingStart: "Έναρξη τεστ πληκτρολόγησης",
     typingFinished: "Ολοκλήρωση τεστ",
     typingResults: "Τα αποτελέσματά σου",
