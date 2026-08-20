@@ -121,6 +121,9 @@ export const NOTIFICATION_EVENT_TYPES = [
   "expense_submitted",
   "time_off_requested",
   "period_logged",
+  // Application / Recruitment
+  "application_submitted",
+  "application_status_changed",
   ...NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT.map((base) => `${base}_admin`),
 ] as const;
 
@@ -275,6 +278,8 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   expense_submitted: "expense_submitted",
   time_off_requested: "time_off_requested",
   period_logged: "period_logged",
+  application_submitted: "application_submitted",
+  application_status_changed: "application_status_changed",
 };
 
 export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtable> = {

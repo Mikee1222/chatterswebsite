@@ -78,7 +78,29 @@ function mapRow(row: Row): NotificationPreference {
 
 export async function getPreferencesByUserId(userId: string): Promise<NotificationPreference | null> {
   const rows = await sbSelectEq<Row>(TABLE, "user_id", userId, "*", 1);
-  return rows[0] ? mapRow(rows[0]) : null;
+  if (rows[0]) return mapRow(rows[0]);
+
+  // Dual-run: prefs.user_id may be airtable rec… while notify passes uuid (or vice versa).
+  const trimmed = userId.trim();
+  if (!trimmed) return null;
+  try {
+    const { sbAirtableIdsForUuids, sbUuidsForAirtableIds } = await import("@/lib/supabase-data");
+    const aliases: string[] = [];
+    if (trimmed.startsWith("rec")) {
+      const uuids = await sbUuidsForAirtableIds("users", [trimmed]);
+      aliases.push(...uuids.filter((id) => id && id !== trimmed));
+    } else {
+      const ats = await sbAirtableIdsForUuids("users", [trimmed]);
+      aliases.push(...ats.filter((id) => id && id !== trimmed));
+    }
+    for (const alt of [...new Set(aliases)]) {
+      const altRows = await sbSelectEq<Row>(TABLE, "user_id", alt, "*", 1);
+      if (altRows[0]) return mapRow(altRows[0]);
+    }
+  } catch {
+    /* identity resolve failed — treat as no prefs */
+  }
+  return null;
 }
 
 export async function listNotificationPreferences(

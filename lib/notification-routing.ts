@@ -543,6 +543,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "The model (self), their VAs, and admins when a period is logged.",
   },
 
+  // ---- Application / Recruitment ----
+  application_submitted: {
+    rule: "admin_only",
+    description:
+      "Admins/managers (applications:manage stakeholders via admin notification recipients) when a candidate completes the full application pipeline.",
+  },
+  application_status_changed: {
+    rule: "admin_only",
+    description:
+      "Admins/managers when an application pipeline status changes (New/Reviewed/Shortlisted/Rejected/Hired).",
+  },
+
   // ---- Admin monitoring variants (_admin suffix) ----
   shift_started_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   shift_ended_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
@@ -666,6 +678,8 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "extra_revenue_submitted",
   "expense_submitted",
   "time_off_requested",
+  "application_submitted",
+  "application_status_changed",
 ];
 
 /** Event types that go only to the assigned/acting user (no admins). */

@@ -12,6 +12,7 @@ import {
   SectionLabel,
   StatInfoTooltip,
 } from "@/components/infloww-performance-ui";
+import { ApplyButton } from "@/components/application-ui-buttons";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
@@ -179,14 +180,13 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
           </h1>
           <p className="mt-1 text-sm text-white/45">Pipeline, search, analytics, and CSV export.</p>
         </div>
-        <button
-          type="button"
+        <ApplyButton
+          variant="adminSecondary"
+          iconLeft={<Download className="h-3.5 w-3.5" />}
           onClick={() => void exportCsv()}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-xs text-white/75 transition hover:border-[#D4AF8C]/35 hover:text-[#D4AF8C]"
         >
-          <Download className="h-3.5 w-3.5" />
           Export CSV
-        </button>
+        </ApplyButton>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">

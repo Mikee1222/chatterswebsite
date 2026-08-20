@@ -149,7 +149,11 @@ export type PeriodReminderCronResult = {
 
 async function notifyPeriodCronStakeholders(model: ModelRecord, predicted: string, variant: "3d" | "day0"): Promise<void> {
   const modelName = (model.model_name ?? "").trim() || "Model";
-  const eventAirtable = EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.SYSTEM_ALERT] ?? "system_alert";
+  const eventType =
+    variant === "3d"
+      ? NOTIFICATION_EVENT.PERIOD_3_DAY_REMINDER
+      : NOTIFICATION_EVENT.PERIOD_PREDICTED_DAY;
+  const eventAirtable = EVENT_TYPE_TO_AIRTABLE[eventType] ?? eventType;
   const baseEntity = `pcron:${variant}:${model.id}:${predicted}`;
   const title =
     variant === "3d" ? `⏰ ${modelName} — Period in 3 days` : `🔔 ${modelName} — Period expected today`;
@@ -166,7 +170,7 @@ async function notifyPeriodCronStakeholders(model: ModelRecord, predicted: strin
     if (exists) continue;
     await notify({
       user_id: vaUserId,
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: eventType,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title,
       body,
@@ -185,7 +189,7 @@ async function notifyPeriodCronStakeholders(model: ModelRecord, predicted: strin
     if (exists) continue;
     await notify({
       user_id: adminId,
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: eventType,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title,
       body,

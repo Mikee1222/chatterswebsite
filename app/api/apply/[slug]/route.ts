@@ -25,6 +25,17 @@ import {
 } from "@/lib/application-screening-i18n";
 import { getEnabledPipelineSteps } from "@/lib/application-forms-types";
 import { detectDeviceType, isPipelineLanguage } from "@/lib/application-pipeline-i18n";
+import {
+  applicationResponseEntityId,
+  applicationSubmittedCopy,
+  candidateDisplayNameFromAnswers,
+} from "@/lib/application-notifications";
+import {
+  NOTIFICATION_ENTITY,
+  NOTIFICATION_EVENT,
+  NOTIFICATION_PRIORITY,
+} from "@/lib/notification-types";
+import { notifyAdmins } from "@/services/notification-service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -346,6 +357,22 @@ export async function POST(request: Request, ctx: Ctx) {
           }))
         : [],
     });
+
+    const candidateName = candidateDisplayNameFromAnswers(
+      Array.isArray(body?.answers)
+        ? body!.answers!.map((a) => ({ answer_text: a.answer_text }))
+        : [],
+    );
+    const submittedCopy = applicationSubmittedCopy(candidateName, form.title);
+    await notifyAdmins({
+      event_type: NOTIFICATION_EVENT.APPLICATION_SUBMITTED,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title: submittedCopy.title,
+      body: submittedCopy.body,
+      entity_type: NOTIFICATION_ENTITY.APPLICATION_FORM_RESPONSE,
+      entity_id: applicationResponseEntityId(form.id, response.id),
+      actor_name: candidateName,
+    }).catch((err) => console.error("[application_submitted] notify failed", err));
 
     return NextResponse.json({ ok: true, response_id: response.id }, { status: 201 });
   } catch (err) {

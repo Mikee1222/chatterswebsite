@@ -96,10 +96,10 @@ function SortablePipelineCard({
     >
       <div
         className={cn(
-          "relative overflow-hidden rounded-xl border transition",
+          "relative overflow-hidden rounded-2xl border transition",
           isDragging && "shadow-lg shadow-black/40",
           step.enabled
-            ? "border-[#1f1f1f] bg-[#0a0a0a]"
+            ? "border-white/10 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810]"
             : "border-white/5 bg-[#0a0a0a]/60 opacity-60",
         )}
       >

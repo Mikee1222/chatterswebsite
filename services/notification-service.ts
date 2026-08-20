@@ -36,6 +36,7 @@ import {
   getEventDefaultValue,
   getNotificationEventEntry,
   getScopeForRole,
+  type NotificationRoleCategoryKey,
 } from "@/lib/notification-role-defaults";
 import {
   getCachedRoles,
@@ -193,6 +194,8 @@ const BASE_EVENT_TO_CATEGORY = {
   expense_submitted: "billing",
   time_off_requested: "system",
   period_logged: "model",
+  application_submitted: "system",
+  application_status_changed: "system",
 };
 
 const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
@@ -253,6 +256,25 @@ const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceG
   system: "system_alerts",
   task: "task_alerts",
   billing: "billing_alerts",
+};
+
+/** Settings → Categories / Roles UI taxonomy → notification_preferences columns. */
+const ROLE_CATEGORY_TO_PREF_KEY: Record<NotificationRoleCategoryKey, NotificationPreferenceGateKey> = {
+  shift: "shift_alerts",
+  whale: "whale_alerts",
+  model: "model_alerts",
+  system: "system_alerts",
+  task: "task_alerts",
+  mistake: "mistake_alerts",
+  fine_bonus: "fine_bonus_alerts",
+  period: "period_alerts",
+  marketing: "marketing_alerts",
+  phase: "phase_alerts",
+  reward: "reward_alerts",
+  custom_request_alerts: "custom_request_alerts",
+  billing_alerts: "billing_alerts",
+  training_alerts: "training_alerts",
+  schedule_alerts: "schedule_alerts",
 };
 
 const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPreferenceGateKey>> = {
@@ -350,6 +372,8 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   expense_submitted: "billing_alerts",
   time_off_requested: "schedule_alerts",
   period_logged: "period_alerts",
+  application_submitted: "system_alerts",
+  application_status_changed: "system_alerts",
 };
 
 for (const base of NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT) {
@@ -377,6 +401,11 @@ function resolvePreferenceKey(
 ): NotificationPreferenceGateKey {
   const entityKey = entityType?.trim() ?? "";
   const triggerKey = triggerSource?.trim().toLowerCase() ?? "";
+
+  // Settings / Roles category taxonomy is the source of truth for personal toggles.
+  const roleCat = EVENT_TO_ROLE_CATEGORY[eventType];
+  if (roleCat) return ROLE_CATEGORY_TO_PREF_KEY[roleCat];
+
   const entityPref = ENTITY_TO_PREF_KEY[entityKey];
   if (entityPref) return entityPref;
   if (
@@ -385,7 +414,41 @@ function resolvePreferenceKey(
   ) {
     return "marketing_alerts";
   }
+  if (
+    entityKey === NOTIFICATION_ENTITY.PERIOD ||
+    entityKey === "model_period"
+  ) {
+    return "period_alerts";
+  }
   return EVENT_TO_PREF_KEY[eventType] ?? CATEGORY_TO_PREF_KEY[category];
+}
+
+/**
+ * Preference columns that must be ON for this event (personal Settings overrides).
+ * Primary key follows Settings/Roles taxonomy. When an event is stored under a different
+ * feed category (phase_* → category "task"), also enforce that storage category toggle
+ * so turning OFF Task alerts stops phase checklist spam that still appears as task rows.
+ */
+function preferenceKeysToEnforce(
+  eventType: NotificationEventType,
+  category: NotificationCategory,
+  entityType?: string,
+  triggerSource?: string
+): NotificationPreferenceGateKey[] {
+  const primary = resolvePreferenceKey(eventType, category, entityType, triggerSource);
+  const keys = new Set<NotificationPreferenceGateKey>([primary]);
+  const storageKey = CATEGORY_TO_PREF_KEY[category];
+  if (storageKey && storageKey !== primary && category === "task") {
+    keys.add(storageKey);
+  }
+  return [...keys];
+}
+
+function isPersonalCategoryEnabled(
+  prefs: NotificationPreference,
+  key: NotificationPreferenceGateKey
+): boolean {
+  return prefs[key] === true;
 }
 
 async function getRecipientPushContext(userId: string): Promise<{
@@ -492,9 +555,12 @@ function shouldSendPush(
 ): { send: boolean; skipReason?: string } {
   if (prefs.mute_all) return { send: false, skipReason: "mute_all is true" };
   if (!prefs.push_enabled) return { send: false, skipReason: "push_enabled is false" };
-  const categoryKey = resolvePreferenceKey(eventType, category, entityType, triggerSource);
-  if (categoryKey && !(prefs[categoryKey] as boolean))
-    return { send: false, skipReason: `category preference ${categoryKey} is false` };
+  const categoryKeys = preferenceKeysToEnforce(eventType, category, entityType, triggerSource);
+  for (const categoryKey of categoryKeys) {
+    if (!isPersonalCategoryEnabled(prefs, categoryKey)) {
+      return { send: false, skipReason: `category preference ${categoryKey} is false` };
+    }
+  }
   if (roleDefaults) {
     const roleCategoryKey = EVENT_TO_ROLE_CATEGORY[eventType];
     if (roleCategoryKey) {
@@ -548,9 +614,19 @@ function logNotifyPushOutcome(
 /** Send web push to one subscription (VAPID). Payload includes url for tap-to-open. Returns true if sent successfully. */
 async function sendPushToSubscription(
   subscription: { id?: string; endpoint: string; p256dh: string; auth: string; role?: string },
-  payload: { title: string; body: string; entity_type: string; notification_id?: string }
+  payload: {
+    title: string;
+    body: string;
+    entity_type: string;
+    entity_id?: string;
+    notification_id?: string;
+  }
 ): Promise<boolean> {
-  const path = getPushTargetPath(payload.entity_type, subscription.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined);
+  const path = getPushTargetPath(
+    payload.entity_type,
+    subscription.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined,
+    payload.entity_id,
+  );
   const result = await sendWebPush(
     { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth },
     {
@@ -573,14 +649,24 @@ async function sendPushToSubscription(
 /** One subscription at a time (no Promise.all) to stay under Cloudflare Worker subrequest limits. */
 async function sendWebPushToSubscriptionsSequentially(
   subscriptions: Array<{ id?: string; endpoint: string; p256dh: string; auth: string; role?: string }>,
-  payload: { title: string; body: string; entity_type: string; notification_id?: string },
+  payload: {
+    title: string;
+    body: string;
+    entity_type: string;
+    entity_id?: string;
+    notification_id?: string;
+  },
   logRecipientUserId: string,
   eventType?: NotificationEventType
 ): Promise<number> {
   let pushSuccessCount = 0;
   let index = 0;
   for (const sub of subscriptions) {
-    const path = getPushTargetPath(payload.entity_type, sub.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined);
+    const path = getPushTargetPath(
+      payload.entity_type,
+      sub.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined,
+      payload.entity_id,
+    );
     const innerPayload = {
       title: payload.title,
       body: payload.body,
@@ -658,12 +744,13 @@ export async function notify(options: NotifyOptions) {
   const category = EVENT_TO_CATEGORY[options.event_type];
   const priority = resolveNotifyPriority(options.event_type, options.priority);
   const eventTypeAirtable = EVENT_TYPE_TO_AIRTABLE[options.event_type] ?? options.event_type;
-  const preferenceKey = resolvePreferenceKey(
+  const preferenceKeys = preferenceKeysToEnforce(
     options.event_type,
     category,
     options.entity_type,
     options._triggerSource
   );
+  const preferenceKey = preferenceKeys[0]!;
 
   if (options.event_type === "shift_started") {
     if (options._triggerSource === "notifyAdmins") {
@@ -706,8 +793,8 @@ export async function notify(options: NotifyOptions) {
     JSON.stringify({
       event_type: options.event_type,
       category,
-      preference_key_for_push_gate: preferenceKey,
-      note: "push skips if the resolved notification preference column is false in Airtable prefs",
+      preference_keys_for_gate: preferenceKeys,
+      note: "push and in-app skip if any resolved preference column is false in personal prefs",
     })
   );
 
@@ -750,18 +837,20 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (prefs) {
-    const categoryKey = preferenceKey;
-    if (categoryKey && !(prefs[categoryKey] as boolean)) {
-      devLog(NOTIF, "skip", JSON.stringify({
-        reason: `category preference ${categoryKey} is false`,
-        recipient_user_id: options.user_id,
-      }));
-      logNotifyPushOutcome(options, {
-        push_sent: false,
-        outcome_stage: "skipped_category_pref_false",
-        detail: `category preference ${categoryKey} is false; notification and push skipped`,
-      });
-      return { notification: null, pushSent: false };
+    for (const categoryKey of preferenceKeys) {
+      if (!isPersonalCategoryEnabled(prefs, categoryKey)) {
+        devLog(NOTIF, "skip", JSON.stringify({
+          reason: `category preference ${categoryKey} is false`,
+          recipient_user_id: options.user_id,
+          preference_keys_checked: preferenceKeys,
+        }));
+        logNotifyPushOutcome(options, {
+          push_sent: false,
+          outcome_stage: "skipped_category_pref_false",
+          detail: `category preference ${categoryKey} is false; notification and push skipped`,
+        });
+        return { notification: null, pushSent: false };
+      }
     }
   }
 
@@ -853,15 +942,17 @@ export async function notify(options: NotifyOptions) {
 
   if (prefs) {
     logCategoryPrefKeyReference();
-    const prefKey = preferenceKey;
+    const prefKeys = preferenceKeys;
     devLog(
       PUSH_AUDIT,
       "prefs_row_values_for_category_gate",
       JSON.stringify({
         recipient_user_id: options.user_id,
         category,
-        preference_key_checked: prefKey,
-        value_for_that_key: prefKey != null ? ((prefs as unknown as Record<string, unknown>)[prefKey] ?? null) : null,
+        preference_keys_checked: prefKeys,
+        values_for_keys: Object.fromEntries(
+          prefKeys.map((k) => [k, (prefs as unknown as Record<string, unknown>)[k] ?? null])
+        ),
         shift_alerts: prefs.shift_alerts,
         model_alerts: prefs.model_alerts,
         whale_alerts: prefs.whale_alerts,
@@ -974,7 +1065,8 @@ export async function notify(options: NotifyOptions) {
       recipient_user_id: options.user_id,
       recipient_role: recipientRole ?? null,
       category,
-      preference_key: preferenceKey,
+      preference_key: preferenceKeys,
+      preference_keys: preferenceKeys,
       send: pushDecision.send,
       skip_reason: pushDecision.skipReason ?? null,
       priority_used: priority,
@@ -1077,6 +1169,7 @@ export async function notify(options: NotifyOptions) {
       title: options.title,
       body: options.body,
       entity_type: options.entity_type,
+      entity_id: options.entity_id,
       notification_id: notification.id,
     },
     options.user_id,

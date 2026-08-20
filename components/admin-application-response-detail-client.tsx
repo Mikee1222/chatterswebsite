@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { AdminRowAvatar } from "@/components/admin-list-primitives";
-import { SectionLabel, StatInfoTooltip } from "@/components/infloww-performance-ui";
+import { StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
@@ -14,9 +14,11 @@ import {
   type ApplicationFormResponseWithAnswers,
   type ApplicationResponseStatus,
 } from "@/lib/application-forms-types";
-import { RESPONSE_STATUS_STYLE } from "@/lib/application-ui-tokens";
-import { VA_BTN_PRIMARY, VA_CARD, VA_FILTER_INPUT, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
+import { RESPONSE_STATUS_STYLE, APPLY_SECTION, APPLY_INPUT, APPLY_EYEBROW } from "@/lib/application-ui-tokens";
+import { ApplyButton } from "@/components/application-ui-buttons";
+import { VA_CARD, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
+import { Check } from "lucide-react";
 
 const COGNITIVE_SCORE_TIP =
   "Cognitive percentile shows how this candidate compares to others who took the screening — this becomes more meaningful as more candidates apply";
@@ -199,32 +201,36 @@ export function AdminApplicationResponseDetailClient({
         ← All responses
       </Link>
 
-      <div className="mt-4 flex items-start gap-4">
-        <AdminRowAvatar name={displayName} className="h-12 w-12 text-sm" />
-        <div className="min-w-0 flex-1">
-          <SectionLabel>Candidate</SectionLabel>
-          <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight text-white">
-            {displayName}
-          </h1>
-          <p className="mt-1 text-sm text-white/45">{formTitle}</p>
-          <p className="mt-1 text-xs text-white/35">
-            Submitted {new Date(response.submitted_at).toLocaleString()}
-            {response.respondent_ip ? ` · ${response.respondent_ip}` : ""}
-          </p>
+      <div className={cn(APPLY_SECTION, "mt-6 p-5")}>
+        <p className={APPLY_EYEBROW}>Candidate info</p>
+        <div className="mt-4 flex items-start gap-4">
+          <AdminRowAvatar name={displayName} className="h-12 w-12 text-sm" />
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-2xl font-semibold tracking-tight text-white">
+              {displayName}
+            </h1>
+            <p className="mt-1 text-sm text-white/45">{formTitle}</p>
+            <p className="mt-1 text-xs text-white/35">
+              Submitted {new Date(response.submitted_at).toLocaleString()}
+              {response.respondent_ip ? ` · ${response.respondent_ip}` : ""}
+            </p>
+          </div>
+          <span
+            className={cn(
+              VA_STATUS_BADGE,
+              RESPONSE_STATUS_STYLE[response.status],
+              response.status === "hired" && "hire-status-glow",
+            )}
+          >
+            {RESPONSE_STATUS_LABELS[response.status]}
+          </span>
         </div>
-        <span
-          className={cn(
-            VA_STATUS_BADGE,
-            RESPONSE_STATUS_STYLE[response.status],
-            response.status === "hired" && "hire-status-glow",
-          )}
-        >
-          {RESPONSE_STATUS_LABELS[response.status]}
-        </span>
       </div>
 
       {(response.cognitive || response.eq || response.typing) && (
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6">
+          <p className={APPLY_EYEBROW}>Screening results</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {response.cognitive && (
             <ScoreCard
               eyebrow="Cognitive screening"
@@ -294,18 +300,19 @@ export function AdminApplicationResponseDetailClient({
               <p className="mt-2 text-lg font-medium text-white/55">Not completed</p>
             </ScoreCard>
           )}
+          </div>
+          <p className="mt-3 text-[11px] text-white/35">
+            Screening scores are relative practical comparisons among candidates — not clinically
+            validated IQ/EQ measures.
+          </p>
         </div>
       )}
-      <p className="mt-3 text-[11px] text-white/35">
-        Screening scores are relative practical comparisons among candidates — not clinically
-        validated IQ/EQ measures.
-      </p>
 
       {canManage && (
         <div
           className={cn(
-            VA_CARD,
-            "mt-6 space-y-3 border border-white/10 bg-white/[0.03] p-4",
+            APPLY_SECTION,
+            "mt-6 space-y-3 p-5",
             response.status === "hired" && "border-[#D4AF8C]/35",
           )}
         >
@@ -349,7 +356,7 @@ export function AdminApplicationResponseDetailClient({
                 void save({ internal_notes: notes });
               }
             }}
-            className={cn(VA_FILTER_INPUT, "min-h-[100px] w-full py-3")}
+            className={cn(APPLY_INPUT, "min-h-[100px] w-full resize-y py-3")}
             placeholder="Private notes for hiring team…"
           />
         </div>
@@ -361,8 +368,9 @@ export function AdminApplicationResponseDetailClient({
         </p>
       )}
 
-      <div className="mt-8 space-y-3">
-        <h2 className="text-sm font-medium text-white/80">Answers</h2>
+      <div className="mt-8">
+        <p className={APPLY_EYEBROW}>Form answers</p>
+        <div className="mt-3 space-y-3">
         {questions.map((q, idx) => {
           const a = answersByQ.get(q.id);
           const display =
@@ -372,10 +380,7 @@ export function AdminApplicationResponseDetailClient({
           return (
             <div
               key={q.id}
-              className={cn(
-                VA_CARD,
-                "border border-white/10 bg-[#0D0B0D]/80 p-4",
-              )}
+              className={cn(APPLY_SECTION, "p-4")}
             >
               <p className="text-xs text-[#FF1493]/80">
                 {idx + 1}. {q.question_text}
@@ -384,18 +389,19 @@ export function AdminApplicationResponseDetailClient({
             </div>
           );
         })}
+        </div>
       </div>
 
       {canManage && (
         <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            disabled={busy}
+          <ApplyButton
+            variant="adminPrimary"
+            loading={busy}
+            iconLeft={<Check className="h-3.5 w-3.5" aria-hidden />}
             onClick={() => void save({ internal_notes: notes })}
-            className={cn(VA_BTN_PRIMARY, "disabled:opacity-50")}
           >
             Save notes
-          </button>
+          </ApplyButton>
         </div>
       )}
     </div>

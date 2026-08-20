@@ -44,9 +44,12 @@ import {
 } from "@/lib/application-forms-types";
 import { ApplicationFormPreview } from "@/components/application-form-preview";
 import { ApplicationPipelineBuilder } from "@/components/application-pipeline-builder";
-
-const BORDER = "rgba(255,255,255,0.08)";
-const GOLD = "#D4AF8C";
+import { ApplyButton } from "@/components/application-ui-buttons";
+import {
+  APPLY_INPUT,
+  APPLY_SECTION,
+} from "@/lib/application-ui-tokens";
+import { cn } from "@/lib/utils";
 
 type Props = {
   initialForm: ApplicationFormWithQuestions;
@@ -81,14 +84,18 @@ function SortableQuestionCard({
   return (
     <div
       ref={setNodeRef}
-      style={{ ...style, borderColor: BORDER, background: "rgba(13,11,13,0.8)" }}
-      className="rounded-2xl border p-4"
+      style={style}
+      className={cn(
+        APPLY_SECTION,
+        "p-4 transition",
+        isDragging && "border-[#FF1493]/35 shadow-[0_12px_40px_-16px_rgba(255,20,147,0.35)]",
+      )}
     >
       <div className="flex items-start gap-2">
         {canManage && (
           <button
             type="button"
-            className="mt-2 cursor-grab touch-none text-white/35 hover:text-white/70"
+            className="mt-2 cursor-grab touch-none rounded-lg p-1 text-white/35 transition hover:bg-white/5 hover:text-white/70"
             aria-label="Drag to reorder"
             {...attributes}
             {...listeners}
@@ -97,18 +104,28 @@ function SortableQuestionCard({
           </button>
         )}
         <div className="min-w-0 flex-1 space-y-3">
-          <div className="inline-flex rounded-lg border border-white/10 p-0.5 text-[11px]">
+          <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-0.5 text-[11px]">
             <button
               type="button"
               onClick={() => setLangTab("en")}
-              className={`rounded-md px-2.5 py-1 ${langTab === "en" ? "bg-white/15 text-white" : "text-white/45"}`}
+              className={cn(
+                "rounded-lg px-2.5 py-1.5 font-semibold transition",
+                langTab === "en"
+                  ? "bg-gradient-to-br from-[#FF1493] to-[#DB2777] text-white shadow-[0_4px_12px_-4px_rgba(255,20,147,0.5)]"
+                  : "text-white/45 hover:text-white/70",
+              )}
             >
               EN *
             </button>
             <button
               type="button"
               onClick={() => setLangTab("el")}
-              className={`rounded-md px-2.5 py-1 ${langTab === "el" ? "bg-white/15 text-white" : "text-white/45"}`}
+              className={cn(
+                "rounded-lg px-2.5 py-1.5 font-semibold transition",
+                langTab === "el"
+                  ? "bg-gradient-to-br from-[#D4AF8C] to-[#B8956A] text-[#0D0B0D]"
+                  : "text-white/45 hover:text-white/70",
+              )}
             >
               EL
             </button>
@@ -120,7 +137,7 @@ function SortableQuestionCard({
               onChange={(e) => onChange({ question_text: e.target.value })}
               onBlur={() => canManage && onSave()}
               placeholder="Question text (English, required)"
-              className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 py-2.5 text-sm text-white placeholder:text-white/30 disabled:opacity-60"
+              className={cn(APPLY_INPUT, "min-h-[48px] py-2.5 disabled:opacity-60")}
             />
           ) : (
             <input
@@ -129,7 +146,7 @@ function SortableQuestionCard({
               onChange={(e) => onChange({ question_text_el: e.target.value })}
               onBlur={() => canManage && onSave()}
               placeholder="Ελληνικό κείμενο (optional — fallback EN)"
-              className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 py-2.5 text-sm text-white placeholder:text-white/30 disabled:opacity-60"
+              className={cn(APPLY_INPUT, "min-h-[48px] py-2.5 disabled:opacity-60")}
             />
           )}
           <div className="flex flex-wrap items-center gap-3">
@@ -155,7 +172,7 @@ function SortableQuestionCard({
                   onChange(patch);
                   onSave(patch);
                 }}
-                className="appearance-none rounded-lg border border-[#1f1f1f] bg-[#0d0d0d] py-2 pl-3 pr-8 text-xs text-white/85 disabled:opacity-60"
+                className="appearance-none rounded-xl border border-white/10 bg-[#1a1a1a] py-2.5 pl-3 pr-8 text-xs text-white/85 disabled:opacity-60"
               >
                 {APPLICATION_QUESTION_TYPES.map((t) => (
                   <option key={t} value={t}>
@@ -175,7 +192,7 @@ function SortableQuestionCard({
                   onChange(patch);
                   onSave(patch);
                 }}
-                className="rounded border-white/20"
+                className="rounded border-white/20 accent-[#FF1493]"
               />
               Required
             </label>
@@ -183,7 +200,7 @@ function SortableQuestionCard({
               <button
                 type="button"
                 onClick={onDelete}
-                className="ml-auto rounded-lg border border-red-500/20 p-1.5 text-red-300/70 hover:bg-red-500/10"
+                className="ml-auto rounded-xl border border-red-500/20 p-2 text-red-300/70 transition hover:bg-red-500/10"
                 aria-label="Delete question"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -191,7 +208,7 @@ function SortableQuestionCard({
             )}
           </div>
           {needsOptions && (
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-xl border border-white/8 bg-black/20 p-3">
               <p className="text-[11px] uppercase tracking-wider text-white/35">
                 Options ({langTab.toUpperCase()})
               </p>
@@ -214,7 +231,7 @@ function SortableQuestionCard({
                     }}
                     onBlur={() => canManage && onSave()}
                     placeholder={langTab === "el" ? "Greek option (optional)" : "Option"}
-                    className="h-9 flex-1 rounded-lg border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white"
+                    className={cn(APPLY_INPUT, "h-10 min-h-0 flex-1 py-2 text-sm")}
                   />
                   {canManage && langTab === "en" && (
                     <button
@@ -244,7 +261,7 @@ function SortableQuestionCard({
                     onChange(patch);
                     onSave(patch);
                   }}
-                  className="text-xs text-[#D4AF8C] hover:underline"
+                  className="text-xs font-medium text-[#D4AF8C] transition hover:text-[#E8D0B0]"
                 >
                   + Add option
                 </button>
@@ -446,61 +463,52 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
         <div className="flex flex-wrap gap-2">
           <Link
             href={ROUTES.admin.applicationFormResponses(form.id)}
-            className="rounded-lg border px-3 py-2 text-xs text-white/70 hover:text-white"
-            style={{ borderColor: BORDER }}
+            className="inline-flex items-center rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/70 transition hover:border-[#D4AF8C]/35 hover:text-[#D4AF8C]"
           >
             Responses ({form.response_count ?? 0})
           </Link>
           {canManage && form.status !== "published" && (
-            <button
-              type="button"
-              disabled={statusBusy || form.questions.length === 0}
+            <ApplyButton
+              variant="adminChampagne"
+              loading={statusBusy}
+              disabled={form.questions.length === 0}
               onClick={() => void setStatus("published")}
-              className="rounded-lg px-3 py-2 text-xs font-medium text-[#0D0B0D] disabled:opacity-50"
-              style={{ background: GOLD }}
             >
               Publish
-            </button>
+            </ApplyButton>
           )}
           {canManage && form.status === "published" && (
             <>
-              <button
-                type="button"
-                disabled={statusBusy}
+              <ApplyButton
+                variant="adminSecondary"
+                loading={statusBusy}
                 onClick={() => void setStatus("draft")}
-                className="rounded-lg border px-3 py-2 text-xs text-white/70"
-                style={{ borderColor: BORDER }}
               >
                 Unpublish
-              </button>
+              </ApplyButton>
               <button
                 type="button"
                 disabled={statusBusy}
                 onClick={() => void setStatus("closed")}
-                className="rounded-lg border border-amber-500/30 px-3 py-2 text-xs text-amber-200"
+                className="inline-flex items-center justify-center rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/15 disabled:opacity-40"
               >
                 Close
               </button>
             </>
           )}
           {canManage && form.status === "closed" && (
-            <button
-              type="button"
-              disabled={statusBusy}
+            <ApplyButton
+              variant="adminChampagne"
+              loading={statusBusy}
               onClick={() => void setStatus("published")}
-              className="rounded-lg px-3 py-2 text-xs font-medium text-[#0D0B0D]"
-              style={{ background: GOLD }}
             >
               Reopen
-            </button>
+            </ApplyButton>
           )}
         </div>
       </div>
 
-      <div
-        className="mt-6 rounded-2xl border p-4 sm:p-5"
-        style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
-      >
+      <div className={cn(APPLY_SECTION, "mt-6 p-4 sm:p-5")}>
         <ApplicationPipelineBuilder
           config={form.pipeline_config}
           canManage={canManage}
@@ -513,10 +521,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <div className="space-y-4">
-          <div
-            className="rounded-2xl border p-4 space-y-3"
-            style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
-          >
+          <div className={cn(APPLY_SECTION, "space-y-3 p-4")}>
             <label className="block text-[11px] uppercase tracking-wider text-white/35">Title</label>
             <input
               defaultValue={form.title}
@@ -526,7 +531,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
                   void saveMeta({ title: e.target.value });
                 }
               }}
-              className="h-11 w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 text-sm text-white disabled:opacity-60"
+              className={cn(APPLY_INPUT, "h-11 min-h-0 py-2.5 disabled:opacity-60")}
             />
             <label className="block text-[11px] uppercase tracking-wider text-white/35">
               Description (EN)
@@ -540,7 +545,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
                   void saveMeta({ description: e.target.value });
                 }
               }}
-              className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 py-3 text-sm text-white disabled:opacity-60"
+              className={cn(APPLY_INPUT, "min-h-[96px] resize-y py-3 disabled:opacity-60")}
             />
             <label className="block text-[11px] uppercase tracking-wider text-white/35">
               Description (EL)
@@ -554,7 +559,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
                   void saveMeta({ description_el: e.target.value });
                 }
               }}
-              className="w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 py-3 text-sm text-white disabled:opacity-60"
+              className={cn(APPLY_INPUT, "min-h-[96px] resize-y py-3 disabled:opacity-60")}
             />
             <label className="block text-[11px] uppercase tracking-wider text-white/35">
               Footer (EN)
@@ -567,7 +572,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
                   void saveMeta({ footer_text: e.target.value });
                 }
               }}
-              className="h-10 w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white disabled:opacity-60"
+              className={cn(APPLY_INPUT, "h-10 min-h-0 py-2 disabled:opacity-60")}
             />
             <label className="block text-[11px] uppercase tracking-wider text-white/35">
               Footer (EL)
@@ -580,7 +585,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
                   void saveMeta({ footer_text_el: e.target.value });
                 }
               }}
-              className="h-10 w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white disabled:opacity-60"
+              className={cn(APPLY_INPUT, "h-10 min-h-0 py-2 disabled:opacity-60")}
             />
             <label className="block text-[11px] uppercase tracking-wider text-white/35">
               Public slug
@@ -594,24 +599,17 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
                     void saveMeta({ slug: e.target.value });
                   }
                 }}
-                className="h-10 flex-1 rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white disabled:opacity-60"
+                className={cn(APPLY_INPUT, "h-10 min-h-0 flex-1 py-2 disabled:opacity-60")}
               />
-              <button
-                type="button"
-                onClick={copyPublicLink}
-                className="inline-flex items-center gap-1.5 rounded-xl border px-3 text-xs text-white/70"
-                style={{ borderColor: BORDER }}
-              >
-                <Copy className="h-3.5 w-3.5" />
+              <ApplyButton variant="adminSecondary" onClick={copyPublicLink} iconLeft={<Copy className="h-3.5 w-3.5" />}>
                 Copy
-              </button>
+              </ApplyButton>
               {form.status === "published" && (
                 <a
                   href={ROUTES.applyForm(form.slug)}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center rounded-xl border px-3 text-white/70"
-                  style={{ borderColor: BORDER }}
+                  className="inline-flex items-center rounded-xl border border-white/12 bg-white/[0.03] px-3 text-white/70 transition hover:border-[#D4AF8C]/35 hover:text-[#D4AF8C]"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
                 </a>
@@ -627,15 +625,13 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-white/80">Questions</h2>
             {canManage && (
-              <button
-                type="button"
+              <ApplyButton
+                variant="adminChampagne"
+                iconLeft={<Plus className="h-3.5 w-3.5" />}
                 onClick={() => void addQuestion()}
-                className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-[#0D0B0D]"
-                style={{ background: GOLD }}
               >
-                <Plus className="h-3.5 w-3.5" />
                 Add question
-              </button>
+              </ApplyButton>
             )}
           </div>
 
@@ -660,9 +656,7 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
           </DndContext>
 
           {form.questions.length === 0 && (
-            <p className="rounded-2xl border border-dashed px-4 py-10 text-center text-sm text-white/40"
-              style={{ borderColor: BORDER }}
-            >
+            <p className="rounded-2xl border border-dashed border-white/10 px-4 py-10 text-center text-sm text-white/40">
               Add questions to build your application form.
             </p>
           )}

@@ -241,6 +241,8 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   expense_submitted: ["admin", "manager"],
   time_off_requested: ["admin", "manager"],
   period_logged: ["model", "virtual_assistant", "admin", "manager"],
+  application_submitted: ["admin", "manager"],
+  application_status_changed: ["admin", "manager"],
   daily_summary: ["admin", "manager"],
   va_statistics_weekly_summary: ["admin", "manager"],
 };
@@ -1181,6 +1183,16 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Form submitted (admin)",
       "Αποστέλλεται όταν υποβάλλεται φόρμα",
       "Ενημερώνει τον admin για υποβολή φόρμας"
+    ),
+    eventEntry(
+      "application_submitted",
+      "New application submitted",
+      "Ενημερώνει applications:manage (admin/manager recipients) όταν υποβάλλεται νέα αίτηση υποψηφίου"
+    ),
+    eventEntry(
+      "application_status_changed",
+      "Application status changed",
+      "Ενημερώνει applications:manage (admin/manager recipients) όταν αλλάζει το pipeline status (συμπεριλαμβανομένου Hired)"
     ),
   ],
 };

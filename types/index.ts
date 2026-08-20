@@ -1207,6 +1207,9 @@ export type NotificationEventType =
   | "expense_submitted"
   | "time_off_requested"
   | "period_logged"
+  // Application / Recruitment
+  | "application_submitted"
+  | "application_status_changed"
   // Admin monitoring variants (_admin suffix)
   | "shift_started_admin"
   | "shift_ended_admin"

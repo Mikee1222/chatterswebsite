@@ -35,6 +35,11 @@ export const PIPELINE_UI = {
     yes: "Yes",
     no: "No",
     applicationQuestions: "Application questions",
+    continueInEnglish: "Continue in English",
+    continueInGreek: "Συνέχεια στα Ελληνικά",
+    sectionBasicInfo: "Basic info",
+    sectionAvailability: "Availability",
+    sectionAboutYou: "About you",
     typingTitle: "Typing speed test",
     cognitiveTitle: "Cognitive ability",
     eqTitle: "Emotional intelligence — situational judgment",
@@ -86,6 +91,11 @@ export const PIPELINE_UI = {
     yes: "Ναι",
     no: "Όχι",
     applicationQuestions: "Ερωτήσεις αίτησης",
+    continueInEnglish: "Continue in English",
+    continueInGreek: "Συνέχεια στα Ελληνικά",
+    sectionBasicInfo: "Βασικά στοιχεία",
+    sectionAvailability: "Διαθεσιμότητα",
+    sectionAboutYou: "Σχετικά με εσένα",
     typingTitle: "Τεστ ταχύτητας πληκτρολόγησης",
     cognitiveTitle: "Γνωστική ικανότητα",
     eqTitle: "Συναισθηματική νοημοσύνη — καταστάσεις κρίσης",
@@ -115,6 +125,16 @@ export type PipelineUiCopy = (typeof PIPELINE_UI)[PipelineLanguage];
 
 export function pipelineUi(lang: PipelineLanguage): PipelineUiCopy {
   return PIPELINE_UI[lang] ?? PIPELINE_UI.en;
+}
+
+/** "Question 4 of 17" / "Ερώτηση 4 από 17" */
+export function questionProgressLabel(
+  lang: PipelineLanguage,
+  current: number,
+  total: number,
+): string {
+  if (lang === "el") return `Ερώτηση ${current} από ${total}`;
+  return `Question ${current} of ${total}`;
 }
 
 export function pickLocalized(

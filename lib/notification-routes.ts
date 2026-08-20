@@ -6,9 +6,14 @@
 import type { AppNotification } from "@/types";
 import type { UserRole } from "@/types";
 import { ROUTES } from "@/lib/routes";
+import { parseApplicationResponseEntityId } from "@/lib/application-notifications";
 
 /** Build target path for push notification click (entity_type + role). Used by backend when sending push. */
-export function getPushTargetPath(entityType: string, role?: UserRole | null): string {
+export function getPushTargetPath(
+  entityType: string,
+  role?: UserRole | null,
+  entityId?: string | null,
+): string {
   const isAdmin = role === "admin" || role === "manager";
   const isModel = role === "model";
   const isVa = role === "virtual_assistant";
@@ -98,6 +103,13 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
     case "form":
       if (isAdmin) return ROUTES.admin.home;
       return ROUTES.dashboard;
+    case "application_form_response": {
+      const parsed = entityId ? parseApplicationResponseEntityId(entityId) : null;
+      if (parsed && isAdmin) {
+        return ROUTES.admin.applicationFormResponseDetail(parsed.formId, parsed.responseId);
+      }
+      return isAdmin ? ROUTES.admin.applicationForms : ROUTES.dashboard;
+    }
     case "tip":
       if (isAdmin) return ROUTES.admin.rebillsTips;
       if (isChatter) return ROUTES.chatter.myRebills;
@@ -207,6 +219,13 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.rebillsTips : ROUTES.chatter.myRebills;
     case "sop_academy":
       return isAdmin ? ROUTES.admin.sopLibrary : ROUTES.sops;
+    case "application_form_response": {
+      const parsed = parseApplicationResponseEntityId(entity_id);
+      if (parsed && isAdmin) {
+        return ROUTES.admin.applicationFormResponseDetail(parsed.formId, parsed.responseId);
+      }
+      return isAdmin ? ROUTES.admin.applicationForms : null;
+    }
     case "system":
     case "account":
       return isClient ? ROUTES.client.home : ROUTES.settings;
@@ -285,6 +304,9 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "weekly_availability_friday_reminder":
     case "availability_submitted":
       return "Form";
+    case "application_submitted":
+    case "application_status_changed":
+      return "Application";
     case "sop_quiz_passed":
     case "sop_quiz_failed":
       return "Training";

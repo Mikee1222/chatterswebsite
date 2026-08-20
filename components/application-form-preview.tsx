@@ -4,10 +4,15 @@ import type { ApplicationFormQuestion } from "@/lib/application-forms-types";
 import { QUESTION_TYPE_LABELS } from "@/lib/application-forms-types";
 import { pipelineUi, type PipelineLanguage } from "@/lib/application-pipeline-i18n";
 import {
+  APPLY_CHOICE,
+  APPLY_CHOICE_ACTIVE,
+  APPLY_CHOICE_IDLE,
   APPLY_EYEBROW,
+  APPLY_FIELD_SHELL,
   APPLY_GLASS,
   APPLY_INPUT,
   APPLY_LABEL,
+  APPLY_SECTION,
 } from "@/lib/application-ui-tokens";
 import { cn } from "@/lib/utils";
 
@@ -25,13 +30,13 @@ type Props = {
   lang?: PipelineLanguage;
   /** When embedded in the public flow shell, skip outer glass chrome. */
   bare?: boolean;
+  /** Show a single question (one-at-a-time flow). */
+  singleQuestionIndex?: number | null;
+  /** Hide the form title header (when chrome is above). */
+  hideHeader?: boolean;
 };
 
-const choiceBase =
-  "flex items-center gap-3 rounded-xl border px-3.5 py-3 text-sm transition cursor-pointer";
-const choiceIdle = "border-white/10 bg-white/[0.03] text-white/75 hover:border-white/20 hover:bg-white/[0.05]";
-const choiceActive =
-  "border-[#FF1493]/45 bg-[#FF1493]/10 text-white shadow-[0_0_24px_-12px_rgba(255,20,147,0.5)]";
+const choiceBase = cn(APPLY_CHOICE, "flex cursor-pointer items-center gap-3");
 
 export function ApplicationFormPreview({
   title,
@@ -44,37 +49,45 @@ export function ApplicationFormPreview({
   className = "",
   lang = "en",
   bare = false,
+  singleQuestionIndex = null,
+  hideHeader = false,
 }: Props) {
   const ui = pipelineUi(lang);
+  const list =
+    singleQuestionIndex != null && questions[singleQuestionIndex]
+      ? [questions[singleQuestionIndex]!]
+      : questions;
+  const indexOffset = singleQuestionIndex != null ? singleQuestionIndex : 0;
+
   const body = (
     <>
-      <div className="border-b border-white/8 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8">
-        <p className={APPLY_EYEBROW}>Application</p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-          {title || "Untitled form"}
-        </h2>
-        {description ? (
-          <p className="mt-3 max-w-prose whitespace-pre-line text-sm leading-relaxed text-white/55">
-            {description}
-          </p>
-        ) : null}
-      </div>
-      <div className="space-y-5 px-5 py-6 sm:px-6">
-        {questions.length === 0 ? (
+      {!hideHeader ? (
+        <div className="border-b border-white/8 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8">
+          <p className={APPLY_EYEBROW}>Application</p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+            {title || "Untitled form"}
+          </h2>
+          {description ? (
+            <p className="mt-3 max-w-prose whitespace-pre-line text-sm leading-relaxed text-white/55">
+              {description}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      <div className={cn("space-y-5", hideHeader ? "px-0 py-0" : "px-5 py-6 sm:px-6")}>
+        {list.length === 0 ? (
           <p className="text-center text-sm text-white/40">No questions yet</p>
         ) : (
-          questions.map((q, idx) => {
+          list.map((q, i) => {
+            const idx = indexOffset + i;
             const val = values[q.id] ?? {};
             const err = errors[q.id];
             return (
-              <div
-                key={q.id}
-                className={cn(
-                  "space-y-2.5 p-0 md:rounded-xl md:border md:border-white/10 md:bg-[#1a1a1a] md:p-4 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] md:focus-within:border-[#FF1493]/40 md:focus-within:ring-1 md:focus-within:ring-[#FF1493]/20",
-                )}
-              >
+              <div key={q.id} className={cn(APPLY_FIELD_SHELL, err && "md:border-rose-500/35")}>
                 <label className={cn("block", APPLY_LABEL)}>
-                  <span className="mr-2 text-xs font-normal text-white/35">{idx + 1}.</span>
+                  <span className="mr-2 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md border border-[#FF1493]/25 bg-[#FF1493]/10 px-1.5 text-[11px] font-semibold tabular-nums text-[#FF1493]">
+                    {idx + 1}
+                  </span>
                   {q.question_text || "Untitled question"}
                   {q.is_required ? (
                     <span className="ml-1 text-[#FF1493]/80">{ui.fieldRequiredMark}</span>
@@ -95,11 +108,34 @@ export function ApplicationFormPreview({
     </>
   );
 
-  if (bare) {
+  if (bare || singleQuestionIndex != null) {
     return <div className={className}>{body}</div>;
   }
 
   return <div className={cn(APPLY_GLASS, className)}>{body}</div>;
+}
+
+/** SopFormSection-style group wrapper for admin / multi-section layouts. */
+export function ApplicationFormSection({
+  title,
+  description,
+  children,
+  className,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={cn(APPLY_SECTION, "overflow-hidden", className)}>
+      <div className="border-b border-white/8 px-5 py-4">
+        <h3 className="text-sm font-semibold text-white/90">{title}</h3>
+        {description ? <p className="mt-0.5 text-xs text-white/45">{description}</p> : null}
+      </div>
+      <div className="space-y-4 px-5 py-5">{children}</div>
+    </section>
+  );
 }
 
 function renderField(
@@ -159,7 +195,7 @@ function renderField(
           {q.options.map((o) => {
             const active = (val.text ?? "") === o;
             return (
-              <label key={o} className={cn(choiceBase, active ? choiceActive : choiceIdle)}>
+              <label key={o} className={cn(choiceBase, active ? APPLY_CHOICE_ACTIVE : APPLY_CHOICE_IDLE)}>
                 <input
                   type="radio"
                   name={q.id}
@@ -182,7 +218,7 @@ function renderField(
             return (
               <label
                 key={o}
-                className={cn(choiceBase, selected ? choiceActive : choiceIdle)}
+                className={cn(choiceBase, selected ? APPLY_CHOICE_ACTIVE : APPLY_CHOICE_IDLE)}
               >
                 <input
                   type="checkbox"
@@ -214,7 +250,7 @@ function renderField(
                 disabled={disabled}
                 onClick={() => setText(String(n))}
                 className={cn(
-                  "h-11 w-11 rounded-xl border text-sm font-semibold transition",
+                  "h-12 w-12 rounded-xl border text-sm font-semibold transition duration-200",
                   active
                     ? "border-[#D4AF8C]/50 bg-[#D4AF8C]/20 text-[#E8D0B0] shadow-[0_0_20px_-8px_rgba(212,175,140,0.5)]"
                     : "border-white/10 bg-white/[0.04] text-white/60 hover:border-white/20",
@@ -239,10 +275,10 @@ function renderField(
                 disabled={disabled}
                 onClick={() => setText(canonical)}
                 className={cn(
-                  "flex-1 rounded-2xl border px-5 py-3 text-sm font-medium transition",
+                  "min-h-[52px] flex-1 rounded-2xl border px-5 py-3 text-sm font-semibold transition duration-200",
                   active
                     ? i === 0
-                      ? "border-[#FF1493]/45 bg-[#FF1493]/15 text-white"
+                      ? "border-[#FF1493]/45 bg-[#FF1493]/15 text-white shadow-[0_0_24px_-10px_rgba(255,20,147,0.4)]"
                       : "border-white/20 bg-white/10 text-white"
                     : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20",
                 )}

@@ -9,12 +9,13 @@ import {
   type TypingPassage,
 } from "@/lib/application-typing-passages";
 import {
-  APPLY_BTN_PRIMARY,
   APPLY_EYEBROW,
   APPLY_INPUT,
   APPLY_SURFACE,
 } from "@/lib/application-ui-tokens";
+import { ApplyButton } from "@/components/application-ui-buttons";
 import { ApplyStepShell } from "@/components/application-public-chrome";
+import { ArrowRight, Check, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -310,9 +311,14 @@ export function TypingSpeedTestStep({
               </div>
             ))}
           </div>
-          <button type="button" onClick={onComplete} className={cn(APPLY_BTN_PRIMARY, "mt-8")}>
+          <ApplyButton
+            variant="primary"
+            iconRight={<ArrowRight className="h-4 w-4" aria-hidden />}
+            onClick={onComplete}
+            className="mt-8"
+          >
             {ui.typingContinue}
-          </button>
+          </ApplyButton>
         </div>
       </ApplyStepShell>
     );
@@ -327,9 +333,14 @@ export function TypingSpeedTestStep({
             {ui.typingStart}
           </h2>
           <p className="mt-3 text-sm leading-relaxed text-white/50">{ui.typingIntro}</p>
-          <button type="button" onClick={start} className={cn(APPLY_BTN_PRIMARY, "mt-6")}>
+          <ApplyButton
+            variant="primary"
+            iconLeft={<Play className="h-4 w-4" aria-hidden />}
+            onClick={start}
+            className="mt-6"
+          >
             {ui.typingStart}
-          </button>
+          </ApplyButton>
         </div>
       </ApplyStepShell>
     );
@@ -370,14 +381,15 @@ export function TypingSpeedTestStep({
           aria-label={ui.typingTitle}
         />
         {error && <p className="text-sm text-rose-400">{error}</p>}
-        <button
-          type="button"
-          disabled={submitting || !canFinish}
+        <ApplyButton
+          variant="primary"
+          loading={submitting}
+          disabled={!canFinish}
+          iconRight={<Check className="h-4 w-4" aria-hidden />}
           onClick={() => void finish()}
-          className={APPLY_BTN_PRIMARY}
         >
           {submitting ? ui.submitting : ui.typingFinished}
-        </button>
+        </ApplyButton>
       </div>
     </ApplyStepShell>
   );

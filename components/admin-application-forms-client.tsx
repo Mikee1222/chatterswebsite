@@ -6,15 +6,15 @@ import { useRouter } from "next/navigation";
 import { ExternalLink, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { CountUp, LuxuryStatCard, SectionLabel } from "@/components/infloww-performance-ui";
+import { ApplyButton } from "@/components/application-ui-buttons";
 import { ROUTES } from "@/lib/routes";
 import {
   FORM_STATUS_LABELS,
   type ApplicationFormListItem,
   type ApplicationFormStatus,
 } from "@/lib/application-forms-types";
-
-const BORDER = "rgba(255,255,255,0.08)";
-const GOLD = "#D4AF8C";
+import { APPLY_INPUT, APPLY_SECTION } from "@/lib/application-ui-tokens";
+import { cn } from "@/lib/utils";
 
 const STATUS_STYLE: Record<ApplicationFormStatus, string> = {
   draft: "border-white/15 bg-white/5 text-white/60",
@@ -90,15 +90,13 @@ export function AdminApplicationFormsClient({ initialForms, canManage }: Props) 
           </p>
         </div>
         {canManage && (
-          <button
-            type="button"
+          <ApplyButton
+            variant="adminChampagne"
+            iconLeft={<Plus className="h-4 w-4" aria-hidden />}
             onClick={() => setCreating((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-[#0D0B0D] transition hover:opacity-90"
-            style={{ background: GOLD }}
           >
-            <Plus className="h-4 w-4" aria-hidden />
             New form
-          </button>
+          </ApplyButton>
         )}
       </div>
 
@@ -110,10 +108,7 @@ export function AdminApplicationFormsClient({ initialForms, canManage }: Props) 
       </div>
 
       {creating && canManage && (
-        <div
-          className="mt-6 rounded-2xl border p-4"
-          style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
-        >
+        <div className={cn(APPLY_SECTION, "mt-6 p-5")}>
           <label className="block text-xs font-medium uppercase tracking-wider text-white/45">
             Form title
           </label>
@@ -122,38 +117,36 @@ export function AdminApplicationFormsClient({ initialForms, canManage }: Props) 
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Chatter application 2026"
-              className="h-11 flex-1 rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 text-sm text-white placeholder:text-white/30"
+              className={cn(APPLY_INPUT, "h-11 min-h-0 flex-1 py-2.5")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") void createForm();
               }}
             />
-            <button
-              type="button"
-              disabled={busy}
+            <ApplyButton
+              variant="adminChampagne"
+              loading={busy}
               onClick={() => void createForm()}
-              className="h-11 rounded-xl px-4 text-sm font-medium text-[#0D0B0D] disabled:opacity-50"
-              style={{ background: GOLD }}
+              className="sm:w-auto"
             >
               {busy ? "Creating…" : "Create & edit"}
-            </button>
+            </ApplyButton>
           </div>
         </div>
       )}
 
       <div className="mt-8 space-y-3">
         {forms.length === 0 ? (
-          <div
-            className="rounded-2xl border border-dashed px-6 py-16 text-center text-sm text-white/45"
-            style={{ borderColor: BORDER }}
-          >
+          <div className="rounded-2xl border border-dashed border-white/10 px-6 py-16 text-center text-sm text-white/45">
             No forms yet. Create your first recruitment form to get started.
           </div>
         ) : (
           forms.map((form) => (
             <div
               key={form.id}
-              className="flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between"
-              style={{ borderColor: BORDER, background: "rgba(13,11,13,0.65)" }}
+              className={cn(
+                APPLY_SECTION,
+                "flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between",
+              )}
             >
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
@@ -181,8 +174,9 @@ export function AdminApplicationFormsClient({ initialForms, canManage }: Props) 
                     href={ROUTES.applyForm(form.slug)}
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs text-white/70 hover:text-white"
-                    style={{ borderColor: BORDER }}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/70 transition hover:border-[#D4AF8C]/35 hover:text-[#D4AF8C]",
+                    )}
                   >
                     <ExternalLink className="h-3.5 w-3.5" aria-hidden />
                     Public link
@@ -190,15 +184,13 @@ export function AdminApplicationFormsClient({ initialForms, canManage }: Props) 
                 )}
                 <Link
                   href={ROUTES.admin.applicationFormResponses(form.id)}
-                  className="rounded-lg border px-3 py-2 text-xs text-white/70 hover:text-white"
-                  style={{ borderColor: BORDER }}
+                  className="rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/70 transition hover:border-white/20 hover:text-white"
                 >
                   Responses
                 </Link>
                 <Link
                   href={ROUTES.admin.applicationFormDetail(form.id)}
-                  className="rounded-lg px-3 py-2 text-xs font-medium text-[#0D0B0D]"
-                  style={{ background: GOLD }}
+                  className="inline-flex items-center justify-center rounded-xl border border-[#D4AF8C]/50 bg-gradient-to-br from-[#E8D0B0] to-[#D4AF8C] px-3 py-2 text-xs font-semibold text-[#0D0B0D] shadow-[0_6px_20px_-8px_rgba(212,175,140,0.45)] transition hover:brightness-105"
                 >
                   Edit
                 </Link>
@@ -206,7 +198,7 @@ export function AdminApplicationFormsClient({ initialForms, canManage }: Props) 
                   <button
                     type="button"
                     onClick={() => void deleteForm(form.id, form.title)}
-                    className="rounded-lg border border-red-500/20 p-2 text-red-300/70 hover:bg-red-500/10 hover:text-red-200"
+                    className="rounded-xl border border-red-500/20 p-2 text-red-300/70 transition hover:bg-red-500/10 hover:text-red-200"
                     aria-label="Delete form"
                   >
                     <Trash2 className="h-3.5 w-3.5" />

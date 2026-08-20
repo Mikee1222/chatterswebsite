@@ -140,6 +140,10 @@ export const NOTIFICATION_EVENT = {
   EXPENSE_SUBMITTED: "expense_submitted" as const,
   TIME_OFF_REQUESTED: "time_off_requested" as const,
   PERIOD_LOGGED: "period_logged" as const,
+  /** Recruitment — candidate completed pipeline + form submit */
+  APPLICATION_SUBMITTED: "application_submitted" as const,
+  /** Recruitment — admin changed pipeline status (New/Reviewed/Shortlisted/Rejected/Hired) */
+  APPLICATION_STATUS_CHANGED: "application_status_changed" as const,
   // Admin monitoring variants (paired with personal events above)
   SHIFT_STARTED_ADMIN: "shift_started_admin" as const,
   SHIFT_ENDED_ADMIN: "shift_ended_admin" as const,
@@ -326,6 +330,8 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   expense_submitted: "normal",
   time_off_requested: "normal",
   period_logged: "normal",
+  application_submitted: "high",
+  application_status_changed: "normal",
 };
 
 /** Entity types for notifications (entity_type in payload). */
@@ -356,6 +362,7 @@ export const NOTIFICATION_ENTITY = {
   TIP: "tip",
   REBILL: "rebill",
   MODEL_SCHEDULE: "model_schedule",
+  APPLICATION_FORM_RESPONSE: "application_form_response",
 } as const;
 
 /** Priorities. */
