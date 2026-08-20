@@ -472,6 +472,13 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.CREDENTIALS_VIEW,
   },
   {
+    href: ROUTES.admin.applicationForms,
+    label: "Applications",
+    iconKey: "FileText",
+    navSection: "TEAM",
+    requiresPermission: PERMISSIONS.APPLICATIONS_VIEW,
+  },
+  {
     href: ROUTES.admin.clients,
     label: "Clients",
     iconKey: "Users",

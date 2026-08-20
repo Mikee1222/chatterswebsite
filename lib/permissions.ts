@@ -158,6 +158,10 @@ export const PERMISSIONS = {
   CREDENTIALS_VIEW: "credentials:view",
   CREDENTIALS_MANAGE: "credentials:manage",
 
+  /** Recruitment / application form builder — opt-in via Roles UI (admin default only). */
+  APPLICATIONS_VIEW: "applications:view",
+  APPLICATIONS_MANAGE: "applications:manage",
+
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -265,6 +269,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   my_profiles: "My profiles",
   activity_logs: "Activity logs",
   credentials: "Password Library",
+  applications: "Applications",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -436,6 +441,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "credentials:view": "Προβολή κρυπτογραφημένης Password Library (masked, reveal/copy με audit)",
   "credentials:manage": "Δημιουργία, επεξεργασία, διαγραφή καταχωρήσεων και προβολή audit log",
+
+  "applications:view": "Προβολή φορμών αιτήσεων και απαντήσεων υποψηφίων",
+  "applications:manage": "Δημιουργία/επεξεργασία φορμών αιτήσεων και διαχείριση pipeline υποψηφίων",
 };
 
 export type PermissionGroup = {
@@ -474,6 +482,8 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.VIDEO_TRANSCRIBE_ACCESS,
   PERMISSIONS.CREDENTIALS_VIEW,
   PERMISSIONS.CREDENTIALS_MANAGE,
+  PERMISSIONS.APPLICATIONS_VIEW,
+  PERMISSIONS.APPLICATIONS_MANAGE,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [

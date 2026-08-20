@@ -149,10 +149,21 @@ export const ROUTES = {
     roles: "/admin/roles",
     linkPages: "/admin/link-pages",
     credentialsVault: "/admin/credentials-vault",
+    /** Recruitment form builder + response dashboard */
+    applicationForms: "/admin/application-forms",
+    applicationFormDetail: (id: string) =>
+      `/admin/application-forms/${encodeURIComponent(id)}`,
+    applicationFormResponses: (id: string) =>
+      `/admin/application-forms/${encodeURIComponent(id)}/responses`,
+    applicationFormResponseDetail: (formId: string, responseId: string) =>
+      `/admin/application-forms/${encodeURIComponent(formId)}/responses/${encodeURIComponent(responseId)}`,
   },
 
   /** Public link-in-bio pages */
   linkPage: (slug: string) => `/l/${encodeURIComponent(slug)}`,
+
+  /** Public recruitment / application form (no login) */
+  applyForm: (slug: string) => `/apply/${encodeURIComponent(slug)}`,
 
   /** Model (role: model) – modelss-linked user */
   model: {

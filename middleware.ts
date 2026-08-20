@@ -7,7 +7,7 @@ import { isVaReadableAdminSchedulePath, permissionForSharedAdminPath } from "@/l
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getLinkPageByCustomDomainFresh } from "@/services/link-pages";
 
-const PUBLIC_PATHS = [ROUTES.login, "/l/", "/r/", "/api/l/"];
+const PUBLIC_PATHS = [ROUTES.login, "/l/", "/r/", "/api/l/", "/apply/", "/api/apply/"];
 
 /** Paths that must never be blocked by auth (PWA, static assets, public link pages). Bypass auth and return next() immediately. */
 const PUBLIC_ASSET_PREFIXES = [
@@ -35,7 +35,15 @@ function isPublicAssetPath(pathname: string): boolean {
 }
 
 function isPublicAppPath(pathname: string): boolean {
-  if (pathname.startsWith("/l/") || pathname.startsWith("/r/") || pathname.startsWith("/api/l/")) return true;
+  if (
+    pathname.startsWith("/l/") ||
+    pathname.startsWith("/r/") ||
+    pathname.startsWith("/api/l/") ||
+    pathname.startsWith("/apply/") ||
+    pathname.startsWith("/api/apply/")
+  ) {
+    return true;
+  }
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
@@ -150,6 +158,6 @@ export async function middleware(request: NextRequest) {
 // Run middleware for app routes only; do NOT run for static/PWA assets (they bypass auth via isPublicAssetPath if they ever hit middleware)
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|api|l/|r/|apple-touch-icon|icon\\.svg|icon-\\d|icons/|manifest|sw\\.js|workbox-|fonts/|images/).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api|l/|r/|apply/|apple-touch-icon|icon\\.svg|icon-\\d|icons/|manifest|sw\\.js|workbox-|fonts/|images/).*)",
   ],
 };
