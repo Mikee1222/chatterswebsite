@@ -3,6 +3,7 @@
  * Pure derive + thin loader — no sync logic. Correlation ≠ causation in all copy.
  */
 
+import { ymdInAthens } from "@/lib/airtable-datetime";
 import { computeModelEngagementRate } from "@/lib/instagram-insights-stats";
 import {
   queryClarioSuiteDailyInsights,
@@ -197,7 +198,8 @@ function revenueByDate(txs: CreatorTransactionRow[]): Map<string, number> {
   const map = new Map<string, number>();
   for (const t of txs) {
     if (!t.created_time) continue;
-    const ymd = toYmd(t.created_time);
+    const ymd = ymdInAthens(t.created_time);
+    if (!ymd) continue;
     map.set(ymd, (map.get(ymd) ?? 0) + creatorTxRevenueAmount(t));
   }
   return map;

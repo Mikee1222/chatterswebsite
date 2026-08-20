@@ -51,8 +51,10 @@ import {
   queryClarioSuiteTopPosts,
 } from "@/services/clariosuite-sync";
 import {
+  filterCreatorTransactionsInAthensYmdRange,
   listCreatorDailyStats,
   listCreatorTransactions,
+  sumCreatorTxRevenue,
   type CreatorDailyStatsRow,
   type CreatorTransactionRow,
 } from "@/services/infloww-creator-earnings";
@@ -587,22 +589,6 @@ function toCrossPlatformTopPosts(posts: FullTopPost[]): Array<{
   }));
 }
 
-function filterTxInRange(
-  rows: CreatorTransactionRow[],
-  startYmd: string,
-  endYmd: string
-): CreatorTransactionRow[] {
-  return rows.filter((t) => {
-    if (!t.created_time) return false;
-    const ymd = t.created_time.slice(0, 10);
-    return ymd >= startYmd && ymd <= endYmd;
-  });
-}
-
-function sumOfRevenue(txs: CreatorTransactionRow[]): number {
-  return txs.reduce((s, t) => s + (Number.isFinite(t.amount) ? t.amount : 0), 0);
-}
-
 function buildWeeklyCrossPlatformSection(params: {
   modelId: string;
   modelName: string;
@@ -618,7 +604,11 @@ function buildWeeklyCrossPlatformSection(params: {
   const { startYmd, endYmd } = params.boundary;
   const weekIg = params.igDaily.filter((d) => d.date >= startYmd && d.date <= endYmd);
   const weekOf = params.ofDaily.filter((d) => d.date >= startYmd && d.date <= endYmd);
-  const weekTx = filterTxInRange(params.ofTransactions, startYmd, endYmd);
+  const weekTx = filterCreatorTransactionsInAthensYmdRange(
+    params.ofTransactions,
+    startYmd,
+    endYmd
+  );
 
   if (weekIg.length === 0 && weekOf.length === 0) return null;
 
@@ -629,7 +619,13 @@ function buildWeeklyCrossPlatformSection(params: {
   const prevOf = params.allOfDaily.filter(
     (d) => d.date >= prev.startYmd && d.date <= prev.endYmd
   );
-  const prevGross = sumOfRevenue(filterTxInRange(params.allOfTx, prev.startYmd, prev.endYmd));
+  const prevGross = sumCreatorTxRevenue(
+    filterCreatorTransactionsInAthensYmdRange(
+      params.allOfTx,
+      prev.startYmd,
+      prev.endYmd
+    )
+  );
 
   const analytics = deriveCrossPlatformAnalytics({
     modelRecordId: params.modelId,
@@ -660,7 +656,7 @@ function buildWeeklyCrossPlatformSection(params: {
   const of_totals = {
     new_subscribers: analytics.growth_alignment.of_new_subscribers_total,
     profile_visitors: chart.reduce((s, d) => s + d.profile_visitors, 0),
-    revenue: chart.reduce((s, d) => s + d.revenue, 0),
+    revenue: sumCreatorTxRevenue(weekTx),
   };
 
   return { analytics, chart, of_totals };

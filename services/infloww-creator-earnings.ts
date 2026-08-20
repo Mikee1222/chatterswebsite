@@ -7,7 +7,12 @@
  * creator.id === model_id (rare), of_user_id === platformPid, or unique name.
  */
 
-import { addDaysAthensYmd, athensYmdStartUtcMs, athensYmdEndUtcMs } from "@/lib/airtable-datetime";
+import {
+  addDaysAthensYmd,
+  athensYmdStartUtcMs,
+  athensYmdEndUtcMs,
+  ymdInAthens,
+} from "@/lib/airtable-datetime";
 import {
   EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS,
   fetchAllCreatorLinkTypes,
@@ -77,6 +82,25 @@ export function inflowwStatsRangeToCreatedTimeIso(params: {
     startIso: new Date(athensYmdStartUtcMs(params.startYmd)).toISOString(),
     endIso: new Date(athensYmdEndUtcMs(params.endYmd)).toISOString(),
   };
+}
+
+/** Sum creator-share revenue for transaction rows (matches Infloww dashboard totals). */
+export function sumCreatorTxRevenue(
+  rows: Array<{ amount: number; fee: number; net: number }>
+): number {
+  return rows.reduce((s, t) => s + creatorTxRevenueAmount(t), 0);
+}
+
+/** Filter pre-fetched txs to an Infloww stats YMD range on the Athens calendar. */
+export function filterCreatorTransactionsInAthensYmdRange<
+  T extends { created_time: string | null },
+>(rows: T[], startYmd: string, endYmd: string): T[] {
+  return rows.filter((t) => {
+    if (!t.created_time) return false;
+    const ymd = ymdInAthens(t.created_time);
+    if (!ymd) return false;
+    return ymd >= startYmd && ymd <= endYmd;
+  });
 }
 
 export type LinkedCreatorModel = {
