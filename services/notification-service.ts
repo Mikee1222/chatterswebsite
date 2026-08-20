@@ -10,9 +10,10 @@
  *    → Admin sets defaults per role in /admin/roles (personal / broadcast / none per role)
  *    → Applied when user is created or resets preferences
  *
- * 3. USER PREFERENCES (notification_preferences Airtable table)
- *    → User can override role defaults in /settings
- *    → Final authority on push delivery after routing + role defaults
+ * 3. USER PREFERENCES (notification_preferences)
+ *    → Category toggles + sparse event_overrides JSON
+ *    → Dispatch: event override → category column(s) → role default
+ *    → Final authority on push and in-app after routing + role defaults
  */
 
 import { createNotification, getUnreadCount } from "./notifications";
@@ -35,6 +36,7 @@ import {
   EVENT_TO_ROLE_CATEGORY,
   getEventDefaultValue,
   getNotificationEventEntry,
+  getPersonalEventOverride,
   getScopeForRole,
   type NotificationRoleCategoryKey,
 } from "@/lib/notification-role-defaults";
@@ -451,6 +453,36 @@ function isPersonalCategoryEnabled(
   return prefs[key] === true;
 }
 
+/**
+ * Personal pref gate for a specific event (push + in-app).
+ * Precedence: event_overrides[event] → category column(s).
+ * When no event override, enforces preferenceKeysToEnforce (incl. phase→task dual-key).
+ * Explicit event override ON allows the event even if a secondary storage category is off.
+ */
+function isPersonalEventAllowed(
+  prefs: NotificationPreference,
+  eventType: NotificationEventType,
+  category: NotificationCategory,
+  entityType?: string,
+  triggerSource?: string
+): { allowed: boolean; skipReason?: string } {
+  const override = getPersonalEventOverride(prefs.event_overrides, eventType);
+  if (typeof override === "boolean") {
+    if (!override) {
+      return { allowed: false, skipReason: `event preference ${eventType} is false` };
+    }
+    return { allowed: true };
+  }
+
+  const categoryKeys = preferenceKeysToEnforce(eventType, category, entityType, triggerSource);
+  for (const categoryKey of categoryKeys) {
+    if (!isPersonalCategoryEnabled(prefs, categoryKey)) {
+      return { allowed: false, skipReason: `category preference ${categoryKey} is false` };
+    }
+  }
+  return { allowed: true };
+}
+
 async function getRecipientPushContext(userId: string): Promise<{
   role: UserRole | undefined;
   roleDefaults: NotificationRoleDefaults | null;
@@ -555,11 +587,9 @@ function shouldSendPush(
 ): { send: boolean; skipReason?: string } {
   if (prefs.mute_all) return { send: false, skipReason: "mute_all is true" };
   if (!prefs.push_enabled) return { send: false, skipReason: "push_enabled is false" };
-  const categoryKeys = preferenceKeysToEnforce(eventType, category, entityType, triggerSource);
-  for (const categoryKey of categoryKeys) {
-    if (!isPersonalCategoryEnabled(prefs, categoryKey)) {
-      return { send: false, skipReason: `category preference ${categoryKey} is false` };
-    }
+  const personal = isPersonalEventAllowed(prefs, eventType, category, entityType, triggerSource);
+  if (!personal.allowed) {
+    return { send: false, skipReason: personal.skipReason };
   }
   if (roleDefaults) {
     const roleCategoryKey = EVENT_TO_ROLE_CATEGORY[eventType];
@@ -837,20 +867,27 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (prefs) {
-    for (const categoryKey of preferenceKeys) {
-      if (!isPersonalCategoryEnabled(prefs, categoryKey)) {
-        devLog(NOTIF, "skip", JSON.stringify({
-          reason: `category preference ${categoryKey} is false`,
-          recipient_user_id: options.user_id,
-          preference_keys_checked: preferenceKeys,
-        }));
-        logNotifyPushOutcome(options, {
-          push_sent: false,
-          outcome_stage: "skipped_category_pref_false",
-          detail: `category preference ${categoryKey} is false; notification and push skipped`,
-        });
-        return { notification: null, pushSent: false };
-      }
+    const personal = isPersonalEventAllowed(
+      prefs,
+      options.event_type,
+      category,
+      options.entity_type,
+      options._triggerSource
+    );
+    if (!personal.allowed) {
+      devLog(NOTIF, "skip", JSON.stringify({
+        reason: personal.skipReason,
+        recipient_user_id: options.user_id,
+        preference_keys_checked: preferenceKeys,
+        event_override:
+          getPersonalEventOverride(prefs.event_overrides, options.event_type) ?? null,
+      }));
+      logNotifyPushOutcome(options, {
+        push_sent: false,
+        outcome_stage: "skipped_category_pref_false",
+        detail: `${personal.skipReason}; notification and push skipped`,
+      });
+      return { notification: null, pushSent: false };
     }
   }
 

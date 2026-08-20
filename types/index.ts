@@ -1309,6 +1309,9 @@ export interface AppNotification {
   metadata?: NotificationMetadataItem[];
 }
 
+/** Sparse per-event personal overrides on notification_preferences.event_overrides. */
+export type NotificationEventOverrides = Partial<Record<string, boolean>>;
+
 export interface NotificationPreference {
   id: string;
   preference_id: string;
@@ -1331,6 +1334,11 @@ export interface NotificationPreference {
   billing_alerts: boolean;
   training_alerts: boolean;
   schedule_alerts: boolean;
+  /**
+   * Per-event-type personal overrides (JSON). Dispatch checks these before
+   * category columns. Missing key → fall back to the category toggle.
+   */
+  event_overrides: NotificationEventOverrides;
   quiet_hours_start: string;
   quiet_hours_end: string;
   mute_all: boolean;

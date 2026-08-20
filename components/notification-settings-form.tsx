@@ -11,6 +11,7 @@ import {
   BookOpen,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Coins,
   Cpu,
@@ -20,6 +21,7 @@ import {
   ListTodo,
   Megaphone,
   Moon,
+  RotateCcw,
   ShieldAlert,
   Sparkles,
   Trophy,
@@ -33,11 +35,22 @@ import { FormInput } from "@/components/ui/form-input";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { ButtonSecondary } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import type { NotificationPreference, UserRole } from "@/types";
+import type { NotificationEventOverrides, NotificationPreference, UserRole } from "@/types";
 import {
+  NOTIFICATION_CATEGORY_EVENTS,
   NOTIFICATION_CATEGORY_LABELS,
+  categoryEventOverridesDifferFromRole,
+  clearCategoryEventOverrides,
+  eventOverridesFromRoleDefaults,
+  getEventDefaultValue,
+  getPersonalEventPreference,
   notificationCategoryDefaultsEqual,
+  parseEventDescriptionFromEntry,
+  parseEventKeyFromEntry,
+  parseEventLabelFromEntry,
   preferenceCategoryFieldsFromPrefs,
+  serializeEventOverrides,
+  setEventOverrideRelativeToCategory,
   type NotificationRoleCategoryKey,
   type NotificationRoleDefaults,
 } from "@/lib/notification-role-defaults";
@@ -87,45 +100,72 @@ function SettingsSection({
 function Switch({
   id,
   checked,
+  indeterminate,
   onChange,
+  size = "default",
 }: {
   id: string;
   checked: boolean;
+  indeterminate?: boolean;
   onChange: (next: boolean) => void;
+  size?: "default" | "small";
 }) {
   const reduceMotion = useReducedMotion();
+  const isSmall = size === "small";
+  const trackClass = isSmall ? "h-8 w-[3.25rem]" : "h-11 w-[4.5rem]";
+  const thumbClass = isSmall ? "h-[22px] w-[22px]" : "h-8 w-8";
+  const thumbOffset = isSmall ? 22 : 30;
+  const thumbLeft = isSmall ? "left-[3px] top-[3px]" : "left-[5px] top-[5px]";
+
+  const ariaChecked: boolean | "mixed" = indeterminate ? "mixed" : checked;
+  const visualOn = indeterminate ? true : checked;
 
   return (
     <button
       type="button"
       id={id}
       role="switch"
-      aria-checked={checked}
-      onClick={() => onChange(!checked)}
+      aria-checked={ariaChecked}
+      onClick={() => onChange(indeterminate ? true : !checked)}
       className={cn(
-        "relative h-11 w-[4.5rem] shrink-0 cursor-pointer rounded-full border-2 outline-none transition-[background-color,box-shadow,border-color,transform] duration-300 ease-out",
+        "relative shrink-0 cursor-pointer rounded-full border-2 outline-none transition-[background-color,box-shadow,border-color,transform] duration-300 ease-out",
+        trackClass,
         "focus-visible:ring-2 focus-visible:ring-pink-500/55 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]",
         "active:scale-[0.98]",
-        checked
+        visualOn
           ? "border-pink-300/45 bg-gradient-to-r from-pink-500 via-fuchsia-600 to-purple-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_0_32px_-6px_hsl(330_80%_55%/0.55)]"
           : "border-white/18 bg-[#262626] shadow-[inset_0_2px_8px_rgba(0,0,0,0.45)] hover:border-white/25"
       )}
     >
-      <motion.span
-        className={cn(
-          "pointer-events-none absolute left-[5px] top-[5px] h-8 w-8 rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.45)]",
-          checked
-            ? "bg-white ring-2 ring-pink-200/35"
-            : "bg-gradient-to-b from-white to-white/88 ring-1 ring-black/30"
-        )}
-        initial={false}
-        animate={{ x: checked ? 30 : 0 }}
-        transition={
-          reduceMotion
-            ? { duration: 0.12, ease: "easeOut" }
-            : { type: "spring", stiffness: 480, damping: 32, mass: 0.62 }
-        }
-      />
+      {indeterminate ? (
+        <span
+          className={cn(
+            "pointer-events-none absolute inset-0 flex items-center justify-center",
+            isSmall ? "px-2" : "px-3"
+          )}
+          aria-hidden
+        >
+          <span className="h-0.5 w-3.5 rounded-full bg-white/90 shadow-[0_1px_2px_rgba(0,0,0,0.35)]" />
+        </span>
+      ) : (
+        <motion.span
+          className={cn(
+            "pointer-events-none absolute rounded-full shadow-[0_2px_10px_rgba(0,0,0,0.45)]",
+            thumbClass,
+            thumbLeft,
+            checked
+              ? "bg-white ring-2 ring-pink-200/35"
+              : "bg-gradient-to-b from-white to-white/88 ring-1 ring-black/30"
+          )}
+          initial={false}
+          animate={{ x: checked ? thumbOffset : 0 }}
+          transition={
+            reduceMotion
+              ? { duration: 0.12, ease: "easeOut" }
+              : { type: "spring", stiffness: 480, damping: 32, mass: 0.62 }
+          }
+        />
+      )}
     </button>
   );
 }
@@ -136,6 +176,7 @@ function NotificationToggleField({
   description,
   icon,
   checked,
+  indeterminate,
   onChange,
   modified,
 }: {
@@ -144,6 +185,7 @@ function NotificationToggleField({
   description?: string;
   icon: React.ReactNode;
   checked: boolean;
+  indeterminate?: boolean;
   onChange: (v: boolean) => void;
   modified?: boolean;
 }) {
@@ -156,7 +198,7 @@ function NotificationToggleField({
             Modified
           </span>
         ) : null}
-        <Switch id={switchId} checked={checked} onChange={onChange} />
+        <Switch id={switchId} checked={checked} indeterminate={indeterminate} onChange={onChange} />
       </div>
     </FormField>
   );
@@ -186,6 +228,32 @@ const CATEGORY_TOGGLES: Array<{
   { key: "system", name: "system_alerts", label: NOTIFICATION_CATEGORY_LABELS.system.en, group: "FINANCE & ADMIN", icon: Cpu },
 ];
 
+function getCategoryEventStates(
+  categoryKey: NotificationRoleCategoryKey,
+  categoryEnabled: boolean,
+  eventOverrides: NotificationEventOverrides
+): boolean[] {
+  return NOTIFICATION_CATEGORY_EVENTS[categoryKey].map((entry) =>
+    getPersonalEventPreference(eventOverrides, parseEventKeyFromEntry(entry), categoryEnabled)
+  );
+}
+
+function getCategorySwitchState(
+  categoryKey: NotificationRoleCategoryKey,
+  categoryEnabled: boolean,
+  eventOverrides: NotificationEventOverrides
+): { checked: boolean; indeterminate: boolean } {
+  const states = getCategoryEventStates(categoryKey, categoryEnabled, eventOverrides);
+  if (states.length === 0) {
+    return { checked: categoryEnabled, indeterminate: false };
+  }
+  const allOn = states.every((s) => s);
+  const allOff = states.every((s) => !s);
+  if (allOn) return { checked: true, indeterminate: false };
+  if (allOff) return { checked: false, indeterminate: false };
+  return { checked: false, indeterminate: true };
+}
+
 export function NotificationSettingsForm({
   prefs,
   userRole,
@@ -214,9 +282,13 @@ export function NotificationSettingsForm({
   const [billingAlerts, setBillingAlerts] = React.useState(prefs.billing_alerts ?? true);
   const [trainingAlerts, setTrainingAlerts] = React.useState(prefs.training_alerts ?? true);
   const [scheduleAlerts, setScheduleAlerts] = React.useState(prefs.schedule_alerts ?? true);
+  const [eventOverrides, setEventOverrides] = React.useState<NotificationEventOverrides>(
+    prefs.event_overrides ?? {}
+  );
   const [muteAll, setMuteAll] = React.useState(prefs.mute_all);
   const [quietStart, setQuietStart] = React.useState(prefs.quiet_hours_start?.trim() ?? "");
   const [quietEnd, setQuietEnd] = React.useState(prefs.quiet_hours_end?.trim() ?? "");
+  const [expandedCategories, setExpandedCategories] = React.useState<Partial<Record<NotificationRoleCategoryKey, boolean>>>({});
 
   const [submitting, setSubmitting] = React.useState(false);
   const [resetting, setResetting] = React.useState(false);
@@ -244,26 +316,26 @@ export function NotificationSettingsForm({
     };
   }, [userRole]);
 
-  const currentCategories = React.useMemo(
-    () =>
-      preferenceCategoryFieldsFromPrefs({
-        ...prefs,
-        shift_alerts: shiftAlerts,
-        whale_alerts: whaleAlerts,
-        model_alerts: modelAlerts,
-        system_alerts: systemAlerts,
-        task_alerts: taskAlerts,
-        mistake_alerts: mistakeAlerts,
-        fine_bonus_alerts: fineBonusAlerts,
-        period_alerts: periodAlerts,
-        marketing_alerts: marketingAlerts,
-        phase_alerts: phaseAlerts,
-        reward_alerts: rewardAlerts,
-        custom_request_alerts: customRequestAlerts,
-        billing_alerts: billingAlerts,
-        training_alerts: trainingAlerts,
-        schedule_alerts: scheduleAlerts,
-      }),
+  const currentPrefsSnapshot = React.useMemo(
+    (): NotificationPreference => ({
+      ...prefs,
+      shift_alerts: shiftAlerts,
+      whale_alerts: whaleAlerts,
+      model_alerts: modelAlerts,
+      system_alerts: systemAlerts,
+      task_alerts: taskAlerts,
+      mistake_alerts: mistakeAlerts,
+      fine_bonus_alerts: fineBonusAlerts,
+      period_alerts: periodAlerts,
+      marketing_alerts: marketingAlerts,
+      phase_alerts: phaseAlerts,
+      reward_alerts: rewardAlerts,
+      custom_request_alerts: customRequestAlerts,
+      billing_alerts: billingAlerts,
+      training_alerts: trainingAlerts,
+      schedule_alerts: scheduleAlerts,
+      event_overrides: eventOverrides,
+    }),
     [
       prefs,
       shiftAlerts,
@@ -281,17 +353,31 @@ export function NotificationSettingsForm({
       billingAlerts,
       trainingAlerts,
       scheduleAlerts,
+      eventOverrides,
     ]
   );
 
-  const categoryModified = React.useCallback(
-    (key: NotificationRoleCategoryKey) =>
-      roleDefaults != null && currentCategories[key] !== roleDefaults[key],
-    [roleDefaults, currentCategories]
+  const currentCategories = React.useMemo(
+    () => preferenceCategoryFieldsFromPrefs(currentPrefsSnapshot),
+    [currentPrefsSnapshot]
   );
 
-  const hasCategoryOverrides =
-    roleDefaults != null && !notificationCategoryDefaultsEqual(currentCategories, roleDefaults);
+  const categoryModified = React.useCallback(
+    (key: NotificationRoleCategoryKey) => {
+      if (roleDefaults == null) return false;
+      if (currentCategories[key] !== roleDefaults[key]) return true;
+      return categoryEventOverridesDifferFromRole(currentPrefsSnapshot, roleDefaults, key);
+    },
+    [roleDefaults, currentCategories, currentPrefsSnapshot]
+  );
+
+  const hasCategoryOverrides = React.useMemo(() => {
+    if (roleDefaults == null) return false;
+    if (!notificationCategoryDefaultsEqual(currentCategories, roleDefaults)) return true;
+    return CATEGORY_TOGGLES.some(({ key }) =>
+      categoryEventOverridesDifferFromRole(currentPrefsSnapshot, roleDefaults, key)
+    );
+  }, [roleDefaults, currentCategories, currentPrefsSnapshot]);
 
   React.useEffect(() => {
     setPushEnabled(prefs.push_enabled);
@@ -312,10 +398,83 @@ export function NotificationSettingsForm({
     setBillingAlerts(prefs.billing_alerts ?? true);
     setTrainingAlerts(prefs.training_alerts ?? true);
     setScheduleAlerts(prefs.schedule_alerts ?? true);
+    setEventOverrides(prefs.event_overrides ?? {});
     setMuteAll(prefs.mute_all);
     setQuietStart(prefs.quiet_hours_start?.trim() ?? "");
     setQuietEnd(prefs.quiet_hours_end?.trim() ?? "");
   }, [prefs]);
+
+  function toggleCategoryExpanded(key: NotificationRoleCategoryKey) {
+    setExpandedCategories((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function handleCategoryToggle(key: NotificationRoleCategoryKey, next: boolean) {
+    const state = categoryState[key];
+    state.setter(next);
+    setEventOverrides((prev) => clearCategoryEventOverrides(prev, key));
+  }
+
+  function handleEventToggle(
+    categoryKey: NotificationRoleCategoryKey,
+    eventKey: string,
+    enabled: boolean
+  ) {
+    const categoryEnabled = categoryState[categoryKey].value;
+
+    if (enabled && !categoryEnabled) {
+      categoryState[categoryKey].setter(true);
+      setEventOverrides((prev) => {
+        const next = { ...prev };
+        for (const entry of NOTIFICATION_CATEGORY_EVENTS[categoryKey]) {
+          const key = parseEventKeyFromEntry(entry);
+          if (key === eventKey) {
+            delete next[key];
+          } else {
+            next[key] = false;
+          }
+        }
+        return next;
+      });
+      return;
+    }
+
+    setEventOverrides((prev) =>
+      setEventOverrideRelativeToCategory(prev, eventKey, enabled, categoryEnabled)
+    );
+  }
+
+  function resetCategoryToRoleDefaults(categoryKey: NotificationRoleCategoryKey) {
+    if (!roleDefaults) return;
+    categoryState[categoryKey].setter(roleDefaults[categoryKey]);
+    const roleOverrides = eventOverridesFromRoleDefaults(roleDefaults);
+    setEventOverrides((prev) => {
+      let next = clearCategoryEventOverrides(prev, categoryKey);
+      for (const entry of NOTIFICATION_CATEGORY_EVENTS[categoryKey]) {
+        const eventKey = parseEventKeyFromEntry(entry);
+        if (typeof roleOverrides[eventKey] === "boolean") {
+          next[eventKey] = roleOverrides[eventKey]!;
+        }
+      }
+      return next;
+    });
+  }
+
+  function resetEventToRoleDefault(categoryKey: NotificationRoleCategoryKey, eventKey: string) {
+    if (!roleDefaults) return;
+    const roleVal = getEventDefaultValue(roleDefaults, categoryKey, eventKey);
+    const categoryEnabled = categoryState[categoryKey].value;
+    setEventOverrides((prev) =>
+      setEventOverrideRelativeToCategory(prev, eventKey, roleVal, categoryEnabled)
+    );
+  }
+
+  function eventDiffersFromRoleDefault(categoryKey: NotificationRoleCategoryKey, eventKey: string): boolean {
+    if (!roleDefaults) return false;
+    const categoryEnabled = categoryState[categoryKey].value;
+    const personal = getPersonalEventPreference(eventOverrides, eventKey, categoryEnabled);
+    const roleVal = getEventDefaultValue(roleDefaults, categoryKey, eventKey);
+    return personal !== roleVal;
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -344,6 +503,7 @@ export function NotificationSettingsForm({
       if (muteAll) fd.set("mute_all", "on");
       fd.set("quiet_hours_start", quietStart.trim());
       fd.set("quiet_hours_end", quietEnd.trim());
+      fd.set("event_overrides", serializeEventOverrides(eventOverrides));
 
       const res = await updateMyNotificationPreferences(fd);
       if (!res.ok) {
@@ -385,6 +545,7 @@ export function NotificationSettingsForm({
         setBillingAlerts(roleDefaults.billing_alerts);
         setTrainingAlerts(roleDefaults.training_alerts);
         setScheduleAlerts(roleDefaults.schedule_alerts);
+        setEventOverrides(eventOverridesFromRoleDefaults(roleDefaults));
       }
       setMessage({ type: "success", text: "Category preferences reset to your role defaults." });
       setResetOpen(false);
@@ -456,7 +617,7 @@ export function NotificationSettingsForm({
         <SettingsSection
           icon={Sparkles}
           title="Categories"
-          subtitle="Fine-tune what kinds of updates you care about."
+          subtitle="Fine-tune what kinds of updates you care about — expand a category for per-event control."
         >
           {roleDefaults ? (
             <div className="mb-6 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-sm leading-relaxed text-sky-100/90">
@@ -468,20 +629,138 @@ export function NotificationSettingsForm({
             {categoryGroups.map((group) => (
               <div key={group} className="space-y-3">
                 <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">{group}</p>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   {CATEGORY_TOGGLES.filter((item) => item.group === group).map((item) => {
                     const Icon = item.icon;
                     const state = categoryState[item.key];
+                    const categoryExpanded = expandedCategories[item.key] ?? false;
+                    const switchState = getCategorySwitchState(item.key, state.value, eventOverrides);
+                    const categoryEvents = NOTIFICATION_CATEGORY_EVENTS[item.key];
+                    const switchId = `notif-switch-${item.name}`;
+
                     return (
-                      <NotificationToggleField
+                      <div
                         key={item.name}
-                        name={item.name}
-                        label={item.label}
-                        icon={<Icon />}
-                        checked={state.value}
-                        onChange={state.setter}
-                        modified={categoryModified(item.key)}
-                      />
+                        className="overflow-hidden rounded-xl border border-white/[0.08] bg-black/15"
+                      >
+                        <div className="flex items-start gap-3 px-4 py-3.5 md:px-5">
+                          <button
+                            type="button"
+                            onClick={() => toggleCategoryExpanded(item.key)}
+                            className="mt-0.5 flex min-w-0 flex-1 items-start gap-2 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-pink-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a0a]"
+                            aria-expanded={categoryExpanded}
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "mt-1 h-4 w-4 shrink-0 text-white/40 transition-transform duration-200",
+                                categoryExpanded && "rotate-180"
+                              )}
+                              aria-hidden
+                            />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex flex-wrap items-center gap-2">
+                                <Icon className="h-4 w-4 shrink-0 text-pink-200/70" aria-hidden />
+                                <span className="text-sm font-semibold text-white md:text-base">{item.label}</span>
+                                {categoryModified(item.key) ? (
+                                  <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200 ring-1 ring-amber-400/30">
+                                    Modified
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span className="mt-0.5 block text-xs leading-relaxed text-white/45">
+                                {categoryEvents.length} event{categoryEvents.length === 1 ? "" : "s"} — tap to{" "}
+                                {categoryExpanded ? "collapse" : "expand"}
+                              </span>
+                            </span>
+                          </button>
+                          <Switch
+                            id={switchId}
+                            checked={switchState.checked}
+                            indeterminate={switchState.indeterminate}
+                            onChange={(next) => handleCategoryToggle(item.key, next)}
+                          />
+                        </div>
+
+                        <AnimatePresence initial={false}>
+                          {categoryExpanded ? (
+                            <motion.div
+                              key={`${item.key}-events`}
+                              initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                              transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+                              className="overflow-hidden"
+                            >
+                              <div className="border-t border-white/[0.06] bg-black/10 px-4 py-3 md:px-5">
+                                {categoryModified(item.key) && roleDefaults ? (
+                                  <div className="mb-3 flex justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={() => resetCategoryToRoleDefaults(item.key)}
+                                      className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-200/90 transition hover:text-sky-100"
+                                    >
+                                      <RotateCcw className="h-3 w-3" aria-hidden />
+                                      Reset category to role defaults
+                                    </button>
+                                  </div>
+                                ) : null}
+                                <ul className="space-y-3 border-l border-white/10 pl-4">
+                                  {categoryEvents.map((entry) => {
+                                    const eventKey = parseEventKeyFromEntry(entry);
+                                    const eventLabel = parseEventLabelFromEntry(entry);
+                                    const eventDescription = parseEventDescriptionFromEntry(entry);
+                                    const eventChecked = getPersonalEventPreference(
+                                      eventOverrides,
+                                      eventKey,
+                                      state.value
+                                    );
+                                    const eventSwitchId = `notif-event-${item.name}-${eventKey}`;
+                                    const eventModified = eventDiffersFromRoleDefault(item.key, eventKey);
+
+                                    return (
+                                      <li
+                                        key={eventKey}
+                                        className="flex items-start justify-between gap-3 py-1"
+                                      >
+                                        <label
+                                          htmlFor={eventSwitchId}
+                                          className="min-w-0 flex-1 cursor-pointer"
+                                        >
+                                          <p className="text-sm font-medium text-white/85">{eventLabel}</p>
+                                          {eventDescription ? (
+                                            <p className="mt-0.5 text-xs leading-relaxed text-white/45">
+                                              {eventDescription}
+                                            </p>
+                                          ) : null}
+                                          {eventModified && roleDefaults ? (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                resetEventToRoleDefault(item.key, eventKey);
+                                              }}
+                                              className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-sky-200/80 transition hover:text-sky-100"
+                                            >
+                                              <RotateCcw className="h-3 w-3" aria-hidden />
+                                              Reset
+                                            </button>
+                                          ) : null}
+                                        </label>
+                                        <Switch
+                                          id={eventSwitchId}
+                                          checked={eventChecked}
+                                          onChange={(next) => handleEventToggle(item.key, eventKey, next)}
+                                          size="small"
+                                        />
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+                      </div>
                     );
                   })}
                 </div>
@@ -606,7 +885,7 @@ export function NotificationSettingsForm({
         open={resetOpen}
         onClose={() => setResetOpen(false)}
         title="Reset to role defaults?"
-        description="This restores all category toggles to your role's defaults. Delivery settings (push, quiet hours, mute) are unchanged."
+        description="This restores all category toggles and per-event overrides to your role's defaults. Delivery settings (push, quiet hours, mute) are unchanged."
         confirmLabel="Reset categories"
         loading={resetting}
         onConfirm={handleResetToRoleDefaults}

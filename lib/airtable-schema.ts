@@ -76,6 +76,7 @@ export const AIRTABLE_TABLES: TableDef[] = [
       { name: "billing_alerts", def: { type: "checkbox" } },
       { name: "training_alerts", def: { type: "checkbox" } },
       { name: "schedule_alerts", def: { type: "checkbox" } },
+      { name: "event_overrides", def: { type: "multilineText" } },
       { name: "quiet_hours_start", def: { type: "singleLineText" } },
       { name: "quiet_hours_end", def: { type: "singleLineText" } },
       { name: "mute_all", def: { type: "checkbox" } },

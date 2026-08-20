@@ -1344,6 +1344,7 @@ export function notificationDefaultsToPreferenceFields(
   | "billing_alerts"
   | "training_alerts"
   | "schedule_alerts"
+  | "event_overrides"
 > {
   return {
     shift_alerts: defaults.shift,
@@ -1361,7 +1362,177 @@ export function notificationDefaultsToPreferenceFields(
     billing_alerts: defaults.billing_alerts,
     training_alerts: defaults.training_alerts,
     schedule_alerts: defaults.schedule_alerts,
+    event_overrides: eventOverridesFromRoleDefaults(defaults),
   };
+}
+
+/** Map Settings / Roles category key → notification_preferences column. */
+export const ROLE_CATEGORY_TO_PREF_COLUMN: Record<
+  NotificationRoleCategoryKey,
+  keyof Pick<
+    NotificationPreference,
+    | "shift_alerts"
+    | "whale_alerts"
+    | "model_alerts"
+    | "system_alerts"
+    | "task_alerts"
+    | "mistake_alerts"
+    | "fine_bonus_alerts"
+    | "period_alerts"
+    | "marketing_alerts"
+    | "phase_alerts"
+    | "reward_alerts"
+    | "custom_request_alerts"
+    | "billing_alerts"
+    | "training_alerts"
+    | "schedule_alerts"
+  >
+> = {
+  shift: "shift_alerts",
+  whale: "whale_alerts",
+  model: "model_alerts",
+  system: "system_alerts",
+  task: "task_alerts",
+  mistake: "mistake_alerts",
+  fine_bonus: "fine_bonus_alerts",
+  period: "period_alerts",
+  marketing: "marketing_alerts",
+  phase: "phase_alerts",
+  reward: "reward_alerts",
+  custom_request_alerts: "custom_request_alerts",
+  billing_alerts: "billing_alerts",
+  training_alerts: "training_alerts",
+  schedule_alerts: "schedule_alerts",
+};
+
+/** Parse event_overrides JSON from Airtable long text / Supabase jsonb. */
+export function parseEventOverrides(raw: unknown): NotificationPreference["event_overrides"] {
+  if (raw == null || raw === "") return {};
+  let obj: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      obj = JSON.parse(raw) as unknown;
+    } catch {
+      return {};
+    }
+  }
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return {};
+  const result: NotificationPreference["event_overrides"] = {};
+  for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+    if (typeof value === "boolean" && key.trim()) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+export function serializeEventOverrides(
+  overrides: NotificationPreference["event_overrides"] | null | undefined
+): string {
+  if (!overrides || Object.keys(overrides).length === 0) return "{}";
+  return JSON.stringify(overrides);
+}
+
+/** Strip `_admin` suffix when looking up personal event overrides. */
+export function baseEventKeyForOverride(eventKey: string): string {
+  return eventKey.endsWith("_admin") ? eventKey.slice(0, -"_admin".length) : eventKey;
+}
+
+/**
+ * Look up a sparse personal event override.
+ * Checks exact key first, then base (non-_admin) key.
+ */
+export function getPersonalEventOverride(
+  overrides: NotificationPreference["event_overrides"] | null | undefined,
+  eventKey: string
+): boolean | undefined {
+  if (!overrides) return undefined;
+  const exact = overrides[eventKey];
+  if (typeof exact === "boolean") return exact;
+  const base = baseEventKeyForOverride(eventKey);
+  if (base !== eventKey) {
+    const baseVal = overrides[base];
+    if (typeof baseVal === "boolean") return baseVal;
+  }
+  return undefined;
+}
+
+/**
+ * Effective personal preference for an event:
+ * event override → category column (caller supplies categoryEnabled).
+ */
+export function getPersonalEventPreference(
+  overrides: NotificationPreference["event_overrides"] | null | undefined,
+  eventKey: string,
+  categoryEnabled: boolean
+): boolean {
+  const override = getPersonalEventOverride(overrides, eventKey);
+  if (typeof override === "boolean") return override;
+  return categoryEnabled;
+}
+
+/** Build sparse event_overrides from role defaults (only keys that differ from category). */
+export function eventOverridesFromRoleDefaults(
+  defaults: NotificationRoleDefaults
+): NotificationPreference["event_overrides"] {
+  const overrides: NotificationPreference["event_overrides"] = {};
+  for (const catKey of NOTIFICATION_ROLE_DEFAULT_KEYS) {
+    const catOn = defaults[catKey];
+    for (const entry of NOTIFICATION_CATEGORY_EVENTS[catKey]) {
+      const eventKey = parseEventKeyFromEntry(entry);
+      const eventOn = getEventDefaultValue(defaults, catKey, eventKey);
+      if (eventOn !== catOn) {
+        overrides[eventKey] = eventOn;
+      }
+    }
+  }
+  return overrides;
+}
+
+/** Remove overrides for every event in a category (after toggle-all). */
+export function clearCategoryEventOverrides(
+  overrides: NotificationPreference["event_overrides"],
+  categoryKey: NotificationRoleCategoryKey
+): NotificationPreference["event_overrides"] {
+  const next = { ...overrides };
+  for (const entry of NOTIFICATION_CATEGORY_EVENTS[categoryKey]) {
+    delete next[parseEventKeyFromEntry(entry)];
+  }
+  return next;
+}
+
+/** Set or clear a single event override relative to the category master. */
+export function setEventOverrideRelativeToCategory(
+  overrides: NotificationPreference["event_overrides"],
+  eventKey: string,
+  enabled: boolean,
+  categoryEnabled: boolean
+): NotificationPreference["event_overrides"] {
+  const next = { ...overrides };
+  if (enabled === categoryEnabled) {
+    delete next[eventKey];
+  } else {
+    next[eventKey] = enabled;
+  }
+  return next;
+}
+
+/** Whether personal event overrides differ from role defaults for a category. */
+export function categoryEventOverridesDifferFromRole(
+  prefs: Pick<NotificationPreference, "event_overrides"> &
+    Partial<Record<(typeof ROLE_CATEGORY_TO_PREF_COLUMN)[NotificationRoleCategoryKey], boolean>>,
+  roleDefaults: NotificationRoleDefaults,
+  categoryKey: NotificationRoleCategoryKey
+): boolean {
+  const prefCol = ROLE_CATEGORY_TO_PREF_COLUMN[categoryKey];
+  const categoryEnabled = prefs[prefCol] === true;
+  for (const entry of NOTIFICATION_CATEGORY_EVENTS[categoryKey]) {
+    const eventKey = parseEventKeyFromEntry(entry);
+    const personal = getPersonalEventPreference(prefs.event_overrides, eventKey, categoryEnabled);
+    const roleVal = getEventDefaultValue(roleDefaults, categoryKey, eventKey);
+    if (personal !== roleVal) return true;
+  }
+  return false;
 }
 
 export function preferenceCategoryFieldsFromPrefs(

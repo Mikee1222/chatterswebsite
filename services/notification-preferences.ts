@@ -13,6 +13,8 @@ import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   getFallbackNotificationDefaults,
   notificationDefaultsToPreferenceFields,
+  parseEventOverrides,
+  serializeEventOverrides,
 } from "@/lib/notification-role-defaults";
 import { getNotificationDefaultsForRole } from "@/services/roles";
 import type { NotificationPreference } from "@/types";
@@ -40,6 +42,7 @@ type Fields = {
   billing_alerts?: boolean;
   training_alerts?: boolean;
   schedule_alerts?: boolean;
+  event_overrides?: string | NotificationPreference["event_overrides"];
   quiet_hours_start?: string;
   quiet_hours_end?: string;
   mute_all?: boolean;
@@ -70,11 +73,25 @@ function mapRecord(rec: AirtableRecord<Fields>): NotificationPreference {
     billing_alerts: f.billing_alerts !== false,
     training_alerts: f.training_alerts !== false,
     schedule_alerts: f.schedule_alerts !== false,
+    event_overrides: parseEventOverrides(f.event_overrides),
     quiet_hours_start: f.quiet_hours_start ?? "",
     quiet_hours_end: f.quiet_hours_end ?? "",
     mute_all: f.mute_all ?? false,
     updated_at: f.updated_at ?? "",
   };
+}
+
+function normalizeWriteFields(fields: Partial<Fields> & { event_overrides?: unknown }): Partial<Fields> {
+  const next = { ...fields } as Partial<Fields> & { event_overrides?: unknown };
+  if ("event_overrides" in next) {
+    const raw = next.event_overrides;
+    if (typeof raw === "string") {
+      next.event_overrides = raw;
+    } else {
+      next.event_overrides = serializeEventOverrides(parseEventOverrides(raw));
+    }
+  }
+  return next as Partial<Fields>;
 }
 
 export async function getPreferencesByUserId(userId: string): Promise<NotificationPreference | null> {
@@ -92,15 +109,18 @@ export async function listNotificationPreferences(params: ListParams & { filterB
   return { preferences: records.map(mapRecord), offset };
 }
 
-export async function createNotificationPreference(fields: Partial<Fields>) {
+export async function createNotificationPreference(fields: Partial<Fields> & { event_overrides?: unknown }) {
   if (isSupabaseBackend()) return (await import("./notification-preferences-supabase")).createNotificationPreference(fields);
-  const rec = await createRecord(TABLE, fields);
+  const rec = await createRecord(TABLE, normalizeWriteFields(fields));
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
-export async function updateNotificationPreference(recordId: string, fields: Partial<Fields>) {
+export async function updateNotificationPreference(
+  recordId: string,
+  fields: Partial<Fields> & { event_overrides?: unknown }
+) {
   if (isSupabaseBackend()) return (await import("./notification-preferences-supabase")).updateNotificationPreference(recordId, fields);
-  const rec = await updateRecord(TABLE, recordId, fields);
+  const rec = await updateRecord(TABLE, recordId, normalizeWriteFields(fields));
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
@@ -117,7 +137,7 @@ async function resolveCategoryDefaults(roleName?: string): Promise<Partial<Field
   const defaults = roleName
     ? await getNotificationDefaultsForRole(roleName)
     : getFallbackNotificationDefaults("");
-  return notificationDefaultsToPreferenceFields(defaults);
+  return notificationDefaultsToPreferenceFields(defaults) as Partial<Fields>;
 }
 
 /**

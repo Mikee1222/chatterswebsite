@@ -24,8 +24,7 @@ import {
 } from "@/services/roles";
 import {
   notificationDefaultsToPreferenceFields,
-  notificationDefaultsEqual,
-  preferenceCategoryFieldsFromPrefs,
+  parseEventOverrides,
 } from "@/lib/notification-role-defaults";
 import type { NotificationPreference } from "@/types";
 
@@ -74,7 +73,7 @@ export async function updateMyNotificationPreferences(
     const quiet_hours_start = (formData.get("quiet_hours_start") as string)?.trim() ?? "";
     const quiet_hours_end = (formData.get("quiet_hours_end") as string)?.trim() ?? "";
 
-    await updateNotificationPreference(prefs.id, {
+    const patch: Parameters<typeof updateNotificationPreference>[1] = {
       push_enabled,
       in_app_enabled,
       critical_only,
@@ -96,7 +95,17 @@ export async function updateMyNotificationPreferences(
       mute_all,
       quiet_hours_start,
       quiet_hours_end,
-    });
+    };
+
+    // Only overwrite event_overrides when the Settings form sends them (client form omits).
+    if (formData.has("event_overrides")) {
+      const raw = formData.get("event_overrides");
+      patch.event_overrides = parseEventOverrides(
+        typeof raw === "string" ? raw : "{}"
+      );
+    }
+
+    await updateNotificationPreference(prefs.id, patch);
     revalidatePath(ROUTES.settings);
     revalidatePath(ROUTES.client.settings);
     return { ok: true };

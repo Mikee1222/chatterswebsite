@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Languages, Play } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Clock, Languages, Play, Scale } from "lucide-react";
 import { ApplicationFormPreview } from "@/components/application-form-preview";
 import {
   ApplyFooter,
@@ -10,6 +10,14 @@ import {
 } from "@/components/application-public-chrome";
 import { ApplyButton } from "@/components/application-ui-buttons";
 import { TypingSpeedTestStep } from "@/components/typing-speed-test-step";
+import {
+  APPLICATION_AGREEMENT_VERSION,
+  agreementCopy,
+  formatAgreementMinutes,
+  getTimedPipelineNotices,
+  timedNoticeCopy,
+  type TimedPipelineNotice,
+} from "@/lib/application-agreement";
 import {
   CHOICE_QUESTION_TYPES,
   getEnabledPipelineSteps,
@@ -61,7 +69,7 @@ type Props = {
   cognitiveTimeLimit?: number;
 };
 
-type Phase = "language" | "intro" | PipelineStepType | "done";
+type Phase = "language" | "agreement" | "intro" | PipelineStepType | "done";
 
 const PIPELINE_UI_CHOOSE = "Choose your language / Επίλεξε γλώσσα";
 
@@ -84,6 +92,10 @@ export function PublicApplicationFlowClient({
     () => getEnabledPipelineSteps(pipelineConfig).map((s) => s.step),
     [pipelineConfig],
   );
+  const timedNotices = useMemo(
+    () => getTimedPipelineNotices(pipelineConfig),
+    [pipelineConfig],
+  );
   const needsScreeningIntro = enabled.some(
     (s) =>
       s === "cognitive_screening" || s === "eq_screening" || s === "typing_speed_test",
@@ -94,6 +106,9 @@ export function PublicApplicationFlowClient({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const [recordingConsent, setRecordingConsent] = useState(false);
+  const [showTimedNotice, setShowTimedNotice] = useState(false);
 
   const ui = pipelineUi(lang ?? "en");
   const desc = pickLocalized(lang ?? "en", description, descriptionEl);
@@ -172,6 +187,10 @@ export function PublicApplicationFlowClient({
 
   function advanceFrom(current: Phase) {
     if (current === "language") {
+      setPhase("agreement");
+      return;
+    }
+    if (current === "agreement") {
       setPhase(needsScreeningIntro ? "intro" : enabled[0] ?? "application_form");
       return;
     }
@@ -194,6 +213,7 @@ export function PublicApplicationFlowClient({
 
   async function onPickLanguage(next: PipelineLanguage) {
     setLang(next);
+    setAgreed(false);
     try {
       const sid = await startSession(next);
       await persistLang(next, sid);
@@ -206,6 +226,40 @@ export function PublicApplicationFlowClient({
   async function onSwitchLanguage(next: PipelineLanguage) {
     setLang(next);
     void persistLang(next);
+  }
+
+  async function onAgreeContinue() {
+    if (!agreed || !lang) return;
+    setRecordingConsent(true);
+    setError(null);
+    try {
+      const sid = await ensureSession();
+      const res = await fetch(`/api/apply/${encodeURIComponent(slug)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "record_consent",
+          session_id: sid,
+          agreement_version: APPLICATION_AGREEMENT_VERSION,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not save agreement");
+      if (timedNotices.length > 0) {
+        setShowTimedNotice(true);
+      } else {
+        advanceFrom("agreement");
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not save agreement");
+    } finally {
+      setRecordingConsent(false);
+    }
+  }
+
+  function onTimedNoticeDismiss() {
+    setShowTimedNotice(false);
+    advanceFrom("agreement");
   }
 
   if (phase === "done") {
@@ -299,6 +353,86 @@ export function PublicApplicationFlowClient({
   const chrome = (
     <ApplyHeader lang={lang} onLangChange={(l) => void onSwitchLanguage(l)} />
   );
+
+  if (phase === "agreement") {
+    const copy = agreementCopy(lang);
+    return (
+      <>
+        {chrome}
+        <ApplyStepShell className="flex-1">
+          <div className="border-b border-white/8 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8">
+            <p className={cn(APPLY_EYEBROW, "inline-flex items-center gap-2")}>
+              <Scale className="h-3.5 w-3.5" aria-hidden />
+              {copy.eyebrow}
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+              {copy.title}
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-white/50">{copy.lead}</p>
+          </div>
+          <div className="space-y-5 px-6 py-7">
+            <ul className="space-y-3">
+              {copy.bullets.map((bullet) => (
+                <li
+                  key={bullet}
+                  className={cn(APPLY_SURFACE, "flex gap-3 px-3.5 py-3.5")}
+                >
+                  <span
+                    className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#D4AF8C]/35 bg-[#D4AF8C]/10"
+                    aria-hidden
+                  >
+                    <Check className="h-3 w-3 text-[#D4AF8C]" />
+                  </span>
+                  <span className="text-sm leading-relaxed text-white/75">{bullet}</span>
+                </li>
+              ))}
+            </ul>
+
+            <label
+              className={cn(
+                APPLY_SURFACE,
+                "flex cursor-pointer items-start gap-3 px-3.5 py-4 transition hover:border-[#FF1493]/30",
+                agreed && "border-[#FF1493]/40 bg-[#FF1493]/8",
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={agreed}
+                onChange={(e) => setAgreed(e.target.checked)}
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-white/30 bg-transparent text-[#FF1493] accent-[#FF1493] focus:ring-[#FF1493]/40"
+              />
+              <span className="text-sm font-medium leading-relaxed text-white">
+                {copy.checkboxLabel}
+              </span>
+            </label>
+
+            {error && <p className="text-sm text-rose-400">{error}</p>}
+            {!agreed && (
+              <p className="text-xs text-white/35">{copy.mustAgree}</p>
+            )}
+
+            <ApplyButton
+              variant="primary"
+              disabled={!agreed}
+              loading={recordingConsent}
+              iconRight={<ArrowRight className="h-4 w-4" aria-hidden />}
+              onClick={() => void onAgreeContinue()}
+            >
+              {recordingConsent ? copy.recording : copy.continue}
+            </ApplyButton>
+          </div>
+        </ApplyStepShell>
+        <ApplyFooter text={footer} />
+        {showTimedNotice ? (
+          <TimedNoticeModal
+            lang={lang}
+            notices={timedNotices}
+            onContinue={onTimedNoticeDismiss}
+          />
+        ) : null}
+      </>
+    );
+  }
 
   if (phase === "intro") {
     return (
@@ -424,6 +558,64 @@ export function PublicApplicationFlowClient({
         onComplete={() => setPhase("done")}
       />
     </>
+  );
+}
+
+
+function TimedNoticeModal({
+  lang,
+  notices,
+  onContinue,
+}: {
+  lang: PipelineLanguage;
+  notices: TimedPipelineNotice[];
+  onContinue: () => void;
+}) {
+  const copy = timedNoticeCopy(lang);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="timed-notice-title"
+    >
+      <div className={cn(APPLY_GLASS, "w-full max-w-md")}>
+        <div className="border-b border-white/8 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-6">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-[#D4AF8C]/35 bg-[#D4AF8C]/10">
+            <Clock className="h-5 w-5 text-[#D4AF8C]" aria-hidden />
+          </div>
+          <h2
+            id="timed-notice-title"
+            className="text-xl font-semibold tracking-tight text-white"
+          >
+            {copy.title}
+          </h2>
+          <p className="mt-2 text-sm leading-relaxed text-white/50">{copy.body}</p>
+        </div>
+        <div className="space-y-3 px-6 py-5">
+          {notices.map((n) => {
+            const label =
+              n.step === "cognitive_screening" ? copy.cognitiveLabel : copy.typingLabel;
+            const detail =
+              n.step === "cognitive_screening" && n.timeLimitSeconds != null
+                ? copy.cognitiveDetail(
+                    formatAgreementMinutes(n.timeLimitSeconds, lang),
+                  )
+                : copy.typingDetail;
+            return (
+              <div key={n.step} className={cn(APPLY_SURFACE, "px-3.5 py-3.5")}>
+                <p className="text-sm font-semibold text-white">{label}</p>
+                <p className="mt-1 text-xs leading-relaxed text-white/50">{detail}</p>
+              </div>
+            );
+          })}
+          <ApplyButton variant="primary" onClick={onContinue}>
+            {copy.cta}
+          </ApplyButton>
+        </div>
+      </div>
+    </div>
   );
 }
 

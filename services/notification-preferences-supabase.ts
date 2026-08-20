@@ -12,6 +12,7 @@ import {
 import {
   getFallbackNotificationDefaults,
   notificationDefaultsToPreferenceFields,
+  parseEventOverrides,
 } from "@/lib/notification-role-defaults";
 import { getNotificationDefaultsForRole } from "@/services/roles";
 import type { NotificationPreference } from "@/types";
@@ -40,6 +41,7 @@ type Row = SbRow & {
   billing_alerts?: boolean | null;
   training_alerts?: boolean | null;
   schedule_alerts?: boolean | null;
+  event_overrides?: unknown;
   quiet_hours_start?: string | null;
   quiet_hours_end?: string | null;
   mute_all?: boolean | null;
@@ -69,11 +71,19 @@ function mapRow(row: Row): NotificationPreference {
     billing_alerts: row.billing_alerts !== false,
     training_alerts: row.training_alerts !== false,
     schedule_alerts: row.schedule_alerts !== false,
+    event_overrides: parseEventOverrides(row.event_overrides),
     quiet_hours_start: row.quiet_hours_start ?? "",
     quiet_hours_end: row.quiet_hours_end ?? "",
     mute_all: row.mute_all ?? false,
     updated_at: row.updated_at ?? "",
   };
+}
+
+function normalizeWriteFields(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!("event_overrides" in fields)) return fields;
+  const raw = fields.event_overrides;
+  if (raw == null) return { ...fields, event_overrides: {} };
+  return { ...fields, event_overrides: parseEventOverrides(raw) };
 }
 
 export async function getPreferencesByUserId(userId: string): Promise<NotificationPreference | null> {
@@ -111,14 +121,17 @@ export async function listNotificationPreferences(
   return { preferences: rows.map(mapRow), offset: undefined as string | undefined };
 }
 
-export async function createNotificationPreference(fields: Partial<Row>) {
-  const row = await sbInsert<Row>(TABLE, fields as Record<string, unknown>);
+export async function createNotificationPreference(fields: Partial<Row> & { event_overrides?: unknown }) {
+  const row = await sbInsert<Row>(TABLE, normalizeWriteFields(fields as Record<string, unknown>));
   return mapRow(row);
 }
 
-export async function updateNotificationPreference(recordId: string, fields: Partial<Row>) {
+export async function updateNotificationPreference(
+  recordId: string,
+  fields: Partial<Row> & { event_overrides?: unknown }
+) {
   const row = await sbUpdateByPublicId<Row>(TABLE, recordId, {
-    ...fields,
+    ...normalizeWriteFields(fields as Record<string, unknown>),
     updated_at: new Date().toISOString(),
   });
   return mapRow(row);

@@ -10,11 +10,13 @@ import {
   getCognitiveBySession,
   getEqBySession,
   getTypingBySession,
+  recordSessionConsent,
   submitCognitiveResult,
   submitEqResult,
   submitTypingResult,
   updateSessionLanguage,
 } from "@/services/application-screening";
+import { APPLICATION_AGREEMENT_VERSION } from "@/lib/application-agreement";
 import {
   COGNITIVE_TIME_LIMIT_SECONDS,
   SCREENING_FRAMING_COPY,
@@ -133,6 +135,7 @@ export async function GET(_request: Request, ctx: Ctx) {
  * body.action:
  *   - start_session
  *   - set_language
+ *   - record_consent
  *   - submit_cognitive
  *   - submit_eq
  *   - submit_typing
@@ -152,6 +155,7 @@ export async function POST(request: Request, ctx: Ctx) {
     action?: string;
     session_id?: string;
     preferred_language?: string;
+    agreement_version?: string;
     answers?: {
       question_id?: string;
       answer_text?: string | null;
@@ -203,6 +207,32 @@ export async function POST(request: Request, ctx: Ctx) {
       }
       const updated = await updateSessionLanguage(body.session_id, body.preferred_language);
       return NextResponse.json({ ok: true, preferred_language: updated.preferred_language });
+    }
+
+    if (action === "record_consent") {
+      if (!body?.session_id) {
+        return NextResponse.json({ error: "session_id required" }, { status: 400 });
+      }
+      const version =
+        typeof body.agreement_version === "string" && body.agreement_version.trim()
+          ? body.agreement_version.trim()
+          : APPLICATION_AGREEMENT_VERSION;
+      if (version !== APPLICATION_AGREEMENT_VERSION) {
+        return NextResponse.json(
+          { error: "Agreement version is out of date. Please refresh and try again." },
+          { status: 400 },
+        );
+      }
+      const updated = await recordSessionConsent({
+        sessionId: body.session_id,
+        formId: form.id,
+        agreementVersion: version,
+      });
+      return NextResponse.json({
+        ok: true,
+        agreed_at: updated.agreed_at,
+        agreement_version: updated.agreement_version,
+      });
     }
 
     if (action === "submit_cognitive") {

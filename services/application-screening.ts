@@ -24,6 +24,8 @@ export type CandidateSession = {
   status: "in_progress" | "completed" | "abandoned";
   respondent_ip: string | null;
   preferred_language: PipelineLanguage | null;
+  agreed_at: string | null;
+  agreement_version: string | null;
   started_at: string;
   completed_at: string | null;
 };
@@ -74,6 +76,38 @@ export async function updateSessionLanguage(
   return mapSession(data);
 }
 
+/** Record Legal Agreement consent on the candidate session (idempotent if same version). */
+export async function recordSessionConsent(input: {
+  sessionId: string;
+  formId: string;
+  agreementVersion: string;
+}): Promise<CandidateSession> {
+  const session = await getCandidateSession(input.sessionId);
+  if (!session || session.form_id !== input.formId) {
+    throw new Error("Invalid session");
+  }
+  if (
+    session.agreed_at &&
+    session.agreement_version === input.agreementVersion
+  ) {
+    return session;
+  }
+  const now = new Date().toISOString();
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("application_candidate_sessions")
+    .update({
+      agreed_at: now,
+      agreement_version: input.agreementVersion,
+      updated_at: now,
+    })
+    .eq("id", input.sessionId)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return mapSession(data);
+}
+
 export async function getCandidateSession(sessionId: string): Promise<CandidateSession | null> {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
@@ -95,6 +129,8 @@ function mapSession(row: Record<string, unknown>): CandidateSession {
     preferred_language: isPipelineLanguage(row.preferred_language)
       ? row.preferred_language
       : null,
+    agreed_at: row.agreed_at ? String(row.agreed_at) : null,
+    agreement_version: row.agreement_version ? String(row.agreement_version) : null,
     started_at: String(row.started_at),
     completed_at: row.completed_at ? String(row.completed_at) : null,
   };
