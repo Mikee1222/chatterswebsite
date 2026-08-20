@@ -6,7 +6,12 @@ import dynamic from "next/dynamic";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AdminRowAvatar } from "@/components/admin-list-primitives";
-import { CountUp, LuxuryStatCard, SectionLabel } from "@/components/infloww-performance-ui";
+import {
+  CountUp,
+  LuxuryStatCard,
+  SectionLabel,
+  StatInfoTooltip,
+} from "@/components/infloww-performance-ui";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
@@ -23,6 +28,13 @@ import {
 } from "@/lib/application-ui-tokens";
 import { VA_CARD, VA_FILTER_INPUT, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
+
+const COGNITIVE_SCORE_TIP =
+  "Cognitive percentile shows how this candidate compares to others who took the screening — this becomes more meaningful as more candidates apply";
+const EQ_SCORE_TIP = "EQ score (0-100) from situational judgment scenarios";
+
+const RESPONSE_STAT_CHIP =
+  "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium tabular-nums";
 
 const RechartsBar = dynamic(
   () =>
@@ -365,16 +377,24 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         ) : (
           responses.map((r) => {
             const name = candidateLabel(r);
+            const cognitivePct = r.cognitive?.percentile_at_time_of_completion;
+            const eqScore = r.eq?.overall_score;
+            const typingWpm = r.typing?.wpm;
+            const detailHref = ROUTES.admin.applicationFormResponseDetail(form.id, r.id);
             return (
-              <Link
+              <div
                 key={r.id}
-                href={ROUTES.admin.applicationFormResponseDetail(form.id, r.id)}
                 className={cn(
                   VA_CARD,
-                  "flex flex-col gap-3 border border-white/10 bg-[#0D0B0D]/80 p-4 transition hover:border-[#FF1493]/25 sm:flex-row sm:items-center sm:justify-between",
+                  "relative flex flex-col gap-3 border border-white/10 bg-[#0D0B0D]/80 p-4 transition hover:border-[#FF1493]/25 sm:flex-row sm:items-center sm:justify-between",
                 )}
               >
-                <div className="flex min-w-0 items-start gap-3">
+                <Link
+                  href={detailHref}
+                  className="absolute inset-0 z-0 rounded-[inherit]"
+                  aria-label={`View response from ${name}`}
+                />
+                <div className="pointer-events-none relative z-[1] flex min-w-0 items-start gap-3">
                   <AdminRowAvatar name={name} />
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-white/90">{name}</p>
@@ -384,30 +404,58 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                     </p>
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                  <span className="rounded-md border border-[#FF1493]/20 bg-[#FF1493]/10 px-2 py-0.5 text-[11px] font-medium text-[#FF1493]/90">
-                    Cog{" "}
-                    {r.cognitive?.percentile_at_time_of_completion != null
-                      ? `${r.cognitive.percentile_at_time_of_completion}%ile`
-                      : "—"}
-                  </span>
-                  <span className="rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-2 py-0.5 text-[11px] font-medium text-[#D4AF8C]">
-                    EQ {r.eq?.overall_score != null ? r.eq.overall_score : "—"}
-                  </span>
-                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-white/65">
-                    WPM {r.typing?.wpm != null ? r.typing.wpm : "—"}
-                    {r.typing?.accuracy_percent != null ? ` · ${r.typing.accuracy_percent}%` : ""}
+                <div className="relative z-[1] flex flex-wrap items-center gap-2.5 sm:justify-end">
+                  <span
+                    className={cn(
+                      RESPONSE_STAT_CHIP,
+                      "pointer-events-none border-[#FF1493]/20 bg-[#FF1493]/10 text-[#FF1493]/90",
+                    )}
+                  >
+                    Cognitive:{" "}
+                    {cognitivePct != null ? `${cognitivePct}th percentile` : "Not completed"}
+                    <span className="pointer-events-auto">
+                      <StatInfoTooltip text={COGNITIVE_SCORE_TIP} />
+                    </span>
                   </span>
                   <span
                     className={cn(
+                      RESPONSE_STAT_CHIP,
+                      "pointer-events-none border-[#D4AF8C]/25 bg-[#D4AF8C]/10 text-[#D4AF8C]",
+                    )}
+                  >
+                    EQ: {eqScore != null ? `${eqScore}/100` : "Not completed"}
+                    <span className="pointer-events-auto">
+                      <StatInfoTooltip text={EQ_SCORE_TIP} />
+                    </span>
+                  </span>
+                  {typingWpm != null ? (
+                    <span
+                      className={cn(
+                        RESPONSE_STAT_CHIP,
+                        "pointer-events-none border-white/10 bg-white/[0.04] text-white/70",
+                      )}
+                    >
+                      Typing: {typingWpm} WPM
+                      {r.typing?.accuracy_percent != null
+                        ? ` · ${r.typing.accuracy_percent}%`
+                        : ""}
+                    </span>
+                  ) : null}
+                  <span
+                    className="pointer-events-none hidden h-4 w-px shrink-0 bg-white/15 sm:block"
+                    aria-hidden
+                  />
+                  <span
+                    className={cn(
                       VA_STATUS_BADGE,
+                      "pointer-events-none",
                       RESPONSE_STATUS_STYLE[r.status as ApplicationResponseStatus],
                     )}
                   >
                     {RESPONSE_STATUS_LABELS[r.status]}
                   </span>
                 </div>
-              </Link>
+              </div>
             );
           })
         )}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { AdminRowAvatar } from "@/components/admin-list-primitives";
-import { SectionLabel } from "@/components/infloww-performance-ui";
+import { SectionLabel, StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
@@ -17,6 +17,10 @@ import {
 import { RESPONSE_STATUS_STYLE } from "@/lib/application-ui-tokens";
 import { VA_BTN_PRIMARY, VA_CARD, VA_FILTER_INPUT, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
+
+const COGNITIVE_SCORE_TIP =
+  "Cognitive percentile shows how this candidate compares to others who took the screening — this becomes more meaningful as more candidates apply";
+const EQ_SCORE_TIP = "EQ score (0-100) from situational judgment scenarios";
 
 type Props = {
   formId: string;
@@ -67,10 +71,12 @@ function HireConfetti({ seed }: { seed: number }) {
 function ScoreCard({
   eyebrow,
   accent,
+  tooltip,
   children,
 }: {
   eyebrow: string;
   accent: "pink" | "champagne" | "muted";
+  tooltip?: string;
   children: React.ReactNode;
 }) {
   const border =
@@ -100,8 +106,14 @@ function ScoreCard({
         glow,
       )}
     >
-      <p className={cn("text-[11px] font-semibold uppercase tracking-[0.16em]", eye)}>
+      <p
+        className={cn(
+          "inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]",
+          eye,
+        )}
+      >
         {eyebrow}
+        {tooltip ? <StatInfoTooltip text={tooltip} /> : null}
       </p>
       {children}
     </div>
@@ -214,14 +226,18 @@ export function AdminApplicationResponseDetailClient({
       {(response.cognitive || response.eq || response.typing) && (
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {response.cognitive && (
-            <ScoreCard eyebrow="Cognitive screening" accent="pink">
+            <ScoreCard
+              eyebrow="Cognitive screening"
+              accent="pink"
+              tooltip={COGNITIVE_SCORE_TIP}
+            >
               <p className="mt-2 text-2xl font-semibold text-white">
                 {response.cognitive.raw_score}/{response.cognitive.total_questions}
               </p>
               <p className="mt-1 text-sm text-white/55">
                 {response.cognitive.percentile_at_time_of_completion != null
                   ? `${response.cognitive.percentile_at_time_of_completion}th percentile`
-                  : "Percentile n/a"}{" "}
+                  : "Percentile not available"}{" "}
                 · {Math.round(response.cognitive.time_taken_seconds / 60)}m{" "}
                 {response.cognitive.time_taken_seconds % 60}s
               </p>
@@ -238,7 +254,11 @@ export function AdminApplicationResponseDetailClient({
             </ScoreCard>
           )}
           {response.eq && (
-            <ScoreCard eyebrow="EQ — situational judgment" accent="champagne">
+            <ScoreCard
+              eyebrow="EQ — situational judgment"
+              accent="champagne"
+              tooltip={EQ_SCORE_TIP}
+            >
               <p className="mt-2 text-2xl font-semibold text-white">
                 {response.eq.overall_score}/100
               </p>
@@ -258,7 +278,7 @@ export function AdminApplicationResponseDetailClient({
               </div>
             </ScoreCard>
           )}
-          {response.typing && (
+          {response.typing ? (
             <ScoreCard eyebrow="Typing speed" accent="muted">
               <p className="mt-2 text-2xl font-semibold text-white">
                 {response.typing.wpm}{" "}
@@ -268,6 +288,10 @@ export function AdminApplicationResponseDetailClient({
                 {response.typing.accuracy_percent}% accuracy ·{" "}
                 {response.typing.passage_language.toUpperCase()} · {response.typing.device_type}
               </p>
+            </ScoreCard>
+          ) : (
+            <ScoreCard eyebrow="Typing speed" accent="muted">
+              <p className="mt-2 text-lg font-medium text-white/55">Not completed</p>
             </ScoreCard>
           )}
         </div>
