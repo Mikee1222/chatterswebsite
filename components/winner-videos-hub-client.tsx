@@ -226,6 +226,18 @@ function BunchAssignPicker({
 }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const assignable = React.useMemo(
+    () =>
+      bunches
+        .filter((b) => b.status === "open" && (b.remaining_count ?? 0) > 0)
+        .slice()
+        .sort((a, b) => {
+          const byModel = a.model_name.localeCompare(b.model_name);
+          if (byModel !== 0) return byModel;
+          return a.name.localeCompare(b.name);
+        }),
+    [bunches],
+  );
 
   React.useEffect(() => {
     if (!open) return;
@@ -240,14 +252,18 @@ function BunchAssignPicker({
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        disabled={busy || bunches.length === 0}
+        disabled={busy || assignable.length === 0}
         onClick={() => setOpen((v) => !v)}
         className={cn(
           VA_BTN_PRIMARY,
           "inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40",
           compact ? "px-3 py-1.5 text-[11px]" : "px-3.5 py-2 text-xs",
         )}
-        title={bunches.length === 0 ? "No open bunches — create one on Bunches" : label}
+        title={
+          assignable.length === 0
+            ? "No open bunches with remaining capacity — create one on Bunches"
+            : label
+        }
       >
         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderOpen className="h-3.5 w-3.5" />}
         {label}
@@ -265,25 +281,38 @@ function BunchAssignPicker({
             <p className="border-b border-white/[0.06] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#B8B4B8]/45">
               Open bunches
             </p>
-            <ul className="max-h-56 overflow-y-auto py-1">
-              {bunches.map((b) => (
-                <li key={b.id}>
-                  <button
-                    type="button"
-                    className="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left transition hover:bg-white/[0.05]"
-                    onClick={() => {
-                      setOpen(false);
-                      onAssign(b.id);
-                    }}
-                  >
-                    <span className="text-sm font-medium text-white">{b.name}</span>
-                    <span className="text-[11px] text-[#B8B4B8]/50">
-                      {b.model_name} · {b.remaining_count ?? 0} left / {b.target_video_count}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {assignable.length === 0 ? (
+              <div className="px-3 py-3 text-xs text-[#B8B4B8]/55">
+                <p>No open bunches available — create one first.</p>
+                <Link
+                  href={ROUTES.admin.bunches}
+                  className="mt-2 inline-flex text-[#FF1493] hover:underline"
+                  onClick={() => setOpen(false)}
+                >
+                  Create / manage bunches →
+                </Link>
+              </div>
+            ) : (
+              <ul className="max-h-56 overflow-y-auto py-1">
+                {assignable.map((b) => (
+                  <li key={b.id}>
+                    <button
+                      type="button"
+                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left transition hover:bg-white/[0.05]"
+                      onClick={() => {
+                        setOpen(false);
+                        onAssign(b.id);
+                      }}
+                    >
+                      <span className="text-sm font-medium text-white">{b.name}</span>
+                      <span className="text-[11px] text-[#B8B4B8]/50">
+                        {b.model_name} · {b.remaining_count ?? 0} left / {b.target_video_count}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             <Link
               href={ROUTES.admin.bunches}
               className="block border-t border-white/[0.06] px-3 py-2 text-xs text-[#FF1493] hover:underline"
@@ -1023,9 +1052,7 @@ function SubmissionGallery({
               submission={s}
               busyId={busyId}
               recreateCount={recreateCount}
-              openBunches={openBunches.filter(
-                (b) => !s.model_id || b.model_id === s.model_id || !b.model_id,
-              )}
+              openBunches={openBunches}
               queueItem={queueBySubmission.get(s.id)}
               onAddToQueue={onAddToQueue}
               onAssign={(bunchId) => onAssignSubmission(s, bunchId)}
@@ -1093,9 +1120,7 @@ function SubmissionGallery({
                           submission={s}
                           busyId={busyId}
                           recreateCount={recreateCount}
-                          openBunches={openBunches.filter(
-                            (b) => !s.model_id || b.model_id === s.model_id || !b.model_id,
-                          )}
+                          openBunches={openBunches}
                           queueItem={queueBySubmission.get(s.id)}
                           onAddToQueue={onAddToQueue}
                           onAssign={(bunchId) => onAssignSubmission(s, bunchId)}
@@ -1693,9 +1718,7 @@ function QueuePanel({
           </div>
           {!item.bunch_id ? (
             <BunchAssignPicker
-              bunches={bunches.filter(
-                (b) => !sub?.model_id || b.model_id === sub.model_id || !b.model_id,
-              )}
+              bunches={bunches}
               busy={busyId === item.id}
               onAssign={(bunchId) => onAssign(item.id, bunchId)}
             />

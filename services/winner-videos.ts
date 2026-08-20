@@ -467,7 +467,13 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     const target = await getVideoBunch(targetBunchId);
     if (!target) throw new Error("Target bunch not found");
     if (target.status !== "open") throw new Error("Target bunch is closed");
-    if ((target.remaining_count ?? 0) < 1) throw new Error("Target bunch has no remaining capacity");
+    // Approve-and-move relocates an already-submitted pending find. Soft remaining
+    // (approved + other pendings) can be 0 while the bunch still has room for another
+    // approved slot — gate on provided slots only so admins can reassign across models.
+    const provided = target.provided_count ?? 0;
+    if (provided >= target.target_video_count) {
+      throw new Error("Target bunch has no remaining capacity");
+    }
     await persistWinnerVideoFields(id, {
       bunch_id: target.id,
       bunch_name: target.name,

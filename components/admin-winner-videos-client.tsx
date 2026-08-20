@@ -539,6 +539,14 @@ export function AdminWinnerVideosClient({
       setCreatorId(match?.id ?? "");
     }
     setQualityRating(null);
+    if (mode === "approve_and_move") {
+      void (async () => {
+        const bunchesRes = await fetch("/api/winner-sourcing/bunches", { credentials: "include" });
+        if (!bunchesRes.ok) return;
+        const bunchesData = (await bunchesRes.json()) as { bunches?: VideoBunch[] };
+        setBunches(bunchesData.bunches ?? []);
+      })();
+    }
   }
 
   const approveTarget = videos.find((v) => v.id === approveId) ?? null;
@@ -554,6 +562,24 @@ export function AdminWinnerVideosClient({
     approveTarget?.assigned_creative_name?.trim() ||
     "";
   const isBunchApprove = Boolean(approveTarget?.bunch_id?.trim());
+
+  /** Open bunches across ALL models with room for another approved slot (not soft remaining). */
+  const moveTargetBunches = React.useMemo(() => {
+    const sourceId = approveTarget?.bunch_id?.trim() || "";
+    return bunches
+      .filter((b) => {
+        if (b.status !== "open") return false;
+        if (sourceId && b.id === sourceId) return false;
+        const provided = b.provided_count ?? 0;
+        return provided < b.target_video_count;
+      })
+      .slice()
+      .sort((a, b) => {
+        const byModel = a.model_name.localeCompare(b.model_name);
+        if (byModel !== 0) return byModel;
+        return a.name.localeCompare(b.name);
+      });
+  }, [bunches, approveTarget?.bunch_id]);
 
   return (
     <div className="space-y-6">
@@ -1205,21 +1231,37 @@ export function AdminWinnerVideosClient({
                   {approveMode === "approve_and_move" && isBunchApprove ? (
                     <div>
                       <ReviewFieldLabel>Move into bunch</ReviewFieldLabel>
-                      <ManagerReviewSelect
-                        value={moveBunchId}
-                        onChange={setMoveBunchId}
-                        options={[
-                          { value: "", label: "Select target bunch…" },
-                          ...bunches
-                            .filter((b) => b.status === "open" && (b.remaining_count ?? 0) > 0 && b.id !== approveTarget?.bunch_id)
-                            .map((b) => ({
-                              value: b.id,
-                              label: `${b.name} — ${b.model_name} (${b.remaining_count ?? 0} left)`,
-                            })),
-                        ]}
-                        placeholder="Select target bunch…"
-                        required
-                      />
+                      {moveTargetBunches.length === 0 ? (
+                        <div className="rounded-lg border border-amber-400/25 bg-amber-500/[0.07] px-3 py-3 text-sm text-amber-100/90">
+                          <p>No open bunches available — create one first (or free approved-slot capacity).</p>
+                          <Link
+                            href={ROUTES.admin.bunches}
+                            className="mt-2 inline-flex text-xs font-medium text-[#FF1493] hover:underline"
+                          >
+                            Create / manage bunches →
+                          </Link>
+                        </div>
+                      ) : (
+                        <ManagerReviewSelect
+                          value={moveBunchId}
+                          onChange={setMoveBunchId}
+                          searchable
+                          searchPlaceholder="Search bunches / models…"
+                          options={[
+                            { value: "", label: "Select target bunch…" },
+                            ...moveTargetBunches.map((b) => {
+                              const provided = b.provided_count ?? 0;
+                              const slotRoom = Math.max(0, b.target_video_count - provided);
+                              return {
+                                value: b.id,
+                                label: `${b.name} — ${b.model_name} (${slotRoom} slot${slotRoom === 1 ? "" : "s"} free · ${b.remaining_count ?? 0} soft left)`,
+                              };
+                            }),
+                          ]}
+                          placeholder="Select target bunch…"
+                          required
+                        />
+                      )}
                     </div>
                   ) : null}
                   <div className="flex justify-end gap-2 pt-2">
@@ -1228,7 +1270,11 @@ export function AdminWinnerVideosClient({
                     </button>
                     <button
                       type="button"
-                      disabled={(!isBunchApprove && (!creatorId || !selectedCreatorName.trim())) || (approveMode === "approve_and_move" && !moveBunchId.trim())}
+                      disabled={
+                        (!isBunchApprove && (!creatorId || !selectedCreatorName.trim())) ||
+                        (approveMode === "approve_and_move" &&
+                          (!moveBunchId.trim() || moveTargetBunches.length === 0))
+                      }
                       className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
                       onClick={() => {
                         if (!approveId) return;
