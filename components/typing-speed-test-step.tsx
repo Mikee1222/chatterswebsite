@@ -8,6 +8,15 @@ import {
   pickRandomTypingPassage,
   type TypingPassage,
 } from "@/lib/application-typing-passages";
+import {
+  APPLY_BTN_PRIMARY,
+  APPLY_EYEBROW,
+  APPLY_INPUT,
+  APPLY_LABEL,
+  APPLY_SURFACE,
+} from "@/lib/application-ui-tokens";
+import { ApplyStepShell } from "@/components/application-public-chrome";
+import { cn } from "@/lib/utils";
 
 type Props = {
   slug: string;
@@ -24,6 +33,33 @@ function detectClientDevice(): "desktop" | "mobile" | "tablet" | "unknown" {
   if (/ipad|tablet|(android(?!.*mobile))/.test(ua)) return "tablet";
   if (/mobi|iphone|ipod|android.*mobile/.test(ua)) return "mobile";
   return "desktop";
+}
+
+function StatPill({
+  label,
+  value,
+  accent = "pink",
+}: {
+  label: string;
+  value: string | number;
+  accent?: "pink" | "champagne" | "muted";
+}) {
+  const styles = {
+    pink: "border-[#FF1493]/30 bg-[#FF1493]/10 text-[#FF1493]",
+    champagne: "border-[#D4AF8C]/35 bg-[#D4AF8C]/10 text-[#D4AF8C]",
+    muted: "border-white/10 bg-white/[0.04] text-white/70",
+  } as const;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs tabular-nums",
+        styles[accent],
+      )}
+    >
+      <span className="font-semibold">{value}</span>
+      <span className="font-sans text-[10px] uppercase tracking-wider opacity-70">{label}</span>
+    </span>
+  );
 }
 
 export function TypingSpeedTestStep({
@@ -82,7 +118,6 @@ export function TypingSpeedTestStep({
   }
 
   function onTypedChange(next: string) {
-    // Anti-cheat: disallow shrinking already-committed correct prefix (no easy back-edit)
     const lock = lockedPrefix.current;
     if (lock && !next.startsWith(lock)) {
       next = lock + next.slice(lock.length).replace(/^[^\s]*/, "");
@@ -92,14 +127,12 @@ export function TypingSpeedTestStep({
       setTyped(next);
       return;
     }
-    // Extend lock as characters match the passage
     let matchLen = 0;
     const limit = Math.min(next.length, passage.text.length);
     for (let i = 0; i < limit; i++) {
       if (next[i] === passage.text[i]) matchLen = i + 1;
       else break;
     }
-    // Only lock completed words (up to last space) so typos can still be fixed within current word
     const lastSpace = passage.text.lastIndexOf(" ", Math.max(0, matchLen - 1));
     const newLock = lastSpace >= 0 ? passage.text.slice(0, lastSpace + 1) : "";
     if (newLock.length > lockedPrefix.current.length) {
@@ -154,90 +187,120 @@ export function TypingSpeedTestStep({
 
   if (phase === "results" && finalStats) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-10">
-        <div className="rounded-3xl border border-black/5 bg-[#F7F3EE] p-6 shadow-lg text-center">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">{ui.typingTitle}</p>
-          <h2 className="mt-2 font-serif text-2xl text-[#1a1512]">{ui.typingResults}</h2>
-          <div className="mt-6 grid grid-cols-3 gap-3">
-            <div className="rounded-2xl bg-white/80 p-3">
-              <p className="text-[10px] uppercase text-zinc-450 text-zinc-500">{ui.typingWpm}</p>
-              <p className="mt-1 text-2xl font-semibold text-[#1a1512]">{finalStats.wpm}</p>
-            </div>
-            <div className="rounded-2xl bg-white/80 p-3">
-              <p className="text-[10px] uppercase text-zinc-500">{ui.typingAccuracy}</p>
-              <p className="mt-1 text-2xl font-semibold text-[#1a1512]">
-                {finalStats.accuracy_percent}%
-              </p>
-            </div>
-            <div className="rounded-2xl bg-white/80 p-3">
-              <p className="text-[10px] uppercase text-zinc-500">{ui.typingTime}</p>
-              <p className="mt-1 text-2xl font-semibold text-[#1a1512]">
-                {mm}:{ss}
-              </p>
-            </div>
+      <ApplyStepShell>
+        <div className="px-6 py-10 text-center sm:px-8">
+          <p className={APPLY_EYEBROW}>{ui.typingTitle}</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
+            {ui.typingResults}
+          </h2>
+          <div className="mt-8 grid grid-cols-3 gap-3">
+            {[
+              { label: ui.typingWpm, value: finalStats.wpm, accent: "pink" as const },
+              {
+                label: ui.typingAccuracy,
+                value: `${finalStats.accuracy_percent}%`,
+                accent: "champagne" as const,
+              },
+              { label: ui.typingTime, value: `${mm}:${ss}`, accent: "muted" as const },
+            ].map((s) => (
+              <div
+                key={s.label}
+                className={cn(
+                  APPLY_SURFACE,
+                  "p-4",
+                  s.accent === "pink" && "border-[#FF1493]/25 bg-[#FF1493]/[0.08]",
+                  s.accent === "champagne" && "border-[#D4AF8C]/25 bg-[#D4AF8C]/[0.08]",
+                )}
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                  {s.label}
+                </p>
+                <p
+                  className={cn(
+                    "mt-2 text-2xl font-semibold tabular-nums",
+                    s.accent === "pink" && "text-[#FF1493]",
+                    s.accent === "champagne" && "text-[#D4AF8C]",
+                    s.accent === "muted" && "text-white",
+                  )}
+                >
+                  {s.value}
+                </p>
+              </div>
+            ))}
           </div>
-          <button
-            type="button"
-            onClick={onComplete}
-            className="mt-8 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white"
-          >
+          <button type="button" onClick={onComplete} className={cn(APPLY_BTN_PRIMARY, "mt-8")}>
             {ui.typingContinue}
           </button>
         </div>
-      </div>
+      </ApplyStepShell>
     );
   }
 
   if (phase === "ready") {
     return (
-      <div className="mx-auto max-w-xl px-4 py-10">
-        <div className="rounded-3xl border border-black/5 bg-[#F7F3EE] p-6 shadow-lg">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">{ui.typingTitle}</p>
-          <h2 className="mt-2 font-serif text-2xl text-[#1a1512]">{ui.typingReady}</h2>
-          <p className="mt-3 text-sm leading-relaxed text-zinc-600">{ui.typingIntro}</p>
-          <label className="mt-5 block text-xs font-medium text-zinc-600">
+      <ApplyStepShell>
+        <div className="px-6 py-8 sm:px-8">
+          <p className={APPLY_EYEBROW}>{ui.typingTitle}</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
+            {ui.typingReady}
+          </h2>
+          <p className="mt-3 text-sm leading-relaxed text-white/50">{ui.typingIntro}</p>
+          <label className={cn("mt-6 block", APPLY_LABEL)}>
             {ui.typingPassageLang}
             <select
               value={passageLang}
               onChange={(e) => setPassageLang(e.target.value as PipelineLanguage)}
-              className="mt-1.5 w-full rounded-xl border border-black/10 bg-white px-3 py-2.5 text-sm"
+              className={cn(APPLY_INPUT, "mt-2")}
             >
               <option value="en">{ui.english}</option>
               <option value="el">{ui.greek}</option>
             </select>
           </label>
-          <button
-            type="button"
-            onClick={start}
-            className="mt-6 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white"
-          >
+          <button type="button" onClick={start} className={cn(APPLY_BTN_PRIMARY, "mt-6")}>
             {ui.typingStart}
           </button>
         </div>
-      </div>
+      </ApplyStepShell>
     );
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">{ui.typingTitle}</p>
-        <div className="flex gap-2 text-xs">
-          <span className="rounded-full bg-[#1a1512] px-2.5 py-1 font-mono text-[#D4AF8C]">
-            {live?.wpm ?? 0} {ui.typingWpm}
-          </span>
-          <span className="rounded-full border border-black/10 bg-white px-2.5 py-1">
-            {live?.accuracy_percent ?? 0}% {ui.typingAccuracy}
-          </span>
-          <span className="rounded-full border border-black/10 bg-white px-2.5 py-1 font-mono">
-            {mm}:{ss}
-          </span>
+    <ApplyStepShell>
+      <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className={APPLY_EYEBROW}>{ui.typingTitle}</p>
+          <div className="flex flex-wrap gap-2">
+            <StatPill label={ui.typingWpm} value={live?.wpm ?? 0} accent="pink" />
+            <StatPill
+              label={ui.typingAccuracy}
+              value={`${live?.accuracy_percent ?? 0}%`}
+              accent="champagne"
+            />
+            <StatPill label="" value={`${mm}:${ss}`} accent="muted" />
+          </div>
         </div>
       </div>
-      <div className="rounded-3xl border border-black/5 bg-[#F7F3EE] p-5 shadow-lg sm:p-6">
-        <p className="rounded-2xl bg-white/70 p-4 text-sm leading-relaxed text-zinc-800 select-none">
-          {passage?.text}
-        </p>
+      <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6">
+        <div
+          className={cn(
+            APPLY_SURFACE,
+            "select-none p-4 text-sm leading-relaxed text-white/70 sm:p-5",
+          )}
+        >
+          {passage?.text.split("").map((ch, i) => {
+            let cls = "text-white/35";
+            if (i < typed.length) {
+              cls = typed[i] === ch ? "text-[#D4AF8C]" : "text-rose-400 bg-rose-500/15 rounded-sm";
+            } else if (i === typed.length) {
+              cls = "text-white border-b-2 border-[#FF1493]";
+            }
+            return (
+              <span key={i} className={cls}>
+                {ch}
+              </span>
+            );
+          })}
+        </div>
         <textarea
           ref={inputRef}
           value={typed}
@@ -249,19 +312,19 @@ export function TypingSpeedTestStep({
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          className="mt-4 min-h-[160px] w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm leading-relaxed text-zinc-900 outline-none focus:border-[#C4A484] focus:ring-2 focus:ring-[#C4A484]/25"
+          className={cn(APPLY_INPUT, "min-h-[160px] resize-none font-mono text-sm leading-relaxed")}
           placeholder="…"
         />
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && <p className="text-sm text-rose-400">{error}</p>}
         <button
           type="button"
           disabled={submitting || typed.trim().length < 20}
           onClick={() => void finish()}
-          className="mt-5 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white disabled:opacity-50"
+          className={APPLY_BTN_PRIMARY}
         >
           {submitting ? ui.submitting : ui.typingFinished}
         </button>
       </div>
-    </div>
+    </ApplyStepShell>
   );
 }

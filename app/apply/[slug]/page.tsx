@@ -35,10 +35,15 @@ export default async function PublicApplyPage({ params }: Props) {
     const any = await getFormBySlugAnyStatus(slug).catch(() => null);
     if (any?.status === "closed") {
       return (
-        <div className="mx-auto max-w-lg px-4 py-24 text-center">
-          <div className="rounded-3xl border border-black/5 bg-[#F7F3EE] px-8 py-12 shadow-xl">
-            <h1 className="font-serif text-3xl text-[#1a1512]">Applications closed</h1>
-            <p className="mt-3 text-sm text-zinc-600">
+        <div className="mx-auto flex max-w-lg flex-1 flex-col justify-center px-4 py-24 text-center">
+          <div className="overflow-hidden rounded-3xl border border-white/10 bg-[rgba(20,20,25,0.72)] px-8 py-12 shadow-[0_20px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/80">
+              Gunzo Careers
+            </p>
+            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+              Applications closed
+            </h1>
+            <p className="mt-3 text-sm leading-relaxed text-white/50">
               This form is no longer accepting submissions. Thank you for your interest.
             </p>
           </div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Download, Search } from "lucide-react";
 import { toast } from "sonner";
+import { AdminRowAvatar } from "@/components/admin-list-primitives";
 import { CountUp, LuxuryStatCard, SectionLabel } from "@/components/infloww-performance-ui";
 import { ROUTES } from "@/lib/routes";
 import {
@@ -15,9 +16,13 @@ import {
   type ApplicationFormWithQuestions,
   type ApplicationResponseStatus,
 } from "@/lib/application-forms-types";
-
-const BORDER = "rgba(255,255,255,0.08)";
-const GOLD = "#D4AF8C";
+import {
+  APPLY_CHART,
+  APPLY_CHART_TOOLTIP,
+  RESPONSE_STATUS_STYLE,
+} from "@/lib/application-ui-tokens";
+import { VA_CARD, VA_FILTER_INPUT, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
+import { cn } from "@/lib/utils";
 
 const RechartsBar = dynamic(
   () =>
@@ -27,25 +32,31 @@ const RechartsBar = dynamic(
         data,
         dataKey,
         nameKey,
+        fill = APPLY_CHART.primary,
       }: {
         data: { label: string; count: number }[];
         dataKey: string;
         nameKey: string;
+        fill?: string;
       }) {
         return (
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={data}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey={nameKey} tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} />
-              <YAxis allowDecimals={false} tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} />
-              <Tooltip
-                contentStyle={{
-                  background: "#141214",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 12,
-                }}
+              <CartesianGrid strokeDasharray="3 3" stroke={APPLY_CHART.grid} vertical={false} />
+              <XAxis
+                dataKey={nameKey}
+                tick={{ fill: APPLY_CHART.tick, fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
               />
-              <Bar dataKey={dataKey} fill="#D4AF8C" radius={[6, 6, 0, 0]} />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fill: APPLY_CHART.tick, fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <Tooltip contentStyle={APPLY_CHART_TOOLTIP} cursor={{ fill: "rgba(255,255,255,0.03)" }} />
+              <Bar dataKey={dataKey} fill={fill} radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         );
@@ -55,18 +66,15 @@ const RechartsBar = dynamic(
   { ssr: false },
 );
 
-const STATUS_STYLE: Record<ApplicationResponseStatus, string> = {
-  new: "border-sky-500/30 bg-sky-500/10 text-sky-200",
-  reviewed: "border-white/15 bg-white/5 text-white/65",
-  shortlisted: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  rejected: "border-red-500/30 bg-red-500/10 text-red-300",
-  hired: "border-[#D4AF8C]/40 bg-[#D4AF8C]/15 text-[#E8D0B0]",
-};
-
 type Props = {
   form: ApplicationFormWithQuestions;
   canManage: boolean;
 };
+
+function candidateLabel(r: ApplicationFormResponseWithAnswers): string {
+  const first = r.answers.find((a) => (a.answer_text ?? "").trim());
+  return first?.answer_text?.trim() || "Candidate";
+}
 
 export function AdminApplicationResponsesClient({ form, canManage }: Props) {
   const [responses, setResponses] = useState<ApplicationFormResponseWithAnswers[]>([]);
@@ -141,11 +149,6 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
     }
   }
 
-  function previewAnswer(r: ApplicationFormResponseWithAnswers): string {
-    const first = r.answers.find((a) => (a.answer_text ?? "").trim());
-    return first?.answer_text?.trim() || "—";
-  }
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -167,8 +170,7 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         <button
           type="button"
           onClick={() => void exportCsv()}
-          className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs text-white/75 hover:text-white"
-          style={{ borderColor: BORDER }}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-xs text-white/75 transition hover:border-[#D4AF8C]/35 hover:text-[#D4AF8C]"
         >
           <Download className="h-3.5 w-3.5" />
           Export CSV
@@ -193,7 +195,7 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
               "—"
             )
           }
-          accent="emerald"
+          accent="pink"
         />
         <LuxuryStatCard
           label="Avg EQ score"
@@ -204,38 +206,42 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
               "—"
             )
           }
-          accent="pink"
+          accent="champagne"
         />
         <LuxuryStatCard
           label="Shortlisted"
           value={<CountUp value={analytics?.by_status.shortlisted ?? 0} />}
-          accent="white"
+          accent="pink"
         />
       </div>
 
       {(analytics?.volume_by_day.length || funnel.some((f) => f.count > 0)) && (
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
-          <div
-            className="rounded-2xl border p-4"
-            style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
-          >
-            <p className="mb-3 text-xs uppercase tracking-wider text-white/40">Volume over time</p>
+          <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+              Volume over time
+            </p>
             {analytics && analytics.volume_by_day.length > 0 ? (
               <RechartsBar
                 data={analytics.volume_by_day.map((d) => ({ label: d.date, count: d.count }))}
                 dataKey="count"
                 nameKey="label"
+                fill={APPLY_CHART.primary}
               />
             ) : (
               <p className="py-10 text-center text-sm text-white/35">No submissions yet</p>
             )}
           </div>
-          <div
-            className="rounded-2xl border p-4"
-            style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
-          >
-            <p className="mb-3 text-xs uppercase tracking-wider text-white/40">Pipeline funnel</p>
-            <RechartsBar data={funnel} dataKey="count" nameKey="label" />
+          <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
+            <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+              Pipeline funnel
+            </p>
+            <RechartsBar
+              data={funnel}
+              dataKey="count"
+              nameKey="label"
+              fill={APPLY_CHART.secondary}
+            />
           </div>
         </div>
       )}
@@ -244,11 +250,8 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         (analytics.cognitive_score_distribution.some((b) => b.count > 0) ||
           analytics.eq_score_distribution.some((b) => b.count > 0)) && (
           <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div
-              className="rounded-2xl border p-4"
-              style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
-            >
-              <p className="mb-3 text-xs uppercase tracking-wider text-white/40">
+            <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
                 Cognitive percentile distribution
               </p>
               <RechartsBar
@@ -258,13 +261,11 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                 }))}
                 dataKey="count"
                 nameKey="label"
+                fill={APPLY_CHART.primary}
               />
             </div>
-            <div
-              className="rounded-2xl border p-4"
-              style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
-            >
-              <p className="mb-3 text-xs uppercase tracking-wider text-white/40">
+            <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
                 EQ score distribution
               </p>
               <RechartsBar
@@ -274,6 +275,7 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                 }))}
                 dataKey="count"
                 nameKey="label"
+                fill={APPLY_CHART.secondary}
               />
             </div>
           </div>
@@ -281,16 +283,22 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
 
       {analytics && analytics.choice_distributions.length > 0 && (
         <div className="mt-6 space-y-4">
-          <p className="text-xs uppercase tracking-wider text-white/40">Choice distributions</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+            Choice distributions
+          </p>
           <div className="grid gap-4 md:grid-cols-2">
             {analytics.choice_distributions.map((dist) => (
               <div
                 key={dist.question_id}
-                className="rounded-2xl border p-4"
-                style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
+                className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}
               >
                 <p className="mb-3 line-clamp-2 text-sm text-white/80">{dist.question_text}</p>
-                <RechartsBar data={dist.buckets} dataKey="count" nameKey="label" />
+                <RechartsBar
+                  data={dist.buckets}
+                  dataKey="count"
+                  nameKey="label"
+                  fill={APPLY_CHART.primary}
+                />
               </div>
             ))}
           </div>
@@ -304,13 +312,13 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search answers…"
-            className="h-11 w-full rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] pl-9 pr-3 text-sm text-white placeholder:text-white/30"
+            className={cn(VA_FILTER_INPUT, "w-full pl-9")}
           />
         </div>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
-          className="h-11 rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white/85"
+          className={VA_FILTER_INPUT}
         >
           <option value="all">All statuses</option>
           {APPLICATION_RESPONSE_STATUSES.map((s) => (
@@ -334,7 +342,7 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                 | "typing_asc",
             )
           }
-          className="h-11 rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-3 text-sm text-white/85"
+          className={VA_FILTER_INPUT}
         >
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
@@ -347,53 +355,61 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         </select>
       </div>
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-4 space-y-2.5">
         {loading ? (
           <p className="py-12 text-center text-sm text-white/40">Loading…</p>
         ) : responses.length === 0 ? (
-          <p
-            className="rounded-2xl border border-dashed px-4 py-12 text-center text-sm text-white/40"
-            style={{ borderColor: BORDER }}
-          >
+          <p className="rounded-2xl border border-dashed border-white/10 px-4 py-12 text-center text-sm text-white/40">
             No responses match your filters.
           </p>
         ) : (
-          responses.map((r) => (
-            <Link
-              key={r.id}
-              href={ROUTES.admin.applicationFormResponseDetail(form.id, r.id)}
-              className="flex flex-col gap-2 rounded-2xl border p-4 transition hover:border-white/20 sm:flex-row sm:items-center sm:justify-between"
-              style={{ borderColor: BORDER, background: "rgba(13,11,13,0.65)" }}
-            >
-              <div className="min-w-0">
-                <p className="truncate text-sm text-white/90">{previewAnswer(r)}</p>
-                <p className="mt-1 text-xs text-white/40">
-                  {new Date(r.submitted_at).toLocaleString()}
-                  {canManage && r.respondent_ip ? ` · ${r.respondent_ip}` : ""}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/55">
-                  Cog{" "}
-                  {r.cognitive?.percentile_at_time_of_completion != null
-                    ? `${r.cognitive.percentile_at_time_of_completion}%ile`
-                    : "—"}
-                </span>
-                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/55">
-                  EQ {r.eq?.overall_score != null ? r.eq.overall_score : "—"}
-                </span>
-                <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-white/55">
-                  WPM {r.typing?.wpm != null ? r.typing.wpm : "—"}
-                  {r.typing?.accuracy_percent != null ? ` · ${r.typing.accuracy_percent}%` : ""}
-                </span>
-                <span
-                  className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-[11px] font-medium ${STATUS_STYLE[r.status]}`}
-                >
-                  {RESPONSE_STATUS_LABELS[r.status]}
-                </span>
-              </div>
-            </Link>
-          ))
+          responses.map((r) => {
+            const name = candidateLabel(r);
+            return (
+              <Link
+                key={r.id}
+                href={ROUTES.admin.applicationFormResponseDetail(form.id, r.id)}
+                className={cn(
+                  VA_CARD,
+                  "flex flex-col gap-3 border border-white/10 bg-[#0D0B0D]/80 p-4 transition hover:border-[#FF1493]/25 sm:flex-row sm:items-center sm:justify-between",
+                )}
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <AdminRowAvatar name={name} />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-white/90">{name}</p>
+                    <p className="mt-1 text-xs text-white/40">
+                      {new Date(r.submitted_at).toLocaleString()}
+                      {canManage && r.respondent_ip ? ` · ${r.respondent_ip}` : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <span className="rounded-md border border-[#FF1493]/20 bg-[#FF1493]/10 px-2 py-0.5 text-[11px] font-medium text-[#FF1493]/90">
+                    Cog{" "}
+                    {r.cognitive?.percentile_at_time_of_completion != null
+                      ? `${r.cognitive.percentile_at_time_of_completion}%ile`
+                      : "—"}
+                  </span>
+                  <span className="rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-2 py-0.5 text-[11px] font-medium text-[#D4AF8C]">
+                    EQ {r.eq?.overall_score != null ? r.eq.overall_score : "—"}
+                  </span>
+                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-medium text-white/65">
+                    WPM {r.typing?.wpm != null ? r.typing.wpm : "—"}
+                    {r.typing?.accuracy_percent != null ? ` · ${r.typing.accuracy_percent}%` : ""}
+                  </span>
+                  <span
+                    className={cn(
+                      VA_STATUS_BADGE,
+                      RESPONSE_STATUS_STYLE[r.status as ApplicationResponseStatus],
+                    )}
+                  >
+                    {RESPONSE_STATUS_LABELS[r.status]}
+                  </span>
+                </div>
+              </Link>
+            );
+          })
         )}
       </div>
     </div>

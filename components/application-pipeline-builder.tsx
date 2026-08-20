@@ -17,15 +17,23 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ArrowDown, ArrowUp, Brain, ClipboardList, GripVertical, HeartHandshake, Keyboard } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Brain,
+  ClipboardList,
+  GripVertical,
+  HeartHandshake,
+  Keyboard,
+} from "lucide-react";
 import {
   PIPELINE_STEP_LABELS,
   type PipelineStepConfig,
   type PipelineStepType,
 } from "@/lib/application-forms-types";
 import { SCREENING_FRAMING_COPY } from "@/lib/application-screening-banks";
-
-const GOLD = "#D4AF8C";
+import { APPLY } from "@/lib/application-ui-tokens";
+import { cn } from "@/lib/utils";
 
 const STEP_META: Record<
   PipelineStepType,
@@ -33,22 +41,22 @@ const STEP_META: Record<
 > = {
   cognitive_screening: {
     icon: Brain,
-    accent: "#7DD3C0",
+    accent: APPLY.pink,
     blurb: "Timed reasoning MCQs (~18 min)",
   },
   eq_screening: {
     icon: HeartHandshake,
-    accent: "#E8A0BF",
+    accent: APPLY.champagne,
     blurb: "Situational judgment scenarios",
   },
   typing_speed_test: {
     icon: Keyboard,
-    accent: "#93C5FD",
+    accent: "#f9a8d4",
     blurb: "In-app WPM + accuracy (Greek/English)",
   },
   application_form: {
     icon: ClipboardList,
-    accent: GOLD,
+    accent: APPLY.champagne,
     blurb: "Your custom questions (always on)",
   },
 };
@@ -82,85 +90,87 @@ function SortablePipelineCard({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.75 : 1,
+        opacity: isDragging ? 0.5 : 1,
       }}
       className="relative flex min-w-[200px] flex-1 flex-col"
     >
       <div
-        className={`relative overflow-hidden rounded-2xl border p-4 transition ${
+        className={cn(
+          "relative overflow-hidden rounded-xl border transition",
+          isDragging && "shadow-lg shadow-black/40",
           step.enabled
-            ? "border-white/15 bg-gradient-to-br from-white/[0.08] to-white/[0.02]"
-            : "border-white/5 bg-white/[0.02] opacity-60"
-        }`}
+            ? "border-[#1f1f1f] bg-[#0a0a0a]"
+            : "border-white/5 bg-[#0a0a0a]/60 opacity-60",
+        )}
       >
         <div
-          className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full opacity-30 blur-2xl"
+          className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-25 blur-2xl"
           style={{ background: meta.accent }}
         />
-        <div className="flex items-start justify-between gap-2">
+        <div className="relative border-b border-white/8 px-4 py-3">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-2">
+              {canManage && (
+                <button
+                  type="button"
+                  className="hidden cursor-grab touch-none text-white/20 hover:text-white/50 md:inline-flex"
+                  aria-label="Drag to reorder"
+                  {...attributes}
+                  {...listeners}
+                >
+                  <GripVertical className="h-4 w-4" />
+                </button>
+              )}
+              <span className="flex h-7 w-7 items-center justify-center rounded-xl border border-pink-500/20 bg-pink-500/15 text-xs font-bold text-pink-400">
+                {index + 1}
+              </span>
+            </div>
+            <label className="inline-flex items-center gap-2 text-[11px] text-white/55">
+              <input
+                type="checkbox"
+                checked={step.enabled}
+                disabled={!canManage || locked}
+                onChange={onToggle}
+                className="rounded border-white/20 accent-[#FF1493]"
+              />
+              {locked ? "Required" : step.enabled ? "On" : "Off"}
+            </label>
+          </div>
+        </div>
+        <div className="relative px-4 py-3.5">
           <div className="flex items-center gap-2">
-            {canManage && (
+            <Icon className="h-4 w-4" style={{ color: meta.accent }} aria-hidden />
+            <p className="text-sm font-medium text-white">{PIPELINE_STEP_LABELS[step.step]}</p>
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-white/45">{meta.blurb}</p>
+
+          {canManage && (
+            <div className="mt-3 flex gap-2 md:hidden">
               <button
                 type="button"
-                className="hidden cursor-grab touch-none text-white/30 hover:text-white/70 md:inline-flex"
-                aria-label="Drag to reorder"
-                {...attributes}
-                {...listeners}
+                disabled={index === 0}
+                onClick={() => onMove(-1)}
+                className="rounded-lg border border-white/10 p-1.5 text-white/60 disabled:opacity-30"
+                aria-label="Move up"
               >
-                <GripVertical className="h-4 w-4" />
+                <ArrowUp className="h-3.5 w-3.5" />
               </button>
-            )}
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-xl text-sm font-semibold text-[#0D0B0D]"
-              style={{ background: meta.accent }}
-            >
-              {index + 1}
-            </span>
-          </div>
-          <label className="inline-flex items-center gap-2 text-[11px] text-white/55">
-            <input
-              type="checkbox"
-              checked={step.enabled}
-              disabled={!canManage || locked}
-              onChange={onToggle}
-              className="rounded border-white/20"
-            />
-            {locked ? "Required" : step.enabled ? "On" : "Off"}
-          </label>
+              <button
+                type="button"
+                disabled={index >= total - 1}
+                onClick={() => onMove(1)}
+                className="rounded-lg border border-white/10 p-1.5 text-white/60 disabled:opacity-30"
+                aria-label="Move down"
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
         </div>
-        <div className="mt-3 flex items-center gap-2">
-          <Icon className="h-4 w-4" style={{ color: meta.accent }} aria-hidden />
-          <p className="text-sm font-medium text-white">{PIPELINE_STEP_LABELS[step.step]}</p>
-        </div>
-        <p className="mt-1 text-xs leading-relaxed text-white/45">{meta.blurb}</p>
-
-        {/* Mobile up/down */}
-        {canManage && (
-          <div className="mt-3 flex gap-2 md:hidden">
-            <button
-              type="button"
-              disabled={index === 0}
-              onClick={() => onMove(-1)}
-              className="rounded-lg border border-white/10 p-1.5 text-white/60 disabled:opacity-30"
-              aria-label="Move up"
-            >
-              <ArrowUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              disabled={index >= total - 1}
-              onClick={() => onMove(1)}
-              className="rounded-lg border border-white/10 p-1.5 text-white/60 disabled:opacity-30"
-              aria-label="Move down"
-            >
-              <ArrowDown className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
       </div>
       {index < total - 1 && (
         <div className="pointer-events-none absolute -right-3 top-1/2 z-10 hidden -translate-y-1/2 md:block">
-          <div className="h-px w-6 bg-gradient-to-r from-white/30 to-transparent" />
+          <div className="h-px w-6 bg-gradient-to-r from-[#FF1493]/40 to-transparent" />
         </div>
       )}
     </div>
@@ -196,9 +206,7 @@ export function ApplicationPipelineBuilder({ config, canManage, onChange }: Prop
 
   function toggle(step: PipelineStepType) {
     if (step === "application_form") return;
-    commit(
-      ordered.map((s) => (s.step === step ? { ...s, enabled: !s.enabled } : s)),
-    );
+    commit(ordered.map((s) => (s.step === step ? { ...s, enabled: !s.enabled } : s)));
   }
 
   function move(index: number, dir: -1 | 1) {

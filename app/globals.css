@@ -651,4 +651,42 @@ summary,
   .mr-finding-card:hover {
     transform: none;
   }
+
+  .hire-status-glow,
+  .hire-confetti-particle {
+    animation: none !important;
+  }
 }
+
+/* Application recruitment — Hired celebration */
+.hire-status-glow {
+  animation: hire-pulse 1.6s ease-in-out 2;
+}
+
+@keyframes hire-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(212, 175, 140, 0);
+  }
+  50% {
+    box-shadow: 0 0 28px -4px rgba(212, 175, 140, 0.55);
+  }
+}
+
+@keyframes hire-confetti-fall {
+  0% {
+    transform: translateY(-10vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(110vh) rotate(520deg);
+    opacity: 0;
+  }
+}
+
+.hire-confetti-particle {
+  animation-name: hire-confetti-fall;
+  animation-timing-function: ease-out;
+  animation-fill-mode: both;
+}
+

@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApplicationFormPreview } from "@/components/application-form-preview";
+import {
+  ApplyFooter,
+  ApplyHeader,
+  ApplyStepShell,
+} from "@/components/application-public-chrome";
 import { TypingSpeedTestStep } from "@/components/typing-speed-test-step";
 import {
   CHOICE_QUESTION_TYPES,
@@ -20,6 +25,15 @@ import {
   pipelineUi,
   type PipelineLanguage,
 } from "@/lib/application-pipeline-i18n";
+import {
+  APPLY_BTN_GHOST,
+  APPLY_BTN_PRIMARY,
+  APPLY_EYEBROW,
+  APPLY_PROGRESS_FILL,
+  APPLY_PROGRESS_TRACK,
+  APPLY_SURFACE,
+} from "@/lib/application-ui-tokens";
+import { cn } from "@/lib/utils";
 
 type AnswerState = Record<string, { text?: string; options?: string[] }>;
 
@@ -43,34 +57,7 @@ type Props = {
 
 type Phase = "language" | "intro" | PipelineStepType | "done";
 
-function LanguageSwitcher({
-  lang,
-  onChange,
-}: {
-  lang: PipelineLanguage;
-  onChange: (l: PipelineLanguage) => void;
-}) {
-  const ui = pipelineUi(lang);
-  return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-black/10 bg-white/80 p-0.5 text-xs">
-      <button
-        type="button"
-        onClick={() => onChange("en")}
-        className={`rounded-full px-2.5 py-1 ${lang === "en" ? "bg-[#1a1512] text-white" : "text-zinc-600"}`}
-      >
-        EN
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange("el")}
-        className={`rounded-full px-2.5 py-1 ${lang === "el" ? "bg-[#1a1512] text-white" : "text-zinc-600"}`}
-      >
-        EL
-      </button>
-      <span className="sr-only">{ui.language}</span>
-    </div>
-  );
-}
+const PIPELINE_UI_CHOOSE = "Choose your language / Επίλεξε γλώσσα";
 
 export function PublicApplicationFlowClient({
   slug,
@@ -220,106 +207,145 @@ export function PublicApplicationFlowClient({
 
   if (phase === "done") {
     return (
-      <div className="mx-auto max-w-lg px-4 py-20 text-center">
-        <div className="rounded-3xl border border-black/5 bg-gradient-to-b from-[#F7F3EE] to-[#EFE8DF] px-8 py-12 shadow-xl">
-          <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#8B6914]">
-            {ui.thankYou}
-          </p>
-          <h1 className="mt-3 font-serif text-3xl text-[#1a1512]">{ui.applicationReceived}</h1>
-          <p className="mt-4 text-sm leading-relaxed text-zinc-600">{ui.applicationReceivedBody}</p>
-        </div>
-      </div>
+      <>
+        <ApplyHeader showLang={false} />
+        <ApplyStepShell className="flex-1">
+          <div className="relative overflow-hidden px-8 py-14 text-center sm:py-16">
+            <div
+              className="pointer-events-none absolute inset-0 opacity-80"
+              aria-hidden
+              style={{
+                background:
+                  "radial-gradient(ellipse 60% 50% at 50% 20%, rgba(255,20,147,0.2), transparent), radial-gradient(ellipse 50% 40% at 50% 80%, rgba(212,175,140,0.15), transparent)",
+              }}
+            />
+            <div className="relative">
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#D4AF8C]/35 bg-[#D4AF8C]/10 shadow-[0_0_40px_-8px_rgba(212,175,140,0.5)]">
+                <span className="text-2xl text-[#D4AF8C]" aria-hidden>
+                  ✓
+                </span>
+              </div>
+              <p className={APPLY_EYEBROW}>{ui.thankYou}</p>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white">
+                {ui.applicationReceived}
+              </h1>
+              <p className="mx-auto mt-4 max-w-sm text-sm leading-relaxed text-white/50">
+                {ui.applicationReceivedBody}
+              </p>
+            </div>
+          </div>
+        </ApplyStepShell>
+        <ApplyFooter />
+      </>
     );
   }
 
   if (phase === "language" || !lang) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-12 sm:py-16">
-        <div className="overflow-hidden rounded-3xl border border-black/5 bg-gradient-to-b from-[#F7F3EE] to-[#EFE8DF] shadow-xl">
-          <div className="bg-[#1a1512] px-6 py-8 text-white">
-            <h1 className="font-serif text-3xl tracking-tight">{title}</h1>
-            <p className="mt-3 text-sm text-white/65">{PIPELINE_UI_CHOOSE}</p>
+      <>
+        <ApplyHeader showLang={false} />
+        <ApplyStepShell className="flex-1">
+          <div className="border-b border-white/8 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-9">
+            <p className={APPLY_EYEBROW}>Welcome</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">{title}</h1>
+            <p className="mt-3 text-sm text-white/50">{PIPELINE_UI_CHOOSE}</p>
           </div>
-          <div className="space-y-4 px-6 py-6">
-            <p className="text-sm text-zinc-600">{pipelineUi("en").chooseLanguageHint}</p>
-            {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="space-y-4 px-6 py-7">
+            <p className="text-sm leading-relaxed text-white/50">
+              {pipelineUi("en").chooseLanguageHint}
+            </p>
+            {error && <p className="text-sm text-rose-400">{error}</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
                 disabled={starting}
                 onClick={() => void onPickLanguage("en")}
-                className="rounded-2xl border border-black/10 bg-white py-4 text-sm font-medium text-[#1a1512] hover:border-[#C4A484]"
+                className="group rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-5 text-left transition hover:border-[#FF1493]/40 hover:bg-[#FF1493]/10 disabled:opacity-50"
               >
-                English
+                <span className="block text-lg font-semibold text-white group-hover:text-white">
+                  English
+                </span>
+                <span className="mt-1 block text-xs text-white/40">Continue in English</span>
               </button>
               <button
                 type="button"
                 disabled={starting}
                 onClick={() => void onPickLanguage("el")}
-                className="rounded-2xl border border-black/10 bg-white py-4 text-sm font-medium text-[#1a1512] hover:border-[#C4A484]"
+                className="group rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-5 text-left transition hover:border-[#D4AF8C]/40 hover:bg-[#D4AF8C]/10 disabled:opacity-50"
               >
-                Ελληνικά
+                <span className="block text-lg font-semibold text-white">Ελληνικά</span>
+                <span className="mt-1 block text-xs text-white/40">Συνέχεια στα Ελληνικά</span>
               </button>
             </div>
           </div>
-        </div>
-      </div>
+        </ApplyStepShell>
+        <ApplyFooter />
+      </>
     );
   }
 
-  const headerBar = (
-    <div className="mx-auto flex max-w-xl items-center justify-end px-4 pt-4">
-      <LanguageSwitcher lang={lang} onChange={(l) => void onSwitchLanguage(l)} />
-    </div>
+  const chrome = (
+    <ApplyHeader lang={lang} onLangChange={(l) => void onSwitchLanguage(l)} />
   );
 
   if (phase === "intro") {
     return (
       <>
-        {headerBar}
-        <div className="mx-auto max-w-xl px-4 py-8 sm:py-12">
-          <div className="overflow-hidden rounded-3xl border border-black/5 bg-gradient-to-b from-[#F7F3EE] to-[#EFE8DF] shadow-xl">
-            <div className="bg-[#1a1512] px-6 py-8 text-white">
-              <p className="text-[11px] font-medium uppercase tracking-[0.2em] text-[#D4AF8C]/80">
-                {ui.cognitiveTitle} · {ui.eqTitle}
+        {chrome}
+        <ApplyStepShell className="flex-1">
+          <div className="border-b border-white/8 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-6 py-8">
+            <p className={APPLY_EYEBROW}>
+              {ui.cognitiveTitle} · {ui.eqTitle}
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">{title}</h1>
+            {desc ? (
+              <p className="mt-3 whitespace-pre-line text-sm leading-relaxed text-white/50">
+                {desc}
               </p>
-              <h1 className="mt-2 font-serif text-3xl tracking-tight">{title}</h1>
-              {desc ? <p className="mt-3 text-sm text-white/65 whitespace-pre-line">{desc}</p> : null}
-            </div>
-            <div className="space-y-4 px-6 py-6 text-sm leading-relaxed text-zinc-700">
-              <h2 className="font-medium text-[#1a1512]">{ui.screeningIntroHeadline}</h2>
-              <p>{ui.screeningIntroBody}</p>
-              <ol className="list-decimal space-y-2 pl-5 text-zinc-600">
-                {enabled.map((s) => (
-                  <li key={s}>
+            ) : null}
+          </div>
+          <div className="space-y-5 px-6 py-7">
+            <h2 className="text-base font-medium text-white">{ui.screeningIntroHeadline}</h2>
+            <p className="text-sm leading-relaxed text-white/50">{ui.screeningIntroBody}</p>
+            <ol className="space-y-2.5">
+              {enabled.map((s, i) => (
+                <li
+                  key={s}
+                  className={cn(APPLY_SURFACE, "flex items-center gap-3 px-3.5 py-3")}
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#FF1493]/25 bg-[#FF1493]/15 text-xs font-bold text-[#FF1493]">
+                    {i + 1}
+                  </span>
+                  <span className="text-sm text-white/80">
                     {s === "cognitive_screening" && ui.cognitiveTitle}
                     {s === "eq_screening" && ui.eqTitle}
                     {s === "typing_speed_test" && ui.typingTitle}
                     {s === "application_form" && ui.applicationQuestions}
-                  </li>
-                ))}
-              </ol>
-              {error && <p className="text-sm text-red-600">{error}</p>}
-              <button
-                type="button"
-                disabled={starting}
-                onClick={() => {
-                  void (async () => {
-                    try {
-                      await ensureSession();
-                      advanceFrom("intro");
-                    } catch (e) {
-                      setError(e instanceof Error ? e.message : "Could not start");
-                    }
-                  })();
-                }}
-                className="mt-2 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {starting ? ui.starting : ui.begin}
-              </button>
-            </div>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            {error && <p className="text-sm text-rose-400">{error}</p>}
+            <button
+              type="button"
+              disabled={starting}
+              onClick={() => {
+                void (async () => {
+                  try {
+                    await ensureSession();
+                    advanceFrom("intro");
+                  } catch (e) {
+                    setError(e instanceof Error ? e.message : "Could not start");
+                  }
+                })();
+              }}
+              className={APPLY_BTN_PRIMARY}
+            >
+              {starting ? ui.starting : ui.begin}
+            </button>
           </div>
-        </div>
+        </ApplyStepShell>
+        <ApplyFooter text={footer} />
       </>
     );
   }
@@ -327,7 +353,7 @@ export function PublicApplicationFlowClient({
   if (phase === "cognitive_screening" && cognitiveQuestions) {
     return (
       <>
-        {headerBar}
+        {chrome}
         <CognitiveStep
           slug={slug}
           lang={lang}
@@ -336,6 +362,7 @@ export function PublicApplicationFlowClient({
           ensureSession={ensureSession}
           onComplete={() => advanceFrom("cognitive_screening")}
         />
+        <ApplyFooter />
       </>
     );
   }
@@ -343,7 +370,7 @@ export function PublicApplicationFlowClient({
   if (phase === "eq_screening" && eqScenarios) {
     return (
       <>
-        {headerBar}
+        {chrome}
         <EqStep
           slug={slug}
           lang={lang}
@@ -351,6 +378,7 @@ export function PublicApplicationFlowClient({
           ensureSession={ensureSession}
           onComplete={() => advanceFrom("eq_screening")}
         />
+        <ApplyFooter />
       </>
     );
   }
@@ -358,20 +386,21 @@ export function PublicApplicationFlowClient({
   if (phase === "typing_speed_test") {
     return (
       <>
-        {headerBar}
+        {chrome}
         <TypingSpeedTestStep
           slug={slug}
           preferredLanguage={lang}
           ensureSession={ensureSession}
           onComplete={() => advanceFrom("typing_speed_test")}
         />
+        <ApplyFooter />
       </>
     );
   }
 
   return (
     <>
-      {headerBar}
+      {chrome}
       <ApplicationFormStep
         slug={slug}
         title={title}
@@ -385,8 +414,6 @@ export function PublicApplicationFlowClient({
     </>
   );
 }
-
-const PIPELINE_UI_CHOOSE = "Choose your language / Επίλεξε γλώσσα";
 
 function CognitiveStep({
   slug,
@@ -463,31 +490,36 @@ function CognitiveStep({
   const urgent = secondsLeft < 60;
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div>
-          <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">{ui.cognitiveTitle}</p>
-          <p className="mt-1 text-xs text-zinc-500">
-            {idx + 1} / {questions.length}
-          </p>
+    <ApplyStepShell className="flex-1">
+      <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className={APPLY_EYEBROW}>{ui.cognitiveTitle}</p>
+            <p className="mt-1 text-xs text-white/40">
+              {idx + 1} / {questions.length}
+            </p>
+          </div>
+          <div
+            className={cn(
+              "rounded-full px-3.5 py-1.5 font-mono text-sm tabular-nums",
+              urgent
+                ? "border border-rose-500/40 bg-rose-500/15 text-rose-300"
+                : "border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 text-[#D4AF8C]",
+            )}
+          >
+            {mm}:{ss}
+          </div>
         </div>
-        <div
-          className={`rounded-full px-3 py-1.5 font-mono text-sm tabular-nums ${
-            urgent ? "bg-red-100 text-red-700" : "bg-[#1a1512] text-[#D4AF8C]"
-          }`}
-        >
-          {mm}:{ss}
+        <div className={cn(APPLY_PROGRESS_TRACK, "mt-4")}>
+          <div
+            className={APPLY_PROGRESS_FILL}
+            style={{ width: `${((idx + 1) / questions.length) * 100}%` }}
+          />
         </div>
       </div>
-      <div className="mb-4 h-1.5 overflow-hidden rounded-full bg-black/10">
-        <div
-          className="h-full bg-[#C4A484] transition-all"
-          style={{ width: `${((idx + 1) / questions.length) * 100}%` }}
-        />
-      </div>
-      <div className="rounded-3xl border border-black/5 bg-[#F7F3EE] p-6 shadow-lg">
-        <p className="text-base font-medium text-[#1a1512]">{q.prompt}</p>
-        <div className="mt-4 space-y-2">
+      <div className="px-5 py-6 sm:px-6">
+        <p className="text-base font-medium leading-relaxed text-white">{q.prompt}</p>
+        <div className="mt-5 space-y-2.5">
           {q.options.map((opt, i) => {
             const selected = answers[q.id] === i;
             return (
@@ -495,24 +527,25 @@ function CognitiveStep({
                 key={i}
                 type="button"
                 onClick={() => setAnswers((prev) => ({ ...prev, [q.id]: i }))}
-                className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition ${
+                className={cn(
+                  "w-full rounded-xl border px-4 py-3.5 text-left text-sm transition",
                   selected
-                    ? "border-[#C4A484] bg-[#C4A484]/15 text-[#1a1512]"
-                    : "border-black/8 bg-white text-zinc-700 hover:border-black/20"
-                }`}
+                    ? "border-[#FF1493]/45 bg-[#FF1493]/12 text-white shadow-[0_0_24px_-10px_rgba(255,20,147,0.45)]"
+                    : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20 hover:bg-white/[0.05]",
+                )}
               >
                 {opt}
               </button>
             );
           })}
         </div>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        <div className="mt-6 flex justify-between gap-2">
+        {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
+        <div className="mt-7 flex justify-between gap-2">
           <button
             type="button"
             disabled={idx === 0}
             onClick={() => setIdx((i) => i - 1)}
-            className="rounded-xl border border-black/10 px-4 py-2 text-sm disabled:opacity-40"
+            className={APPLY_BTN_GHOST}
           >
             {ui.back}
           </button>
@@ -520,7 +553,7 @@ function CognitiveStep({
             <button
               type="button"
               onClick={() => setIdx((i) => i + 1)}
-              className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white"
+              className={cn(APPLY_BTN_PRIMARY, "w-auto min-w-[120px]")}
             >
               {ui.next}
             </button>
@@ -529,15 +562,17 @@ function CognitiveStep({
               type="button"
               disabled={submitting}
               onClick={() => void submit()}
-              className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white disabled:opacity-60"
+              className={cn(APPLY_BTN_PRIMARY, "w-auto min-w-[140px]")}
             >
               {submitting ? ui.submitting : ui.finishSection}
             </button>
           )}
         </div>
       </div>
-      <p className="mt-3 text-center text-[11px] text-zinc-500">{ui.cognitiveBody}</p>
-    </div>
+      <p className="border-t border-white/8 px-5 py-3 text-center text-[11px] text-white/30 sm:px-6">
+        {ui.cognitiveBody}
+      </p>
+    </ApplyStepShell>
   );
 }
 
@@ -592,20 +627,24 @@ function EqStep({
   }
 
   return (
-    <div className="mx-auto max-w-xl px-4 py-10">
-      <p className="text-[11px] uppercase tracking-[0.18em] text-[#8B6914]">{ui.eqTitle}</p>
-      <p className="mt-1 text-xs text-zinc-500">
-        {idx + 1} / {scenarios.length}
-      </p>
-      <div className="mt-3 mb-4 h-1.5 overflow-hidden rounded-full bg-black/10">
-        <div
-          className="h-full bg-[#E8A0BF] transition-all"
-          style={{ width: `${((idx + 1) / scenarios.length) * 100}%` }}
-        />
+    <ApplyStepShell className="flex-1">
+      <div className="border-b border-white/8 px-5 py-4 sm:px-6">
+        <p className={APPLY_EYEBROW}>{ui.eqTitle}</p>
+        <p className="mt-1 text-xs text-white/40">
+          {idx + 1} / {scenarios.length}
+        </p>
+        <div className={cn(APPLY_PROGRESS_TRACK, "mt-4")}>
+          <div
+            className={APPLY_PROGRESS_FILL}
+            style={{ width: `${((idx + 1) / scenarios.length) * 100}%` }}
+          />
+        </div>
       </div>
-      <div className="rounded-3xl border border-black/5 bg-[#F7F3EE] p-6 shadow-lg">
-        <p className="text-base font-medium leading-relaxed text-[#1a1512]">{s.prompt}</p>
-        <div className="mt-4 space-y-2">
+      <div className="px-5 py-6 sm:px-6">
+        <div className={cn(APPLY_SURFACE, "p-4 sm:p-5")}>
+          <p className="text-base font-medium leading-relaxed text-white">{s.prompt}</p>
+        </div>
+        <div className="mt-4 space-y-2.5">
           {s.options.map((opt, i) => {
             const selected = answers[s.id] === i;
             return (
@@ -613,24 +652,25 @@ function EqStep({
                 key={i}
                 type="button"
                 onClick={() => setAnswers((prev) => ({ ...prev, [s.id]: i }))}
-                className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition ${
+                className={cn(
+                  "w-full rounded-xl border px-4 py-3.5 text-left text-sm transition",
                   selected
-                    ? "border-[#E8A0BF] bg-[#E8A0BF]/20 text-[#1a1512]"
-                    : "border-black/8 bg-white text-zinc-700 hover:border-black/20"
-                }`}
+                    ? "border-[#D4AF8C]/45 bg-[#D4AF8C]/12 text-white shadow-[0_0_24px_-10px_rgba(212,175,140,0.4)]"
+                    : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20 hover:bg-white/[0.05]",
+                )}
               >
                 {opt}
               </button>
             );
           })}
         </div>
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        <div className="mt-6 flex justify-between gap-2">
+        {error && <p className="mt-3 text-sm text-rose-400">{error}</p>}
+        <div className="mt-7 flex justify-between gap-2">
           <button
             type="button"
             disabled={idx === 0}
             onClick={() => setIdx((i) => i - 1)}
-            className="rounded-xl border border-black/10 px-4 py-2 text-sm disabled:opacity-40"
+            className={APPLY_BTN_GHOST}
           >
             {ui.back}
           </button>
@@ -639,7 +679,7 @@ function EqStep({
               type="button"
               disabled={answers[s.id] == null}
               onClick={() => setIdx((i) => i + 1)}
-              className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white disabled:opacity-40"
+              className={cn(APPLY_BTN_PRIMARY, "w-auto min-w-[120px]")}
             >
               {ui.next}
             </button>
@@ -648,15 +688,17 @@ function EqStep({
               type="button"
               disabled={submitting || answers[s.id] == null}
               onClick={() => void submit()}
-              className="rounded-xl bg-[#1a1512] px-5 py-2 text-sm text-white disabled:opacity-60"
+              className={cn(APPLY_BTN_PRIMARY, "w-auto min-w-[140px]")}
             >
               {submitting ? ui.submitting : ui.finishSection}
             </button>
           )}
         </div>
       </div>
-      <p className="mt-3 text-center text-[11px] text-zinc-500">{ui.eqBody}</p>
-    </div>
+      <p className="border-t border-white/8 px-5 py-3 text-center text-[11px] text-white/30 sm:px-6">
+        {ui.eqBody}
+      </p>
+    </ApplyStepShell>
   );
 }
 
@@ -767,20 +809,17 @@ function ApplicationFormStep({
   }
 
   return (
-    <form onSubmit={onSubmit} className="relative mx-auto max-w-xl px-4 py-10 sm:py-14">
+    <form onSubmit={onSubmit} className="relative mx-auto flex w-full max-w-xl flex-1 flex-col px-4 py-6 sm:py-8">
       {questions.length > 3 && (
-        <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between text-xs text-zinc-500">
+        <div className="mb-5">
+          <div className="mb-2 flex items-center justify-between text-xs text-white/40">
             <span>{ui.progress}</span>
-            <span>
-              {answeredCount}/{questions.length}
+            <span className="tabular-nums text-[#D4AF8C]">
+              {answeredCount}/{questions.length} · {progress}%
             </span>
           </div>
-          <div className="h-1.5 overflow-hidden rounded-full bg-black/10">
-            <div
-              className="h-full rounded-full bg-[#C4A484] transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            />
+          <div className={APPLY_PROGRESS_TRACK}>
+            <div className={APPLY_PROGRESS_FILL} style={{ width: `${progress}%` }} />
           </div>
         </div>
       )}
@@ -804,10 +843,6 @@ function ApplicationFormStep({
         }}
       />
 
-      {footer ? (
-        <p className="mt-4 text-center text-xs text-zinc-500">{footer}</p>
-      ) : null}
-
       <div className="absolute -left-[9999px] h-0 w-0 overflow-hidden opacity-0" aria-hidden>
         <label>
           Website
@@ -821,18 +856,16 @@ function ApplicationFormStep({
       </div>
 
       {submitError && (
-        <p className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-300">
           {submitError}
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="mt-6 w-full rounded-2xl bg-[#1a1512] py-3.5 text-sm font-medium text-white shadow-lg transition hover:bg-[#2a221c] disabled:opacity-60"
-      >
+      <button type="submit" disabled={submitting} className={cn(APPLY_BTN_PRIMARY, "mt-6")}>
         {submitting ? ui.submitting : ui.submit}
       </button>
+
+      <ApplyFooter text={footer} />
     </form>
   );
 }
