@@ -89,6 +89,13 @@ export type ClarioSuiteCarouselChild = {
   permalink: string | null;
 };
 
+/** Present on GET /media/:id/insights when Meta rejects the metrics request. */
+export type ClarioSuiteMediaInsightStatus = {
+  source: string;
+  statusCode?: number | null;
+  reason?: string | null;
+};
+
 export type ClarioSuiteMediaInsight = {
   reach: number | null;
   views: number | null;
@@ -103,6 +110,8 @@ export type ClarioSuiteMediaInsight = {
   carouselAlbumImpressions: number | null;
   carouselAlbumReach: number | null;
   carouselAlbumSaved: number | null;
+  /** Upstream availability — `unavailable` means all metrics are null. */
+  status?: ClarioSuiteMediaInsightStatus | null;
   /** Present on some media-insight responses for CAROUSEL_ALBUM. */
   children?: ClarioSuiteCarouselChild[];
 };
@@ -166,6 +175,15 @@ export type ClarioSuiteTopPostRow = {
   shares: number;
   saved: number;
   views: number;
+  total_interactions: number;
+  video_views: number;
+  quartile_p95: number | null;
+  carousel_album_engagement: number | null;
+  carousel_album_impressions: number | null;
+  carousel_album_reach: number | null;
+  carousel_album_saved: number | null;
+  insights_available: boolean;
+  insights_error: string | null;
   posted_at: string | null;
   rank: number;
   synced_at: string;

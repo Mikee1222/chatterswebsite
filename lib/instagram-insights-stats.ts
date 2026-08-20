@@ -59,11 +59,12 @@ export type IgPostRow = {
   shares?: number;
   saved?: number;
   views?: number;
+  video_views?: number;
   posted_at?: string | null;
 };
 
 /**
- * Post-level reach for display/ranking — stored reach, else views (common for REELS when Meta omits reach),
+ * Post-level reach for display/ranking — stored reach, else views/video_views (common for REELS when Meta omits reach),
  * else optional estimated account daily reach for the week.
  */
 export function resolvePostReach(
@@ -72,7 +73,7 @@ export function resolvePostReach(
 ): { reach: number; estimated: boolean } {
   const storedReach = coalesceIgMetric(post.reach);
   if (storedReach > 0) return { reach: storedReach, estimated: false };
-  const views = coalesceIgMetric(post.views);
+  const views = coalesceIgMetric(post.views) || coalesceIgMetric(post.video_views);
   if (views > 0) return { reach: views, estimated: false };
   const estimated = opts?.estimatedReach;
   if (estimated != null && estimated > 0) {
@@ -93,7 +94,7 @@ export function resolvePostEngagementScore(
   const shares = post.shares ?? 0;
   const saved = post.saved ?? 0;
   const reach = coalesceIgMetric(post.reach);
-  const views = coalesceIgMetric(post.views);
+  const views = coalesceIgMetric(post.views) || coalesceIgMetric(post.video_views);
   const direct = computePostEngagementScore({
     likes,
     comments,

@@ -429,23 +429,102 @@ export async function listClarioSuiteMedia(
   return { data: all, count: all.length };
 }
 
-/** GET /media/:id/insights */
-/** GET /media/:id/insights — unwrap `{ data, meta }` envelope from live API. */
+function asNullableNumber(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function pickInsightNumber(raw: Record<string, unknown>, ...keys: string[]): number | null {
+  for (const key of keys) {
+    if (key in raw) return asNullableNumber(raw[key]);
+  }
+  return null;
+}
+
+/** True when ClarioSuite returned HTTP 200 but Meta rejected the insights metrics request. */
+export function isMediaInsightUnavailable(insight: ClarioSuiteMediaInsight): boolean {
+  const source = insight.status?.source;
+  if (typeof source === "string" && source.toLowerCase() === "unavailable") return true;
+  return false;
+}
+
+/** Human-readable reason when insights are unavailable (for sync diagnostics). */
+export function mediaInsightUnavailableReason(insight: ClarioSuiteMediaInsight): string | null {
+  if (!isMediaInsightUnavailable(insight)) return null;
+  const reason = insight.status?.reason;
+  if (typeof reason === "string" && reason.trim()) return reason.trim().slice(0, 500);
+  const code = insight.status?.statusCode;
+  return code != null ? `Media insights unavailable (status ${code})` : "Media insights unavailable";
+}
+
+/**
+ * GET /media/:id/insights — unwrap `{ data, meta }` envelope from live API.
+ * Normalizes camelCase + snake_case field names ClarioSuite may return.
+ */
 function parseMediaInsightPayload(payload: unknown): ClarioSuiteMediaInsight {
+  let raw: Record<string, unknown> = {};
   if (payload && typeof payload === "object") {
     const o = payload as Record<string, unknown>;
     const data = o["data"];
-    if (data && typeof data === "object") {
-      return data as ClarioSuiteMediaInsight;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      raw = data as Record<string, unknown>;
+    } else {
+      raw = o;
     }
   }
-  return (payload ?? {}) as ClarioSuiteMediaInsight;
+
+  let status: ClarioSuiteMediaInsight["status"] = null;
+  const statusRaw = raw["status"];
+  if (statusRaw && typeof statusRaw === "object" && !Array.isArray(statusRaw)) {
+    const s = statusRaw as Record<string, unknown>;
+    status = {
+      source: typeof s["source"] === "string" ? s["source"] : String(s["source"] ?? ""),
+      statusCode: asNullableNumber(s["statusCode"] ?? s["status_code"]),
+      reason: typeof s["reason"] === "string" ? s["reason"] : s["reason"] != null ? String(s["reason"]) : null,
+    };
+  }
+
+  const childrenRaw = raw["children"];
+  const children = Array.isArray(childrenRaw) ? (childrenRaw as ClarioSuiteMediaInsight["children"]) : undefined;
+
+  return {
+    reach: pickInsightNumber(raw, "reach"),
+    views: pickInsightNumber(raw, "views"),
+    likes: pickInsightNumber(raw, "likes"),
+    comments: pickInsightNumber(raw, "comments"),
+    saved: pickInsightNumber(raw, "saved"),
+    shares: pickInsightNumber(raw, "shares"),
+    totalInteractions: pickInsightNumber(raw, "totalInteractions", "total_interactions"),
+    videoViews: pickInsightNumber(raw, "videoViews", "video_views"),
+    quartileP95: pickInsightNumber(raw, "quartileP95", "quartile_p95"),
+    carouselAlbumEngagement: pickInsightNumber(
+      raw,
+      "carouselAlbumEngagement",
+      "carousel_album_engagement"
+    ),
+    carouselAlbumImpressions: pickInsightNumber(
+      raw,
+      "carouselAlbumImpressions",
+      "carousel_album_impressions"
+    ),
+    carouselAlbumReach: pickInsightNumber(raw, "carouselAlbumReach", "carousel_album_reach"),
+    carouselAlbumSaved: pickInsightNumber(raw, "carouselAlbumSaved", "carousel_album_saved"),
+    status,
+    children,
+  };
 }
 
+/** GET /media/:id/insights — per-post reach/views/engagement (Reels + Carousel fields). */
 export async function getClarioSuiteMediaInsights(mediaId: string): Promise<ClarioSuiteMediaInsight> {
   const id = encodeURIComponent(mediaId.trim());
   const payload = await clariosuiteFetchJson<unknown>(`/media/${id}/insights`);
   return parseMediaInsightPayload(payload);
+}
+
+/** Alias for GET /media/:id/insights (same as getClarioSuiteMediaInsights). */
+export async function fetchMediaInsights(mediaId: string): Promise<ClarioSuiteMediaInsight> {
+  return getClarioSuiteMediaInsights(mediaId);
 }
 
 /**

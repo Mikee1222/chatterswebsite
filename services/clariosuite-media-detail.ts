@@ -205,7 +205,10 @@ export async function getClarioSuiteProfileSimulator(
     fetchClarioSuiteStoriesPayload(igUserId),
   ]);
   const viewsByMediaId = new Map(
-    syncedTopPosts.map((p) => [p.media_id, p.views > 0 ? p.views : null] as const)
+    syncedTopPosts.map((p) => {
+      const views = p.views > 0 ? p.views : p.video_views > 0 ? p.video_views : null;
+      return [p.media_id, views] as const;
+    })
   );
   const posts = media
     .filter((m) => m?.id)

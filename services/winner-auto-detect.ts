@@ -100,7 +100,7 @@ async function loadTopPostCandidates(opts?: {
   let q = sb
     .from("clariosuite_top_posts")
     .select(
-      "media_id,permalink,media_type,media_product_type,caption,image_url,views,posted_at,model_record_id,model_stable_id,model_name",
+      "media_id,permalink,media_type,media_product_type,caption,image_url,views,video_views,posted_at,model_record_id,model_stable_id,model_name",
     )
     .order("views", { ascending: false });
   if (opts?.modelRecordId) q = q.eq("model_record_id", opts.modelRecordId);
@@ -108,6 +108,8 @@ async function loadTopPostCandidates(opts?: {
   if (error) throw new Error(`load top posts: ${error.message}`);
   return (data ?? []).map((row) => {
     const r = row as Record<string, unknown>;
+    const views = Number(r.views) || 0;
+    const videoViews = Number(r.video_views) || 0;
     return {
       media_id: String(r.media_id ?? ""),
       permalink: r.permalink != null ? String(r.permalink) : null,
@@ -115,7 +117,7 @@ async function loadTopPostCandidates(opts?: {
       media_product_type: r.media_product_type != null ? String(r.media_product_type) : null,
       caption: r.caption != null ? String(r.caption) : null,
       image_url: r.image_url != null ? String(r.image_url) : null,
-      views: Number(r.views) || 0,
+      views: views > 0 ? views : videoViews,
       posted_at: r.posted_at != null ? String(r.posted_at) : null,
       model_record_id: r.model_record_id != null ? String(r.model_record_id) : null,
       model_stable_id: r.model_stable_id != null ? String(r.model_stable_id) : null,

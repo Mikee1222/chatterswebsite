@@ -6,12 +6,14 @@ import {
   ClarioSuiteApiError,
   computeEngagementRate,
   computePostEngagementScore,
-  getClarioSuiteAccountInsights,
-  getClarioSuiteAudience,
-  getClarioSuiteMediaInsights,
+  fetchMediaInsights,
   isClarioSuiteConfigured,
+  isMediaInsightUnavailable,
   listClarioSuiteMedia,
   logClarioSuiteFailure,
+  mediaInsightUnavailableReason,
+  getClarioSuiteAccountInsights,
+  getClarioSuiteAudience,
 } from "@/lib/clariosuite-api";
 import { publicId, sbSelectWhere, type SbRow } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -24,8 +26,10 @@ import { listAllModelss } from "@/services/modelss";
 import type { ClarioSuiteTimeSeriesPoint } from "@/types/clariosuite";
 import type { ModelRecord } from "@/types";
 
+/** Cap per-account insight volume (shares general ClarioSuite 100 req/min budget). */
 const TOP_POSTS_PER_MODEL = 25;
-const MEDIA_FETCH_LIMIT = 25;
+/** How many recent media items to score via GET /media/:id/insights (then keep top N). */
+const MEDIA_FETCH_LIMIT = 40;
 /** Trailing days to refresh on each daily sync (late Meta updates). Views series is still ~2 weeks from Meta. */
 const DEFAULT_INSIGHTS_RANGE = 30;
 
@@ -279,25 +283,56 @@ async function upsertTopPosts(link: SyncLink): Promise<number> {
     shares: number;
     saved: number;
     views: number;
+    total_interactions: number;
+    video_views: number;
+    quartile_p95: number | null;
+    carousel_album_engagement: number | null;
+    carousel_album_impressions: number | null;
+    carousel_album_reach: number | null;
+    carousel_album_saved: number | null;
+    insights_available: boolean;
+    insights_error: string | null;
     posted_at: string | null;
   }> = [];
 
+  let unavailableLogged = 0;
   for (const item of media) {
     if (!item?.id) continue;
     try {
-      const insight = await getClarioSuiteMediaInsights(item.id);
+      const insight = await fetchMediaInsights(item.id);
+      const unavailable = isMediaInsightUnavailable(insight);
+      const insightsError = unavailable ? mediaInsightUnavailableReason(insight) : null;
+      if (unavailable && unavailableLogged < 3) {
+        unavailableLogged += 1;
+        logClarioSuiteFailure("upsertTopPosts media insight unavailable", new Error(insightsError ?? "unavailable"), {
+          igUserId: link.igUserId,
+          mediaId: item.id,
+        });
+      }
+
       const likes = Math.round(insight.likes ?? item.likeCount ?? 0);
       const comments = Math.round(insight.comments ?? item.commentsCount ?? 0);
       const shares = Math.round(insight.shares ?? 0);
       const saved = Math.round(insight.saved ?? 0);
-      const reachRaw = Math.round(insight.reach ?? insight.carouselAlbumReach ?? 0);
-      const views = Math.round(insight.views ?? insight.videoViews ?? 0);
+      const reachRaw = Math.round(
+        insight.reach ?? insight.carouselAlbumReach ?? 0
+      );
+      const videoViews = Math.round(insight.videoViews ?? 0);
+      const views = Math.round(insight.views ?? (videoViews > 0 ? videoViews : 0));
       // REELS often omit reach from Meta; views/plays are the usable proxy at sync time.
       const reach = reachRaw > 0 ? reachRaw : views;
       const totalInteractions =
         insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)
           ? Math.round(insight.totalInteractions)
-          : undefined;
+          : likes + comments + shares + saved;
+      const insightsAvailable =
+        !unavailable &&
+        (reachRaw > 0 ||
+          views > 0 ||
+          videoViews > 0 ||
+          (insight.likes != null && Number.isFinite(insight.likes)) ||
+          (insight.totalInteractions != null && Number.isFinite(insight.totalInteractions)));
+
       scored.push({
         media_id: item.id,
         permalink: item.permalink,
@@ -312,7 +347,7 @@ async function upsertTopPosts(link: SyncLink): Promise<number> {
           saved,
           reach: reachRaw > 0 ? reachRaw : 0,
           views: views > 0 ? views : undefined,
-          totalInteractions,
+          totalInteractions: totalInteractions > 0 ? totalInteractions : undefined,
         }),
         reach,
         likes,
@@ -320,6 +355,30 @@ async function upsertTopPosts(link: SyncLink): Promise<number> {
         shares,
         saved,
         views,
+        total_interactions: totalInteractions,
+        video_views: videoViews,
+        quartile_p95:
+          insight.quartileP95 != null && Number.isFinite(insight.quartileP95)
+            ? insight.quartileP95
+            : null,
+        carousel_album_engagement:
+          insight.carouselAlbumEngagement != null && Number.isFinite(insight.carouselAlbumEngagement)
+            ? Math.round(insight.carouselAlbumEngagement)
+            : null,
+        carousel_album_impressions:
+          insight.carouselAlbumImpressions != null && Number.isFinite(insight.carouselAlbumImpressions)
+            ? Math.round(insight.carouselAlbumImpressions)
+            : null,
+        carousel_album_reach:
+          insight.carouselAlbumReach != null && Number.isFinite(insight.carouselAlbumReach)
+            ? Math.round(insight.carouselAlbumReach)
+            : null,
+        carousel_album_saved:
+          insight.carouselAlbumSaved != null && Number.isFinite(insight.carouselAlbumSaved)
+            ? Math.round(insight.carouselAlbumSaved)
+            : null,
+        insights_available: insightsAvailable,
+        insights_error: insightsError,
         posted_at: item.timestamp || null,
       });
     } catch (err) {
@@ -327,10 +386,44 @@ async function upsertTopPosts(link: SyncLink): Promise<number> {
         igUserId: link.igUserId,
         mediaId: item.id,
       });
+      // Keep media-list likes/comments so the post still appears while insights fail.
+      const likes = Math.round(item.likeCount ?? 0);
+      const comments = Math.round(item.commentsCount ?? 0);
+      scored.push({
+        media_id: item.id,
+        permalink: item.permalink,
+        media_type: item.mediaType ?? null,
+        media_product_type: item.mediaProductType ?? null,
+        caption: item.caption,
+        image_url: item.imageUrl || null,
+        engagement_score: null,
+        reach: 0,
+        likes,
+        comments,
+        shares: 0,
+        saved: 0,
+        views: 0,
+        total_interactions: likes + comments,
+        video_views: 0,
+        quartile_p95: null,
+        carousel_album_engagement: null,
+        carousel_album_impressions: null,
+        carousel_album_reach: null,
+        carousel_album_saved: null,
+        insights_available: false,
+        insights_error: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+        posted_at: item.timestamp || null,
+      });
     }
   }
 
-  scored.sort((a, b) => (b.engagement_score ?? -1) - (a.engagement_score ?? -1));
+  scored.sort((a, b) => {
+    const scoreDiff = (b.engagement_score ?? -1) - (a.engagement_score ?? -1);
+    if (scoreDiff !== 0) return scoreDiff;
+    const viewsDiff = b.views - a.views;
+    if (viewsDiff !== 0) return viewsDiff;
+    return b.likes + b.comments - (a.likes + a.comments);
+  });
   const top = scored.slice(0, TOP_POSTS_PER_MODEL);
   const sb = getSupabaseServiceClient();
 
@@ -634,6 +727,15 @@ export async function queryClarioSuiteTopPosts(params: {
     shares: number;
     saved: number;
     views: number;
+    total_interactions: number;
+    video_views: number;
+    quartile_p95: number | null;
+    carousel_album_engagement: number | null;
+    carousel_album_impressions: number | null;
+    carousel_album_reach: number | null;
+    carousel_album_saved: number | null;
+    insights_available: boolean;
+    insights_error: string | null;
     posted_at: string | null;
     rank: number;
   }>
@@ -647,7 +749,7 @@ export async function queryClarioSuiteTopPosts(params: {
       if (params.modelRecordId) next = next.eq("model_record_id", params.modelRecordId);
       return next;
     },
-    "id,media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,posted_at,rank"
+    "id,media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,total_interactions,video_views,quartile_p95,carousel_album_engagement,carousel_album_impressions,carousel_album_reach,carousel_album_saved,insights_available,insights_error,posted_at,rank"
   );
   const limit = params.limit ?? TOP_POSTS_PER_MODEL;
   return rows.slice(0, limit).map((row) => ({
@@ -663,7 +765,18 @@ export async function queryClarioSuiteTopPosts(params: {
     comments: n(row.comments),
     shares: n(row.shares),
     saved: n(row.saved),
-    views: n(row.views),
+    views: n(row.views) > 0 ? n(row.views) : n(row.video_views),
+    total_interactions: n(row.total_interactions),
+    video_views: n(row.video_views),
+    quartile_p95: row.quartile_p95 == null ? null : n(row.quartile_p95),
+    carousel_album_engagement:
+      row.carousel_album_engagement == null ? null : n(row.carousel_album_engagement),
+    carousel_album_impressions:
+      row.carousel_album_impressions == null ? null : n(row.carousel_album_impressions),
+    carousel_album_reach: row.carousel_album_reach == null ? null : n(row.carousel_album_reach),
+    carousel_album_saved: row.carousel_album_saved == null ? null : n(row.carousel_album_saved),
+    insights_available: Boolean(row.insights_available),
+    insights_error: row.insights_error != null ? String(row.insights_error) : null,
     posted_at: row.posted_at != null ? String(row.posted_at) : null,
     rank: n(row.rank),
   }));
@@ -685,7 +798,7 @@ export async function queryClarioSuiteTopPostsForModels(params: {
   const rows = await sbSelectWhere<PostRow>(
     "clariosuite_top_posts",
     (q) => q.in("model_record_id", ids).order("engagement_score", { ascending: false }),
-    "id,media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,posted_at,rank,model_record_id"
+    "id,media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,total_interactions,video_views,quartile_p95,carousel_album_engagement,carousel_album_impressions,carousel_album_reach,carousel_album_saved,insights_available,insights_error,posted_at,rank,model_record_id"
   );
 
   const limitPerModel = params.limitPerModel ?? TOP_POSTS_PER_MODEL;
@@ -716,7 +829,20 @@ export async function queryClarioSuiteTopPostsForModels(params: {
         comments: n(row.comments),
         shares: n(row.shares),
         saved: n(row.saved),
-        views: n(row.views),
+        views: n(row.views) > 0 ? n(row.views) : n(row.video_views),
+        total_interactions: n(row.total_interactions),
+        video_views: n(row.video_views),
+        quartile_p95: row.quartile_p95 == null ? null : n(row.quartile_p95),
+        carousel_album_engagement:
+          row.carousel_album_engagement == null ? null : n(row.carousel_album_engagement),
+        carousel_album_impressions:
+          row.carousel_album_impressions == null ? null : n(row.carousel_album_impressions),
+        carousel_album_reach:
+          row.carousel_album_reach == null ? null : n(row.carousel_album_reach),
+        carousel_album_saved:
+          row.carousel_album_saved == null ? null : n(row.carousel_album_saved),
+        insights_available: Boolean(row.insights_available),
+        insights_error: row.insights_error != null ? String(row.insights_error) : null,
         posted_at: row.posted_at != null ? String(row.posted_at) : null,
         rank: n(row.rank),
       }))
