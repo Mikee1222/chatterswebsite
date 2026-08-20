@@ -11,6 +11,14 @@ import {
   toPublicEqScenariosLocalized,
 } from "@/lib/application-screening-i18n";
 import { getEnabledPipelineSteps } from "@/lib/application-forms-types";
+import {
+  SITE_DESCRIPTION,
+  SITE_TITLE,
+  absoluteUrl,
+  buildOpenGraph,
+  buildTwitterCard,
+  trimMetaDescription,
+} from "@/lib/site-metadata";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,10 +28,40 @@ type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const form = await getPublishedFormBySlug(slug).catch(() => null);
-  if (!form) return { title: "Application" };
+  if (!form) {
+    return {
+      title: "Application",
+      description: SITE_DESCRIPTION,
+      openGraph: buildOpenGraph({
+        title: `Application — ${SITE_TITLE}`,
+        description: SITE_DESCRIPTION,
+        url: absoluteUrl(`/apply/${encodeURIComponent(slug)}`),
+      }),
+      twitter: buildTwitterCard({
+        title: `Application — ${SITE_TITLE}`,
+        description: SITE_DESCRIPTION,
+      }),
+    };
+  }
+
+  const pageTitle = `${form.title} — ${SITE_TITLE}`;
+  const description =
+    trimMetaDescription(form.description) ?? SITE_DESCRIPTION;
+  const pageUrl = absoluteUrl(`/apply/${encodeURIComponent(form.slug)}`);
+
   return {
-    title: form.title,
-    description: form.description || undefined,
+    title: { absolute: pageTitle },
+    description,
+    alternates: { canonical: pageUrl },
+    openGraph: buildOpenGraph({
+      title: pageTitle,
+      description,
+      url: pageUrl,
+    }),
+    twitter: buildTwitterCard({
+      title: pageTitle,
+      description,
+    }),
   };
 }
 

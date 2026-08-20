@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { ApplyAmbientBg } from "@/components/application-public-chrome";
 import { APPLY_SHELL } from "@/lib/application-ui-tokens";
+import { SITE_NAME } from "@/lib/site-metadata";
 
 export const metadata: Metadata = {
-  applicationName: undefined,
+  applicationName: SITE_NAME,
   manifest: undefined,
   appleWebApp: undefined,
   icons: {
@@ -12,9 +13,6 @@ export const metadata: Metadata = {
       { url: "/icon-512-v2.png", sizes: "512x512", type: "image/png" },
     ],
     apple: [{ url: "/apple-touch-icon-v2.png", sizes: "180x180", type: "image/png" }],
-  },
-  openGraph: {
-    siteName: undefined,
   },
 };
 

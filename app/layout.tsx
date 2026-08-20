@@ -1,11 +1,24 @@
 import type { Metadata, Viewport } from "next";
 import { ToasterProvider } from "@/components/toaster-provider";
+import {
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_ORIGIN,
+  SITE_TITLE,
+  absoluteUrl,
+  buildOpenGraph,
+  buildTwitterCard,
+} from "@/lib/site-metadata";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Gunzo Partner",
-  applicationName: "Gunzo Partner",
-  description: "Gunzo Agency — Διαχείριση βαρδιών, models, whales και περιεχομένου.",
+  metadataBase: new URL(SITE_ORIGIN),
+  title: {
+    default: SITE_NAME,
+    template: `%s — ${SITE_TITLE}`,
+  },
+  applicationName: SITE_NAME,
+  description: SITE_DESCRIPTION,
   icons: {
     icon: [
       { url: "/icon-192-v2.png", sizes: "192x192", type: "image/png" },
@@ -16,20 +29,19 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "Gunzo Partner",
+    title: SITE_NAME,
     statusBarStyle: "black-translucent",
   },
   manifest: "/manifest.json",
-  openGraph: {
-    title: "Gunzo Partner",
-    description: "Gunzo Agency — Εσωτερική πλατφόρμα διαχείρισης.",
-    siteName: "Gunzo Partner",
-    type: "website",
-  },
-  twitter: {
-    title: "Gunzo Partner",
-    description: "Gunzo Agency — Εσωτερική πλατφόρμα διαχείρισης.",
-  },
+  openGraph: buildOpenGraph({
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: absoluteUrl("/"),
+  }),
+  twitter: buildTwitterCard({
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  }),
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",
