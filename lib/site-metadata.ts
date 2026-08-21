@@ -5,13 +5,13 @@ export const SITE_ORIGIN =
   (process.env.NEXT_PUBLIC_APP_URL?.trim().replace(/\/$/, "") ||
     "https://www.gunzoteam.com");
 
-export const SITE_NAME = "Gunzo Partner";
+export const SITE_NAME = "Gunzo Agency";
 
 export const SITE_TITLE = "Gunzo Agency";
 
 /** Professional English description for social / SEO previews. */
 export const SITE_DESCRIPTION =
-  "Gunzo Agency — OnlyFans creator management, chatting operations, and partner tools for models, agencies, and talent teams.";
+  "Gunzo Agency — Premium OnlyFans management and chatting services. We help creators grow their presence, maximize revenue, and build lasting fan relationships through expert chat teams and dedicated account management.";
 
 /** Shared 1200×630 branded preview (logo + wordmark). */
 export const OG_IMAGE_PATH = "/og-image.png";

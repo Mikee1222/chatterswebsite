@@ -14,7 +14,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
   title: {
-    default: SITE_NAME,
+    default: SITE_TITLE,
     template: `%s — ${SITE_TITLE}`,
   },
   applicationName: SITE_NAME,
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: SITE_NAME,
+    title: SITE_TITLE,
     statusBarStyle: "black-translucent",
   },
   manifest: "/manifest.json",
