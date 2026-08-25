@@ -1161,6 +1161,14 @@ export async function listCreatorTransactionTypeCounts(params: {
   creatorInflowwId?: string;
   revenueOnly?: boolean;
 }): Promise<CreatorTransactionTypeCount[]> {
+  if (!params.modelRecordId && !params.creatorInflowwId && params.revenueOnly !== false) {
+    try {
+      return await listCreatorTransactionTypeCountsRpc(params);
+    } catch (err) {
+      console.warn("[infloww] listCreatorTransactionTypeCounts RPC failed — falling back", err);
+    }
+  }
+
   const [txs, refunds] = await Promise.all([
     listCreatorTransactions({
       startYmd: params.startYmd,
@@ -1192,6 +1200,30 @@ export async function listCreatorTransactionTypeCounts(params: {
   return [...map.entries()]
     .map(([type, v]) => ({ type, ...v }))
     .sort((a, b) => b.count - a.count);
+}
+
+/** SQL aggregate — avoids paginating every transaction row (Admin Home, dashboards). */
+async function listCreatorTransactionTypeCountsRpc(params: {
+  startYmd: string;
+  endYmd: string;
+}): Promise<CreatorTransactionTypeCount[]> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.rpc("infloww_creator_tx_type_counts", {
+    p_start_ymd: params.startYmd,
+    p_end_ymd: params.endYmd,
+  });
+  if (error) throw new Error(`listCreatorTransactionTypeCountsRpc: ${error.message}`);
+  return ((data ?? []) as Array<{
+    type: string | null;
+    count: number | string | null;
+    gross: number | string | null;
+    net: number | string | null;
+  }>).map((row) => ({
+    type: (row.type ?? "unknown").trim() || "unknown",
+    count: n(row.count),
+    gross: n(row.gross),
+    net: n(row.net),
+  }));
 }
 
 export type MarketingLinkRow = {

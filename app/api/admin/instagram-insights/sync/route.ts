@@ -29,6 +29,15 @@ export async function POST(request: Request) {
 
   try {
     const result = await syncClarioSuiteInsights({ modelRecordId });
+    if (result.skipped) {
+      return NextResponse.json(
+        {
+          error: result.skipReason ?? "ClarioSuite sync skipped",
+          skipped: true,
+        },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(result);
   } catch (err) {
     console.error("[admin/instagram-insights/sync]", err);

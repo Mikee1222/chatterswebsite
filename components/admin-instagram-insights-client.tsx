@@ -339,12 +339,19 @@ export function AdminInstagramInsightsClient() {
       });
       const json = (await res.json()) as {
         error?: string;
+        skipped?: boolean;
+        skipReason?: string;
         modelsTargeted?: number;
         dailyRowsUpserted?: number;
         errors?: Array<{ modelName?: string; message: string }>;
       };
       if (!res.ok) throw new Error(json.error || "Sync failed");
-      if (json.errors?.length) {
+      if (json.skipped) {
+        throw new Error(json.error || json.skipReason || "ClarioSuite sync skipped — API key not configured");
+      }
+      if (json.modelsTargeted === 0 && !json.dailyRowsUpserted) {
+        setError("Sync finished but no linked Instagram accounts were targeted. Link models first.");
+      } else if (json.errors?.length) {
         const names = json.errors
           .map((e) => e.modelName || "model")
           .slice(0, 3)

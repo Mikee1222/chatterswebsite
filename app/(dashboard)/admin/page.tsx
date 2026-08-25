@@ -16,10 +16,11 @@ import {
   queryInflowwDailyStats,
 } from "@/services/infloww-daily-stats";
 import {
-  filterCreatorTransactionsInAthensYmdRange,
+  listCreatorRevenueByAthensDay,
   listCreatorTransactions,
   listCreatorTransactionTypeCounts,
   listLinkedCreatorModels,
+  syntheticCreatorTxFromDailyRevenue,
 } from "@/services/infloww-creator-earnings";
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { AdminHomeClient } from "@/components/admin-home-client";
@@ -76,8 +77,10 @@ export default async function AdminHomePage({
 
   const wowStart = addDaysAthensYmd(todayYmd, -27);
   const activityStart = addDaysAthensYmd(todayYmd, -13);
-  const fetchStart = [monthStart, wowStart].sort()[0]!;
-  const fetchEnd = [monthEnd, todayYmd].sort().at(-1)!;
+  /** Revenue trend + WoW always trail today — never pull months of txs for a past ?month= view. */
+  const revenueTrendStart = wowStart;
+  const revenueTrendEnd = todayYmd;
+  const monthEndCapped = monthEnd > todayYmd ? todayYmd : monthEnd;
 
   const [
     linkedUsers,
@@ -102,35 +105,41 @@ export default async function AdminHomePage({
   const uuids = linkedUsers.map((u) => u.uuid);
   const nameByUuid = new Map(linkedUsers.map((u) => [u.uuid, u.full_name || "—"]));
 
-  const [dailyRows, creatorTxs, txTypeCounts, chatterShifts, vaShifts, shiftsThisMonth] =
-    await Promise.all([
-      uuids.length
-        ? queryInflowwDailyStats({
-            userUuids: uuids,
-            startYmd: fetchStart,
-            endYmd: fetchEnd,
-          }).catch(() => [])
-        : Promise.resolve([]),
-      listCreatorTransactions({
-        startYmd: fetchStart,
-        endYmd: fetchEnd,
-        fetchAll: true,
-        revenueOnly: true,
-      }).catch(() => []),
-      listCreatorTransactionTypeCounts({
-        startYmd: monthStart,
-        endYmd: monthEnd,
-      }).catch(() => []),
-      getActiveShifts("chatter").catch(() => []),
-      getActiveShifts("virtual_assistant").catch(() => []),
-      getShiftsForMonth(yearMonth).catch(() => []),
-    ]);
+  const [
+    dailyRows,
+    revenueTrendDaily,
+    monthRevenueDaily,
+    txTypeCounts,
+    chatterShifts,
+    vaShifts,
+    shiftsThisMonth,
+  ] = await Promise.all([
+    uuids.length
+      ? queryInflowwDailyStats({
+          userUuids: uuids,
+          startYmd: revenueTrendStart,
+          endYmd: revenueTrendEnd,
+        }).catch(() => [])
+      : Promise.resolve([]),
+    listCreatorRevenueByAthensDay({
+      startYmd: revenueTrendStart,
+      endYmd: revenueTrendEnd,
+    }).catch(() => []),
+    listCreatorRevenueByAthensDay({
+      startYmd: monthStart,
+      endYmd: monthEndCapped,
+    }).catch(() => []),
+    listCreatorTransactionTypeCounts({
+      startYmd: monthStart,
+      endYmd: monthEndCapped,
+    }).catch(() => []),
+    getActiveShifts("chatter").catch(() => []),
+    getActiveShifts("virtual_assistant").catch(() => []),
+    getShiftsForMonth(yearMonth).catch(() => []),
+  ]);
 
-  const monthCreatorTxs = filterCreatorTransactionsInAthensYmdRange(
-    creatorTxs,
-    monthStart,
-    monthEnd
-  );
+  const creatorTxs = syntheticCreatorTxFromDailyRevenue(revenueTrendDaily);
+  const monthCreatorTxs = syntheticCreatorTxFromDailyRevenue(monthRevenueDaily);
 
   const activityTxs = await listCreatorTransactions({
     startYmd: activityStart,
@@ -144,7 +153,7 @@ export default async function AdminHomePage({
 
   const todaySalesUsd = sumCreatorTxRevenueInAthensRange(creatorTxs, todayYmd, todayYmd);
   const inflowwLastSyncedAt = latestSyncedAtForYmd(dailyRows, todayYmd);
-  const totalRevenue = sumCreatorTxRevenueInAthensRange(creatorTxs, monthStart, monthEnd);
+  const totalRevenue = sumCreatorTxRevenueInAthensRange(monthCreatorTxs, monthStart, monthEndCapped);
   const sparklineWow = buildAdminSparklineWowFromCreatorTxs(creatorTxs, todayYmd);
   const daily14 = buildCreatorRevenueSeriesFromTxs(creatorTxs, lastNAthensYmds(14, todayYmd));
 

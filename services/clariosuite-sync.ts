@@ -43,6 +43,12 @@ const MEDIA_BACKFILL_LIMIT = 2000;
 export const MEDIA_INSIGHTS_BACKFILL_SINCE_YMD = "2026-01-01";
 /** Trailing days to refresh on each daily sync (late Meta updates). Views series is still ~2 weeks from Meta. */
 const DEFAULT_INSIGHTS_RANGE = 30;
+/** Re-use cached per-post insights when synced within this window (daily sync). */
+const MEDIA_INSIGHTS_FRESH_MS = 12 * 60 * 60 * 1000;
+/** Parallel ClarioSuite API work per account (global rate limiter still paces requests). */
+const MEDIA_INSIGHT_FETCH_CONCURRENCY = 4;
+/** Parallel IG accounts during manual/cron sync. */
+const ACCOUNT_SYNC_CONCURRENCY = 2;
 
 export type LinkedClarioSuiteAccount = {
   accountId: string;
@@ -75,6 +81,26 @@ export type ClarioSuiteSyncResult = {
 function n(v: unknown): number {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (!items.length) return [];
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+  const out: R[] = new Array(items.length);
+  let nextIndex = 0;
+  async function worker(): Promise<void> {
+    for (;;) {
+      const i = nextIndex++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]!, i);
+    }
+  }
+  await Promise.all(Array.from({ length: limit }, () => worker()));
+  return out;
 }
 
 function seriesMap(points: ClarioSuiteTimeSeriesPoint[] | undefined): Map<string, number> {
@@ -304,6 +330,53 @@ type ScoredTopPost = {
   posted_at: string | null;
 };
 
+async function loadFreshScoredTopPosts(igUserId: string): Promise<Map<string, ScoredTopPost>> {
+  const sb = getSupabaseServiceClient();
+  const cutoff = new Date(Date.now() - MEDIA_INSIGHTS_FRESH_MS).toISOString();
+  const { data, error } = await sb
+    .from("clariosuite_top_posts")
+    .select(
+      "media_id,permalink,media_type,media_product_type,caption,image_url,engagement_score,reach,likes,comments,shares,saved,views,total_interactions,video_views,quartile_p95,carousel_album_engagement,carousel_album_impressions,carousel_album_reach,carousel_album_saved,insights_available,insights_error,posted_at,synced_at"
+    )
+    .eq("ig_user_id", igUserId)
+    .eq("insights_available", true)
+    .gte("synced_at", cutoff);
+  if (error) throw new Error(`load fresh top posts: ${error.message}`);
+  const out = new Map<string, ScoredTopPost>();
+  for (const row of data ?? []) {
+    const mediaId = String((row as { media_id?: string }).media_id ?? "");
+    if (!mediaId) continue;
+    out.set(mediaId, {
+      media_id: mediaId,
+      permalink: row.permalink != null ? String(row.permalink) : null,
+      media_type: row.media_type != null ? String(row.media_type) : null,
+      media_product_type: row.media_product_type != null ? String(row.media_product_type) : null,
+      caption: row.caption != null ? String(row.caption) : null,
+      image_url: row.image_url != null ? String(row.image_url) : null,
+      engagement_score: row.engagement_score == null ? null : n(row.engagement_score),
+      reach: n(row.reach),
+      likes: n(row.likes),
+      comments: n(row.comments),
+      shares: n(row.shares),
+      saved: n(row.saved),
+      views: n(row.views),
+      total_interactions: n(row.total_interactions),
+      video_views: n(row.video_views),
+      quartile_p95: row.quartile_p95 == null ? null : n(row.quartile_p95),
+      carousel_album_engagement:
+        row.carousel_album_engagement == null ? null : n(row.carousel_album_engagement),
+      carousel_album_impressions:
+        row.carousel_album_impressions == null ? null : n(row.carousel_album_impressions),
+      carousel_album_reach: row.carousel_album_reach == null ? null : n(row.carousel_album_reach),
+      carousel_album_saved: row.carousel_album_saved == null ? null : n(row.carousel_album_saved),
+      insights_available: true,
+      insights_error: null,
+      posted_at: row.posted_at != null ? String(row.posted_at) : null,
+    });
+  }
+  return out;
+}
+
 function compareScoredTopPosts(a: ScoredTopPost, b: ScoredTopPost): number {
   const scoreDiff = (b.engagement_score ?? -1) - (a.engagement_score ?? -1);
   if (scoreDiff !== 0) return scoreDiff;
@@ -510,11 +583,30 @@ async function reRankTopPostsForAccount(igUserId: string): Promise<void> {
 }
 
 async function upsertTopPosts(link: SyncLink): Promise<number> {
-  const { data: media } = await listClarioSuiteMedia(link.igUserId, MEDIA_FETCH_LIMIT);
+  const [{ data: media }, freshCache] = await Promise.all([
+    listClarioSuiteMedia(link.igUserId, MEDIA_FETCH_LIMIT),
+    loadFreshScoredTopPosts(link.igUserId).catch(() => new Map<string, ScoredTopPost>()),
+  ]);
+
   const scored: ScoredTopPost[] = [];
+  const toFetch: ClarioSuiteMediaItem[] = [];
   for (const item of media) {
     if (!item?.id) continue;
-    scored.push(await fetchAndScoreMediaItem(link, item, "upsertTopPosts media insight"));
+    const cached = freshCache.get(item.id);
+    if (cached) {
+      scored.push(cached);
+      continue;
+    }
+    toFetch.push(item);
+  }
+
+  if (toFetch.length) {
+    const fetched = await mapWithConcurrency(
+      toFetch,
+      MEDIA_INSIGHT_FETCH_CONCURRENCY,
+      (item) => fetchAndScoreMediaItem(link, item, "upsertTopPosts media insight")
+    );
+    scored.push(...fetched);
   }
 
   // Upsert all scored recent media — do not wipe historical backfill rows.
@@ -622,31 +714,31 @@ export async function resyncClarioSuiteMediaInsights(opts?: {
         });
 
       const orderedIds = [...failedIds, ...rest.map((m) => m.id)];
-      const scored: ScoredTopPost[] = [];
+      const toFetch = orderedIds
+        .map((mediaId) => byId.get(mediaId))
+        .filter((item): item is ClarioSuiteMediaItem => Boolean(item?.id));
 
-      for (const mediaId of orderedIds) {
-        const item = byId.get(mediaId);
-        if (!item) continue;
-        const row = await fetchAndScoreMediaItem(
-          link,
-          item,
-          "resync media insight"
-        );
-        result.insightsFetched += 1;
-        if (row.insights_available) result.availableTrue += 1;
-        else {
-          result.availableFalse += 1;
-          if (row.insights_error) {
-            result.errors.push({
-              igUserId: link.igUserId,
-              modelName: link.modelName,
-              mediaId,
-              message: row.insights_error,
-            });
+      const scored = await mapWithConcurrency(
+        toFetch,
+        MEDIA_INSIGHT_FETCH_CONCURRENCY,
+        async (item) => {
+          const row = await fetchAndScoreMediaItem(link, item, "resync media insight");
+          result.insightsFetched += 1;
+          if (row.insights_available) result.availableTrue += 1;
+          else {
+            result.availableFalse += 1;
+            if (row.insights_error) {
+              result.errors.push({
+                igUserId: link.igUserId,
+                modelName: link.modelName,
+                mediaId: item.id,
+                message: row.insights_error,
+              });
+            }
           }
+          return row;
         }
-        scored.push(row);
-      }
+      );
 
       // Store all scored historical posts (not just top 50).
       result.upserted += await upsertScoredTopPosts(link, scored, {
@@ -708,12 +800,24 @@ export async function syncClarioSuiteInsights(opts?: {
     errors: [],
   };
 
-  for (const link of syncLinks) {
+  async function syncOneLink(link: SyncLink): Promise<{
+    dailyRowsUpserted: number;
+    audienceUpserted: number;
+    topPostsUpserted: number;
+    errors: ClarioSuiteSyncResult["errors"];
+  }> {
+    const partial = {
+      dailyRowsUpserted: 0,
+      audienceUpserted: 0,
+      topPostsUpserted: 0,
+      errors: [] as ClarioSuiteSyncResult["errors"],
+    };
+
     try {
-      result.dailyRowsUpserted += await upsertDailyInsights(link, rangeDays);
+      partial.dailyRowsUpserted = await upsertDailyInsights(link, rangeDays);
     } catch (err) {
       logClarioSuiteFailure("sync daily insights", err, { igUserId: link.igUserId });
-      result.errors.push({
+      partial.errors.push({
         igUserId: link.igUserId,
         modelName: link.modelName,
         message: err instanceof Error ? err.message : String(err),
@@ -722,10 +826,10 @@ export async function syncClarioSuiteInsights(opts?: {
     }
 
     try {
-      result.audienceUpserted += await upsertAudienceSnapshot(link);
+      partial.audienceUpserted = await upsertAudienceSnapshot(link);
     } catch (err) {
       logClarioSuiteFailure("sync audience", err, { igUserId: link.igUserId });
-      result.errors.push({
+      partial.errors.push({
         igUserId: link.igUserId,
         modelName: link.modelName,
         message: err instanceof Error ? err.message : String(err),
@@ -734,16 +838,28 @@ export async function syncClarioSuiteInsights(opts?: {
     }
 
     try {
-      result.topPostsUpserted += await upsertTopPosts(link);
+      partial.topPostsUpserted = await upsertTopPosts(link);
     } catch (err) {
       logClarioSuiteFailure("sync top posts", err, { igUserId: link.igUserId });
-      result.errors.push({
+      partial.errors.push({
         igUserId: link.igUserId,
         modelName: link.modelName,
         message: err instanceof Error ? err.message : String(err),
         code: err instanceof ClarioSuiteApiError ? err.code : undefined,
       });
     }
+
+    return partial;
+  }
+
+  const linkResults = await mapWithConcurrency(syncLinks, ACCOUNT_SYNC_CONCURRENCY, (link) =>
+    syncOneLink(link)
+  );
+  for (const partial of linkResults) {
+    result.dailyRowsUpserted += partial.dailyRowsUpserted;
+    result.audienceUpserted += partial.audienceUpserted;
+    result.topPostsUpserted += partial.topPostsUpserted;
+    result.errors.push(...partial.errors);
   }
 
   // After insights + top posts: classify newly qualifying Reels into Winner Videos Hub.
