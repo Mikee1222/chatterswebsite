@@ -1,20 +1,29 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Info, Loader2, RefreshCw, ShieldAlert } from "lucide-react";
 import { VA_BTN_SECONDARY, VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
 type Flag = {
   id: string;
   kind: string;
-  severity: "warn" | "critical";
+  severity: "warn" | "critical" | "notable";
   model_name: string;
   title: string;
   evidence: string[];
   ai_explanation: string | null;
   metrics: Record<string, number | string | null>;
 };
+
+function sanitizeSummary(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = raw.trim();
+  if (!t) return null;
+  // Guard against cached/truncated AI dumps that look like JSON or markdown fences.
+  if (t.startsWith("```") || t.startsWith("{") || t.startsWith("[")) return null;
+  return t;
+}
 
 export function AdminHomeFraudWidget() {
   const [flags, setFlags] = React.useState<Flag[]>([]);
@@ -41,7 +50,7 @@ export function AdminHomeFraudWidget() {
       };
       if (!res.ok) throw new Error(data.error || "Failed to load fraud scan");
       setFlags(data.flags ?? []);
-      setSummary(data.summary ?? null);
+      setSummary(sanitizeSummary(data.summary));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -53,6 +62,11 @@ export function AdminHomeFraudWidget() {
   React.useEffect(() => {
     void load(false);
   }, [load]);
+
+  const riskFlags = flags.filter((f) => f.severity === "critical" || f.severity === "warn");
+  const notableFlags = flags.filter((f) => f.severity === "notable");
+  // Prefer fraud-risk in the card; fill with notable only if room.
+  const displayFlags = [...riskFlags, ...notableFlags].slice(0, 5);
 
   return (
     <div className={cn(VA_CARD, VA_CARD_GLOW, "p-5")}>
@@ -86,31 +100,56 @@ export function AdminHomeFraudWidget() {
       ) : (
         <div className="space-y-3">
           {summary ? <p className="text-sm text-white/70">{summary}</p> : null}
+          {riskFlags.length === 0 && notableFlags.length > 0 ? (
+            <p className="text-xs text-white/45">
+              No fraud-risk flags — {notableFlags.length} notable large tx(s) only.
+            </p>
+          ) : null}
           <ul className="space-y-2">
-            {flags.slice(0, 5).map((f) => (
-              <li
-                key={f.id}
-                className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5"
-              >
-                <div className="flex items-start gap-2">
-                  <AlertTriangle
-                    className={cn(
-                      "mt-0.5 h-3.5 w-3.5 shrink-0",
-                      f.severity === "critical" ? "text-rose-400" : "text-amber-300",
-                    )}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">{f.title}</p>
-                    <p className="mt-1 text-xs text-white/55">
-                      {f.ai_explanation || f.evidence[0] || f.kind}
-                    </p>
+            {displayFlags.map((f) => {
+              const isNotable = f.severity === "notable";
+              const Icon = isNotable ? Info : AlertTriangle;
+              return (
+                <li
+                  key={f.id}
+                  className="rounded-xl border border-white/10 bg-black/30 px-3 py-2.5"
+                >
+                  <div className="flex items-start gap-2">
+                    <Icon
+                      className={cn(
+                        "mt-0.5 h-3.5 w-3.5 shrink-0",
+                        f.severity === "critical"
+                          ? "text-rose-400"
+                          : f.severity === "warn"
+                            ? "text-amber-300"
+                            : "text-sky-300/80",
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-white">{f.title}</p>
+                        <span
+                          className={cn(
+                            "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide",
+                            f.severity === "critical" && "bg-rose-500/20 text-rose-200",
+                            f.severity === "warn" && "bg-amber-500/20 text-amber-100",
+                            isNotable && "bg-sky-500/15 text-sky-200/90",
+                          )}
+                        >
+                          {isNotable ? "notable" : f.severity}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-white/55">
+                        {f.ai_explanation || f.evidence[0] || f.kind}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
-          {flags.length > 5 ? (
-            <p className="text-xs text-white/40">+{flags.length - 5} more flags</p>
+          {flags.length > displayFlags.length ? (
+            <p className="text-xs text-white/40">+{flags.length - displayFlags.length} more flags</p>
           ) : null}
         </div>
       )}

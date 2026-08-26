@@ -225,10 +225,20 @@ export async function callAnthropicWithTools(
   }
 }
 
-export function extractJsonObject(raw: string): Record<string, unknown> | null {
+/** Strip markdown code fences, including truncated (unclosed) fences from max_tokens cuts. */
+export function stripMarkdownCodeFence(raw: string): string {
   const trimmed = raw.trim();
-  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = (fence?.[1] ?? trimmed).trim();
+  if (!trimmed) return trimmed;
+  const closed = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (closed?.[1] != null) return closed[1].trim();
+  // Truncated response: opening fence present, closing fence missing
+  const openOnly = trimmed.match(/^```(?:json)?\s*([\s\S]*)$/i);
+  if (openOnly?.[1] != null) return openOnly[1].replace(/\s*```\s*$/, "").trim();
+  return trimmed;
+}
+
+export function extractJsonObject(raw: string): Record<string, unknown> | null {
+  const candidate = stripMarkdownCodeFence(raw);
   try {
     return JSON.parse(candidate) as Record<string, unknown>;
   } catch {
@@ -246,9 +256,7 @@ export function extractJsonObject(raw: string): Record<string, unknown> | null {
 }
 
 export function extractJsonArray(raw: string): unknown[] | null {
-  const trimmed = raw.trim();
-  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const candidate = (fence?.[1] ?? trimmed).trim();
+  const candidate = stripMarkdownCodeFence(raw);
   try {
     const parsed = JSON.parse(candidate);
     return Array.isArray(parsed) ? parsed : null;

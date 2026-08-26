@@ -114,8 +114,9 @@ export async function runFraudAnomalyDetection(opts?: {
 
   const prompt = `You explain fraud/anomaly flags for an OnlyFans agency admin.
 For EACH flag, write 1–2 sentences explaining WHY it was flagged using ONLY the provided metrics/evidence. Do not invent causes (no "likely chargeback rings" unless numbers support it).
-Then write a 1–2 sentence overall summary.
-Return JSON only:
+Severity "notable" means a large transaction without corroborating fraud signals — describe it as noteworthy, not as confirmed fraud.
+Then write a 1–2 sentence overall summary prioritizing refund-rate / refund-burst / repeated patterns over notable large tips.
+Return JSON only (no markdown fences):
 {"summary":"...","explanations":[{"flag_id":"...","explanation":"..."}]}
 ${AI_GROUNDING_RULES}
 Window: ${scan.startYmd} → ${scan.endYmd} (baseline ${scan.baselineStartYmd} → ${scan.baselineEndYmd})
@@ -125,7 +126,8 @@ ${JSON.stringify(compactFlags)}`;
 
   const result = await callAnthropic({
     messages: [{ role: "user", content: prompt }],
-    maxTokens: 900,
+    // Explanations for up to 12 flags need headroom; 900 truncated mid-JSON and leaked raw fences into the UI.
+    maxTokens: 2500,
     temperature: 0.2,
     logLabel: "fraud-anomalies",
   });
@@ -143,9 +145,19 @@ ${JSON.stringify(compactFlags)}`;
       if (flag_id && explanation) explanations.push({ flag_id, explanation });
     }
   }
+  const parsedSummary =
+    typeof parsed?.summary === "string" ? parsed.summary.trim() : "";
+  // Never dump truncated/fenced JSON into the card — prefer a clean fallback.
+  const rawTrim = result.text.trim();
+  const looksLikeRawJson =
+    rawTrim.startsWith("```") ||
+    rawTrim.startsWith("{") ||
+    rawTrim.startsWith("[");
   const summary =
-    (typeof parsed?.summary === "string" && parsed.summary.trim()) ||
-    result.text.slice(0, 400);
+    parsedSummary ||
+    (looksLikeRawJson
+      ? `Detected ${scan.flags.length} anomaly flag(s) in the current window.`
+      : rawTrim.slice(0, 400));
 
   const row = await upsertAiFeatureCache({
     featureKey: AI_OPS_FEATURE_KEYS.FRAUD_ANOMALIES,

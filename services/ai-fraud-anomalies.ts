@@ -16,12 +16,16 @@ export type FraudAnomalyKind =
   | "refund_rate_spike"
   | "repeated_tx_pattern"
   | "amount_zscore"
+  | "notable_large_tx"
   | "refund_burst";
+
+export type FraudAnomalySeverity = "critical" | "warn" | "notable";
 
 export type FraudAnomalyFlag = {
   id: string;
   kind: FraudAnomalyKind;
-  severity: "warn" | "critical";
+  /** critical/warn = fraud-risk; notable = single large tx without corroboration (lower priority). */
+  severity: FraudAnomalySeverity;
   model_record_id: string;
   model_name: string;
   title: string;
@@ -38,6 +42,23 @@ export type FraudAnomalyScanResult = {
   scanned_tx_count: number;
   scanned_refund_count: number;
 };
+
+const SEVERITY_RANK: Record<FraudAnomalySeverity, number> = {
+  critical: 0,
+  warn: 1,
+  notable: 2,
+};
+
+/** Z-score threshold for considering an amount "large" vs model baseline. */
+const AMOUNT_Z_THRESHOLD = 3.5;
+/** Short window for clustering large txs (corroborating frequency signal). */
+const LARGE_TX_CLUSTER_MS = 2 * 60 * 60 * 1000;
+/** How many large txs in the short window count as high frequency. */
+const LARGE_TX_CLUSTER_MIN = 3;
+/** Identical amount repeats from same fan (corroborating). */
+const REPEAT_SAME_FAN_MIN = 2;
+/** Amounts within this relative tolerance are treated as "seen" for the model. */
+const SEEN_AMOUNT_TOLERANCE = 0.05;
 
 function mean(nums: number[]): number {
   if (!nums.length) return 0;
@@ -79,6 +100,17 @@ function groupByModel<T extends { model_record_id: string | null }>(rows: T[]): 
     map.set(id, list);
   }
   return map;
+}
+
+function txTimeMs(tx: CreatorTransactionRow): number | null {
+  if (!tx.created_time) return null;
+  const t = new Date(tx.created_time).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+function amountsNear(a: number, b: number, tol = SEEN_AMOUNT_TOLERANCE): boolean {
+  if (a <= 0 || b <= 0) return false;
+  return Math.abs(a - b) / Math.max(a, b) <= tol;
 }
 
 function detectRepeatedTxPatterns(
@@ -134,6 +166,68 @@ function detectRepeatedTxPatterns(
   return flags;
 }
 
+type AmountCorroboration = {
+  highFrequencyLarge: boolean;
+  repeatedIdenticalFromFan: boolean;
+  unprecedentedAmount: boolean;
+  largeInWindow: number;
+  sameFanAmountCount: number;
+};
+
+/** Exported for unit-style checks of tip false-positive rules. */
+export function corroborateLargeAmount(
+  tx: CreatorTransactionRow,
+  recent: CreatorTransactionRow[],
+  baselineAmounts: number[],
+  z: number,
+): AmountCorroboration {
+  const t0 = txTimeMs(tx);
+  let largeInWindow = 0;
+  if (t0 != null) {
+    for (const other of recent) {
+      if (other.amount <= 0) continue;
+      const t1 = txTimeMs(other);
+      if (t1 == null) continue;
+      if (Math.abs(t1 - t0) > LARGE_TX_CLUSTER_MS) continue;
+      const oz = zScore(other.amount, baselineAmounts);
+      // Count txs that are also large vs baseline (or this same high-z tx).
+      if (oz != null && oz >= AMOUNT_Z_THRESHOLD) largeInWindow += 1;
+    }
+  }
+
+  let sameFanAmountCount = 0;
+  if (tx.fan_id) {
+    for (const other of recent) {
+      if (!other.fan_id || other.fan_id !== tx.fan_id) continue;
+      if (amountsNear(other.amount, tx.amount, 0.01)) sameFanAmountCount += 1;
+    }
+  }
+
+  const maxBaseline = baselineAmounts.length ? Math.max(...baselineAmounts) : 0;
+  const neverSeenNear = !baselineAmounts.some((a) =>
+    amountsNear(a, tx.amount, SEEN_AMOUNT_TOLERANCE),
+  );
+  // "Unprecedented" must be extreme — not a normal $100–200 tip the model simply hasn't logged yet.
+  // Require never-seen AND at least 2× the largest baseline amount (or very high z).
+  const unprecedentedAmount =
+    baselineAmounts.length > 0 &&
+    neverSeenNear &&
+    z >= AMOUNT_Z_THRESHOLD &&
+    (tx.amount >= maxBaseline * 2 || z >= 6);
+
+  return {
+    highFrequencyLarge: largeInWindow >= LARGE_TX_CLUSTER_MIN,
+    repeatedIdenticalFromFan: sameFanAmountCount >= REPEAT_SAME_FAN_MIN,
+    unprecedentedAmount,
+    largeInWindow,
+    sameFanAmountCount,
+  };
+}
+
+/**
+ * Large tips ($100–200) often score high z vs a tip-heavy model average.
+ * Fraud-risk requires high z AND a corroborating signal; lone outliers are "notable" only.
+ */
 function detectAmountZScores(
   modelId: string,
   modelName: string,
@@ -147,26 +241,77 @@ function detectAmountZScores(
   for (const tx of recent) {
     if (tx.amount <= 0) continue;
     const z = zScore(tx.amount, baselineAmounts);
-    if (z == null || z < 3.5) continue;
-    flags.push({
-      id: `zscore:${modelId}:${tx.transaction_id}`,
-      kind: "amount_zscore",
-      severity: z >= 5 ? "critical" : "warn",
-      model_record_id: modelId,
-      model_name: modelName,
-      title: `Outlier transaction amount on ${modelName}`,
-      metrics: {
-        transaction_id: tx.transaction_id,
-        amount: tx.amount,
-        z_score: Math.round(z * 100) / 100,
-        baseline_mean: Math.round(mean(baselineAmounts) * 100) / 100,
-        baseline_stdev: Math.round(stdev(baselineAmounts) * 100) / 100,
-        type: tx.type ?? "unknown",
-      },
-      evidence: [
-        `Tx ${tx.transaction_id} amount $${tx.amount.toFixed(2)} is z=${z.toFixed(2)} vs model baseline (n=${baselineAmounts.length})`,
-      ],
-    });
+    if (z == null || z < AMOUNT_Z_THRESHOLD) continue;
+
+    const corr = corroborateLargeAmount(tx, recent, baselineAmounts, z);
+    const hasCorroboration =
+      corr.highFrequencyLarge ||
+      corr.repeatedIdenticalFromFan ||
+      corr.unprecedentedAmount;
+
+    const evidence: string[] = [
+      `Tx ${tx.transaction_id} amount $${tx.amount.toFixed(2)} is z=${z.toFixed(2)} vs model baseline (n=${baselineAmounts.length})`,
+    ];
+    if (corr.highFrequencyLarge) {
+      evidence.push(
+        `${corr.largeInWindow} large txs (z≥${AMOUNT_Z_THRESHOLD}) within 2 hours`,
+      );
+    }
+    if (corr.repeatedIdenticalFromFan) {
+      evidence.push(
+        `${corr.sameFanAmountCount} identical $${tx.amount.toFixed(2)} txs from the same fan in the scan window`,
+      );
+    }
+    if (corr.unprecedentedAmount) {
+      evidence.push(
+        "Amount never seen for this model in baseline (±5%) and ≥2× max baseline (or z≥6)",
+      );
+    }
+
+    if (hasCorroboration) {
+      flags.push({
+        id: `zscore:${modelId}:${tx.transaction_id}`,
+        kind: "amount_zscore",
+        severity: z >= 5 ? "critical" : "warn",
+        model_record_id: modelId,
+        model_name: modelName,
+        title: `Suspicious outlier amount on ${modelName}`,
+        metrics: {
+          transaction_id: tx.transaction_id,
+          amount: tx.amount,
+          z_score: Math.round(z * 100) / 100,
+          baseline_mean: Math.round(mean(baselineAmounts) * 100) / 100,
+          baseline_stdev: Math.round(stdev(baselineAmounts) * 100) / 100,
+          type: tx.type ?? "unknown",
+          large_in_2h: corr.largeInWindow,
+          same_fan_amount_count: corr.sameFanAmountCount,
+          unprecedented: corr.unprecedentedAmount ? 1 : 0,
+        },
+        evidence,
+      });
+    } else {
+      // Lower-priority tier: don't dilute refund fraud signals with tip noise.
+      flags.push({
+        id: `notable-tx:${modelId}:${tx.transaction_id}`,
+        kind: "notable_large_tx",
+        severity: "notable",
+        model_record_id: modelId,
+        model_name: modelName,
+        title: `Notable large ${tx.type ?? "tx"} on ${modelName}`,
+        metrics: {
+          transaction_id: tx.transaction_id,
+          amount: tx.amount,
+          z_score: Math.round(z * 100) / 100,
+          baseline_mean: Math.round(mean(baselineAmounts) * 100) / 100,
+          baseline_stdev: Math.round(stdev(baselineAmounts) * 100) / 100,
+          type: tx.type ?? "unknown",
+        },
+        evidence: [
+          ...evidence,
+          "No corroborating frequency/repeat/unprecedented signal — not elevated to fraud-risk",
+        ],
+      });
+    }
   }
   return flags;
 }
@@ -314,7 +459,9 @@ export async function computeFraudAnomalies(opts?: {
   }
 
   flags.sort((a, b) => {
-    if (a.severity !== b.severity) return a.severity === "critical" ? -1 : 1;
+    const ra = SEVERITY_RANK[a.severity];
+    const rb = SEVERITY_RANK[b.severity];
+    if (ra !== rb) return ra - rb;
     return a.title.localeCompare(b.title);
   });
 
