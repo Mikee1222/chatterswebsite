@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getNotificationUserId } from "@/lib/notification-user";
 import { ROUTES } from "@/lib/routes";
@@ -29,6 +30,34 @@ import { getUnreadCount } from "@/services/notifications";
 import { getDataBackend } from "@/lib/data-backend";
 import { getNavPreferencesForUser } from "@/services/nav-preferences";
 import { defaultNavPreferencesForRole } from "@/lib/nav-preferences";
+import {
+  DASHBOARD_MANIFEST_PATH,
+  INTERNAL_SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+} from "@/lib/site-metadata";
+
+/** Internal staff PWA / meta — Greek platform copy stays off public /apply routes. */
+export const metadata: Metadata = {
+  applicationName: "Gunzo Partner",
+  description: INTERNAL_SITE_DESCRIPTION,
+  manifest: DASHBOARD_MANIFEST_PATH,
+  appleWebApp: {
+    capable: true,
+    title: "Gunzo Partner",
+    statusBarStyle: "black-translucent",
+  },
+  openGraph: {
+    title: SITE_TITLE,
+    description: INTERNAL_SITE_DESCRIPTION,
+    siteName: SITE_NAME,
+    type: "website",
+  },
+  twitter: {
+    title: SITE_TITLE,
+    description: INTERNAL_SITE_DESCRIPTION,
+  },
+};
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
 export default async function DashboardLayout({

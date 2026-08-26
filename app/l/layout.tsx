@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 
 /** Neutral metadata — no Gunzo branding on public link pages. */
 export const metadata: Metadata = {
-  applicationName: undefined,
-  manifest: undefined,
-  appleWebApp: undefined,
+  applicationName: null,
+  manifest: null,
+  appleWebApp: null,
   icons: {
     icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
   },

@@ -1,12 +1,25 @@
 import type { Metadata } from "next";
 import { ApplyAmbientBg } from "@/components/application-public-chrome";
 import { APPLY_SHELL } from "@/lib/application-ui-tokens";
-import { SITE_NAME } from "@/lib/site-metadata";
+import {
+  APPLY_SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TITLE,
+  absoluteUrl,
+  buildOpenGraph,
+  buildTwitterCard,
+} from "@/lib/site-metadata";
 
+/**
+ * Public careers shell — fully overrides root metadata so candidates never inherit
+ * internal dashboard / Greek PWA copy from the parent layout or manifest.
+ */
 export const metadata: Metadata = {
   applicationName: SITE_NAME,
-  manifest: undefined,
-  appleWebApp: undefined,
+  description: APPLY_SITE_DESCRIPTION,
+  // `null` unsets parent values (unlike `undefined`, which inherits).
+  manifest: null,
+  appleWebApp: null,
   icons: {
     icon: [
       { url: "/icon-192-v2.png", sizes: "192x192", type: "image/png" },
@@ -14,6 +27,15 @@ export const metadata: Metadata = {
     ],
     apple: [{ url: "/apple-touch-icon-v2.png", sizes: "180x180", type: "image/png" }],
   },
+  openGraph: buildOpenGraph({
+    title: `Careers — ${SITE_TITLE}`,
+    description: APPLY_SITE_DESCRIPTION,
+    url: absoluteUrl("/apply"),
+  }),
+  twitter: buildTwitterCard({
+    title: `Careers — ${SITE_TITLE}`,
+    description: APPLY_SITE_DESCRIPTION,
+  }),
 };
 
 export default function ApplyPublicLayout({ children }: { children: React.ReactNode }) {

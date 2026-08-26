@@ -1,8 +1,8 @@
 {
-  "name": "Gunzo Agency",
-  "short_name": "Gunzo Agency",
-  "description": "Gunzo Agency — Premium OnlyFans management and chatting services.",
-  "start_url": "/",
+  "name": "Gunzo Partner",
+  "short_name": "Gunzo Partner",
+  "description": "Gunzo Agency — Εσωτερική πλατφόρμα για chatters, VAs, models και admins.",
+  "start_url": "/home",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0f0f1a",

@@ -13,8 +13,86 @@ export const SITE_TITLE = "Gunzo Agency";
 export const SITE_DESCRIPTION =
   "Gunzo Agency — Premium OnlyFans management and chatting services. We help creators grow their presence, maximize revenue, and build lasting fan relationships through expert chat teams and dedicated account management.";
 
+/**
+ * Internal dashboard / PWA copy only — never use on public /apply pages.
+ * Kept in Greek for the staff-facing product surface.
+ */
+export const INTERNAL_SITE_DESCRIPTION =
+  "Gunzo Agency — Εσωτερική πλατφόρμα για chatters, VAs, models και admins.";
+
+/** Default English careers/SEO description for public application pages. */
+export const APPLY_SITE_DESCRIPTION =
+  "Apply to join Gunzo Agency. The application takes about 15 minutes and includes a short screening.";
+
 /** Shared 1200×630 branded preview (logo + wordmark). */
 export const OG_IMAGE_PATH = "/og-image.png";
+
+/** Dashboard-only PWA manifest (internal Greek description). */
+export const DASHBOARD_MANIFEST_PATH = "/manifest-dashboard.json";
+
+/** Known public apply forms → branded English title + invite description. */
+const APPLY_FORM_META: Record<string, { title: string; description: string }> = {
+  "new-va-application": {
+    title: "VA Application — Gunzo Agency",
+    description:
+      "Apply to join Gunzo Agency as a Virtual Assistant. Takes about 15 minutes — short screening plus the application form.",
+  },
+  "new-chatters-apply-form": {
+    title: "Chatter Application — Gunzo Agency",
+    description:
+      "Apply to join Gunzo Agency as a Chatter. Takes about 15 minutes — short screening plus the application form.",
+  },
+};
+
+function humanizeApplyFormTitle(formTitle: string): string {
+  const cleaned = formTitle
+    .replace(/^new\s+/i, "")
+    .replace(/\s+apply\s+form$/i, "")
+    .replace(/\s+application$/i, " Application")
+    .trim();
+  if (!cleaned) return "Application";
+  if (/application$/i.test(cleaned)) return cleaned;
+  return `${cleaned} Application`;
+}
+
+/** Branded English head tags for `/apply/[slug]` (never inherits form body or Greek internal copy). */
+export function resolveApplyFormMeta(opts: {
+  slug: string;
+  formTitle?: string | null;
+}): { title: string; description: string } {
+  const known = APPLY_FORM_META[opts.slug];
+  if (known) return known;
+  const label = opts.formTitle?.trim()
+    ? humanizeApplyFormTitle(opts.formTitle.trim())
+    : "Application";
+  return {
+    title: `${label} — ${SITE_TITLE}`,
+    description: APPLY_SITE_DESCRIPTION,
+  };
+}
+
+export function buildApplyPageMetadata(opts: {
+  slug: string;
+  formTitle?: string | null;
+}): Metadata {
+  const { title, description } = resolveApplyFormMeta(opts);
+  const pageUrl = absoluteUrl(`/apply/${encodeURIComponent(opts.slug)}`);
+  return {
+    title: { absolute: title },
+    description,
+    applicationName: SITE_NAME,
+    alternates: { canonical: pageUrl },
+    // Clear parent PWA/internal metadata so candidate pages stay public-branded.
+    manifest: null,
+    appleWebApp: null,
+    openGraph: buildOpenGraph({
+      title,
+      description,
+      url: pageUrl,
+    }),
+    twitter: buildTwitterCard({ title, description }),
+  };
+}
 
 export const OG_IMAGE = {
   url: OG_IMAGE_PATH,
