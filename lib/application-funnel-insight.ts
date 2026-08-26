@@ -1,7 +1,10 @@
 /**
  * Anthropic (Claude) natural-language insights for application-link funnel analytics.
  * Same model/pattern as candidate ai_summary. Strictly grounded in provided numbers.
+ * Client must call the analytics insights API — never import this module in client components.
  */
+
+import "server-only";
 
 import { APPLICATION_AI_SUMMARY_MODEL } from "@/lib/application-ai-summary";
 import { callAnthropic } from "@/lib/ai-assistant";

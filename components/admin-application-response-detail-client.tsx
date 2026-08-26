@@ -30,7 +30,7 @@ import { ApplyButton } from "@/components/application-ui-buttons";
 import { VA_CARD, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import { Check, Languages, PartyPopper, Sparkles } from "lucide-react";
-import { translationLangLabel } from "@/lib/application-ai-translate";
+import { translationLangLabel } from "@/lib/application-ai-display";
 import type { ApplicationFormAnswer } from "@/lib/application-forms-types";
 
 const COGNITIVE_SCORE_TIP =

@@ -1,7 +1,10 @@
 /**
  * Server-side Anthropic translation for application answer text.
  * Uses Haiku for mechanical translation; caches by text hash.
+ * Client UI must call the translate API — never import this module in client components.
  */
+
+import "server-only";
 
 import { createHash } from "node:crypto";
 import { APPLICATION_AI_SUMMARY_MODEL } from "@/lib/application-ai-summary";
@@ -143,8 +146,4 @@ export async function translateApplicationAnswerText(
   }).catch(() => null);
 
   return parsed;
-}
-
-export function translationLangLabel(code: string | null | undefined): string {
-  return langLabel(normalizeLangCode(code));
 }

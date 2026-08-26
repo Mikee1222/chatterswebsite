@@ -1,7 +1,10 @@
 /**
  * Server-side Anthropic (Claude) AI mini-summary for application responses.
  * API key: ANTHROPIC_API_KEY (server-only). Fast model for mechanical Q&A summaries.
+ * Client UI: use shortAiSummary from @/lib/application-ai-display — never import this module in client components.
  */
+
+import "server-only";
 
 import type {
   ApplicationFormAnswer,
@@ -106,18 +109,4 @@ export async function generateApplicationAiSummary(input: {
     model: APPLICATION_AI_SUMMARY_MODEL,
   });
   return result?.text ?? null;
-}
-
-/** Short card blurb from full summary (first ~160 chars / first sentence). */
-export function shortAiSummary(full: string | null | undefined, maxLen = 160): string | null {
-  if (!full?.trim()) return null;
-  const trimmed = full.trim();
-  const sentenceEnd = trimmed.search(/[.!?](?:\s|$)/);
-  if (sentenceEnd > 40 && sentenceEnd <= maxLen) {
-    return trimmed.slice(0, sentenceEnd + 1).trim();
-  }
-  if (trimmed.length <= maxLen) return trimmed;
-  const cut = trimmed.slice(0, maxLen - 1);
-  const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > 80 ? cut.slice(0, lastSpace) : cut).trim()}…`;
 }

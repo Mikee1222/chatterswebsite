@@ -45,7 +45,7 @@ import {
   type ApplicationResponseStatus,
 } from "@/lib/application-forms-types";
 import { APPLICATION_FLAG_FILTER_OPTIONS } from "@/lib/application-candidate-flags";
-import { shortAiSummary } from "@/lib/application-ai-summary";
+import { shortAiSummary } from "@/lib/application-ai-display";
 import {
   APPLY_CHART,
   APPLY_CHART_TOOLTIP,

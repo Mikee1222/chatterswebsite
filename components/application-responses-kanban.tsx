@@ -34,7 +34,7 @@ import {
 import { RESPONSE_STATUS_STYLE } from "@/lib/application-ui-tokens";
 import { VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import { shortAiSummary } from "@/lib/application-ai-summary";
+import { shortAiSummary } from "@/lib/application-ai-display";
 
 const COLUMN_IDS = APPLICATION_RESPONSE_STATUSES;
 

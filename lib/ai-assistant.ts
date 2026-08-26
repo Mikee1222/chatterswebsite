@@ -5,6 +5,8 @@
  * Never expose ANTHROPIC_API_KEY to the client.
  */
 
+import "server-only";
+
 export const AI_ASSISTANT_MODEL = "claude-sonnet-4-6";
 /** Cheaper/faster model for mechanical tasks (captions, translation, stats summaries). */
 export const AI_FAST_MODEL = "claude-haiku-4-5";
