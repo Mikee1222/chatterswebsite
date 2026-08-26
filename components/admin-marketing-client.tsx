@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import {
   Ban,
   Check,
@@ -412,16 +413,57 @@ function SearchablePicker({
   className?: string;
 }) {
   const ref = React.useRef<HTMLDivElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");
+  const [portalPos, setPortalPos] = React.useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
+  const updatePos = React.useCallback(() => {
+    const root = ref.current;
+    if (!root || !open) return;
+    const rect = root.getBoundingClientRect();
+    const need = 220;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const up = spaceBelow < need && spaceAbove > spaceBelow;
+    const width = Math.min(Math.max(rect.width, 200), window.innerWidth - 24);
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12);
+    if (up) {
+      setPortalPos({ left, width, bottom: window.innerHeight - rect.top + 4 });
+    } else {
+      setPortalPos({ left, width, top: rect.bottom + 4 });
+    }
+  }, [open]);
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setPortalPos(null);
+      return;
+    }
+    updatePos();
+    window.addEventListener("resize", updatePos);
+    window.addEventListener("scroll", updatePos, true);
+    return () => {
+      window.removeEventListener("resize", updatePos);
+      window.removeEventListener("scroll", updatePos, true);
+    };
+  }, [open, updatePos, items.length]);
 
   React.useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    if (!open) return;
+    function onDoc(e: PointerEvent) {
+      const t = e.target as Node;
+      if (ref.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
+    document.addEventListener("pointerdown", onDoc);
+    return () => document.removeEventListener("pointerdown", onDoc);
+  }, [open]);
 
   const filtered = React.useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -431,60 +473,82 @@ function SearchablePicker({
 
   const selectedLabel = items.find((i) => i.id === value)?.label ?? "";
 
+  const listbox =
+    open && portalPos ? (
+      <div
+        ref={panelRef}
+        className="max-h-64 overflow-hidden rounded-xl border border-white/10 bg-[#0D0B0D]/98 py-2 shadow-2xl backdrop-blur-xl"
+        style={{
+          position: "fixed",
+          zIndex: 10050,
+          left: portalPos.left,
+          width: portalPos.width,
+          ...(portalPos.top != null ? { top: portalPos.top } : {}),
+          ...(portalPos.bottom != null ? { bottom: portalPos.bottom } : {}),
+        }}
+        role="listbox"
+      >
+        <input
+          type="search"
+          placeholder={placeholder}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          className={cn(ADMIN_FILTER_INPUT, "mx-2 mb-1 !h-10 w-[calc(100%-1rem)] text-sm")}
+        />
+        <div className="max-h-52 overflow-y-auto overscroll-contain px-1">
+          <button
+            type="button"
+            className="flex min-h-[44px] w-full items-center rounded-lg px-3 py-2 text-left text-sm text-[#B8B4B8]/50 hover:bg-white/5"
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+              setQ("");
+            }}
+          >
+            {emptyLabel}
+          </button>
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-[#B8B4B8]/40">No matches</p>
+          ) : (
+            filtered.map((i) => (
+              <button
+                key={i.id}
+                type="button"
+                className="flex min-h-[44px] w-full items-center truncate rounded-lg px-3 py-2 text-left text-sm text-[#B8B4B8]/90 hover:bg-white/10"
+                onClick={() => {
+                  onChange(i.id);
+                  setOpen(false);
+                  setQ("");
+                }}
+              >
+                {i.label}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    ) : null;
+
   return (
     <div ref={ref} className={cn("relative min-w-[10rem]", className)}>
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={cn(ADMIN_FILTER_INPUT, "flex w-full items-center justify-between text-left")}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={cn(
+          ADMIN_FILTER_INPUT,
+          "flex min-h-[44px] w-full items-center justify-between text-left touch-manipulation",
+        )}
       >
         <span className={cn("truncate", selectedLabel ? "text-[#B8B4B8]" : "text-[#B8B4B8]/40")}>
           {selectedLabel || emptyLabel}
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-[#B8B4B8]/40" aria-hidden />
       </button>
-      {open ? (
-        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-hidden rounded-xl border border-white/10 bg-[#0D0B0D]/98 py-2 shadow-2xl backdrop-blur-xl">
-          <input
-            type="search"
-            placeholder={placeholder}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            className={cn(ADMIN_FILTER_INPUT, "mx-2 mb-1 !h-9 w-[calc(100%-1rem)] text-sm")}
-          />
-          <div className="max-h-52 overflow-y-auto px-1">
-            <button
-              type="button"
-              className="block w-full rounded-lg px-3 py-2 text-left text-sm text-[#B8B4B8]/50 hover:bg-white/5"
-              onClick={() => {
-                onChange("");
-                setOpen(false);
-                setQ("");
-              }}
-            >
-              {emptyLabel}
-            </button>
-            {filtered.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-[#B8B4B8]/40">No matches</p>
-            ) : (
-              filtered.map((i) => (
-                <button
-                  key={i.id}
-                  type="button"
-                  className="block w-full truncate rounded-lg px-3 py-2 text-left text-sm text-[#B8B4B8]/90 hover:bg-white/10"
-                  onClick={() => {
-                    onChange(i.id);
-                    setOpen(false);
-                    setQ("");
-                  }}
-                >
-                  {i.label}
-                </button>
-              ))
-            )}
-          </div>
-        </div>
-      ) : null}
+      {open && portalPos && typeof document !== "undefined"
+        ? createPortal(listbox, document.body)
+        : null}
     </div>
   );
 }
@@ -1741,7 +1805,7 @@ export function AdminMarketingClient({
             <button
               type="button"
               onClick={() => openNewAccount()}
-              className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 font-semibold text-white shadow-lg shadow-pink-500/25 transition-all hover:opacity-90"
+              className="inline-flex min-h-[44px] items-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 font-semibold text-white shadow-lg shadow-pink-500/25 transition-all hover:opacity-90 touch-manipulation"
             >
               <Plus className="h-4 w-4" /> Add Account
             </button>
@@ -2278,7 +2342,7 @@ export function AdminMarketingClient({
                 <button
                   type="button"
                   onClick={openNewPhone}
-                  className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 font-semibold text-white shadow-lg shadow-pink-500/25 transition-all hover:opacity-90"
+                  className="inline-flex min-h-[44px] items-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 font-semibold text-white shadow-lg shadow-pink-500/25 transition-all hover:opacity-90 touch-manipulation"
                 >
                   <Plus className="h-4 w-4" /> Add phone
                 </button>

@@ -1010,7 +1010,7 @@ export function AdminBunchesClient({
             <button
               type="button"
               onClick={() => setShowCreate((v) => !v)}
-              className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 px-4 py-2.5 text-sm")}
+              className={cn(VA_BTN_PRIMARY, "inline-flex min-h-[44px] items-center gap-2 px-4 py-2.5 text-sm touch-manipulation")}
             >
               <FolderPlus className="h-4 w-4" />
               Create bunch
@@ -1469,7 +1469,7 @@ export function AdminBunchesClient({
                     type="button"
                     className={cn(
                       VA_BTN_SECONDARY,
-                      "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs disabled:opacity-40",
+                      "inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-xs touch-manipulation disabled:opacity-40",
                     )}
                     onClick={() => {
                       setShowFilmerPicker(false);
@@ -1490,7 +1490,7 @@ export function AdminBunchesClient({
                       type="button"
                       className={cn(
                         VA_BTN_SECONDARY,
-                        "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs",
+                        "inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-xs touch-manipulation",
                         (busyId === `filmer-${selectedBunch.id}` ||
                           (!scriptsReady && !selectedBunch.assigned_filmer_id) ||
                           filmers.length === 0) &&
@@ -1519,7 +1519,7 @@ export function AdminBunchesClient({
                       type="button"
                       className={cn(
                         VA_BTN_SECONDARY,
-                        "inline-flex items-center gap-1.5 px-3 py-1.5 text-xs",
+                        "inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-xs touch-manipulation",
                         (busyId === `editor-${selectedBunch.id}` ||
                           (!bunchReadyForEditing(selectedBunch) && !selectedBunch.assigned_editor_id) ||
                           editors.length === 0) &&

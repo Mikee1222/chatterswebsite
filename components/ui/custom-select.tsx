@@ -144,13 +144,13 @@ export function CustomSelect({
 
   React.useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: PointerEvent) => {
       const t = e.target as Node;
       if (ref.current?.contains(t) || panelRef.current?.contains(t)) return;
       setOpen(false);
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("pointerdown", handler);
+    return () => document.removeEventListener("pointerdown", handler);
   }, [open]);
 
   const currentLabel = options.find((o) => o.value === value)?.label;

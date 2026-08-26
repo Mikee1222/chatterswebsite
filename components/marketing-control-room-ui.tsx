@@ -162,14 +162,14 @@ export function MarketingTabBar<T extends string>({
             type="button"
             onClick={() => onChange(t.id)}
             className={cn(
-              "relative rounded-xl px-4 py-2.5 text-sm font-medium transition",
+              "relative min-h-[44px] rounded-xl px-4 py-2.5 text-sm font-medium transition touch-manipulation",
               active === t.id ? "text-white" : "text-[#B8B4B8]/55 hover:text-[#B8B4B8]",
             )}
           >
             {active === t.id ? (
               <motion.span
                 layoutId="marketing-control-room-tab"
-                className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#FF1493]/20 to-[#D4AF8C]/10 ring-1 ring-[#FF1493]/25"
+                className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-r from-[#FF1493]/20 to-[#D4AF8C]/10 ring-1 ring-[#FF1493]/25"
                 transition={{ type: "spring", stiffness: 380, damping: 32 }}
               />
             ) : null}

@@ -185,7 +185,7 @@ export function StaffAssigneePicker({
                     <label
                       key={u.id}
                       className={cn(
-                        "flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition hover:bg-white/5",
+                        "flex min-h-[44px] cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2.5 text-sm transition hover:bg-white/5 touch-manipulation",
                         checked && "bg-pink-500/10",
                       )}
                     >

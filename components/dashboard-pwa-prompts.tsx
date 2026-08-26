@@ -9,16 +9,30 @@ import type { SessionUser } from "@/types";
 
 const PROMPT_HEIGHT_VAR = "--mobile-bottom-prompt-height";
 
-/** Checklist completion is blocked when fixed prompts cover rows — never show on task pages. */
-function isVaTasksChecklistPath(pathname: string | null): boolean {
+/**
+ * Pages where fixed bottom PWA/push sheets swallow taps on hero CTAs and pickers
+ * (Create Bunch, Assign Filmer, Assign to Bunch, Add Account, etc.).
+ * Same failure mode as VA checklist rows under the banner.
+ */
+function shouldSuppressBottomPrompts(pathname: string | null): boolean {
   if (!pathname) return false;
   const p = pathname.replace(/\/$/, "") || "/";
-  return (
-    p === ROUTES.va.tasks ||
-    p.startsWith(`${ROUTES.va.tasks}/`) ||
-    p === ROUTES.admin.vaTasks ||
-    p.startsWith(`${ROUTES.admin.vaTasks}/`)
-  );
+  const prefixes = [
+    ROUTES.va.tasks,
+    ROUTES.admin.vaTasks,
+    ROUTES.admin.marketing,
+    ROUTES.va.marketingAccounts,
+    ROUTES.admin.bunches,
+    ROUTES.admin.winnerVideosHub,
+    ROUTES.admin.winnerVideos,
+    ROUTES.filmingCalendar,
+    ROUTES.shootAssignments,
+    ROUTES.editAssignments,
+    ROUTES.icloudOrganization,
+    ROUTES.winnerRecreates,
+    ROUTES.creativeScripts,
+  ];
+  return prefixes.some((base) => p === base || p.startsWith(`${base}/`));
 }
 
 function measureBottomPromptHeight(): number {
@@ -55,12 +69,12 @@ function measureBottomPromptHeight(): number {
  */
 export function DashboardPwaPrompts({ user }: { user: SessionUser }) {
   const pathname = usePathname();
-  const suppressForChecklist = isVaTasksChecklistPath(pathname);
+  const suppressPrompts = shouldSuppressBottomPrompts(pathname);
   const [pwaBannerVisible, setPwaBannerVisible] = React.useState(false);
   const [pwaReady, setPwaReady] = React.useState(false);
   const [pushVisible, setPushVisible] = React.useState(false);
 
-  const anyPromptVisible = !suppressForChecklist && (pwaBannerVisible || pushVisible);
+  const anyPromptVisible = !suppressPrompts && (pwaBannerVisible || pushVisible);
 
   React.useEffect(() => {
     if (typeof document === "undefined") return;
@@ -85,7 +99,7 @@ export function DashboardPwaPrompts({ user }: { user: SessionUser }) {
     };
   }, [anyPromptVisible, pwaBannerVisible, pushVisible]);
 
-  if (suppressForChecklist) return null;
+  if (suppressPrompts) return null;
 
   return (
     <>

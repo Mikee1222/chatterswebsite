@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronDown,
@@ -307,6 +308,13 @@ function BunchAssignPicker({
 }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const [portalPos, setPortalPos] = React.useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    width: number;
+  } | null>(null);
   const assignable = React.useMemo(
     () =>
       bunches
@@ -320,14 +328,109 @@ function BunchAssignPicker({
     [bunches],
   );
 
+  const updatePos = React.useCallback(() => {
+    const root = rootRef.current;
+    if (!root || !open) return;
+    const rect = root.getBoundingClientRect();
+    const need = 240;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    const up = spaceBelow < need && spaceAbove > spaceBelow;
+    const width = Math.min(Math.max(rect.width, 260), window.innerWidth - 24);
+    const left = Math.min(Math.max(12, rect.right - width), window.innerWidth - width - 12);
+    if (up) {
+      setPortalPos({ left, width, bottom: window.innerHeight - rect.top + 6 });
+    } else {
+      setPortalPos({ left, width, top: rect.bottom + 6 });
+    }
+  }, [open]);
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setPortalPos(null);
+      return;
+    }
+    updatePos();
+    window.addEventListener("resize", updatePos);
+    window.addEventListener("scroll", updatePos, true);
+    return () => {
+      window.removeEventListener("resize", updatePos);
+      window.removeEventListener("scroll", updatePos, true);
+    };
+  }, [open, updatePos, assignable.length]);
+
   React.useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    const onDoc = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t) || panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("pointerdown", onDoc);
+    return () => document.removeEventListener("pointerdown", onDoc);
   }, [open]);
+
+  const panel =
+    open && portalPos ? (
+      <div
+        ref={panelRef}
+        className="overflow-hidden rounded-xl border border-white/10 bg-[#141214] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.85)]"
+        style={{
+          position: "fixed",
+          zIndex: 10050,
+          left: portalPos.left,
+          width: portalPos.width,
+          maxHeight: 288,
+          ...(portalPos.top != null ? { top: portalPos.top } : {}),
+          ...(portalPos.bottom != null ? { bottom: portalPos.bottom } : {}),
+        }}
+        role="listbox"
+        aria-label="Open bunches"
+      >
+        <p className="border-b border-white/[0.06] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#B8B4B8]/45">
+          Open bunches
+        </p>
+        {assignable.length === 0 ? (
+          <div className="px-3 py-3 text-xs text-[#B8B4B8]/55">
+            <p>No open bunches available — create one first.</p>
+            <Link
+              href={ROUTES.admin.bunches}
+              className="mt-2 inline-flex min-h-[44px] items-center text-[#FF1493] hover:underline"
+              onClick={() => setOpen(false)}
+            >
+              Create / manage bunches →
+            </Link>
+          </div>
+        ) : (
+          <ul className="max-h-56 overflow-y-auto overscroll-contain py-1">
+            {assignable.map((b) => (
+              <li key={b.id}>
+                <button
+                  type="button"
+                  className="flex min-h-[44px] w-full flex-col items-start justify-center gap-0.5 px-3 py-2.5 text-left transition hover:bg-white/[0.05] active:bg-white/[0.08]"
+                  onClick={() => {
+                    setOpen(false);
+                    onAssign(b.id);
+                  }}
+                >
+                  <span className="text-sm font-medium text-white">{b.name}</span>
+                  <span className="text-[11px] text-[#B8B4B8]/50">
+                    {b.model_name} · {b.remaining_count ?? 0} left / {b.target_video_count}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <Link
+          href={ROUTES.admin.bunches}
+          className="flex min-h-[44px] items-center border-t border-white/[0.06] px-3 py-2 text-xs text-[#FF1493] hover:underline"
+          onClick={() => setOpen(false)}
+        >
+          Manage bunches →
+        </Link>
+      </div>
+    ) : null;
 
   return (
     <div ref={rootRef} className="relative">
@@ -337,8 +440,8 @@ function BunchAssignPicker({
         onClick={() => setOpen((v) => !v)}
         className={cn(
           VA_BTN_PRIMARY,
-          "inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40",
-          compact ? "px-3 py-1.5 text-[11px]" : "px-3.5 py-2 text-xs",
+          "inline-flex min-h-[44px] items-center gap-1.5 touch-manipulation disabled:cursor-not-allowed disabled:opacity-40",
+          compact ? "px-3 py-2 text-[11px]" : "px-3.5 py-2.5 text-xs",
         )}
         title={
           assignable.length === 0
@@ -350,60 +453,7 @@ function BunchAssignPicker({
         {label}
         <ChevronDown className={cn("h-3 w-3 transition", open && "rotate-180")} />
       </button>
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.98 }}
-            transition={{ duration: 0.15 }}
-            className="absolute right-0 z-30 mt-2 w-[min(100vw-2rem,280px)] overflow-hidden rounded-xl border border-white/10 bg-[#141214] shadow-[0_20px_50px_-20px_rgba(0,0,0,0.85)]"
-          >
-            <p className="border-b border-white/[0.06] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#B8B4B8]/45">
-              Open bunches
-            </p>
-            {assignable.length === 0 ? (
-              <div className="px-3 py-3 text-xs text-[#B8B4B8]/55">
-                <p>No open bunches available — create one first.</p>
-                <Link
-                  href={ROUTES.admin.bunches}
-                  className="mt-2 inline-flex text-[#FF1493] hover:underline"
-                  onClick={() => setOpen(false)}
-                >
-                  Create / manage bunches →
-                </Link>
-              </div>
-            ) : (
-              <ul className="max-h-56 overflow-y-auto py-1">
-                {assignable.map((b) => (
-                  <li key={b.id}>
-                    <button
-                      type="button"
-                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2.5 text-left transition hover:bg-white/[0.05]"
-                      onClick={() => {
-                        setOpen(false);
-                        onAssign(b.id);
-                      }}
-                    >
-                      <span className="text-sm font-medium text-white">{b.name}</span>
-                      <span className="text-[11px] text-[#B8B4B8]/50">
-                        {b.model_name} · {b.remaining_count ?? 0} left / {b.target_video_count}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Link
-              href={ROUTES.admin.bunches}
-              className="block border-t border-white/[0.06] px-3 py-2 text-xs text-[#FF1493] hover:underline"
-              onClick={() => setOpen(false)}
-            >
-              Manage bunches →
-            </Link>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      {open && portalPos && typeof document !== "undefined" ? createPortal(panel, document.body) : null}
     </div>
   );
 }

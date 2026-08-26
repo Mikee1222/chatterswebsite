@@ -47,14 +47,19 @@ export function PwaInstallBanner({
   const showIosGuidance =
     needsAddToHomeScreenSafe && (installSheetOpenSafe || visible) && !isStandaloneSafe;
 
+  /**
+   * iOS “Add to Home Screen” guidance is tall (~240px) and sits above the bottom nav.
+   * Auto-showing it on every visit covers hero CTAs (Create Bunch, Add Account, Assign…)
+   * so taps hit the sheet instead of the button. Only open when the user asks via More /
+   * Settings (`installSheetOpen`).
+   */
   React.useEffect(() => {
-    if (needsAddToHomeScreenSafe && !visible && !installSheetOpenSafe) {
-      const dismissedAt =
-        typeof window !== "undefined" ? localStorage.getItem("chatter-pwa-install-dismissed") : null;
-      if (!dismissedAt) setVisible(true);
+    if (installSheetOpenSafe && needsAddToHomeScreenSafe && !isStandaloneSafe) {
+      setVisible(true);
     }
-  }, [needsAddToHomeScreenSafe, installSheetOpenSafe, visible]);
+  }, [installSheetOpenSafe, needsAddToHomeScreenSafe, isStandaloneSafe]);
 
+  /** Native beforeinstallprompt: still auto-nudge once, but keep the card compact (see mobile layout). */
   React.useEffect(() => {
     if (canInstallSafe && isInstallableSafe) setVisible(true);
   }, [canInstallSafe, isInstallableSafe]);
@@ -102,14 +107,14 @@ export function PwaInstallBanner({
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="mt-4 flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2.5 text-sm text-white/80">
+        <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/5 px-3 py-2 text-sm text-white/80">
           <Share className="h-5 w-5 shrink-0 text-[hsl(330,90%,65%)]" />
           <span>Share → Add to Home Screen</span>
         </div>
         <button
           type="button"
           onClick={handleDismiss}
-          className="mt-4 w-full rounded-xl border border-white/20 bg-white/5 py-3 text-sm font-medium text-white/80 hover:bg-white/10"
+          className="mt-3 inline-flex min-h-[44px] w-full items-center justify-center rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10"
         >
           Maybe later
         </button>
