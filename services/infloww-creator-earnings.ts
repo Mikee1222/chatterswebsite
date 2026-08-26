@@ -1146,6 +1146,56 @@ export function syntheticCreatorTxFromDailyRevenue(
   }));
 }
 
+export type CreatorModelRevenueRanking = {
+  rank: number;
+  model_record_id: string;
+  model_name: string;
+  creator_infloww_id: string | null;
+  /** Post-OF creator share — same formula as creatorTxRevenueAmount / Athens-day RPC. */
+  revenue: number;
+};
+
+/**
+ * Rank linked models by Creator Earnings revenue for an Athens YMD range.
+ * Single source of truth with Admin Home / Creator Earnings: Athens-day RPC
+ * (done + loading, deduped hex twins) + linked model names.
+ */
+export async function listCreatorModelRevenueRankings(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+}): Promise<CreatorModelRevenueRanking[]> {
+  const [{ linked }, dailyRevenue] = await Promise.all([
+    listLinkedCreatorModels(),
+    listCreatorRevenueByAthensDay({
+      startYmd: params.startYmd,
+      endYmd: params.endYmd,
+      modelRecordId: params.modelRecordId,
+    }),
+  ]);
+
+  const nameById = new Map(linked.map((l) => [l.modelRecordId, l.modelName] as const));
+  const creatorById = new Map(
+    linked.map((l) => [l.modelRecordId, l.creatorInflowwId] as const)
+  );
+
+  const byModel = new Map<string, number>();
+  for (const row of dailyRevenue) {
+    byModel.set(row.model_record_id, (byModel.get(row.model_record_id) ?? 0) + row.revenue);
+  }
+
+  return [...byModel.entries()]
+    .map(([model_record_id, revenue]) => ({
+      model_record_id,
+      model_name: nameById.get(model_record_id)?.trim() || "—",
+      creator_infloww_id: creatorById.get(model_record_id) ?? null,
+      revenue: Math.round(revenue * 100) / 100,
+    }))
+    .filter((r) => r.revenue > 0)
+    .sort((a, b) => b.revenue - a.revenue)
+    .map((r, i) => ({ ...r, rank: i + 1 }));
+}
+
 export type CreatorTransactionTypeCount = {
   type: string;
   count: number;

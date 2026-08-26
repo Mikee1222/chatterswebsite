@@ -17,7 +17,7 @@ import {
   resolveInflowwStatsRange,
   type InflowwStatsPreset,
 } from "@/services/infloww-performance";
-import { listCreatorDailyStats } from "@/services/infloww-creator-earnings";
+import { listCreatorModelRevenueRankings } from "@/services/infloww-creator-earnings";
 import { getInstagramWeeklyProgressReport } from "@/services/instagram-weekly-progress";
 import {
   computeVaStatisticsReport,
@@ -192,32 +192,33 @@ export async function executeGunzoTool(
       case "get_model_revenue": {
         const start = str(parameters.start_ymd);
         const end = str(parameters.end_ymd);
-        if (!start || !end) {
-          return { ok: false, summary: "start_ymd and end_ymd required", error: "Missing dates" };
-        }
-        const rows = await listCreatorDailyStats({
-          startYmd: start,
-          endYmd: end,
-          modelRecordId: str(parameters.model_record_id) || undefined,
-          creatorInflowwId: str(parameters.creator_infloww_id) || undefined,
-        });
-        const capped = capArray(
-          rows.map((r) => ({
-            date: r.date,
-            model_name: r.model_name,
-            model_record_id: r.model_record_id,
-            new_subscribers: r.new_subscribers,
-            renewals: r.renewals,
-            messages_sent: r.messages_sent,
-            ppvs_sent: r.ppvs_sent,
-            fans_chatted: r.fans_chatted,
-            profile_visitors: r.profile_visitors,
-          })),
+        const preset = asPreset(
+          parameters.preset,
+          start && end ? "custom" : "this_month",
         );
+        const range = resolveInflowwStatsRange(
+          start && end ? "custom" : preset,
+          start || null,
+          end || null,
+        );
+        const rankings = await listCreatorModelRevenueRankings({
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          modelRecordId: str(parameters.model_record_id) || undefined,
+        });
+        const capped = capArray(rankings);
+        const top = capped.items[0];
         return {
           ok: true,
-          summary: `Model revenue stats ${start}→${end}: ${capped.total} daily rows`,
-          data: { truncated: capped.truncated, total: capped.total, rows: capped.items },
+          summary: top
+            ? `Model revenue ${range.startYmd}→${range.endYmd}: ${capped.total} models — #1 ${top.model_name} $${top.revenue.toFixed(2)}`
+            : `Model revenue ${range.startYmd}→${range.endYmd}: no revenue rows`,
+          data: {
+            range,
+            truncated: capped.truncated,
+            total: capped.total,
+            models: capped.items,
+          },
         };
       }
 

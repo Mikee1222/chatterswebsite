@@ -54,7 +54,7 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     name: "get_model_revenue",
     kind: "read",
     requiredPermission: PERMISSIONS.EARNINGS_VIEW,
-    description: "Creator/model daily stats and revenue signals",
+    description: "Creator/model revenue rankings (Creator Earnings source of truth)",
   },
   get_instagram_insights_summary: {
     name: "get_instagram_insights_summary",
@@ -174,16 +174,21 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
   },
   {
     name: "get_model_revenue",
-    description: "Get creator/model daily stats for a date range. Optionally filter by model_record_id or creator_infloww_id.",
+    description:
+      "Rank creators/models by revenue (post-OF creator share) for a date range — same numbers as Creator Earnings / Admin Home. Defaults to this_month (Athens) when dates omitted. Use to answer best/top model questions.",
     input_schema: {
       type: "object",
       properties: {
-        start_ymd: { type: "string", description: "YYYY-MM-DD start" },
-        end_ymd: { type: "string", description: "YYYY-MM-DD end" },
-        model_record_id: { type: "string" },
-        creator_infloww_id: { type: "string" },
+        preset: {
+          type: "string",
+          enum: [...presetEnum],
+          description: "Date range preset; defaults to this_month when dates omitted",
+        },
+        start_ymd: { type: "string", description: "YYYY-MM-DD start (with end_ymd, or preset=custom)" },
+        end_ymd: { type: "string", description: "YYYY-MM-DD end (with start_ymd, or preset=custom)" },
+        model_record_id: { type: "string", description: "Optional filter to one model Airtable record id" },
       },
-      required: ["start_ymd", "end_ymd"],
+      required: [],
     },
   },
   {
