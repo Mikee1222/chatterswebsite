@@ -65,7 +65,8 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     name: "get_instagram_insights_summary",
     kind: "read",
     requiredPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
-    description: "Instagram weekly progress summary for a calendar month",
+    description:
+      "Instagram weekly progress for a calendar month (defaults to this Athens month)",
   },
   get_va_stats: {
     name: "get_va_stats",
@@ -235,15 +236,21 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
   },
   {
     name: "get_instagram_insights_summary",
-    description: "Instagram weekly progress report for a calendar year/month. Optional model_record_id filter.",
+    description:
+      "Instagram weekly progress report for a calendar month (same Athens month resolution as Instagram Insights UI). Defaults to this_month (Athens) when year/month/preset omitted. Prefer preset=this_month for 'this month' questions — do not invent a past month. Note: account-level daily views may be 0 for dates before ~2026-08-07 even when reach is real; that is a historical metric gap, not a blackout.",
     input_schema: {
       type: "object",
       properties: {
-        year: { type: "integer" },
-        month: { type: "integer", description: "1-12" },
+        preset: {
+          type: "string",
+          enum: ["this_month", "last_month"],
+          description: "Athens calendar month preset; defaults to this_month when year/month omitted",
+        },
+        year: { type: "integer", description: "Calendar year (optional if preset used)" },
+        month: { type: "integer", description: "1-12 (optional if preset used)" },
         model_record_id: { type: "string" },
       },
-      required: ["year", "month"],
+      required: [],
     },
   },
   {
@@ -597,6 +604,6 @@ If asked for a prohibited operation, refuse clearly in one short sentence and su
   ## Actions — proposed writes or next steps that need Confirm
   ## Restrictions — hard refusals / what you cannot do
 - Proactive suggestions: when patterns in the data are clear, surface 1–3 grounded observations or ideas with citations. Never invent patterns.
-- Date ranges: prefer presets (this_week, this_month) unless the user specifies dates.
+- Date ranges: prefer presets (this_week, this_month) unless the user specifies dates. For Instagram, omit year/month or use preset=this_month — current Athens month; do not assume July/prior months unless asked. Reach with views=0 before ~2026-08-07 is a historical views gap, not a blackout.
 - When proposing actions, include the exact IDs and parameters you will use.
 - Do not re-list your full capability menu every turn — only on first orientation or when asked.`;

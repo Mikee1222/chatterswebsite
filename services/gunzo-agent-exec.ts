@@ -15,6 +15,7 @@ import {
 import {
   getAdminInflowwPerformanceReport,
   resolveInflowwStatsRange,
+  currentAthensYearMonth,
   type InflowwStatsPreset,
 } from "@/services/infloww-performance";
 import { listCreatorModelRevenueRankings } from "@/services/infloww-creator-earnings";
@@ -240,12 +241,35 @@ export async function executeGunzoTool(
       }
 
       case "get_instagram_insights_summary": {
-        const year = num(parameters.year);
-        const month = num(parameters.month);
-        if (year == null || month == null || month < 1 || month > 12) {
-          return { ok: false, summary: "Invalid year/month", error: "year and month (1-12) required" };
+        const explicitYear = num(parameters.year);
+        const explicitMonth = num(parameters.month);
+        const presetRaw = str(parameters.preset).toLowerCase();
+        let year: number;
+        let month: number;
+        if (
+          explicitYear != null &&
+          explicitMonth != null &&
+          explicitMonth >= 1 &&
+          explicitMonth <= 12
+        ) {
+          year = Math.trunc(explicitYear);
+          month = Math.trunc(explicitMonth);
+        } else if (presetRaw === "last_month") {
+          const cur = currentAthensYearMonth();
+          if (cur.month === 1) {
+            year = cur.year - 1;
+            month = 12;
+          } else {
+            year = cur.year;
+            month = cur.month - 1;
+          }
+        } else {
+          // this_month (default) — same Athens month as Instagram Insights UI
+          const cur = currentAthensYearMonth();
+          year = cur.year;
+          month = cur.month;
         }
-        const report = await getInstagramWeeklyProgressReport(Math.trunc(year), Math.trunc(month), {
+        const report = await getInstagramWeeklyProgressReport(year, month, {
           modelRecordId: str(parameters.model_record_id) || undefined,
         });
         const models = capArray(
@@ -264,9 +288,15 @@ export async function executeGunzoTool(
           })),
           25,
         );
+        const teamReach = report.team_month_totals?.reach ?? 0;
+        const teamViews = report.team_month_totals?.views ?? 0;
+        const viewsNote =
+          teamReach > 0 && teamViews === 0
+            ? " (reach present; account-level daily views may be historically unavailable before ~2026-08-07 — not a blackout)"
+            : "";
         return {
           ok: true,
-          summary: `IG insights ${year}-${String(month).padStart(2, "0")}: ${models.total} models`,
+          summary: `IG insights ${year}-${String(month).padStart(2, "0")}: ${models.total} models · team reach ${Math.round(teamReach).toLocaleString()} · views ${Math.round(teamViews).toLocaleString()}${viewsNote}`,
           data: {
             year,
             month,
