@@ -62,6 +62,7 @@ import { getPipelineOverviewContext } from "@/services/icloud";
 import { getAcademyOverview } from "@/services/sop-academy-overview";
 import { getClientPartnershipInflowwStats } from "@/services/client-partnership-infloww";
 import { listAllClients } from "@/services/client-portal";
+import { resolveGunzoToolParameters } from "@/lib/gunzo-agent-resolve";
 
 const READ_CAP = 40;
 
@@ -173,6 +174,12 @@ export async function executeGunzoTool(
   }
 
   try {
+    const resolvedParams = await resolveGunzoToolParameters(toolName, parameters);
+    if ("error" in resolvedParams) {
+      return resolvedParams.error;
+    }
+    parameters = resolvedParams.parameters;
+
     switch (toolName) {
       case "get_chatter_performance": {
         const preset = asPreset(parameters.preset);

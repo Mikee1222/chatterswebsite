@@ -218,7 +218,10 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
         preset: { type: "string", enum: [...presetEnum], description: "Date range preset" },
         start_ymd: { type: "string", description: "YYYY-MM-DD when preset=custom" },
         end_ymd: { type: "string", description: "YYYY-MM-DD when preset=custom" },
-        public_user_id: { type: "string", description: "Optional chatter public id / uuid filter" },
+        public_user_id: {
+          type: "string",
+          description: "Optional chatter filter — full name (e.g. Giannis Katsikas) or record/public id",
+        },
       },
       required: ["preset"],
     },
@@ -237,7 +240,10 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
         },
         start_ymd: { type: "string", description: "YYYY-MM-DD start (with end_ymd, or preset=custom)" },
         end_ymd: { type: "string", description: "YYYY-MM-DD end (with start_ymd, or preset=custom)" },
-        model_record_id: { type: "string", description: "Optional filter to one model Airtable record id" },
+        model_record_id: {
+          type: "string",
+          description: "Optional filter to one model — model name (e.g. Lina, Diana) or record id",
+        },
       },
       required: [],
     },
@@ -256,7 +262,10 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
         },
         year: { type: "integer", description: "Calendar year (optional if preset used)" },
         month: { type: "integer", description: "1-12 (optional if preset used)" },
-        model_record_id: { type: "string" },
+        model_record_id: {
+          type: "string",
+          description: "Optional model filter — name (e.g. Lina, Diana) or record id",
+        },
       },
       required: [],
     },
@@ -264,13 +273,13 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
   {
     name: "get_link_analytics",
     description:
-      "GetMySocial link-in-bio analytics for one model: Link A/B pageviews & button clicks, UV, CTR, shield/bot blocked %, device mix, hour-of-day visitor sample, DoD/WoW click trends, A/B winners (today/week/period), rule-based talking points, and IG reach → bio clicks → OF new subs/revenue funnel (alignment, not hard attribution). Requires model_id. Date range via preset (this_week/this_month/…) or start_ymd+end_ymd. Use with get_instagram_insights_summary and get_model_revenue for cross-system funnel synthesis (high reach / low bio clicks, etc.).",
+      "GetMySocial link-in-bio analytics for one model: Link A/B pageviews & button clicks, UV, CTR, shield/bot blocked %, device mix, hour-of-day visitor sample, DoD/WoW click trends, A/B winners (today/week/period), rule-based talking points, and IG reach → bio clicks → OF new subs/revenue funnel (alignment, not hard attribution). Pass model name (e.g. Lina, Diana) or record id. Date range via preset (this_week/this_month/…) or start_ymd+end_ymd. Use with get_instagram_insights_summary and get_model_revenue for cross-system funnel synthesis (high reach / low bio clicks, etc.).",
     input_schema: {
       type: "object",
       properties: {
         model_id: {
           type: "string",
-          description: "Model Airtable/record id (required)",
+          description: "Model name (e.g. Lina, Diana) or record id (required)",
         },
         preset: {
           type: "string",
@@ -305,7 +314,7 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
       properties: {
         start_ymd: { type: "string" },
         end_ymd: { type: "string" },
-        va_id: { type: "string" },
+        va_id: { type: "string", description: "Optional VA filter — full name or record id" },
       },
     },
   },
@@ -316,8 +325,8 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
       type: "object",
       properties: {
         status: { type: "string", enum: ["Pending", "Fixed", "Escalated", ""] },
-        exec_va_id: { type: "string" },
-        creator_id: { type: "string" },
+        exec_va_id: { type: "string", description: "Optional VA filter — full name or record id" },
+        creator_id: { type: "string", description: "Optional model filter — name or record id" },
         date_from: { type: "string" },
         date_to: { type: "string" },
         unresolved_only: { type: "boolean" },
@@ -331,8 +340,8 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
       type: "object",
       properties: {
         status: { type: "string" },
-        chatter_id: { type: "string" },
-        model_id: { type: "string" },
+        chatter_id: { type: "string", description: "Chatter full name or record id" },
+        model_id: { type: "string", description: "Model name or record id" },
         reason_category: { type: "string" },
         date_from: { type: "string" },
         date_to: { type: "string" },
@@ -380,7 +389,7 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
     input_schema: {
       type: "object",
       properties: {
-        model_id: { type: "string" },
+        model_id: { type: "string", description: "Optional model filter — name or record id" },
         status: { type: "string" },
         limit: { type: "integer", description: "Max rows to return (default 40)" },
       },
@@ -410,7 +419,7 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
           enum: ["list", "insights"],
           description: "list = entry metadata; insights = coverage/attention aggregates",
         },
-        model_id: { type: "string", description: "Optional filter for list mode" },
+        model_id: { type: "string", description: "Optional filter for list mode — model name or record id" },
         category: { type: "string", description: "Optional category filter for list mode" },
       },
     },
@@ -427,7 +436,7 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
           enum: ["all", "accounts", "phones", "shadowban"],
           description: "Which slice to load (default all)",
         },
-        model_id: { type: "string", description: "Optional model filter for accounts" },
+        model_id: { type: "string", description: "Optional model filter for accounts — name or record id" },
         shadowban_pending_only: {
           type: "boolean",
           description: "When loading shadowban, only pending reports (default true)",
@@ -447,7 +456,7 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
           enum: ["open", "closed", "all"],
           description: "Bunch status filter (default open)",
         },
-        model_id: { type: "string" },
+        model_id: { type: "string", description: "Optional model filter — name or record id" },
         include_runways: {
           type: "boolean",
           description: "Include model material runway / next shoot (default true)",
@@ -556,7 +565,7 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
     input_schema: {
       type: "object",
       properties: {
-        model_id: { type: "string" },
+        model_id: { type: "string", description: "Model name (e.g. Lina, Diana) or record id" },
         winner_threshold_views: { type: "integer" },
         super_winner_threshold_views: { type: "integer" },
       },
@@ -570,9 +579,12 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
     input_schema: {
       type: "object",
       properties: {
-        chatter_id: { type: "string" },
+        chatter_id: { type: "string", description: "Chatter full name or record id" },
         chatter_name: { type: "string" },
-        model_ids: { type: "array", items: { type: "string" } },
+        model_ids: {
+          type: "array",
+          items: { type: "string", description: "Model name or record id" },
+        },
         day: {
           type: "string",
           enum: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
@@ -609,9 +621,15 @@ export const GUNZO_AGENT_SYSTEM = `You are Gunzo — a sharp, trusted strategic 
 - PROPOSE ACTION tools for curated writes. Every action needs the human to Confirm in the UI — you never execute writes yourself.
 - After proposing an action, briefly explain what will happen and that they must confirm.
 
+## Names vs IDs
+- Pass **model names** and **chatter/VA names** naturally in tool calls (e.g. model_id: "Lina", public_user_id: "Giannis Katsikas") — the system resolves them to record ids automatically.
+- Never ask the user for a raw model/chatter record id unless resolution failed with no close match.
+- If a tool returns ambiguous_entity, ask a short clarifying question listing the real options (display_name + hint) — e.g. Greek **Lina** vs **Lina (USA)**. Never guess when ambiguous.
+- If resolution fails (entity_not_found), say so and offer closest suggestions from the tool result.
+
 ## Cross-system synthesis
 - Prefer answering in one coherent take when the question spans systems. Call multiple READ tools in the same turn when useful (e.g. IG reach + get_link_analytics bio clicks + OF new subs/revenue; shadowban + account status + model revenue; schedule gaps + VA timers).
-- When link performance is relevant (bio clicks, Link A vs B, funnel leaks), call get_link_analytics with the model_id. Pair with get_instagram_insights_summary and/or get_model_revenue for grounded funnel reads (high reach / low clicks, winning link, CTR).
+- When link performance is relevant (bio clicks, Link A vs B, funnel leaks), call get_link_analytics with the model name or id. Pair with get_instagram_insights_summary and/or get_model_revenue for grounded funnel reads (high reach / low clicks, winning link, CTR).
 - Proactively surface link insights when tool data shows clear patterns (e.g. high IG reach with soft bio CTR, Link A crushing B, shield/bot blocking inflating noise) — cite the tools. Never invent link numbers.
 - Do NOT call the same READ tool twice with the same arguments in one conversation turn — reuse prior tool results already in the thread.
 - Weave results into one narrative — don't dump disconnected tool summaries.
