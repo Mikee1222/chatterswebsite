@@ -70,6 +70,7 @@ import { MobileFab } from "@/components/mobile-fab";
 import { FloatingActionButton } from "@/components/floating-action-button";
 import { VaFloatingActionButton } from "@/components/va-quick-actions-modal";
 import { AdminFloatingQuickActionsButton } from "@/components/admin-quick-actions-modal";
+import { GunzoAgentDrawer } from "@/components/gunzo-agent-drawer";
 import { MoreMenuModal } from "@/components/more-menu-modal";
 import { MobileFabVisibilityProvider, useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { ChatterRebillTipFabProvider } from "@/contexts/chatter-rebill-tip-fab-context";
@@ -413,6 +414,8 @@ export function MobileAppShell({
         ) : (
           <MobileFab user={user} />
         )}
+
+        <GunzoAgentDrawer canUse={userPermissions.includes(PERMISSIONS.AI_AGENT_USE)} />
 
         <MobileChromeUnlessOverlay>
         <nav

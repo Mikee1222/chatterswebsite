@@ -162,6 +162,9 @@ export const PERMISSIONS = {
   APPLICATIONS_VIEW: "applications:view",
   APPLICATIONS_MANAGE: "applications:manage",
 
+  /** Gunzo Agent AI assistant — opt-in via Roles UI (admin default only). */
+  AI_AGENT_USE: "ai_agent:use",
+
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -217,6 +220,7 @@ const ACTION_LABELS: Record<string, string> = {
   view_own: "View own",
   view_all: "View all",
   view_assignments: "View assignments",
+  use: "Use",
 };
 
 /** Human-readable labels for permission categories (prefix before `:`). */
@@ -270,6 +274,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   activity_logs: "Activity logs",
   credentials: "Password Library",
   applications: "Applications",
+  ai_agent: "Gunzo Agent",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -444,6 +449,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "applications:view": "Προβολή φορμών αιτήσεων και απαντήσεων υποψηφίων",
   "applications:manage": "Δημιουργία/επεξεργασία φορμών αιτήσεων και διαχείριση pipeline υποψηφίων",
+
+  "ai_agent:use": "Χρήση του Gunzo Agent (AI βοηθός με επιβεβαίωση ενεργειών)",
 };
 
 export type PermissionGroup = {
@@ -484,6 +491,7 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.CREDENTIALS_MANAGE,
   PERMISSIONS.APPLICATIONS_VIEW,
   PERMISSIONS.APPLICATIONS_MANAGE,
+  PERMISSIONS.AI_AGENT_USE,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [
