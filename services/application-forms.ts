@@ -88,6 +88,9 @@ type AnswerRow = {
   question_id: string;
   answer_text: string | null;
   answer_options: unknown;
+  translated_text?: string | null;
+  translation_lang?: string | null;
+  source_lang?: string | null;
   created_at: string;
 };
 
@@ -154,6 +157,9 @@ function mapAnswer(row: AnswerRow): ApplicationFormAnswer {
     question_id: row.question_id,
     answer_text: row.answer_text,
     answer_options: parseOptionsJson(row.answer_options),
+    translated_text: row.translated_text?.trim() ? row.translated_text.trim() : null,
+    translation_lang: row.translation_lang?.trim() ? row.translation_lang.trim() : null,
+    source_lang: row.source_lang?.trim() ? row.source_lang.trim() : null,
     created_at: row.created_at,
   };
 }
@@ -1051,6 +1057,29 @@ export async function updateResponse(
     .single();
   if (error) throw new Error(error.message);
   return mapResponse(data as ResponseRow);
+}
+
+export async function updateAnswerTranslation(
+  answerId: string,
+  patch: {
+    translated_text: string;
+    translation_lang: string;
+    source_lang: string;
+  },
+): Promise<ApplicationFormAnswer> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("application_form_answers")
+    .update({
+      translated_text: patch.translated_text,
+      translation_lang: patch.translation_lang,
+      source_lang: patch.source_lang,
+    })
+    .eq("id", answerId)
+    .select("*")
+    .single();
+  if (error) throw new Error(error.message);
+  return mapAnswer(data as AnswerRow);
 }
 
 export async function getFormAnalytics(formId: string): Promise<ApplicationFormAnalytics> {

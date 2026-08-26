@@ -167,6 +167,12 @@ export type ApplicationFormAnswer = {
   question_id: string;
   answer_text: string | null;
   answer_options: string[];
+  /** Cached Anthropic translation; original answer_text is never replaced. */
+  translated_text: string | null;
+  /** Target language of translated_text (`en` or `el`). */
+  translation_lang: string | null;
+  /** Detected source language of answer_text. */
+  source_lang: string | null;
   created_at: string;
 };
 

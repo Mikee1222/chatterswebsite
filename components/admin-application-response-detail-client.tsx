@@ -29,7 +29,9 @@ import {
 import { ApplyButton } from "@/components/application-ui-buttons";
 import { VA_CARD, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import { Check, PartyPopper, Sparkles } from "lucide-react";
+import { Check, Languages, PartyPopper, Sparkles } from "lucide-react";
+import { translationLangLabel } from "@/lib/application-ai-translate";
+import type { ApplicationFormAnswer } from "@/lib/application-forms-types";
 
 const COGNITIVE_SCORE_TIP =
   "Cognitive percentile shows how this candidate compares to others who took the screening — this becomes more meaningful as more candidates apply";
@@ -139,6 +141,16 @@ export function AdminApplicationResponseDetailClient({
   const [hireBurst, setHireBurst] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [hireCreds, setHireCreds] = useState<HireCredentialsPayload | null>(null);
+  /** Answer IDs where the translation panel is expanded (cached or just generated). */
+  const [translationOpen, setTranslationOpen] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const a of initialResponse.answers) {
+      if (a.translated_text?.trim()) init[a.id] = true;
+    }
+    return init;
+  });
+  const [translatingIds, setTranslatingIds] = useState<Record<string, boolean>>({});
+  const [translatingAll, setTranslatingAll] = useState(false);
   const prevStatus = useRef(initialResponse.status);
 
   useEffect(() => setMounted(true), []);
@@ -151,6 +163,96 @@ export function AdminApplicationResponseDetailClient({
     const first = response.answers.find((a) => (a.answer_text ?? "").trim());
     return first?.answer_text?.trim() || "Candidate";
   }, [response.answers]);
+
+  const textAnswerQuestions = useMemo(() => {
+    return questions.filter(
+      (q) =>
+        (q.question_type === "short_text" || q.question_type === "long_text") &&
+        Boolean(answersByQ.get(q.id)?.answer_text?.trim()),
+    );
+  }, [questions, answersByQ]);
+
+  function mergeAnswers(updated: ApplicationFormAnswer[]) {
+    if (updated.length === 0) return;
+    const byId = new Map(updated.map((a) => [a.id, a]));
+    setResponse((prev) => ({
+      ...prev,
+      answers: prev.answers.map((a) => byId.get(a.id) ?? a),
+    }));
+    setTranslationOpen((prev) => {
+      const next = { ...prev };
+      for (const a of updated) {
+        if (a.translated_text?.trim()) next[a.id] = true;
+      }
+      return next;
+    });
+  }
+
+  async function translateAnswers(opts: {
+    answerId?: string;
+    force?: boolean;
+  }) {
+    const res = await fetch(
+      `/api/admin/application-forms/${formId}/responses/${response.id}/translate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          answerId: opts.answerId,
+          force: opts.force,
+        }),
+      },
+    );
+    const data = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      answer?: ApplicationFormAnswer;
+      answers?: ApplicationFormAnswer[];
+    };
+    if (!res.ok) throw new Error(data.error || "Translation failed");
+    const list =
+      data.answers ?? (data.answer ? [data.answer] : []);
+    mergeAnswers(list);
+    return list;
+  }
+
+  async function handleTranslateOne(answer: ApplicationFormAnswer, force = false) {
+    if (answer.translated_text?.trim() && !force) {
+      setTranslationOpen((prev) => ({
+        ...prev,
+        [answer.id]: !prev[answer.id],
+      }));
+      return;
+    }
+    setTranslatingIds((prev) => ({ ...prev, [answer.id]: true }));
+    try {
+      await translateAnswers({ answerId: answer.id, force });
+      toast.success(force ? "Translation regenerated" : "Translated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Translation failed");
+    } finally {
+      setTranslatingIds((prev) => {
+        const next = { ...prev };
+        delete next[answer.id];
+        return next;
+      });
+    }
+  }
+
+  async function handleTranslateAll(force = false) {
+    setTranslatingAll(true);
+    try {
+      const list = await translateAnswers({ force });
+      toast.success(
+        force
+          ? `Regenerated ${list.length} translation${list.length === 1 ? "" : "s"}`
+          : `Translated ${list.length} answer${list.length === 1 ? "" : "s"}`,
+      );
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Translation failed");
+    } finally {
+      setTranslatingAll(false);
+    }
+  }
 
   async function save(patch: {
     status?: ApplicationResponseStatus;
@@ -443,7 +545,20 @@ export function AdminApplicationResponseDetailClient({
       )}
 
       <div className="mt-8">
-        <p className={APPLY_EYEBROW}>Form answers</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className={APPLY_EYEBROW}>Form answers</p>
+          {canManage && textAnswerQuestions.length > 0 ? (
+            <button
+              type="button"
+              disabled={busy || translatingAll}
+              onClick={() => void handleTranslateAll(false)}
+              className="inline-flex items-center gap-1.5 rounded-md border border-white/12 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/70 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-white disabled:opacity-50"
+            >
+              <Languages className="h-3.5 w-3.5" aria-hidden />
+              {translatingAll ? "Translating…" : "Translate all answers"}
+            </button>
+          ) : null}
+        </div>
         <div className="mt-3 space-y-3">
           {questions.map((q, idx) => {
             const a = answersByQ.get(q.id);
@@ -451,12 +566,83 @@ export function AdminApplicationResponseDetailClient({
               q.question_type === "checkboxes" && a?.answer_options.length
                 ? a.answer_options.join(", ")
                 : a?.answer_text || a?.answer_options.join(", ") || "—";
+            const isText =
+              (q.question_type === "short_text" || q.question_type === "long_text") &&
+              Boolean(a?.answer_text?.trim());
+            const hasTranslation = Boolean(a?.translated_text?.trim());
+            const showTranslation = Boolean(a && translationOpen[a.id] && hasTranslation);
+            const translating = Boolean(a && translatingIds[a.id]);
+            const sourceLabel = translationLangLabel(a?.source_lang ?? "und");
+            const targetLabel = translationLangLabel(a?.translation_lang ?? "el");
+
             return (
               <div key={q.id} className={cn(APPLY_SECTION, "p-4")}>
-                <p className="text-xs text-[#FF1493]/80">
-                  {idx + 1}. {q.question_text}
-                </p>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-white/90">{display}</p>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <p className="text-xs text-[#FF1493]/80">
+                    {idx + 1}. {q.question_text}
+                  </p>
+                  {isText && a && (canManage || hasTranslation) ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={translating || translatingAll || (!canManage && !hasTranslation)}
+                        onClick={() => {
+                          if (canManage) {
+                            void handleTranslateOne(a, false);
+                          } else {
+                            setTranslationOpen((prev) => ({
+                              ...prev,
+                              [a.id]: !prev[a.id],
+                            }));
+                          }
+                        }}
+                        className="inline-flex items-center gap-1 rounded-md border border-white/12 bg-white/[0.04] px-2 py-1 text-[11px] font-medium text-white/70 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-white disabled:opacity-50"
+                      >
+                        <Languages className="h-3 w-3" aria-hidden />
+                        {translating
+                          ? "Translating…"
+                          : hasTranslation
+                            ? showTranslation
+                              ? "Hide translation"
+                              : "Show translation"
+                            : "Translate"}
+                      </button>
+                      {canManage && hasTranslation ? (
+                        <button
+                          type="button"
+                          disabled={translating || translatingAll}
+                          onClick={() => void handleTranslateOne(a, true)}
+                          className="rounded-md px-2 py-1 text-[11px] text-white/40 transition hover:text-white/70 disabled:opacity-50"
+                        >
+                          Regenerate
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+
+                {showTranslation && a?.translated_text ? (
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-lg border border-white/10 bg-black/25 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                        Original ({sourceLabel})
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-white/90">
+                        {a.answer_text}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-[#D4AF8C]/25 bg-[#D4AF8C]/[0.06] p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">
+                        {targetLabel} translation
+                      </p>
+                      <p className="mt-2 whitespace-pre-wrap text-sm text-white/90">
+                        {a.translated_text}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="mt-2 whitespace-pre-wrap text-sm text-white/90">{display}</p>
+                )}
               </div>
             );
           })}
