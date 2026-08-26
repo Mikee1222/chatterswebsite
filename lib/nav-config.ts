@@ -792,6 +792,11 @@ const modelNav: NavItem[] = [
  * appended to every role's base list BEFORE permission filtering, so `requiresPermission`
  * decides show/hide. Add future permission-only shared items here.
  *
+ * Also merged (via `getAllSharedPermissionNavItems`) with non-`adminOnly` permission-gated
+ * entries from `adminNav` — so Roles UI grants like `instagram_insights:view` /
+ * `credentials:view` on system roles (e.g. relabeled `virtual_assistant`) surface the link
+ * without needing a duplicate entry here.
+ *
  * Covers unrelated features (submit-tier review items, creative scripts, standalone TOOLS).
  * Each item carries its own `navSection` so it renders under the correct group per viewport.
  *
@@ -982,19 +987,58 @@ const sharedPermissionNavItems: NavItem[] = [
   },
 ];
 
-type SharedAdminPathEntry = { path: string; permission: Permission };
+type SharedAdminPathEntry = {
+  path: string;
+  /** Any one of these permissions unlocks the path (page + middleware/layout). */
+  permissions: readonly Permission[];
+};
 
 /**
- * `/admin/*` paths from `sharedPermissionNavItems` — single source for middleware/layout
- * drift-safeguard (`permissionForSharedAdminPath` in va-schedule-overview-access.ts).
+ * Non-adminOnly, permission-gated items from `adminNav`. These must reach chatter/VA/model
+ * base lists too — otherwise Roles UI grants (e.g. `instagram_insights:view` on
+ * `virtual_assistant`) never surface a nav link even though the permission is stored.
+ */
+function getPermissionGatedAdminNavItems(): NavItem[] {
+  return adminNav.filter(
+    (item) =>
+      !item.adminOnly &&
+      (Boolean(item.requiresPermission) || Boolean(item.requiresAnyPermission))
+  );
+}
+
+/** Explicit shared items + permission-gated admin items, deduped by href (shared wins). */
+function getAllSharedPermissionNavItems(): NavItem[] {
+  const byHref = new Map<string, NavItem>();
+  for (const item of getPermissionGatedAdminNavItems()) {
+    byHref.set(item.href, item);
+  }
+  // Prefer explicit `sharedPermissionNavItems` (submit-tier variants, TOOLS, hiddenIf*).
+  for (const item of sharedPermissionNavItems) {
+    byHref.set(item.href, item);
+  }
+  return [...byHref.values()];
+}
+
+function permissionsFromNavItem(item: NavItem): Permission[] {
+  if (item.requiresAnyPermission?.length) return [...item.requiresAnyPermission];
+  if (item.requiresPermission) return [item.requiresPermission];
+  return [];
+}
+
+/**
+ * `/admin/*` paths from shared + permission-gated admin nav — single source for
+ * middleware/layout drift-safeguard (`permissionForSharedAdminPath`).
  */
 export function getPermissionGatedSharedAdminPaths(): ReadonlyArray<SharedAdminPathEntry> {
   const paths: SharedAdminPathEntry[] = [];
-  for (const item of sharedPermissionNavItems) {
+  const seen = new Set<string>();
+  for (const item of getAllSharedPermissionNavItems()) {
     if (!item.href.startsWith("/admin/")) continue;
-    if (item.requiresPermission) {
-      paths.push({ path: item.href, permission: item.requiresPermission });
-    }
+    const permissions = permissionsFromNavItem(item);
+    if (permissions.length === 0) continue;
+    if (seen.has(item.href)) continue;
+    seen.add(item.href);
+    paths.push({ path: item.href, permissions });
   }
   return paths;
 }
@@ -1002,7 +1046,7 @@ export function getPermissionGatedSharedAdminPaths(): ReadonlyArray<SharedAdminP
 /** Append shared permission-gated items to a role's base list, skipping any already present. */
 function appendSharedNavItems(base: NavItem[]): NavItem[] {
   const existing = new Set(base.map((i) => i.href));
-  const shared = sharedPermissionNavItems.filter((i) => !existing.has(i.href));
+  const shared = getAllSharedPermissionNavItems().filter((i) => !existing.has(i.href));
   return shared.length === 0 ? base : [...base, ...shared];
 }
 

@@ -9,7 +9,7 @@ import {
   permissionForSharedAdminPath,
 } from "@/lib/va-schedule-overview-access";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { getUserPermissions, hasPermission } from "@/lib/rbac";
+import { getUserPermissions, hasAnyPermission } from "@/lib/rbac";
 
 export default async function AdminLayout({
   children,
@@ -41,11 +41,15 @@ export default async function AdminLayout({
     }
   }
 
-  // Shared permission-gated admin pages (e.g. PDF Maker, Accounts) — any role with the grant.
-  // Chatters with chatter_program:view must still not open the admin board (personal schedule only).
-  const requiredPermission = permissionForSharedAdminPath(pathname);
-  if (requiredPermission && (await hasPermission(user, requiredPermission))) {
-    if (staff === "chatter" && requiredPermission === PERMISSIONS.CHATTER_PROGRAM_VIEW) {
+  // Shared permission-gated admin pages (e.g. PDF Maker, Accounts, Instagram Insights) —
+  // any role with one of the listed grants. Chatters with chatter_program:view must still
+  // not open the admin board (personal schedule only).
+  const requiredPermissions = permissionForSharedAdminPath(pathname);
+  if (requiredPermissions && (await hasAnyPermission(user, [...requiredPermissions]))) {
+    if (
+      staff === "chatter" &&
+      requiredPermissions.includes(PERMISSIONS.CHATTER_PROGRAM_VIEW)
+    ) {
       redirect(ROUTES.chatter.weeklyProgram);
     }
     return <>{children}</>;
