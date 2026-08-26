@@ -17,6 +17,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
+import { AiContentQualityPreCheck } from "@/components/ai-content-quality-precheck";
 import { ContentPipelineHero } from "@/components/content-pipeline-ui";
 import {
   ChattingStatusBadge,
@@ -762,8 +763,11 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
               ) : null}
             </div>
           ) : selected && statusKey(selected.status) === "pending_approval" ? (
-            <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
-              <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+            <div className="space-y-3">
+              <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+                <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+              </div>
+              <AiContentQualityPreCheck fileUrl={selected.file_url} assignmentId={selected.id} />
             </div>
           ) : null
         }

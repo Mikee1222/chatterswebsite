@@ -48,6 +48,7 @@ import { AdminRowAvatar, CoverageSlotChip, ShiftTypeBadge } from "@/components/a
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
 import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import { WeeklyProgramAiOptimizer } from "@/components/weekly-program-ai-optimizer";
 import { LuxuryStatCard } from "@/components/infloww-performance-ui";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
@@ -1260,6 +1261,8 @@ export function AdminWeeklyProgramClient({
           </div>
         }
       />
+
+      {canManage ? <WeeklyProgramAiOptimizer weekStart={effectiveWeekStart} /> : null}
 
       {error && (
         <div

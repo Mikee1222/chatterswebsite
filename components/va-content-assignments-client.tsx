@@ -18,6 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { VaContentAssignmentForm } from "@/components/va-content-assignment-form";
+import { AiContentQualityPreCheck } from "@/components/ai-content-quality-precheck";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import { ContentPipelineHero } from "@/components/content-pipeline-ui";
 import {
@@ -665,8 +666,11 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
               ) : null}
             </div>
           ) : selected && chattingStatusKey(selected.status) === "pending_approval" ? (
-            <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
-              <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+            <div className="space-y-3">
+              <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+                <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+              </div>
+              <AiContentQualityPreCheck fileUrl={selected.file_url} assignmentId={selected.id} />
             </div>
           ) : null
         }

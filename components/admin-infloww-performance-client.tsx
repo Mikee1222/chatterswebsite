@@ -34,6 +34,7 @@ import {
 } from "@/components/infloww-performance-ui";
 import { AdminWeeklyProgressPanel } from "@/components/admin-weekly-progress-panel";
 import { AiInsightCard } from "@/components/ai-insight-card";
+import { AiPerformanceReviewPanel } from "@/components/ai-performance-review-panel";
 import type {
   InflowwAdminPerformanceReport,
   InflowwChatterPerformance,
@@ -177,6 +178,11 @@ function ChatterDrilldown({
                 })),
               },
             }}
+          />
+          <AiPerformanceReviewPanel
+            personId={row.user_public_id}
+            personName={row.full_name || "Chatter"}
+            role="chatter"
           />
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
             <LuxuryStatCard

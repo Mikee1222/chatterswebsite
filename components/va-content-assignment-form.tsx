@@ -7,6 +7,7 @@ import { FormInput } from "@/components/ui/form-input";
 import { Textarea } from "@/components/ui/form";
 import { Select, selectOptionClass } from "@/components/ui/form";
 import { VaContentAssignmentFileDropzone } from "@/components/va-content-assignment-file-dropzone";
+import { AiCaptionIdeasPanel } from "@/components/ai-caption-ideas-panel";
 import { VA_CONTENT_ASSIGNMENT_MAX_FILES } from "@/lib/va-content-assignment-files";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
@@ -186,6 +187,14 @@ export function VaContentAssignmentForm({
           ))}
         </Select>
       </div>
+
+      {modelId.trim() ? (
+        <AiCaptionIdeasPanel
+          modelRecordId={modelId.trim()}
+          modelName={models.find((m) => m.id === modelId)?.model_name || undefined}
+          topicHint={title || contentType}
+        />
+      ) : null}
 
       <div>
         <Label htmlFor="va-ca-title">Title</Label>

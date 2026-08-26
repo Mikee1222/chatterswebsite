@@ -48,6 +48,8 @@ import {
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { LiveTimer } from "@/components/live-timer";
 import { AdminHomeAiBriefingCard } from "@/components/admin-home-ai-briefing-card";
+import { AdminHomeFraudWidget } from "@/components/admin-home-fraud-widget";
+import { AdminHomeWellbeingWidget } from "@/components/admin-home-wellbeing-widget";
 import { AtRiskModelsWidget } from "@/components/model-churn-risk-widgets";
 import type { ModelChurnRisk } from "@/services/model-churn-risk";
 
@@ -437,6 +439,11 @@ export function AdminHomeClient(props: Props) {
         activeChatterShifts={props.activeChatterShifts}
         activeVaShifts={props.activeVaShifts}
       />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <AdminHomeFraudWidget />
+        <AdminHomeWellbeingWidget />
+      </div>
 
       {(props.atRiskModels?.length ?? 0) > 0 ? (
         <AtRiskModelsWidget items={props.atRiskModels ?? []} />

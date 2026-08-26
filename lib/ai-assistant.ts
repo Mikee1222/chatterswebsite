@@ -245,6 +245,113 @@ export function extractJsonObject(raw: string): Record<string, unknown> | null {
   }
 }
 
+export function extractJsonArray(raw: string): unknown[] | null {
+  const trimmed = raw.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = (fence?.[1] ?? trimmed).trim();
+  try {
+    const parsed = JSON.parse(candidate);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    const start = candidate.indexOf("[");
+    const end = candidate.lastIndexOf("]");
+    if (start >= 0 && end > start) {
+      try {
+        const parsed = JSON.parse(candidate.slice(start, end + 1));
+        return Array.isArray(parsed) ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+}
+
+export type AnthropicImageSource = {
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  base64: string;
+};
+
+/**
+ * Multimodal Messages call (text + optional images). Claude Sonnet supports vision.
+ */
+export async function callAnthropicVision(options: {
+  text: string;
+  images?: AnthropicImageSource[];
+  system?: string;
+  maxTokens?: number;
+  temperature?: number;
+  logLabel?: string;
+  model?: string;
+}): Promise<CallAnthropicResult | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
+  const label = options.logLabel ?? "ai-assistant-vision";
+  if (!apiKey) {
+    console.warn(`[${label}] ANTHROPIC_API_KEY not set — skipping`);
+    return null;
+  }
+
+  const content: Array<Record<string, unknown>> = [];
+  for (const img of options.images ?? []) {
+    const data = img.base64.trim();
+    if (!data) continue;
+    content.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: img.mediaType,
+        data,
+      },
+    });
+  }
+  const text = options.text.trim();
+  if (text) content.push({ type: "text", text });
+  if (content.length === 0) {
+    console.warn(`[${label}] no content to send`);
+    return null;
+  }
+
+  const model = options.model?.trim() || AI_ASSISTANT_MODEL;
+  try {
+    const body: Record<string, unknown> = {
+      model,
+      max_tokens: options.maxTokens ?? 500,
+      temperature: options.temperature ?? 0.2,
+      messages: [{ role: "user", content }],
+    };
+    if (options.system?.trim()) body.system = options.system.trim();
+
+    const res = await fetch(ANTHROPIC_MESSAGES_URL, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const data = (await res.json().catch(() => ({}))) as AnthropicMessagesResponse;
+    if (!res.ok) {
+      console.error(`[${label}] Anthropic error`, res.status, data?.error?.message ?? data);
+      return null;
+    }
+
+    const out = (data.content ?? [])
+      .filter((b) => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text!.trim())
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+
+    if (!out) return null;
+    return { text: out, model };
+  } catch (err) {
+    console.error(`[${label}] fetch failed`, err);
+    return null;
+  }
+}
+
 export const AI_GROUNDING_RULES = `STRICT RULES:
 - Use ONLY the facts provided in the context / data below.
 - Do NOT invent numbers, names, trends, causes, or recommendations not supported by the data.
