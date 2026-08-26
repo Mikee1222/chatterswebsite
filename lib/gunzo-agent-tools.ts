@@ -4,7 +4,6 @@
  */
 
 import type { AnthropicToolDef } from "@/lib/ai-assistant";
-import { AI_GROUNDING_RULES } from "@/lib/ai-assistant";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
 
 export type GunzoToolKind = "read" | "action";
@@ -26,8 +25,14 @@ export const GUNZO_READ_TOOL_NAMES = [
   "get_spot_check_history",
   "search_mistakes",
   "get_application_pipeline_stats",
+  "get_application_pipeline_detail",
   "get_winner_videos",
   "get_weekly_program",
+  "get_password_library_metadata",
+  "get_marketing_control_room",
+  "get_bunch_pipeline",
+  "get_sop_completion_status",
+  "get_client_partnership",
 ] as const;
 
 export const GUNZO_ACTION_TOOL_NAMES = [
@@ -72,7 +77,7 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     name: "get_task_timer_data",
     kind: "read",
     requiredPermission: PERMISSIONS.TASK_PROGRESS_VIEW,
-    description: "Task category timer aggregates",
+    description: "Task category timer aggregates (by category, VA, longest/shortest items)",
   },
   get_spot_check_history: {
     name: "get_spot_check_history",
@@ -92,6 +97,12 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     requiredPermission: PERMISSIONS.APPLICATIONS_VIEW,
     description: "Application forms overview / pipeline funnel",
   },
+  get_application_pipeline_detail: {
+    name: "get_application_pipeline_detail",
+    kind: "read",
+    requiredPermission: PERMISSIONS.APPLICATIONS_VIEW,
+    description: "Application candidates with scores and auto-flags (no hire credentials)",
+  },
   get_winner_videos: {
     name: "get_winner_videos",
     kind: "read",
@@ -102,7 +113,38 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     name: "get_weekly_program",
     kind: "read",
     requiredPermission: PERMISSIONS.CHATTER_PROGRAM_VIEW,
-    description: "Weekly chatter program for a week_start (Monday)",
+    description: "Full weekly chatter program schedule + model coverage for a week_start",
+  },
+  get_password_library_metadata: {
+    name: "get_password_library_metadata",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CREDENTIALS_VIEW,
+    description:
+      "Password Library metadata only — which credentials exist, categories, coverage (NEVER secret values)",
+  },
+  get_marketing_control_room: {
+    name: "get_marketing_control_room",
+    kind: "read",
+    requiredPermission: PERMISSIONS.MARKETING_VIEW,
+    description: "Marketing Control Room: social accounts, phones, shadowban reports (no passwords)",
+  },
+  get_bunch_pipeline: {
+    name: "get_bunch_pipeline",
+    kind: "read",
+    requiredPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
+    description: "Bunch / Winner Hub pipeline: filming, editing, iCloud progress + material runway",
+  },
+  get_sop_completion_status: {
+    name: "get_sop_completion_status",
+    kind: "read",
+    requiredPermission: PERMISSIONS.SOPS_VIEW,
+    description: "SOP Academy completion / sign-off overview by role",
+  },
+  get_client_partnership: {
+    name: "get_client_partnership",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CLIENTS_VIEW,
+    description: "Client Gunzo Partnership list or Infloww stats for one client",
   },
   approve_reject_extra_revenue: {
     name: "approve_reject_extra_revenue",
@@ -219,7 +261,8 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
   },
   {
     name: "get_task_timer_data",
-    description: "Task category timer aggregates (seconds by category).",
+    description:
+      "Task category timer aggregates: totals by category and VA, plus longest/shortest items and per-task instance breakdown.",
     input_schema: {
       type: "object",
       properties: {
@@ -265,6 +308,36 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
     input_schema: { type: "object", properties: {} },
   },
   {
+    name: "get_application_pipeline_detail",
+    description:
+      "List application candidates for a form with cognitive/EQ/typing scores and auto_flags. Omit form_id to list forms first. Never returns hire passwords.",
+    input_schema: {
+      type: "object",
+      properties: {
+        form_id: { type: "string", description: "Application form id; omit to list forms" },
+        status: {
+          type: "string",
+          enum: ["new", "reviewed", "shortlisted", "rejected", "hired", "all"],
+        },
+        flag: { type: "string", description: "Optional auto-flag id filter" },
+        sort: {
+          type: "string",
+          enum: [
+            "newest",
+            "oldest",
+            "cognitive_desc",
+            "cognitive_asc",
+            "eq_desc",
+            "eq_asc",
+            "typing_desc",
+            "typing_asc",
+          ],
+        },
+        limit: { type: "integer", description: "Max candidates (default 40)" },
+      },
+    },
+  },
+  {
     name: "get_winner_videos",
     description: "List winner video submissions with optional filters.",
     input_schema: {
@@ -278,13 +351,91 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
   },
   {
     name: "get_weekly_program",
-    description: "Get chatter weekly program rows for week_start (Monday YYYY-MM-DD).",
+    description:
+      "Full chatter weekly program for week_start (Monday YYYY-MM-DD): all shifts plus model coverage by day.",
     input_schema: {
       type: "object",
       properties: {
         week_start: { type: "string", description: "Monday YYYY-MM-DD" },
       },
       required: ["week_start"],
+    },
+  },
+  {
+    name: "get_password_library_metadata",
+    description:
+      "Password Library METADATA ONLY: which credentials exist (label, category, model, which secret fields are filled). NEVER returns passwords, emails-as-secrets, notes, backup codes, or any decrypted values. Use mode=insights for coverage/attention summary.",
+    input_schema: {
+      type: "object",
+      properties: {
+        mode: {
+          type: "string",
+          enum: ["list", "insights"],
+          description: "list = entry metadata; insights = coverage/attention aggregates",
+        },
+        model_id: { type: "string", description: "Optional filter for list mode" },
+        category: { type: "string", description: "Optional category filter for list mode" },
+      },
+    },
+  },
+  {
+    name: "get_marketing_control_room",
+    description:
+      "Marketing Control Room snapshot: social accounts, phones (device metadata only), and/or shadowban reports. Passwords and iCloud credentials are NEVER included.",
+    input_schema: {
+      type: "object",
+      properties: {
+        section: {
+          type: "string",
+          enum: ["all", "accounts", "phones", "shadowban"],
+          description: "Which slice to load (default all)",
+        },
+        model_id: { type: "string", description: "Optional model filter for accounts" },
+        shadowban_pending_only: {
+          type: "boolean",
+          description: "When loading shadowban, only pending reports (default true)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_bunch_pipeline",
+    description:
+      "Winner Hub / Bunch pipeline progress: bunches with filming/editing/iCloud status counts, optional material runway alerts.",
+    input_schema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["open", "closed", "all"],
+          description: "Bunch status filter (default open)",
+        },
+        model_id: { type: "string" },
+        include_runways: {
+          type: "boolean",
+          description: "Include model material runway / next shoot (default true)",
+        },
+      },
+    },
+  },
+  {
+    name: "get_sop_completion_status",
+    description: "SOP Academy overview: completion and sign-off rates by role, plus members behind.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_client_partnership",
+    description:
+      "Gunzo Partnership: omit client_id to list clients; with client_id return Infloww partnership revenue/fans/marketing for a date preset.",
+    input_schema: {
+      type: "object",
+      properties: {
+        client_id: { type: "string", description: "Client record id; omit to list clients" },
+        preset: { type: "string", enum: [...presetEnum] },
+        start_ymd: { type: "string" },
+        end_ymd: { type: "string" },
+        active_only: { type: "boolean", description: "When listing clients (default true)" },
+      },
     },
   },
   {
@@ -408,17 +559,27 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
   },
 ];
 
-export const GUNZO_AGENT_SYSTEM = `You are Gunzo Agent — an internal AI assistant for Gunzo agency admins.
+export const GUNZO_AGENT_SYSTEM = `You are Gunzo — a sharp, trusted strategic partner for Gunzo agency admins. Warm, direct, informal when it fits. Think with them, not at them.
 
-${AI_GROUNDING_RULES}
+## Grounding (non-negotiable)
+- Use ONLY facts from tool results and the user. Do NOT invent numbers, names, trends, causes, patterns, or recommendations.
+- If data is missing or sparse, say so briefly — never speculate to fill gaps.
+- When you surface an observation or idea, cite the tool-backed facts that support it (e.g. "from get_instagram_insights_summary + get_model_revenue").
+- Opinions are fine only as data-grounded suggestions ("given X and Y, I'd look at Z"). Never present guesses as facts.
 
 ## Capabilities
-- You can CALL READ tools to fetch live analytics and lists. Use them when the user asks about performance, revenue, Instagram, VA stats, timers, spot checks, mistakes, applications, winner videos, or the weekly program.
-- You can PROPOSE ACTION tools for curated writes. Every action requires the human to Confirm in the UI — you never execute writes yourself.
+- CALL READ tools for live analytics and ops lists across systems: chatter/model revenue, Instagram, VA stats, task timers, spot checks, mistakes, applications (funnel + candidate scores/flags), winner videos, weekly program, Password Library metadata (existence/coverage only), Marketing Control Room (accounts/phones/shadowban — no secrets), Bunch pipeline (filming/editing/iCloud), SOP completion, Client Gunzo Partnership.
+- PROPOSE ACTION tools for curated writes. Every action needs the human to Confirm in the UI — you never execute writes yourself.
 - After proposing an action, briefly explain what will happen and that they must confirm.
 
+## Cross-system synthesis
+- Prefer answering in one coherent take when the question spans systems. Call multiple READ tools in the same turn when useful (e.g. IG drop + OF new subs + revenue; shadowban + account status + model revenue; schedule gaps + VA timers).
+- Weave results into one narrative — don't dump disconnected tool summaries.
+- For open-ended strategy questions ("what should we focus on?", "anything off?"), pull a few relevant READ tools, then offer grounded observations and optional next checks. Skip the capability menu unless they ask what you can do.
+
 ## Hard refusals (do NOT attempt via tools or advice that bypasses them)
-- Password Library / credentials vault (view, reveal, copy, create, edit, delete)
+- Password Library / credentials vault VALUES or secrets (reveal, copy, create, edit, delete). Metadata via get_password_library_metadata is allowed; never ask for or invent secret contents.
+- Marketing account passwords, phone iCloud passwords, recovery emails/phones, or any other credential values (tools strip these — do not reconstruct them)
 - Roles & permissions management
 - Deleting anything (users, models, records, accounts)
 - Payouts / payment disbursements
@@ -429,11 +590,13 @@ ${AI_GROUNDING_RULES}
 If asked for a prohibited operation, refuse clearly in one short sentence and suggest the correct admin screen if known.
 
 ## Style
-- Concise, admin-friendly. Prefer short bullets for numbers. Use real markdown (headers, bullets, **bold**, --- dividers) — never leave raw asterisks unexplained.
+- Conversational partner energy: clear, concise, human. Informal OK. No corporate waffle.
+- Prefer short bullets for numbers. Use real markdown (headers, bullets, **bold**, --- dividers) when it helps — never leave raw asterisks unexplained.
 - For multi-part answers, structure with these section headings when relevant:
   ## Analytics — numbers, trends, tool-backed facts
   ## Actions — proposed writes or next steps that need Confirm
   ## Restrictions — hard refusals / what you cannot do
-- Cite tool-backed facts only. If a tool fails or permission is missing, say so.
+- Proactive suggestions: when patterns in the data are clear, surface 1–3 grounded observations or ideas with citations. Never invent patterns.
 - Date ranges: prefer presets (this_week, this_month) unless the user specifies dates.
-- When proposing actions, include the exact IDs and parameters you will use.`;
+- When proposing actions, include the exact IDs and parameters you will use.
+- Do not re-list your full capability menu every turn — only on first orientation or when asked.`;

@@ -62,16 +62,25 @@ type ParsedSection = {
 const LOGO_SRC = "/apple-touch-icon-v2.png";
 const LOGO_SRC_COMPACT = "/icon-192-v2.png";
 
-const WELCOME_CONTENT = `I'm **Gunzo Agent** — your admin co-pilot.
+const WELCOME_CONTENT = `Hey — I'm **Gunzo**, your strategic partner across the agency.
 
-Ask about performance, revenue, Instagram, VA stats, spot checks, applications, or the weekly program.
+**I can pull**
+- Revenue & chatter/VA performance
+- Instagram + Marketing Control Room (accounts, phones, shadowban)
+- Bunch pipeline (filming → editing → iCloud)
+- Applications (funnel + candidate scores/flags)
+- Weekly program, task timers, SOP completion
+- Password Library *metadata* (what exists — never secrets)
+- Client Gunzo Partnership stats
 
-Writes always need your **Confirm**.`;
+**I can propose** curated writes — you always **Confirm** before anything changes.
+
+Ask anything. Strategy questions welcome.`;
 
 const SUGGESTIONS = [
-  "How is chatter performance this week?",
-  "Summarize model revenue this month",
-  "Any spot checks pending review?",
+  "What's off across IG and revenue this month?",
+  "How's the bunch pipeline looking?",
+  "Any spot checks or shadowbans pending?",
 ];
 
 const SECTION_META: Record<
@@ -589,7 +598,7 @@ export function GunzoAgentDrawer({ canUse }: GunzoAgentDrawerProps) {
                     Gunzo Agent
                   </p>
                   <p className="truncate text-[11px] text-white/45">
-                    Confirm before any write
+                    Strategic partner · Confirm before any write
                   </p>
                 </div>
                 <button
@@ -788,7 +797,7 @@ export function GunzoAgentDrawer({ canUse }: GunzoAgentDrawerProps) {
                         ref={inputRef}
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
-                        placeholder="Ask Gunzo Agent…"
+                        placeholder="Ask Gunzo anything…"
                         disabled={busy}
                         className={cn(
                           "min-w-0 flex-1 rounded-2xl border border-white/10 bg-white/[0.05]",

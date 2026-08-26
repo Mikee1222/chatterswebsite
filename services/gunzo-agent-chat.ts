@@ -20,7 +20,8 @@ import {
 import { executeGunzoTool } from "@/services/gunzo-agent-exec";
 import { insertProposedAction, type AgentActionLogRow } from "@/services/gunzo-agent-log";
 
-const MAX_ROUNDS = 5;
+/** Extra rounds so cross-system synthesis can chain multiple READ tool batches. */
+const MAX_ROUNDS = 6;
 
 export type GunzoChatMessage = {
   role: "user" | "assistant";
@@ -88,7 +89,7 @@ export async function runGunzoAgentChat(
       tools: GUNZO_AGENT_TOOLS,
       system: GUNZO_AGENT_SYSTEM,
       maxTokens: 2048,
-      temperature: 0.2,
+      temperature: 0.35,
       logLabel: "gunzo-agent",
     });
 

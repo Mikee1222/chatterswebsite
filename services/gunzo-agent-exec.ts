@@ -29,6 +29,8 @@ import { getSpotChecks, updateSpotCheck } from "@/services/marketing-reviews";
 import { listMistakesForAdmin } from "@/services/chatter-mistakes";
 import {
   getApplicationFormsOverview,
+  listApplicationForms,
+  listResponses,
   updateResponse,
 } from "@/services/application-forms";
 import { getAllWinnerVideos } from "@/services/winner-videos";
@@ -41,6 +43,21 @@ import {
 import { upsertModelWinnerThresholds } from "@/services/model-winner-thresholds";
 import { createProgramAction } from "@/app/actions/weekly-program";
 import type { WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
+import {
+  getCredentialLibraryInsights,
+  listCredentialEntries,
+} from "@/services/credential-entries";
+import {
+  getAllAccounts,
+  getAllShadowbanReports,
+  getPendingShadowbanReports,
+  getPhones,
+} from "@/services/marketing";
+import { listVideoBunches } from "@/services/winner-sourcing";
+import { getPipelineOverviewContext } from "@/services/icloud";
+import { getAcademyOverview } from "@/services/sop-academy-overview";
+import { getClientPartnershipInflowwStats } from "@/services/client-partnership-infloww";
+import { listAllClients } from "@/services/client-portal";
 
 const READ_CAP = 40;
 
@@ -298,13 +315,20 @@ export async function executeGunzoTool(
           endYmd: str(parameters.end_ymd) || undefined,
           va_id: str(parameters.va_id) || undefined,
         });
+        const byVa = capArray(stats.by_va ?? [], 30);
+        const byTask = capArray(stats.by_task_instance ?? [], 25);
         return {
           ok: true,
           summary: `Task timer: ${Math.round((stats.total_tracked_seconds ?? 0) / 60)} min tracked`,
           data: {
             total_tracked_seconds: stats.total_tracked_seconds,
             by_category: stats.by_category,
-            by_va: capArray(stats.by_va ?? [], 30).items,
+            by_va: byVa.items,
+            by_va_truncated: byVa.truncated,
+            longest_items: stats.longest_items ?? [],
+            shortest_items: stats.shortest_items ?? [],
+            by_task_instance: byTask.items,
+            by_task_truncated: byTask.truncated,
           },
         };
       }
@@ -410,24 +434,460 @@ export async function executeGunzoTool(
           return { ok: false, summary: "week_start required", error: "week_start required" };
         }
         const programs = await getProgramsForWeek(weekStart);
+        const mapped = programs.map((p) => ({
+          id: p.id,
+          chatter_name: p.chatter_name,
+          day: p.day,
+          shift_type: p.shift_type,
+          model_ids: p.model_ids,
+          model_names: p.model_names,
+          start_time: p.start_time,
+          end_time: p.end_time,
+          notes: p.notes,
+        }));
+        const capped = capArray(mapped, 100);
+
+        const coverageMap = new Map<
+          string,
+          { model_id: string; model_name: string; days: Set<string>; shift_count: number }
+        >();
+        const byDayMap = new Map<string, { day: string; shift_count: number; chatters: Set<string> }>();
+        for (const p of programs) {
+          const dayKey = String(p.day ?? "");
+          if (dayKey) {
+            const dayRow = byDayMap.get(dayKey) ?? {
+              day: dayKey,
+              shift_count: 0,
+              chatters: new Set<string>(),
+            };
+            dayRow.shift_count += 1;
+            if (p.chatter_name) dayRow.chatters.add(p.chatter_name);
+            byDayMap.set(dayKey, dayRow);
+          }
+          const ids = p.model_ids ?? [];
+          const names = p.model_names ?? [];
+          for (let i = 0; i < ids.length; i++) {
+            const mid = String(ids[i] ?? "").trim();
+            if (!mid) continue;
+            const mname = String(names[i] ?? mid).trim() || mid;
+            const row = coverageMap.get(mid) ?? {
+              model_id: mid,
+              model_name: mname,
+              days: new Set<string>(),
+              shift_count: 0,
+            };
+            if (dayKey) row.days.add(dayKey);
+            row.shift_count += 1;
+            if (!row.model_name && mname) row.model_name = mname;
+            coverageMap.set(mid, row);
+          }
+        }
+
+        return {
+          ok: true,
+          summary: `Weekly program ${weekStart}: ${capped.total} shifts, ${coverageMap.size} models covered`,
+          data: {
+            week_start: weekStart,
+            truncated: capped.truncated,
+            total: capped.total,
+            programs: capped.items,
+            by_day: [...byDayMap.values()].map((d) => ({
+              day: d.day,
+              shift_count: d.shift_count,
+              chatters: [...d.chatters],
+            })),
+            model_coverage: [...coverageMap.values()].map((m) => ({
+              model_id: m.model_id,
+              model_name: m.model_name,
+              days: [...m.days],
+              shift_count: m.shift_count,
+            })),
+          },
+        };
+      }
+
+      case "get_password_library_metadata": {
+        const mode = str(parameters.mode) || "list";
+        if (mode === "insights") {
+          const insights = await getCredentialLibraryInsights();
+          return {
+            ok: true,
+            summary: `Password Library insights: ${insights.general_count + insights.model_specific_count} entries, ${insights.needs_attention.length} need attention`,
+            data: {
+              category_breakdown: insights.category_breakdown,
+              general_count: insights.general_count,
+              model_specific_count: insights.model_specific_count,
+              recently_added: insights.recently_added,
+              recently_accessed: insights.recently_accessed,
+              never_accessed_count: insights.never_accessed_ids.length,
+              never_accessed_ids: insights.never_accessed_ids.slice(0, 40),
+              model_coverage: insights.model_coverage,
+              // Intentionally omit note_snippet (may contain secrets)
+              needs_attention: insights.needs_attention.map((n) => ({
+                id: n.id,
+                label: n.label,
+                category: n.category,
+                model_id: n.model_id,
+                reason: n.reason,
+              })),
+            },
+          };
+        }
+
+        const modelFilter = str(parameters.model_id);
+        const categoryFilter = str(parameters.category).toLowerCase();
+        let entries = await listCredentialEntries();
+        if (modelFilter) {
+          entries = entries.filter((e) => (e.model_id ?? "") === modelFilter);
+        }
+        if (categoryFilter) {
+          entries = entries.filter((e) => e.category.toLowerCase().includes(categoryFilter));
+        }
         const capped = capArray(
-          programs.map((p) => ({
-            id: p.id,
-            chatter_name: p.chatter_name,
-            day: p.day,
-            shift_type: p.shift_type,
-            model_ids: p.model_ids,
-            model_names: p.model_names,
-            start_time: p.start_time,
-            end_time: p.end_time,
-            notes: p.notes,
+          entries.map((e) => ({
+            id: e.id,
+            model_id: e.model_id,
+            category: e.category,
+            label: e.label,
+            // Metadata only — which secret fields exist, never values
+            fields_present: Object.fromEntries(
+              Object.entries(e.has_value ?? {}).filter(([, v]) => v === true),
+            ),
+            custom_field_keys: e.custom_field_keys ?? [],
+            has_custom_fields: e.has_custom_fields,
+            created_at: e.created_at,
+            updated_at: e.updated_at,
+            created_by_name: e.created_by_name,
+            updated_by_name: e.updated_by_name,
           })),
-          80,
+          60,
         );
         return {
           ok: true,
-          summary: `Weekly program ${weekStart}: ${capped.total} shifts`,
-          data: { week_start: weekStart, truncated: capped.truncated, total: capped.total, programs: capped.items },
+          summary: `Password Library metadata: ${capped.total} credentials (values never included)`,
+          data: { truncated: capped.truncated, total: capped.total, entries: capped.items },
+        };
+      }
+
+      case "get_marketing_control_room": {
+        const section = str(parameters.section) || "all";
+        const modelId = str(parameters.model_id);
+        const pendingOnly = bool(parameters.shadowban_pending_only);
+        const wantAccounts = section === "all" || section === "accounts";
+        const wantPhones = section === "all" || section === "phones";
+        const wantShadowban = section === "all" || section === "shadowban";
+
+        const data: Record<string, unknown> = { section };
+        const bits: string[] = [];
+
+        if (wantAccounts) {
+          let accounts = await getAllAccounts();
+          if (modelId) accounts = accounts.filter((a) => a.model_id === modelId);
+          const capped = capArray(
+            accounts.map((a) => ({
+              id: a.id,
+              account_id: a.account_id,
+              model_id: a.model_id,
+              model_name: a.model_name,
+              platform: a.platform,
+              username: a.username,
+              account_link: a.account_link,
+              account_type: a.account_type,
+              region: a.region,
+              assigned_va_name: a.assigned_va_name,
+              account_status: a.account_status,
+              shadowban_reported_at: a.shadowban_reported_at,
+              linked_phone_name: a.linked_phone_name,
+              active: a.active,
+              // password intentionally omitted
+            })),
+            60,
+          );
+          data.accounts = capped.items;
+          data.accounts_total = capped.total;
+          data.accounts_truncated = capped.truncated;
+          bits.push(`${capped.total} accounts`);
+        }
+
+        if (wantPhones) {
+          const phones = await getPhones();
+          const capped = capArray(
+            phones.map((p) => ({
+              id: p.id,
+              device_name: p.device_name,
+              assigned_va_name: p.assigned_va_name,
+              linked_account_count: p.linked_account_count,
+              active: p.active,
+              photo_count: p.phone_photos?.length ?? 0,
+              // icloud_email/password, recovery_* intentionally omitted
+            })),
+            40,
+          );
+          data.phones = capped.items;
+          data.phones_total = capped.total;
+          data.phones_truncated = capped.truncated;
+          bits.push(`${capped.total} phones`);
+        }
+
+        if (wantShadowban) {
+          const reports =
+            pendingOnly === false
+              ? await getAllShadowbanReports()
+              : await getPendingShadowbanReports();
+          let filtered = reports;
+          if (modelId) filtered = filtered.filter((r) => r.model_id === modelId);
+          const capped = capArray(
+            filtered.map((r) => ({
+              id: r.id,
+              report_id: r.report_id,
+              model_name: r.model_name,
+              platform: r.platform,
+              username: r.username,
+              report_type: r.report_type,
+              status: r.status,
+              reported_by_name: r.reported_by_name,
+              created_at: r.created_at,
+              notes: (r.notes ?? "").slice(0, 160),
+            })),
+            40,
+          );
+          data.shadowban_reports = capped.items;
+          data.shadowban_total = capped.total;
+          data.shadowban_truncated = capped.truncated;
+          bits.push(`${capped.total} shadowban reports`);
+        }
+
+        return {
+          ok: true,
+          summary: `Marketing Control Room: ${bits.join(", ") || "empty"}`,
+          data,
+        };
+      }
+
+      case "get_bunch_pipeline": {
+        const statusRaw = str(parameters.status) || "open";
+        const modelId = str(parameters.model_id);
+        const includeRunways = bool(parameters.include_runways) !== false;
+
+        const statusFilter =
+          statusRaw === "all" ? undefined : (statusRaw as "open" | "closed");
+        let bunches = await listVideoBunches(
+          statusFilter ? { status: statusFilter } : undefined,
+        );
+        if (modelId) bunches = bunches.filter((b) => b.model_id === modelId);
+
+        const capped = capArray(
+          bunches.map((b) => ({
+            id: b.id,
+            name: b.name,
+            model_id: b.model_id,
+            model_name: b.model_name,
+            status: b.status,
+            target_video_count: b.target_video_count,
+            provided_count: b.provided_count,
+            pending_review_count: b.pending_review_count,
+            remaining_count: b.remaining_count,
+            assigned_creative_name: b.assigned_creative_name,
+            assigned_filmer_name: b.assigned_filmer_name,
+            assigned_editor_name: b.assigned_editor_name,
+            filming_status: b.filming_status,
+            filmed_count: b.filmed_count,
+            filmable_count: b.filmable_count,
+            editing_status: b.editing_status,
+            edited_count: b.edited_count,
+            editable_count: b.editable_count,
+            icloud_status: b.icloud_status,
+            icloud_organized_at: b.icloud_organized_at,
+            uploaded_at: b.uploaded_at,
+            edited_uploaded_at: b.edited_uploaded_at,
+          })),
+          50,
+        );
+
+        let runways: unknown[] | undefined;
+        if (includeRunways) {
+          const ctx = await getPipelineOverviewContext();
+          let runwayRows = ctx.modelRunways ?? [];
+          if (modelId) runwayRows = runwayRows.filter((r) => r.model_id === modelId);
+          runways = runwayRows.slice(0, 40).map((r) => ({
+            model_id: r.model_id,
+            model_name: r.model_name,
+            furthest_material_until: r.furthest_material_until,
+            days_remaining: r.days_remaining,
+            alert: r.alert,
+            next_shoot_date: r.next_shoot?.schedule_date ?? null,
+            last_shoot_date: r.last_shoot?.schedule_date ?? null,
+          }));
+        }
+
+        return {
+          ok: true,
+          summary: `Bunch pipeline: ${capped.total} bunches${runways ? `, ${runways.length} model runways` : ""}`,
+          data: {
+            truncated: capped.truncated,
+            total: capped.total,
+            bunches: capped.items,
+            model_runways: runways,
+          },
+        };
+      }
+
+      case "get_application_pipeline_detail": {
+        const formId = str(parameters.form_id);
+        if (!formId) {
+          const forms = await listApplicationForms();
+          const capped = capArray(
+            forms.map((f) => ({
+              id: f.id,
+              title: f.title,
+              slug: f.slug,
+              status: f.status,
+              response_count: f.response_count,
+            })),
+            40,
+          );
+          return {
+            ok: true,
+            summary: `Application forms: ${capped.total} — pass form_id for candidate scores/flags`,
+            data: { forms: capped.items, truncated: capped.truncated, total: capped.total },
+          };
+        }
+
+        const status = str(parameters.status) || "all";
+        const sort = str(parameters.sort) || "newest";
+        const flag = str(parameters.flag) || null;
+        const limit = Math.min(Math.max(num(parameters.limit) ?? READ_CAP, 1), 80);
+
+        const rows = await listResponses(formId, {
+          status: status as
+            | "new"
+            | "reviewed"
+            | "shortlisted"
+            | "rejected"
+            | "hired"
+            | "all",
+          sort: sort as
+            | "newest"
+            | "oldest"
+            | "cognitive_desc"
+            | "cognitive_asc"
+            | "eq_desc"
+            | "eq_asc"
+            | "typing_desc"
+            | "typing_asc",
+          flag,
+        });
+
+        const capped = capArray(
+          rows.map((r) => ({
+            id: r.id,
+            status: r.status,
+            submitted_at: r.submitted_at,
+            preferred_language: r.preferred_language,
+            generated_username: r.generated_username,
+            has_hire_password: r.has_hire_password,
+            ai_summary: (r.ai_summary ?? "").slice(0, 280) || null,
+            auto_flags: (r.auto_flags ?? []).map((f) => ({
+              id: f.id,
+              label: f.label,
+              severity: f.severity,
+            })),
+            cognitive_percentile: r.cognitive?.percentile_at_time_of_completion ?? null,
+            eq_score: r.eq?.overall_score ?? null,
+            typing_wpm: r.typing?.wpm ?? null,
+            typing_accuracy: r.typing?.accuracy_percent ?? null,
+            // answers / respondent_ip / hire secrets intentionally omitted
+          })),
+          limit,
+        );
+
+        return {
+          ok: true,
+          summary: `Application candidates for ${formId}: ${capped.total} matching`,
+          data: {
+            form_id: formId,
+            truncated: capped.truncated,
+            total: capped.total,
+            candidates: capped.items,
+          },
+        };
+      }
+
+      case "get_sop_completion_status": {
+        const overview = await getAcademyOverview();
+        return {
+          ok: true,
+          summary: `SOP Academy: ${overview.total_members} members, ${overview.total_completed} completed, ${overview.behind.length} behind`,
+          data: {
+            total_members: overview.total_members,
+            total_in_training: overview.total_in_training,
+            total_completed: overview.total_completed,
+            total_signed_off: overview.total_signed_off,
+            roles: overview.roles,
+            behind: overview.behind.slice(0, 40),
+            chart_by_role: overview.chart_by_role,
+            chart_totals: overview.chart_totals,
+          },
+        };
+      }
+
+      case "get_client_partnership": {
+        const clientId = str(parameters.client_id);
+        if (!clientId) {
+          const activeOnly = bool(parameters.active_only) !== false;
+          const clients = await listAllClients(activeOnly);
+          const capped = capArray(
+            clients
+              .filter((c) => (c.user_type ?? "client") === "client")
+              .map((c) => ({
+                id: c.id,
+                company_name: c.company_name,
+                display_name: c.display_name,
+                email: c.email,
+                status: c.status,
+                client_percentage: c.client_percentage,
+                portal_access: c.portal_access,
+              })),
+            50,
+          );
+          return {
+            ok: true,
+            summary: `Clients: ${capped.total} — pass client_id for partnership stats`,
+            data: { truncated: capped.truncated, total: capped.total, clients: capped.items },
+          };
+        }
+
+        const preset = asPreset(parameters.preset, "this_month") as InflowwStatsPreset;
+        const stats = await getClientPartnershipInflowwStats(
+          clientId,
+          preset,
+          str(parameters.start_ymd) || undefined,
+          str(parameters.end_ymd) || undefined,
+        );
+        return {
+          ok: true,
+          summary: stats.linked
+            ? `Partnership ${clientId}: net $${Number(stats.revenue?.net ?? 0).toFixed(2)} (${stats.range?.startYmd}→${stats.range?.endYmd})`
+            : `Partnership ${clientId}: no linked Infloww data`,
+          data: {
+            client_id: clientId,
+            linked: stats.linked,
+            modelNames: stats.modelNames,
+            range: stats.range,
+            revenue: stats.revenue
+              ? {
+                  gross: stats.revenue.gross,
+                  net: stats.revenue.net,
+                  fees: stats.revenue.fees,
+                  refunds: stats.revenue.refunds,
+                  change: stats.revenue.change,
+                  dailyTrend: (stats.revenue.dailyTrend ?? []).slice(0, 31),
+                }
+              : null,
+            fans: stats.fans,
+            ranking: stats.ranking,
+            marketing: (stats.marketing ?? []).slice(0, 15),
+          },
         };
       }
 
