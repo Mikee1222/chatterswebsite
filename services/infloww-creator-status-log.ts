@@ -64,11 +64,18 @@ export async function syncCreatorStatusLog(params?: {
   const result: StatusLogSyncResult = { upserted: 0, errors: [] };
   try {
     const [models, creators] = await Promise.all([listAllModelss(), getInflowwModels()]);
+    // Prefer agency-wide creator IDs so history for not-yet-linked creators is still stored
+    // (model_id stays null until matched). Fall back to linked-only if creators list is empty.
     const { linked } = matchModelsToInflowwCreators(models, creators);
-    if (!linked.length) return result;
-
     const modelIdByCreatorId = new Map(linked.map((l) => [l.creatorInflowwId, l.modelRecordId] as const));
-    const creatorIds = linked.map((l) => l.creatorInflowwId);
+    const creatorIds = [
+      ...new Set(
+        (creators.length ? creators.map((c) => c.id) : linked.map((l) => l.creatorInflowwId))
+          .map((id) => String(id).trim())
+          .filter(Boolean)
+      ),
+    ];
+    if (!creatorIds.length) return result;
 
     const [entries, employeeMap] = await Promise.all([
       getCreatorStatusChangeLog({

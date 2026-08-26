@@ -25,7 +25,10 @@ type RequireAdminRouteOptions = {
 };
 
 /**
- * Guard admin routes: admin-area role, optional permission, optional admin-only flag.
+ * Guard admin routes: optional permission, optional admin-only flag.
+ * When a permission is required, any role that holds it may enter (including
+ * system roles like virtual_assistant) — matches shared nav / middleware gates.
+ * When no permission is specified, only admin-area roles (admin/manager/custom) may enter.
  * Redirects to login or dashboard when access is denied.
  */
 export async function requireAdminRoute(
@@ -33,7 +36,6 @@ export async function requireAdminRoute(
   permissionOrOptions?: Permission | RequireAdminRouteOptions
 ): Promise<AuthUser> {
   if (!user) redirect(ROUTES.login);
-  if (!isAdminAreaUser(user)) redirect(ROUTES.dashboard);
 
   let permission: Permission | undefined;
   let adminOnly = false;
@@ -45,7 +47,13 @@ export async function requireAdminRoute(
   }
 
   if (adminOnly && !isSystemAdmin(user)) redirect(ROUTES.dashboard);
-  if (permission && !(await hasPermission(user, permission))) redirect(ROUTES.dashboard);
+
+  if (permission) {
+    if (!(await hasPermission(user, permission))) redirect(ROUTES.dashboard);
+    return user;
+  }
+
+  if (!isAdminAreaUser(user)) redirect(ROUTES.dashboard);
   return user;
 }
 
