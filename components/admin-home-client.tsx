@@ -48,6 +48,8 @@ import {
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { LiveTimer } from "@/components/live-timer";
 import { AdminHomeAiBriefingCard } from "@/components/admin-home-ai-briefing-card";
+import { AtRiskModelsWidget } from "@/components/model-churn-risk-widgets";
+import type { ModelChurnRisk } from "@/services/model-churn-risk";
 
 type ChatterOption = { id: string; full_name: string };
 
@@ -82,6 +84,7 @@ type Props = {
   liveShifts: AdminHomeLiveShiftRow[];
   /** Null when viewer lacks task_progress:view. */
   vaTaskProgress: AdminHomeVaProgressSummary | null;
+  atRiskModels?: ModelChurnRisk[];
 };
 
 const MONTH_OPTIONS = (() => {
@@ -434,6 +437,10 @@ export function AdminHomeClient(props: Props) {
         activeChatterShifts={props.activeChatterShifts}
         activeVaShifts={props.activeVaShifts}
       />
+
+      {(props.atRiskModels?.length ?? 0) > 0 ? (
+        <AtRiskModelsWidget items={props.atRiskModels ?? []} />
+      ) : null}
 
       {targetModalOpen && (
         <div

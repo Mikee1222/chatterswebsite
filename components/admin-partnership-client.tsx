@@ -7,7 +7,9 @@ import {
   ChevronRight,
   CircleDot,
   DollarSign,
+  Download,
   Layers,
+  Loader2,
   Sparkles,
   TrendingUp,
   Users,
@@ -83,6 +85,7 @@ export function AdminPartnershipClient({
   const [modelFilter, setModelFilter] = React.useState(defaultModel);
   const [rollupMode, setRollupMode] = React.useState<RollupMode>(defaultRollup);
   const [selectedClientId, setSelectedClientId] = React.useState<string | null>(null);
+  const [pdfBusy, setPdfBusy] = React.useState(false);
 
   const monthOptions = React.useMemo(() => {
     const options: string[] = [];
@@ -499,18 +502,56 @@ export function AdminPartnershipClient({
       {selectedClient ? (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm">
           <div className={cn("h-full w-full max-w-2xl overflow-y-auto p-6", glassCard)}>
-            <div className="mb-6 flex items-center justify-between">
+            <div className="mb-6 flex items-center justify-between gap-3">
               <div>
                 <h3 className="text-xl font-semibold text-white">{selectedClient.clientName}</h3>
                 <p className="text-sm text-gray-400">Partnership details</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedClientId(null)}
-                className="rounded-full border border-white/20 bg-white/10 p-2 text-white/70 hover:text-white"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={pdfBusy}
+                  onClick={async () => {
+                    setPdfBusy(true);
+                    try {
+                      const res = await fetch(
+                        `/api/admin/clients/${encodeURIComponent(selectedClient.clientId)}/performance-pdf?yearMonth=${encodeURIComponent(selectedMonth)}`,
+                        { credentials: "include" },
+                      );
+                      if (!res.ok) {
+                        const j = (await res.json().catch(() => ({}))) as { error?: string };
+                        throw new Error(j.error || "PDF failed");
+                      }
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `gunzo-partnership-${selectedMonth}.pdf`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (e) {
+                      window.alert(e instanceof Error ? e.message : "PDF download failed");
+                    } finally {
+                      setPdfBusy(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-[#e91e8c]/35 bg-[#e91e8c]/15 px-3 py-2 text-xs text-pink-100 hover:bg-[#e91e8c]/25 disabled:opacity-50"
+                >
+                  {pdfBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  Download PDF report
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedClientId(null)}
+                  className="rounded-full border border-white/20 bg-white/10 p-2 text-white/70 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <div className="space-y-3">
               {selectedClientCycles.map(({ cycle, revenues: cycleRevenues }) => {

@@ -243,6 +243,12 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   period_logged: ["model", "virtual_assistant", "admin", "manager"],
   application_submitted: ["admin", "manager"],
   application_status_changed: ["admin", "manager"],
+  integration_sync_failed: ["admin", "manager"],
+  integration_api_key_issue: ["admin", "manager"],
+  model_churn_high_risk: ["admin", "manager"],
+  fraud_anomaly_detected: ["admin", "manager"],
+  wellbeing_checkin_suggested: ["admin", "manager"],
+  content_quality_flagged: ["admin", "manager"],
   daily_summary: ["admin", "manager"],
   va_statistics_weekly_summary: ["admin", "manager"],
   ai_notification_digest: [
@@ -590,6 +596,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "model_content_request_reviewed",
       "Model content request reviewed",
       "Αποστέλλεται στο model όταν αλλάζει η κατάσταση του αιτήματος περιεχομένου"
+    ),
+    eventEntry(
+      "model_churn_high_risk",
+      "Model high churn risk",
+      "Ενημερώνει admins όταν μοντέλο περνάει σε υψηλό churn risk"
     ),
   ],
   period: [
@@ -1206,6 +1217,36 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "application_status_changed",
       "Application status changed",
       "Ενημερώνει applications:manage (admin/manager recipients) όταν αλλάζει το pipeline status (συμπεριλαμβανομένου Hired)"
+    ),
+    eventEntry(
+      "integration_sync_failed",
+      "Integration sync failed",
+      "Ενημερώνει admins όταν αποτυγχάνει συγχρονισμός integration"
+    ),
+    eventEntry(
+      "integration_api_key_issue",
+      "Integration API key issue",
+      "Ενημερώνει admins όταν λείπει ή είναι άκυρο API key"
+    ),
+    eventEntry(
+      "model_churn_high_risk",
+      "Model churn high risk",
+      "Ενημερώνει admins όταν το churn risk ενός model γίνεται High"
+    ),
+    eventEntry(
+      "fraud_anomaly_detected",
+      "Fraud / anomaly flag",
+      "Ενημερώνει admins όταν ανιχνεύονται ασυνήθιστα patterns σε transactions/refunds"
+    ),
+    eventEntry(
+      "wellbeing_checkin_suggested",
+      "Wellbeing check-in suggested (private)",
+      "Ιδιωτικό σήμα μόνο για admin/manager — ποτέ στον ίδιο τον χρήστη"
+    ),
+    eventEntry(
+      "content_quality_flagged",
+      "Content quality flagged",
+      "Ενημερώνει admins όταν το content pre-check ζητά assist (χωρίς auto-reject)"
     ),
   ],
 };

@@ -124,6 +124,12 @@ export const NOTIFICATION_EVENT_TYPES = [
   // Application / Recruitment
   "application_submitted",
   "application_status_changed",
+  "integration_sync_failed",
+  "integration_api_key_issue",
+  "model_churn_high_risk",
+  "fraud_anomaly_detected",
+  "wellbeing_checkin_suggested",
+  "content_quality_flagged",
   ...NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT.map((base) => `${base}_admin`),
 ] as const;
 
@@ -281,6 +287,12 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   period_logged: "period_logged",
   application_submitted: "application_submitted",
   application_status_changed: "application_status_changed",
+  integration_sync_failed: "integration_sync_failed",
+  integration_api_key_issue: "integration_api_key_issue",
+  model_churn_high_risk: "model_churn_high_risk",
+  fraud_anomaly_detected: "fraud_anomaly_detected",
+  wellbeing_checkin_suggested: "wellbeing_checkin_suggested",
+  content_quality_flagged: "content_quality_flagged",
 };
 
 export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtable> = {

@@ -35,6 +35,7 @@ export function getPushTargetPath(
       if (isModel) return ROUTES.model.contentCalendar;
       return ROUTES.va.contentAssignments;
     case "model":
+      if (isAdmin && entityId) return ROUTES.admin.modelDetail(entityId);
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
       if (isAdmin) return ROUTES.admin.liveShifts;
@@ -110,6 +111,14 @@ export function getPushTargetPath(
       }
       return isAdmin ? ROUTES.admin.applicationForms : ROUTES.dashboard;
     }
+    case "integration":
+      return isAdmin ? ROUTES.admin.integrations : ROUTES.dashboard;
+    case "fraud_anomaly":
+      return isAdmin ? ROUTES.admin.earnings : ROUTES.dashboard;
+    case "wellbeing_signal":
+      return isAdmin ? ROUTES.admin.mistakes : ROUTES.dashboard;
+    case "content_quality":
+      return isAdmin ? ROUTES.admin.vaContentAssignments : ROUTES.va.contentAssignments;
     case "tip":
       if (isAdmin) return ROUTES.admin.rebillsTips;
       if (isChatter) return ROUTES.chatter.myRebills;
@@ -157,6 +166,7 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       if (isModel) return ROUTES.model.contentCalendar;
       return ROUTES.va.contentAssignments;
     case "model":
+      if (isAdmin && entity_id) return ROUTES.admin.modelDetail(entity_id);
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
       if (isAdmin) return ROUTES.admin.liveShifts;
@@ -201,6 +211,12 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
     case "infloww_performance":
       return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
+    case "fraud_anomaly":
+      return isAdmin ? ROUTES.admin.earnings : ROUTES.dashboard;
+    case "wellbeing_signal":
+      return isAdmin ? ROUTES.admin.mistakes : ROUTES.dashboard;
+    case "content_quality":
+      return isAdmin ? ROUTES.admin.vaContentAssignments : ROUTES.va.contentAssignments;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "daily_review":
@@ -308,6 +324,17 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "application_submitted":
     case "application_status_changed":
       return "Application";
+    case "integration_sync_failed":
+    case "integration_api_key_issue":
+      return "Integration";
+    case "model_churn_high_risk":
+      return "Model";
+    case "fraud_anomaly_detected":
+      return "Fraud";
+    case "wellbeing_checkin_suggested":
+      return "Wellbeing";
+    case "content_quality_flagged":
+      return "Content";
     case "sop_quiz_passed":
     case "sop_quiz_failed":
       return "Training";

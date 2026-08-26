@@ -145,6 +145,18 @@ export const NOTIFICATION_EVENT = {
   APPLICATION_SUBMITTED: "application_submitted" as const,
   /** Recruitment — admin changed pipeline status (New/Reviewed/Shortlisted/Rejected/Hired) */
   APPLICATION_STATUS_CHANGED: "application_status_changed" as const,
+  /** Integration sync failed (Infloww / ClarioSuite / etc.) */
+  INTEGRATION_SYNC_FAILED: "integration_sync_failed" as const,
+  /** Missing or invalid API key for an integration */
+  INTEGRATION_API_KEY_ISSUE: "integration_api_key_issue" as const,
+  /** Model churn risk crossed High threshold */
+  MODEL_CHURN_HIGH_RISK: "model_churn_high_risk" as const,
+  /** AI fraud/anomaly detection flagged transaction/refund patterns */
+  FRAUD_ANOMALY_DETECTED: "fraud_anomaly_detected" as const,
+  /** Admin-only wellbeing check-in suggestion (never to the person) */
+  WELLBEING_CHECKIN_SUGGESTED: "wellbeing_checkin_suggested" as const,
+  /** Content quality pre-check flagged for admin assist */
+  CONTENT_QUALITY_FLAGGED: "content_quality_flagged" as const,
   // Admin monitoring variants (paired with personal events above)
   SHIFT_STARTED_ADMIN: "shift_started_admin" as const,
   SHIFT_ENDED_ADMIN: "shift_ended_admin" as const,
@@ -333,6 +345,12 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   period_logged: "normal",
   application_submitted: "high",
   application_status_changed: "normal",
+  integration_sync_failed: "high",
+  integration_api_key_issue: "high",
+  model_churn_high_risk: "high",
+  fraud_anomaly_detected: "high",
+  wellbeing_checkin_suggested: "normal",
+  content_quality_flagged: "normal",
 };
 
 /** Entity types for notifications (entity_type in payload). */
@@ -343,6 +361,7 @@ export const NOTIFICATION_ENTITY = {
   VA_TASK_PHASE: "va_task_phase",
   VA_TASK_PHASE_ITEM: "va_task_phase_item",
   WHALE: "whale",
+  MODEL: "model",
   CUSTOM_REQUEST: "custom_request",
   MODEL_CONTENT_REQUEST: "model_content_request",
   PERIOD: "model_period",
@@ -364,6 +383,10 @@ export const NOTIFICATION_ENTITY = {
   REBILL: "rebill",
   MODEL_SCHEDULE: "model_schedule",
   APPLICATION_FORM_RESPONSE: "application_form_response",
+  INTEGRATION: "integration",
+  FRAUD_ANOMALY: "fraud_anomaly",
+  WELLBEING_SIGNAL: "wellbeing_signal",
+  CONTENT_QUALITY: "content_quality",
 } as const;
 
 /** Priorities. */

@@ -721,6 +721,13 @@ const adminNav: NavItem[] = [
 
   // ── SETTINGS ──
   {
+    href: ROUTES.admin.integrations,
+    label: "Integrations",
+    iconKey: "Activity",
+    navSection: "SETTINGS",
+    requiresPermission: PERMISSIONS.INTEGRATIONS_VIEW,
+  },
+  {
     href: ROUTES.admin.roles,
     label: "Roles",
     iconKey: "Settings2",

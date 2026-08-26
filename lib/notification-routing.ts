@@ -558,6 +558,31 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description:
       "Admins/managers when an application pipeline status changes (New/Reviewed/Shortlisted/Rejected/Hired).",
   },
+  integration_sync_failed: {
+    rule: "admin_only",
+    description: "Admins/managers when an integration sync (Infloww/ClarioSuite/etc.) fails.",
+  },
+  integration_api_key_issue: {
+    rule: "admin_only",
+    description: "Admins/managers when an integration API key is missing or invalid.",
+  },
+  model_churn_high_risk: {
+    rule: "admin_only",
+    description: "Admins/managers when a model's churn risk score crosses High.",
+  },
+  fraud_anomaly_detected: {
+    rule: "admin_only",
+    description: "Admins/managers when AI fraud/anomaly detection flags refund or transaction patterns.",
+  },
+  wellbeing_checkin_suggested: {
+    rule: "admin_only",
+    description:
+      "Admins/managers only when a conservative wellbeing check-in is suggested. NEVER routed to the person.",
+  },
+  content_quality_flagged: {
+    rule: "admin_only",
+    description: "Admins/managers when content quality pre-check flags media for assist (never auto-reject).",
+  },
 
   // ---- Admin monitoring variants (_admin suffix) ----
   shift_started_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
@@ -684,6 +709,12 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "time_off_requested",
   "application_submitted",
   "application_status_changed",
+  "integration_sync_failed",
+  "integration_api_key_issue",
+  "model_churn_high_risk",
+  "fraud_anomaly_detected",
+  "wellbeing_checkin_suggested",
+  "content_quality_flagged",
 ];
 
 /** Event types that go only to the assigned/acting user (no admins). */

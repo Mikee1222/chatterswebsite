@@ -165,6 +165,10 @@ export const PERMISSIONS = {
   /** Gunzo Agent AI assistant — opt-in via Roles UI (admin default only). */
   AI_AGENT_USE: "ai_agent:use",
 
+  /** Integration health dashboard (Infloww / ClarioSuite / Anthropic / Supabase). */
+  INTEGRATIONS_VIEW: "integrations:view",
+  INTEGRATIONS_MANAGE: "integrations:manage",
+
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -275,6 +279,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   credentials: "Password Library",
   applications: "Applications",
   ai_agent: "Gunzo Agent",
+  integrations: "Integrations",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -451,6 +456,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "applications:manage": "Δημιουργία/επεξεργασία φορμών αιτήσεων και διαχείριση pipeline υποψηφίων",
 
   "ai_agent:use": "Χρήση του Gunzo Agent (AI βοηθός με επιβεβαίωση ενεργειών)",
+
+  "integrations:view": "Προβολή κατάστασης συνδέσεων (Infloww, ClarioSuite, Anthropic, Supabase)",
+  "integrations:manage": "Δοκιμή συνδέσεων και χειροκίνητος συγχρονισμός integrations",
 };
 
 export type PermissionGroup = {
@@ -492,6 +500,8 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.APPLICATIONS_VIEW,
   PERMISSIONS.APPLICATIONS_MANAGE,
   PERMISSIONS.AI_AGENT_USE,
+  // Integrations: manager gets view via defaults; manage stays admin-only (opt-in for manager).
+  PERMISSIONS.INTEGRATIONS_MANAGE,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [

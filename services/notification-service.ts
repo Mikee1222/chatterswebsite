@@ -199,6 +199,12 @@ const BASE_EVENT_TO_CATEGORY = {
   period_logged: "model",
   application_submitted: "system",
   application_status_changed: "system",
+  integration_sync_failed: "system",
+  integration_api_key_issue: "system",
+  model_churn_high_risk: "model",
+  fraud_anomaly_detected: "system",
+  wellbeing_checkin_suggested: "system",
+  content_quality_flagged: "marketing",
 };
 
 const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
@@ -378,6 +384,12 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   period_logged: "period_alerts",
   application_submitted: "system_alerts",
   application_status_changed: "system_alerts",
+  integration_sync_failed: "system_alerts",
+  integration_api_key_issue: "system_alerts",
+  model_churn_high_risk: "model_alerts",
+  fraud_anomaly_detected: "system_alerts",
+  wellbeing_checkin_suggested: "system_alerts",
+  content_quality_flagged: "marketing_alerts",
 };
 
 for (const base of NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT) {

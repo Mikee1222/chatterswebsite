@@ -52,6 +52,7 @@ import { getAllVaTasks } from "@/services/va-tasks";
 import { getPhasesForTasksDisplay } from "@/services/task-phases";
 import { RouterRefreshInterval } from "@/components/router-refresh-interval";
 import { SupabaseLiveShiftsRealtime } from "@/components/supabase-live-shifts-realtime";
+import { listAtRiskModels } from "@/services/model-churn-risk";
 
 /** Lookback so recurring series anchors still expand onto Athens today. */
 const VA_HOME_PROGRESS_LOOKBACK_DAYS = 120;
@@ -272,6 +273,13 @@ export default async function AdminHomePage({
     limit: 14,
   });
 
+  let atRiskModels: Awaited<ReturnType<typeof listAtRiskModels>> = [];
+  try {
+    atRiskModels = await listAtRiskModels(6);
+  } catch {
+    atRiskModels = [];
+  }
+
   return (
     <RouterRefreshInterval intervalMs={60_000}>
       <SupabaseLiveShiftsRealtime />
@@ -305,6 +313,7 @@ export default async function AdminHomePage({
           monthlyTarget={monthlyTarget}
           liveShifts={liveShiftRows}
           vaTaskProgress={vaTaskProgress}
+          atRiskModels={atRiskModels}
         />
       </Suspense>
     </RouterRefreshInterval>

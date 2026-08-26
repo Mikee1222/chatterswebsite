@@ -95,6 +95,7 @@ export const ROUTES = {
     /** Infloww manual sales reassignment audit log. */
     inflowwReassignments: "/admin/infloww-reassignments",
     creatorStatusLog: "/admin/creator-status-log",
+    integrations: "/admin/integrations",
     whales: "/admin/whales",
     /** Admin whale profile (Airtable whales record id). */
     whaleDetail: (id: string) => `/admin/whales/${encodeURIComponent(id)}`,
@@ -203,6 +204,9 @@ export const ROUTES = {
   accountsNew: "/accounts/new",
   accountsModelss: "/accounts?section=modelss",
   accountsModelssNew: "/accounts/modelss/new",
+  accountsModelssOnboarding: "/accounts/modelss/onboarding",
+  accountsModelssOnboardingResume: (id: string) =>
+    `/accounts/modelss/onboarding/${encodeURIComponent(id)}`,
   accountEdit: (id: string) => `/accounts/${id}/edit`,
   accountResetPassword: (id: string) => `/accounts/${id}/reset-password`,
   modelEdit: (id: string) => `/accounts/modelss/${id}/edit`,

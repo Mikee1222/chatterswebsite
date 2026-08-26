@@ -1211,6 +1211,12 @@ export type NotificationEventType =
   // Application / Recruitment
   | "application_submitted"
   | "application_status_changed"
+  | "integration_sync_failed"
+  | "integration_api_key_issue"
+  | "model_churn_high_risk"
+  | "fraud_anomaly_detected"
+  | "wellbeing_checkin_suggested"
+  | "content_quality_flagged"
   // Admin monitoring variants (_admin suffix)
   | "shift_started_admin"
   | "shift_ended_admin"
