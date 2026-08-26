@@ -46,6 +46,7 @@ import { InstagramProfileSimulator } from "@/components/instagram-profile-simula
 import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
 import { CompareModelsSection } from "@/components/instagram-compare-models";
 import { AdminInstagramWeeklyProgressPanel } from "@/components/admin-instagram-weekly-progress-panel";
+import { AiInsightCard } from "@/components/ai-insight-card";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import {
@@ -715,6 +716,45 @@ export function AdminInstagramInsightsClient() {
           {/* ── Overview ─────────────────────────────────────────── */}
           {tab === "overview" ? (
             <>
+              {data?.range ? (
+                <AiInsightCard
+                  title="AI agency insight"
+                  subtitle="Grounded in this period's reach, engagement, and model leaderboard"
+                  endpoint="/api/admin/ai/instagram-insights"
+                  reloadKey={`ig-overview:${data.range.startYmd}:${data.range.endYmd}`}
+                  enabled={!loading && Boolean(overview)}
+                  getParams={{
+                    surface: "overview",
+                    startYmd: data.range.startYmd,
+                    endYmd: data.range.endYmd,
+                  }}
+                  postBody={{
+                    surface: "overview",
+                    startYmd: data.range.startYmd,
+                    endYmd: data.range.endYmd,
+                    stats: {
+                      overview,
+                      models_linked: health?.modelsLinked ?? null,
+                      models_total: health?.modelsTotal ?? null,
+                      leaderboard_top: comparisonByReach.slice(0, 8).map((r) => ({
+                        model: r.modelName,
+                        reach: r.reach,
+                        engagement: r.avg_engagement_rate,
+                        follower_delta: r.follower_delta,
+                        growth_rate_pct: r.growth_rate_pct,
+                      })),
+                      callouts: (data.callouts ?? []).slice(0, 8).map((c) => ({
+                        kind: c.kind,
+                        model: c.modelName,
+                        metric: c.metric,
+                        deltaPct: c.deltaPct,
+                        message: c.message,
+                      })),
+                    },
+                  }}
+                />
+              ) : null}
+
               {loading && !data ? (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -883,6 +923,54 @@ export function AdminInstagramInsightsClient() {
           {/* ── By Model ─────────────────────────────────────────── */}
           {tab === "by_model" ? (
             <>
+              {data?.range && data.selectedModelId ? (
+                <AiInsightCard
+                  title="AI coaching note"
+                  subtitle={`Grounded in ${data.selectedModelName ?? "this model"}'s reach, engagement, growth, and content mix`}
+                  endpoint="/api/admin/ai/instagram-insights"
+                  reloadKey={`ig-model:${data.selectedModelId}:${data.range.startYmd}:${data.range.endYmd}`}
+                  enabled={!loading && data.linked}
+                  getParams={{
+                    surface: "by_model",
+                    startYmd: data.range.startYmd,
+                    endYmd: data.range.endYmd,
+                    modelId: data.selectedModelId,
+                  }}
+                  postBody={{
+                    surface: "by_model",
+                    startYmd: data.range.startYmd,
+                    endYmd: data.range.endYmd,
+                    modelId: data.selectedModelId,
+                    modelName: data.selectedModelName ?? "Model",
+                    stats: {
+                      totals: data.totals,
+                      modelStats: data.modelStats
+                        ? {
+                            growth_rate_pct: data.modelStats.growth_rate_pct,
+                            growth_momentum: data.modelStats.growth_momentum,
+                            consistency_score: data.modelStats.consistency_score,
+                            posting_frequency: data.modelStats.posting_frequency,
+                            content_type_performance: data.modelStats.content_type_performance,
+                            posting_reach_correlation: data.modelStats.posting_reach_correlation,
+                          }
+                        : null,
+                      top_posts: (data.topPosts ?? []).slice(0, 5).map((p) => ({
+                        media_type: p.media_type,
+                        engagement_score: p.engagement_score,
+                        reach: p.reach,
+                        likes: p.likes,
+                      })),
+                      bestTime: data.bestTime
+                        ? {
+                            label: data.bestTime.label,
+                            recommendation: data.bestTime.recommendation,
+                          }
+                        : null,
+                    },
+                  }}
+                />
+              ) : null}
+
               {loading && !data ? (
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -1422,21 +1510,63 @@ export function AdminInstagramInsightsClient() {
 
           {/* ── Compare Models ───────────────────────────────────── */}
           {tab === "compare" ? (
-            <CompareModelsSection
-              rows={(data?.comparison ?? []).map((r) => ({
-                ...r,
-                accountCount: r.accountCount ?? 1,
-              }))}
-              callouts={data?.callouts}
-              priorRange={data?.priorRange}
-              loading={loading}
-              selectedModelId={modelId}
-              onSelectModel={(id) => {
-                setModelId(id);
-                setTab("by_model");
-                void load({ modelId: id });
-              }}
-            />
+            <>
+              {data?.range ? (
+                <AiInsightCard
+                  title="AI compare narrative"
+                  subtitle="Relative shifts on top of Most Improved / Needs Attention"
+                  endpoint="/api/admin/ai/instagram-insights"
+                  reloadKey={`ig-compare:${data.range.startYmd}:${data.range.endYmd}`}
+                  enabled={!loading && (data.comparison?.length ?? 0) > 0}
+                  getParams={{
+                    surface: "compare",
+                    startYmd: data.range.startYmd,
+                    endYmd: data.range.endYmd,
+                  }}
+                  postBody={{
+                    surface: "compare",
+                    startYmd: data.range.startYmd,
+                    endYmd: data.range.endYmd,
+                    stats: {
+                      priorRange: data.priorRange ?? null,
+                      comparison: (data.comparison ?? []).slice(0, 20).map((r) => ({
+                        model: r.modelName,
+                        reach: r.reach,
+                        engagement: r.avg_engagement_rate,
+                        follower_delta: r.follower_delta,
+                        growth_rate_pct: r.growth_rate_pct,
+                        consistency_score: r.consistency_score,
+                        posting_frequency: r.posting_frequency,
+                      })),
+                      callouts: (data.callouts ?? []).slice(0, 12).map((c) => ({
+                        kind: c.kind,
+                        model: c.modelName,
+                        metric: c.metric,
+                        current: c.current,
+                        prior: c.prior,
+                        deltaPct: c.deltaPct,
+                        message: c.message,
+                      })),
+                    },
+                  }}
+                />
+              ) : null}
+              <CompareModelsSection
+                rows={(data?.comparison ?? []).map((r) => ({
+                  ...r,
+                  accountCount: r.accountCount ?? 1,
+                }))}
+                callouts={data?.callouts}
+                priorRange={data?.priorRange}
+                loading={loading}
+                selectedModelId={modelId}
+                onSelectModel={(id) => {
+                  setModelId(id);
+                  setTab("by_model");
+                  void load({ modelId: id });
+                }}
+              />
+            </>
           ) : null}
 
           {/* ── Weekly Progress ──────────────────────────────────── */}

@@ -16,6 +16,7 @@ import {
 } from "@/components/infloww-performance-ui";
 import { ModelInstagramInsightsPanel } from "@/components/model-instagram-insights-panel";
 import { ModelIgToOfCard } from "@/components/cross-platform-insights";
+import { AiInsightCard } from "@/components/ai-insight-card";
 import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
 import type { ModelCrossPlatformCard } from "@/services/cross-platform-analytics";
@@ -293,6 +294,38 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
       ) : null}
 
       <ModelIgToOfCard card={data?.crossPlatformCard} loading={loading} />
+
+      {data?.range && a ? (
+        <AiInsightCard
+          title="AI earnings note"
+          subtitle="A warm read of your numbers this period"
+          endpoint="/api/model/ai/earnings-insight"
+          reloadKey={`model-earn:${data.range.startYmd}:${data.range.endYmd}`}
+          enabled={!loading && data.linked !== false}
+          getParams={{
+            startYmd: data.range.startYmd,
+            endYmd: data.range.endYmd,
+          }}
+          postBody={{
+            startYmd: data.range.startYmd,
+            endYmd: data.range.endYmd,
+            modelName: data.modelName || modelName,
+            stats: {
+              profit: a.profit,
+              refund_rate: a.refund_rate,
+              churn: {
+                active_fans: a.churn.active_fans,
+                renew_on_share: a.churn.renew_on_share,
+                label: a.churn.label,
+              },
+              arpu: a.arpu,
+              growth: a.growth,
+              revenue_change: a.revenue_change,
+              latest: data.latest,
+            },
+          }}
+        />
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <LuxuryStatCard

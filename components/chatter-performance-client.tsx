@@ -21,6 +21,7 @@ import {
   money,
   pct,
 } from "@/components/infloww-performance-ui";
+import { AiInsightCard } from "@/components/ai-insight-card";
 import type {
   InflowwChatterPerformance,
   InflowwStatsPreset,
@@ -195,6 +196,52 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
         </p>
+      ) : null}
+
+      {a ? (
+        <AiInsightCard
+          title="AI coaching note"
+          subtitle="Grounded in your golden ratio, unlock rate, sales, and consistency"
+          endpoint="/api/infloww-stats/ai-insight"
+          reloadKey={`my-perf:${data.range.startYmd}:${data.range.endYmd}`}
+          enabled={!loading}
+          getParams={{
+            startYmd: data.range.startYmd,
+            endYmd: data.range.endYmd,
+          }}
+          postBody={{
+            startYmd: data.range.startYmd,
+            endYmd: data.range.endYmd,
+            chatterName: data.full_name || "You",
+            stats: {
+              totals: {
+                sales: t.sales,
+                ppv_sales: t.ppv_sales,
+                tips: t.tips,
+                messages_sent: t.messages_sent,
+                fans_chatted: t.fans_chatted,
+                golden_ratio: t.golden_ratio,
+                fan_cvr: t.fan_cvr,
+              },
+              analytics: {
+                unlock_rate: a.funnel.unlock_data_sparse ? null : a.funnel.unlock_rate,
+                unlock_data_sparse: a.funnel.unlock_data_sparse,
+                revenue_per_hour: a.revenue_per_hour,
+                revenue_per_fan: a.revenue_per_fan,
+                avg_ppv_price: a.avg_ppv_price,
+                consistency_score: a.consistency_score,
+                period_change_sales: a.period_change.sales,
+                high_effort_low_conversion: a.high_effort_low_conversion,
+                daily_tip: a.daily_tip,
+                sales_streak: a.sales_streak,
+              },
+              top_creators: data.by_performer.slice(0, 5).map((p) => ({
+                name: p.performer_name,
+                sales: p.totals.sales,
+              })),
+            },
+          }}
+        />
       ) : null}
 
       {a ? (

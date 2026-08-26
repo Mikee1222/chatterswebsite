@@ -33,6 +33,7 @@ import {
   type InflowwStatMetricId,
 } from "@/components/infloww-performance-ui";
 import { AdminWeeklyProgressPanel } from "@/components/admin-weekly-progress-panel";
+import { AiInsightCard } from "@/components/ai-insight-card";
 import type {
   InflowwAdminPerformanceReport,
   InflowwChatterPerformance,
@@ -93,9 +94,11 @@ function sortValue(row: InflowwChatterPerformance, key: SortKey): number | strin
 function ChatterDrilldown({
   row,
   showRoi,
+  range,
 }: {
   row: InflowwChatterPerformance;
   showRoi: boolean;
+  range: { startYmd: string; endYmd: string };
 }) {
   const [open, setOpen] = React.useState(false);
   const a = row.analytics;
@@ -129,6 +132,52 @@ function ChatterDrilldown({
       </button>
       {open && a ? (
         <div className="space-y-4 border-t border-white/6 bg-black/25 px-4 py-5">
+          <AiInsightCard
+            title="AI coaching note"
+            subtitle="Grounded in golden ratio, unlock rate, sales, and consistency"
+            endpoint="/api/admin/ai/chatter-performance"
+            reloadKey={`chatter-detail:${row.user_public_id}:${range.startYmd}:${range.endYmd}`}
+            glow={false}
+            getParams={{
+              surface: "detail",
+              startYmd: range.startYmd,
+              endYmd: range.endYmd,
+              chatterId: row.user_public_id,
+            }}
+            postBody={{
+              surface: "detail",
+              startYmd: range.startYmd,
+              endYmd: range.endYmd,
+              chatterId: row.user_public_id,
+              chatterName: row.full_name || "Chatter",
+              stats: {
+                totals: {
+                  sales: row.totals.sales,
+                  ppv_sales: row.totals.ppv_sales,
+                  tips: row.totals.tips,
+                  messages_sent: row.totals.messages_sent,
+                  fans_chatted: row.totals.fans_chatted,
+                  golden_ratio: row.totals.golden_ratio,
+                  fan_cvr: row.totals.fan_cvr,
+                },
+                analytics: {
+                  unlock_rate: a.funnel.unlock_data_sparse ? null : a.funnel.unlock_rate,
+                  unlock_data_sparse: a.funnel.unlock_data_sparse,
+                  revenue_per_hour: a.revenue_per_hour,
+                  revenue_per_fan: a.revenue_per_fan,
+                  avg_ppv_price: a.avg_ppv_price,
+                  consistency_score: a.consistency_score,
+                  period_change_sales: a.period_change.sales,
+                  high_effort_low_conversion: a.high_effort_low_conversion,
+                  team_standing: a.team_standing,
+                },
+                top_creators: row.by_performer.slice(0, 5).map((p) => ({
+                  name: p.performer_name,
+                  sales: p.totals.sales,
+                })),
+              },
+            }}
+          />
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
             <LuxuryStatCard
               label="Golden Ratio"
@@ -779,6 +828,55 @@ export function AdminInflowwPerformanceClient({
         />
       </div>
 
+      <AiInsightCard
+        title="AI team insight"
+        subtitle="Grounded in team sales, golden ratio, standouts, and alerts"
+        endpoint="/api/admin/ai/chatter-performance"
+        reloadKey={`chatter-overview:${data.range.startYmd}:${data.range.endYmd}`}
+        enabled={!loading}
+        getParams={{
+          surface: "overview",
+          startYmd: data.range.startYmd,
+          endYmd: data.range.endYmd,
+        }}
+        postBody={{
+          surface: "overview",
+          startYmd: data.range.startYmd,
+          endYmd: data.range.endYmd,
+          stats: {
+            team_totals: {
+              sales: data.team_totals.sales,
+              ppv_sales: data.team_totals.ppv_sales,
+              tips: data.team_totals.tips,
+              messages_sent: data.team_totals.messages_sent,
+              golden_ratio: data.team_totals.golden_ratio,
+              fan_cvr: data.team_totals.fan_cvr,
+            },
+            unlock_rate: teamFunnel.unlock_data_sparse ? null : teamFunnel.unlock_rate,
+            top_chatters: sorted.slice(0, 5).map((c) => ({
+              name: c.full_name,
+              sales: c.totals.sales,
+              golden_ratio: c.totals.golden_ratio,
+              unlock_rate: c.analytics?.funnel.unlock_data_sparse
+                ? null
+                : c.analytics?.funnel.unlock_rate ?? null,
+              consistency: c.analytics?.consistency_score ?? null,
+            })),
+            alerts: (data.alerts ?? []).slice(0, 8).map((al) => ({
+              severity: al.severity,
+              title: al.title,
+              detail: al.detail,
+            })),
+            ppv_pricing_insights: ppvInsights.slice(0, 8).map((ins) => ({
+              user: ins.user_name,
+              label: ins.label,
+              direction: ins.direction,
+            })),
+            effort_flags: effortFlags.slice(0, 5).map((c) => c.full_name),
+          },
+        }}
+      />
+
       {ppvInsights.length > 0 ? (
         <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
           <div className="mb-3 flex items-center gap-2">
@@ -1050,7 +1148,12 @@ export function AdminInflowwPerformanceClient({
           </p>
         ) : (
           sorted.map((row) => (
-            <ChatterDrilldown key={row.user_uuid} row={row} showRoi={data.include_roi} />
+            <ChatterDrilldown
+              key={row.user_uuid}
+              row={row}
+              showRoi={data.include_roi}
+              range={data.range}
+            />
           ))
         )}
       </div>

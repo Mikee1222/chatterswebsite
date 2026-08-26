@@ -25,6 +25,7 @@ import {
   toLocalYmd,
 } from "@/components/infloww-performance-ui";
 import { AdminInflowwCreatorsLookup } from "@/components/admin-infloww-creators-lookup";
+import { AiInsightCard } from "@/components/ai-insight-card";
 import {
   CollapsibleGroupHeader,
   FinishedFlagBadge,
@@ -599,9 +600,16 @@ function MarketingPanel({
   );
 }
 
-function ModelDrilldown({ row }: { row: ModelAnalytics }) {
+function ModelDrilldown({
+  row,
+  range,
+}: {
+  row: ModelAnalytics;
+  range: { startYmd: string; endYmd: string };
+}) {
   const [open, setOpen] = React.useState(false);
   const reduce = useReducedMotion();
+  const modelKey = row.model_record_id || row.creator_infloww_id;
   return (
     <div className="border-b border-white/6 last:border-0">
       <button
@@ -645,6 +653,35 @@ function ModelDrilldown({ row }: { row: ModelAnalytics }) {
           animate={{ opacity: 1, height: "auto" }}
           className="space-y-4 border-t border-white/6 bg-black/20 px-4 py-4"
         >
+          <AiInsightCard
+            title="AI model note"
+            subtitle="Grounded in gross/net, refunds, churn, ARPU, and growth"
+            endpoint="/api/admin/ai/creator-earnings"
+            reloadKey={`earn-model:${modelKey}:${range.startYmd}:${range.endYmd}`}
+            glow={false}
+            getParams={{
+              surface: "model",
+              startYmd: range.startYmd,
+              endYmd: range.endYmd,
+              modelKey,
+            }}
+            postBody={{
+              surface: "model",
+              startYmd: range.startYmd,
+              endYmd: range.endYmd,
+              modelKey,
+              modelName: row.model_name,
+              stats: {
+                profit: row.profit,
+                refund_rate: row.refund_rate,
+                churn: row.churn,
+                arpu: row.arpu,
+                growth: row.growth,
+                revenue_change: row.revenue_change,
+                revenue_mix: row.revenue_mix.by_type.slice(0, 6),
+              },
+            }}
+          />
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <LuxuryStatCard
               label="Gross"
@@ -1080,6 +1117,42 @@ export function AdminEarningsDashboard() {
 
       {tab === "overview" && data ? (
         <div className="space-y-6">
+          <AiInsightCard
+            title="AI revenue insight"
+            subtitle="Grounded in agency gross/net, refund rate, churn risk, and standouts"
+            endpoint="/api/admin/ai/creator-earnings"
+            reloadKey={`earn-overview:${data.range.startYmd}:${data.range.endYmd}`}
+            enabled={!loading}
+            getParams={{
+              surface: "overview",
+              startYmd: data.range.startYmd,
+              endYmd: data.range.endYmd,
+            }}
+            postBody={{
+              surface: "overview",
+              startYmd: data.range.startYmd,
+              endYmd: data.range.endYmd,
+              stats: {
+                agency_profit: data.analytics.agency_profit,
+                agency_refund_rate: data.analytics.agency_refund_rate,
+                alerts: alerts.slice(0, 10).map((a) => ({
+                  severity: a.severity,
+                  title: a.title,
+                  detail: a.detail,
+                })),
+                top_models: sortedModels.slice(0, 6).map((m) => ({
+                  name: m.model_name,
+                  gross: m.profit.gross,
+                  net: m.profit.net_profit,
+                  refund_rate: m.refund_rate.rate,
+                  renew_on_share: m.churn.renew_on_share,
+                  revenue_change_pct: m.revenue_change?.pct_change ?? null,
+                })),
+                tenure_insight: data.analytics.tenure_insight,
+                pricing_insight: data.analytics.pricing_insight,
+              },
+            }}
+          />
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <LuxuryStatCard
               label="Gross revenue"
@@ -1327,7 +1400,7 @@ export function AdminEarningsDashboard() {
             </div>
             {sortedModels.length ? (
               sortedModels.slice(0, 15).map((row) => (
-                <ModelDrilldown key={row.creator_infloww_id} row={row} />
+                <ModelDrilldown key={row.creator_infloww_id} row={row} range={data.range} />
               ))
             ) : (
               <EmptyState
@@ -1448,7 +1521,7 @@ export function AdminEarningsDashboard() {
               <SectionLabel>Model drilldown</SectionLabel>
             </div>
             {sortedModels.map((row) => (
-              <ModelDrilldown key={row.creator_infloww_id} row={row} />
+              <ModelDrilldown key={row.creator_infloww_id} row={row} range={data.range} />
             ))}
           </div>
         </div>

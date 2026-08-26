@@ -16,11 +16,75 @@ export const AI_FEATURE_KEYS = {
   SPOT_MISTAKE_PATTERNS: "spot_mistake_patterns",
   DAILY_REVIEW_SUMMARY: "daily_review_summary",
   NOTIFICATION_DIGEST: "notification_digest",
+  IG_INSIGHTS_OVERVIEW: "ig_insights_overview",
+  IG_INSIGHTS_MODEL: "ig_insights_model",
+  IG_INSIGHTS_COMPARE: "ig_insights_compare",
+  CHATTER_PERF_OVERVIEW: "chatter_perf_overview",
+  CHATTER_PERF_DETAIL: "chatter_perf_detail",
+  CREATOR_EARNINGS_OVERVIEW: "creator_earnings_overview",
+  CREATOR_EARNINGS_MODEL: "creator_earnings_model",
+  CREATOR_EARNINGS_MODEL_FACING: "creator_earnings_model_facing",
 } as const;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEK_MS = 7 * DAY_MS;
 const MONTH_MS = 32 * DAY_MS;
+
+export type AiInsightResult = {
+  text: string;
+  generated_at: string;
+  cached: boolean;
+  model: string | null;
+};
+
+async function generateCachedInsight(opts: {
+  featureKey: string;
+  cacheKey: string;
+  maxAgeMs: number;
+  force?: boolean;
+  prompt: string;
+  snapshot: Record<string, unknown>;
+  logLabel: string;
+  maxTokens?: number;
+  temperature?: number;
+}): Promise<AiInsightResult> {
+  if (!opts.force) {
+    const cached = await getAiFeatureCache(opts.featureKey, opts.cacheKey);
+    if (cached && !isAiCacheStale(cached, opts.maxAgeMs)) {
+      return {
+        text: cached.content_text,
+        generated_at: cached.generated_at,
+        cached: true,
+        model: cached.model,
+      };
+    }
+  }
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: opts.prompt }],
+    maxTokens: opts.maxTokens ?? 450,
+    temperature: opts.temperature ?? 0.25,
+    logLabel: opts.logLabel,
+  });
+  if (!result) throw new Error("Could not generate insight — check ANTHROPIC_API_KEY");
+  const row = await upsertAiFeatureCache({
+    featureKey: opts.featureKey,
+    cacheKey: opts.cacheKey,
+    contentText: result.text,
+    contextSnapshot: opts.snapshot,
+    model: result.model,
+  });
+  return {
+    text: row.content_text,
+    generated_at: row.generated_at,
+    cached: false,
+    model: row.model,
+  };
+}
+
+function periodCacheKey(startYmd: string, endYmd: string, ...parts: string[]): string {
+  const base = `${startYmd}:${endYmd}`;
+  return parts.length ? `${parts.join(":")}:${base}` : base;
+}
 
 export type AdminHomeBriefingSignals = {
   todayYmd: string;
@@ -228,6 +292,253 @@ ${input.bullets.trim()}
   const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 2000, temperature: 0.3, logLabel: "sop-draft" });
   if (!result) throw new Error("Could not draft SOP — check ANTHROPIC_API_KEY");
   return result.text;
+}
+
+// ─── Analytics insight cards (IG / Chatter Perf / Creator Earnings) ─────────
+
+export async function generateIgInsightsOverview(input: {
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const cacheKey = periodCacheKey(input.startYmd, input.endYmd, "overview");
+  const snapshot = { range: { start: input.startYmd, end: input.endYmd }, ...input.stats };
+  const prompt = `You write a short Instagram Insights agency overview for OF agency admins.
+Write 2–4 sentences on agency-wide IG health: models up/down, reach/engagement, content patterns when present.
+Plain prose. No bullets. No greeting.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.IG_INSIGHTS_OVERVIEW,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "ig-insights-overview",
+  });
+}
+
+export async function generateIgInsightsModel(input: {
+  modelId: string;
+  modelName: string;
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const cacheKey = periodCacheKey(input.startYmd, input.endYmd, "model", input.modelId);
+  const snapshot = {
+    model_id: input.modelId,
+    model_name: input.modelName,
+    range: { start: input.startYmd, end: input.endYmd },
+    ...input.stats,
+  };
+  const prompt = `You write a short Instagram coaching note for one model for agency admins.
+Cover reach/engagement/growth, content types, and posting consistency when data supports it.
+2–4 sentences. Actionable but grounded. Plain prose.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.IG_INSIGHTS_MODEL,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "ig-insights-model",
+  });
+}
+
+export async function generateIgInsightsCompare(input: {
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const cacheKey = periodCacheKey(input.startYmd, input.endYmd, "compare");
+  const snapshot = { range: { start: input.startYmd, end: input.endYmd }, ...input.stats };
+  const prompt = `You write a short narrative comparing Instagram models for agency admins.
+Focus on relative shifts (who improved / needs attention) using the callouts and comparison rows provided.
+Do NOT replace the Most Improved / Needs Attention lists — add interpretive context only.
+2–4 sentences. Plain prose.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.IG_INSIGHTS_COMPARE,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "ig-insights-compare",
+  });
+}
+
+export async function generateChatterPerfOverview(input: {
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const cacheKey = periodCacheKey(input.startYmd, input.endYmd, "overview");
+  const snapshot = { range: { start: input.startYmd, end: input.endYmd }, ...input.stats };
+  const prompt = `You write a short Chatter Performance team overview for OF agency admins.
+Cover team sales health, standouts, golden ratio / unlock patterns, and alerts when present.
+2–4 sentences. Plain prose. No greeting.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.CHATTER_PERF_OVERVIEW,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "chatter-perf-overview",
+  });
+}
+
+export async function generateChatterPerfDetail(input: {
+  chatterId: string;
+  chatterName: string;
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  audience: "admin" | "chatter";
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const audienceKey = input.audience === "chatter" ? "own" : "admin";
+  const cacheKey = periodCacheKey(
+    input.startYmd,
+    input.endYmd,
+    "detail",
+    audienceKey,
+    input.chatterId,
+  );
+  const snapshot = {
+    chatter_id: input.chatterId,
+    chatter_name: input.chatterName,
+    audience: input.audience,
+    range: { start: input.startYmd, end: input.endYmd },
+    ...input.stats,
+  };
+  const tone =
+    input.audience === "chatter"
+      ? "Write as coaching for the chatter themselves: encouraging, concrete, second person (you)."
+      : "Write as coaching notes for an admin reviewing this chatter.";
+  const prompt = `You write a short Chatter Performance coaching note.
+${tone}
+Ground the note in golden ratio, response/unlock signals, sales, consistency, and period change when present.
+2–4 sentences. Plain prose.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.CHATTER_PERF_DETAIL,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "chatter-perf-detail",
+  });
+}
+
+export async function generateCreatorEarningsOverview(input: {
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const cacheKey = periodCacheKey(input.startYmd, input.endYmd, "overview");
+  const snapshot = { range: { start: input.startYmd, end: input.endYmd }, ...input.stats };
+  const prompt = `You write a short Creator Earnings agency overview for OF agency admins.
+Cover revenue health (gross/net), refund rate, churn/auto-renew risk, and standout models when present.
+2–4 sentences. Plain prose. No greeting.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.CREATOR_EARNINGS_OVERVIEW,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "creator-earnings-overview",
+  });
+}
+
+export async function generateCreatorEarningsModel(input: {
+  modelKey: string;
+  modelName: string;
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const cacheKey = periodCacheKey(input.startYmd, input.endYmd, "model", input.modelKey);
+  const snapshot = {
+    model_key: input.modelKey,
+    model_name: input.modelName,
+    range: { start: input.startYmd, end: input.endYmd },
+    ...input.stats,
+  };
+  const prompt = `You write a short actionable Creator Earnings note for one model for agency admins.
+Use gross/net, refund rate, churn/auto-renew, ARPU, subs/growth, and revenue change when present.
+2–4 sentences. Plain prose.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.CREATOR_EARNINGS_MODEL,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "creator-earnings-model",
+  });
+}
+
+export async function generateCreatorEarningsModelFacing(input: {
+  modelId: string;
+  modelName: string;
+  startYmd: string;
+  endYmd: string;
+  stats: Record<string, unknown>;
+  force?: boolean;
+}): Promise<AiInsightResult> {
+  const cacheKey = periodCacheKey(input.startYmd, input.endYmd, "facing", input.modelId);
+  const snapshot = {
+    model_id: input.modelId,
+    model_name: input.modelName,
+    range: { start: input.startYmd, end: input.endYmd },
+    ...input.stats,
+  };
+  const prompt = `You write a short earnings note for a creator viewing their own dashboard.
+Tone: warm, encouraging, simplified — no internal agency jargon. Second person (you).
+Highlight progress and one grounded next focus when data supports it.
+2–3 sentences. Plain prose.
+${AI_GROUNDING_RULES}
+Stats JSON:
+${JSON.stringify(snapshot, null, 2)}`;
+  return generateCachedInsight({
+    featureKey: AI_FEATURE_KEYS.CREATOR_EARNINGS_MODEL_FACING,
+    cacheKey,
+    maxAgeMs: DAY_MS,
+    force: input.force,
+    prompt,
+    snapshot,
+    logLabel: "creator-earnings-model-facing",
+    maxTokens: 350,
+  });
 }
 
 export { AI_ASSISTANT_MODEL };
