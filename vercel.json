@@ -29,6 +29,10 @@
       "schedule": "30 4 * * *"
     },
     {
+      "path": "/api/cron/sync-getmysocial",
+      "schedule": "45 4 * * *"
+    },
+    {
       "path": "/api/cron/sync-infloww-billing",
       "schedule": "0 4 * * *"
     },

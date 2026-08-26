@@ -1,0 +1,33 @@
+# GetMySocial sync every 2 hours via GitHub Actions.
+# Vercel Hobby only allows once-per-day crons in vercel.json — do not move this
+# schedule into vercel.json as `0 */2 * * *` or Production deploys will fail.
+name: GetMySocial sync (every 2h)
+
+on:
+  schedule:
+    - cron: "30 */2 * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger GetMySocial incremental sync
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing GitHub Actions secret CRON_SECRET (must match Vercel CRON_SECRET)."
+            exit 1
+          fi
+          BASE_URL="${APP_URL:-https://www.gunzoteam.com}"
+          curl -fsS -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Accept: application/json" \
+            --max-time 290 \
+            "${BASE_URL%/}/api/cron/sync-getmysocial"
+          echo
+          echo "GetMySocial sync triggered OK"

@@ -16,6 +16,7 @@ import {
 } from "@/components/infloww-performance-ui";
 import { ModelInstagramInsightsPanel } from "@/components/model-instagram-insights-panel";
 import { ModelIgToOfCard } from "@/components/cross-platform-insights";
+import { ModelGetMySocialCard } from "@/components/getmysocial-link-analytics";
 import { AiInsightCard } from "@/components/ai-insight-card";
 import { CREATOR_EARNINGS_STAT_INFO } from "@/services/infloww-creator-analytics";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
@@ -294,6 +295,7 @@ export function ModelEarningsClient({ modelName }: { modelName: string }) {
       ) : null}
 
       <ModelIgToOfCard card={data?.crossPlatformCard} loading={loading} />
+      <ModelGetMySocialCard />
 
       {data?.range && a ? (
         <AiInsightCard

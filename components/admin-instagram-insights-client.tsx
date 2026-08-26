@@ -10,6 +10,7 @@ import {
   CalendarRange,
   GitCompareArrows,
   LayoutDashboard,
+  Link2,
   RefreshCw,
   Smartphone,
   Sparkles,
@@ -44,6 +45,7 @@ import { IgStoriesSection } from "@/components/instagram-stories-ui";
 import type { IgStoriesPayload } from "@/components/instagram-stories-ui";
 import { InstagramProfileSimulator } from "@/components/instagram-profile-simulator";
 import { CrossPlatformInsightsSection } from "@/components/cross-platform-insights";
+import { GetMySocialLinkAnalyticsPanel } from "@/components/getmysocial-link-analytics";
 import { CompareModelsSection } from "@/components/instagram-compare-models";
 import { AdminInstagramWeeklyProgressPanel } from "@/components/admin-instagram-weekly-progress-panel";
 import { AiInsightCard } from "@/components/ai-insight-card";
@@ -82,7 +84,13 @@ const ComposedChart = dynamic(() => import("recharts").then((m) => m.ComposedCha
   ssr: false,
 });
 
-type TabId = "overview" | "by_model" | "compare" | "weekly_progress" | "cross_platform";
+type TabId =
+  | "overview"
+  | "by_model"
+  | "compare"
+  | "weekly_progress"
+  | "cross_platform"
+  | "link_funnel";
 
 const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "overview", label: "Overview", icon: <LayoutDashboard className="h-3.5 w-3.5" /> },
@@ -90,6 +98,7 @@ const TABS: { id: TabId; label: string; icon: React.ReactNode }[] = [
   { id: "compare", label: "Compare Models", icon: <GitCompareArrows className="h-3.5 w-3.5" /> },
   { id: "weekly_progress", label: "Weekly Progress", icon: <CalendarRange className="h-3.5 w-3.5" /> },
   { id: "cross_platform", label: "Cross-Platform", icon: <TrendingUp className="h-3.5 w-3.5" /> },
+  { id: "link_funnel", label: "Link Funnel", icon: <Link2 className="h-3.5 w-3.5" /> },
 ];
 
 type ComparisonRow = {
@@ -425,7 +434,7 @@ export function AdminInstagramInsightsClient() {
     [modelStats?.posting_vs_reach]
   );
 
-  const showModelFilter = tab === "by_model" || tab === "cross_platform";
+  const showModelFilter = tab === "by_model" || tab === "cross_platform" || tab === "link_funnel";
   const showContentFilter = tab === "by_model";
 
   return (
@@ -1584,6 +1593,15 @@ export function AdminInstagramInsightsClient() {
                 />
               )}
             </>
+          ) : null}
+
+          {/* ── Link Funnel (GetMySocial) ─────────────────────────── */}
+          {tab === "link_funnel" ? (
+            <GetMySocialLinkAnalyticsPanel
+              modelId={modelId || data?.selectedModelId || null}
+              modelName={data?.selectedModelName ?? undefined}
+              canSync
+            />
           ) : null}
         </motion.div>
       </AnimatePresence>

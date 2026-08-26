@@ -36,6 +36,11 @@ import {
   draftAccountsForSave,
   type ClarioSuiteAccountDraft,
 } from "@/components/clariosuite-accounts-editor";
+import {
+  GetMySocialLinksEditor,
+  draftGetMySocialLinksForSave,
+  type GetMySocialLinkDraft,
+} from "@/components/getmysocial-links-editor";
 
 const PLATFORMS = ["onlyfans", "fanvue", "other"] as const;
 const STATUS_OPTIONS = ["active", "inactive"] as const;
@@ -114,6 +119,8 @@ export function EditModelForm({
     []
   );
   const [accountsLoaded, setAccountsLoaded] = React.useState(false);
+  const [getmysocialLinks, setGetmysocialLinks] = React.useState<GetMySocialLinkDraft[]>([]);
+  const [getmysocialLoaded, setGetmysocialLoaded] = React.useState(false);
   const [storyLinkA, setStoryLinkA] = React.useState("");
   const [storyLinkB, setStoryLinkB] = React.useState("");
   const [storyLinksLoaded, setStoryLinksLoaded] = React.useState(false);
@@ -153,6 +160,21 @@ export function EditModelForm({
       cancelled = true;
     };
   }, [model.id, model.clariosuite_ig_user_id]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/admin/models/${encodeURIComponent(model.id)}/getmysocial-links`)
+      .then((res) => res.json())
+      .then((data: { links?: GetMySocialLinkDraft[] }) => {
+        if (cancelled) return;
+        setGetmysocialLinks(data.links ?? []);
+        setGetmysocialLoaded(true);
+      })
+      .catch(() => setGetmysocialLoaded(true));
+    return () => {
+      cancelled = true;
+    };
+  }, [model.id]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -279,6 +301,14 @@ export function EditModelForm({
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ accounts: toSave }),
+        });
+      }
+      if (getmysocialLoaded) {
+        const toSave = draftGetMySocialLinksForSave(getmysocialLinks);
+        await fetch(`/api/admin/models/${encodeURIComponent(model.id)}/getmysocial-links`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ links: toSave }),
         });
       }
       if (storyLinksLoaded) {
@@ -450,6 +480,7 @@ export function EditModelForm({
         defaultOpen={Boolean(
           inflowwCreatorId ||
             clariosuiteAccounts.some((a) => a.clariosuite_ig_user_id) ||
+            getmysocialLinks.some((a) => a.getmysocial_link_id) ||
             storyLinkA ||
             storyLinkB,
         )}
@@ -486,6 +517,26 @@ export function EditModelForm({
             />
           ) : (
             <p className="text-sm text-white/40">Loading linked accounts…</p>
+          )}
+        </FormField>
+        <FormField
+          label={
+            <IntegrationFieldLabel
+              label="GetMySocial Link A / B"
+              tooltip="Link-in-bio pages from GetMySocial. Link A/B mirror Story CTA rotation and power Link Funnel Analytics."
+            />
+          }
+          icon={<Link2 />}
+          description="Map this model’s GetMySocial pages (lnk_…). Sync runs every ~2h for analytics."
+        >
+          {getmysocialLoaded ? (
+            <GetMySocialLinksEditor
+              modelId={model.id}
+              initialLinks={getmysocialLinks}
+              onChange={setGetmysocialLinks}
+            />
+          ) : (
+            <p className="text-sm text-white/40">Loading GetMySocial links…</p>
           )}
         </FormField>
         <FormField

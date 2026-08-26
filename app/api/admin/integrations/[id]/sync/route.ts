@@ -11,7 +11,13 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const IDS = new Set<IntegrationId>(["infloww", "clariosuite", "anthropic", "supabase"]);
+const IDS = new Set<IntegrationId>([
+  "infloww",
+  "clariosuite",
+  "getmysocial",
+  "anthropic",
+  "supabase",
+]);
 
 export async function POST(
   _req: Request,

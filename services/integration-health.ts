@@ -12,11 +12,17 @@ import { notifyAdminsOnce } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { getDataBackend } from "@/lib/data-backend";
 import { isClarioSuiteConfigured } from "@/lib/clariosuite-api";
+import { isGetMySocialConfigured } from "@/lib/getmysocial-api";
 import { inflowwReportTodayYmd } from "@/lib/infloww-api";
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 
-export type IntegrationId = "infloww" | "clariosuite" | "anthropic" | "supabase";
+export type IntegrationId =
+  | "infloww"
+  | "clariosuite"
+  | "getmysocial"
+  | "anthropic"
+  | "supabase";
 
 export type IntegrationHealthStatus = "green" | "amber" | "red";
 
@@ -89,6 +95,7 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
     process.env["INFLOWW_API_KEY"]?.trim() && process.env["INFLOWW_AGENCY_OID"]?.trim(),
   );
   const hasClario = isClarioSuiteConfigured();
+  const hasGetMySocial = isGetMySocialConfigured();
   const hasAnthropic = Boolean(process.env["ANTHROPIC_API_KEY"]?.trim());
   const hasSupabase = Boolean(
     process.env["SUPABASE_URL"]?.trim() || process.env["NEXT_PUBLIC_SUPABASE_URL"]?.trim(),
@@ -102,6 +109,8 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
     inflowwLastEarnings,
     clarioDailyCount,
     clarioLast,
+    gmsDailyCount,
+    gmsLast,
     aiCacheCount,
     aiLast,
   ] = await Promise.all([
@@ -111,6 +120,8 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
     latestSyncedAt("infloww_creator_daily_earnings"),
     countTable("clariosuite_daily_insights"),
     latestSyncedAt("clariosuite_daily_insights"),
+    countTable("getmysocial_daily_analytics"),
+    latestSyncedAt("getmysocial_daily_analytics"),
     countTable("ai_feature_cache"),
     latestSyncedAt("ai_feature_cache", "generated_at"),
   ]);
@@ -145,6 +156,19 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
   let clarioStatus: IntegrationHealthStatus = "green";
   if (!hasClario) clarioStatus = "red";
   else clarioStatus = statusFromAge(clarioHours, { amberAfter: 30, redAfter: 72, missingIsRed: false });
+
+  const gmsHours = hoursSince(gmsLast);
+  const gmsAlerts: string[] = [];
+  if (!hasGetMySocial) gmsAlerts.push("GETMYSOCIAL_API_KEY is missing.");
+  if (hasGetMySocial && gmsHours != null && gmsHours > 48) {
+    gmsAlerts.push("GetMySocial analytics look stale (>48h since last sync).");
+  }
+  if (hasGetMySocial && (gmsDailyCount ?? 0) === 0) {
+    gmsAlerts.push("No GetMySocial daily analytics rows yet — link models and run a sync.");
+  }
+  let gmsStatus: IntegrationHealthStatus = "green";
+  if (!hasGetMySocial) gmsStatus = "red";
+  else gmsStatus = statusFromAge(gmsHours, { amberAfter: 30, redAfter: 72, missingIsRed: false });
 
   const anthropicAlerts: string[] = [];
   if (!hasAnthropic) anthropicAlerts.push("ANTHROPIC_API_KEY is missing — AI features will fail.");
@@ -212,6 +236,22 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
       canSync: true,
     },
     {
+      id: "getmysocial",
+      name: "GetMySocial",
+      description: "Link-in-bio analytics, Link A/B, referrers",
+      status: gmsStatus,
+      lastSyncedAt: gmsLast,
+      rowCount: gmsDailyCount,
+      message: hasGetMySocial
+        ? gmsLast
+          ? `Last sync ${gmsLast}`
+          : "Configured — awaiting first sync"
+        : "API key missing",
+      alerts: gmsAlerts,
+      canTest: true,
+      canSync: true,
+    },
+    {
       id: "anthropic",
       name: "Anthropic",
       description: "AI narratives, Gunzo Agent, monthly reports",
@@ -267,6 +307,23 @@ export async function testIntegrationConnection(
       return { ok: true, message: `OK — ClarioSuite key ${me?.name ?? me?.keyId ?? "reachable"}` };
     } catch (e) {
       return { ok: false, message: e instanceof Error ? e.message : "ClarioSuite test failed" };
+    }
+  }
+  if (id === "getmysocial") {
+    if (!isGetMySocialConfigured()) {
+      return { ok: false, message: "GETMYSOCIAL_API_KEY missing" };
+    }
+    try {
+      const { getGetMySocialPing } = await import("@/lib/getmysocial-api");
+      const ping = await getGetMySocialPing();
+      return {
+        ok: ping.ok === true,
+        message: ping.ok
+          ? `OK — GetMySocial user ${ping.user_id}`
+          : "GetMySocial ping failed",
+      };
+    } catch (e) {
+      return { ok: false, message: e instanceof Error ? e.message : "GetMySocial test failed" };
     }
   }
   if (id === "anthropic") {
@@ -332,6 +389,25 @@ export async function triggerIntegrationSync(
     } catch (e) {
       const msg = e instanceof Error ? e.message : "ClarioSuite sync failed";
       await notifyIntegrationFailure("clariosuite", msg, "sync");
+      return { ok: false, message: msg };
+    }
+  }
+  if (id === "getmysocial") {
+    try {
+      const { syncGetMySocialAnalytics } = await import("@/services/getmysocial-sync");
+      const result = await syncGetMySocialAnalytics();
+      if (result.skipped) {
+        const msg = result.skipReason ?? "GetMySocial sync skipped";
+        await notifyIntegrationFailure("getmysocial", msg, "sync");
+        return { ok: false, message: msg };
+      }
+      return {
+        ok: result.errors.length === 0,
+        message: `GetMySocial sync: ${result.linksTargeted} links, ${result.analyticsRowsUpserted} daily rows`,
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "GetMySocial sync failed";
+      await notifyIntegrationFailure("getmysocial", msg, "sync");
       return { ok: false, message: msg };
     }
   }
