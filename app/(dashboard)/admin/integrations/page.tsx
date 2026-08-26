@@ -6,6 +6,7 @@ import {
   getIntegrationHealthSnapshot,
 } from "@/services/integration-health";
 import { IntegrationHealthClient } from "@/components/integration-health-client";
+import { AiUsageVisibilityWidget } from "@/components/ai-usage-visibility-widget";
 import { hasPermission } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +28,11 @@ export default async function AdminIntegrationsPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-white">Integrations</h1>
         <p className="mt-1 text-sm text-white/55">
           Health of Infloww, ClarioSuite, Anthropic, and Supabase — last sync, status, and
-          actionable alerts.
+          actionable alerts. Approximate AI call volume is listed below.
         </p>
       </div>
       <IntegrationHealthClient initial={snapshot} canManage={canManage} />
+      <AiUsageVisibilityWidget />
     </div>
   );
 }

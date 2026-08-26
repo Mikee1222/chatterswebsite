@@ -5,6 +5,7 @@
 
 import {
   AI_ASSISTANT_MODEL,
+  AI_FAST_MODEL,
   AI_GROUNDING_RULES,
   callAnthropic,
   callAnthropicVision,
@@ -127,9 +128,10 @@ ${JSON.stringify(compactFlags)}`;
   const result = await callAnthropic({
     messages: [{ role: "user", content: prompt }],
     // Explanations for up to 12 flags need headroom; 900 truncated mid-JSON and leaked raw fences into the UI.
-    maxTokens: 2500,
+    maxTokens: 2200,
     temperature: 0.2,
     logLabel: "fraud-anomalies",
+    model: AI_ASSISTANT_MODEL,
   });
   if (!result) throw new Error("Could not explain anomalies — check ANTHROPIC_API_KEY");
 
@@ -236,11 +238,12 @@ export async function generateScheduleOptimizerSuggestions(input: {
   }));
 
   const snapshot = { week_start: weekStart, chatterRows, availableModels };
-  const cacheKey = `${weekStart}:${range.startYmd}:${range.endYmd}`;
+  // Week-stable key — sliding 30d window must not bust cache every calendar day.
+  const cacheKey = weekStart;
 
   if (!input.force) {
     const cached = await getAiFeatureCache(AI_OPS_FEATURE_KEYS.SCHEDULE_OPTIMIZER, cacheKey);
-    if (cached && !isAiCacheStale(cached, DAY_MS)) {
+    if (cached && !isAiCacheStale(cached, WEEK_MS)) {
       const snap = cached.context_snapshot as { suggestions?: ScheduleSuggestion[] };
       return {
         week_start: weekStart,
@@ -269,9 +272,10 @@ ${JSON.stringify(chatterRows)}`;
 
   const result = await callAnthropic({
     messages: [{ role: "user", content: prompt }],
-    maxTokens: 1400,
+    maxTokens: 1200,
     temperature: 0.3,
     logLabel: "schedule-optimizer",
+    model: AI_ASSISTANT_MODEL,
   });
   if (!result) throw new Error("Could not generate schedule suggestions — check ANTHROPIC_API_KEY");
 
@@ -395,9 +399,10 @@ ${JSON.stringify(grounded.length ? grounded : [{ note: "No top posts on file —
 
   const result = await callAnthropic({
     messages: [{ role: "user", content: prompt }],
-    maxTokens: 700,
+    maxTokens: 600,
     temperature: 0.55,
     logLabel: "caption-hashtags",
+    model: AI_FAST_MODEL,
   });
   if (!result) throw new Error("Could not generate captions — check ANTHROPIC_API_KEY");
 
@@ -576,6 +581,7 @@ ${JSON.stringify(reviewSnippets)}`;
     maxTokens: 900,
     temperature: 0.2,
     logLabel: "wellbeing-signals",
+    model: AI_ASSISTANT_MODEL,
   });
   if (!result) throw new Error("Could not generate wellbeing signals — check ANTHROPIC_API_KEY");
 
@@ -722,10 +728,12 @@ export async function generatePerformanceReview(input: {
       : null,
   };
 
-  const cacheKey = `${personId}:${range.startYmd}:${range.endYmd}`;
+  // Week-stable key — avoid regenerating every day as the 30d window slides.
+  const weekBucket = `${today.slice(0, 7)}-w${Math.ceil(Number(today.slice(8)) / 7)}`;
+  const cacheKey = `${personId}:${weekBucket}`;
   if (!input.force) {
     const cached = await getAiFeatureCache(AI_OPS_FEATURE_KEYS.PERFORMANCE_REVIEW, cacheKey);
-    if (cached && !isAiCacheStale(cached, DAY_MS)) {
+    if (cached && !isAiCacheStale(cached, WEEK_MS)) {
       const snap = cached.context_snapshot as {
         sections?: Array<{ title: string; body: string }>;
       };
@@ -753,9 +761,10 @@ ${JSON.stringify(statsSnapshot)}`;
 
   const result = await callAnthropic({
     messages: [{ role: "user", content: prompt }],
-    maxTokens: 1200,
+    maxTokens: 1100,
     temperature: 0.25,
     logLabel: "performance-review",
+    model: AI_ASSISTANT_MODEL,
   });
   if (!result) throw new Error("Could not generate performance review — check ANTHROPIC_API_KEY");
 
@@ -798,4 +807,4 @@ ${JSON.stringify(statsSnapshot)}`;
 
 // ─── Stage 6 helpers used by content quality service ────────────────────────
 
-export { AI_ASSISTANT_MODEL, callAnthropicVision };
+export { AI_ASSISTANT_MODEL, AI_FAST_MODEL, callAnthropicVision };

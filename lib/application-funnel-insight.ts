@@ -21,7 +21,7 @@ STRICT RULES:
 - Do not recommend specific hiring decisions.
 
 Funnel snapshot JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
 }
 
 /**
@@ -34,7 +34,7 @@ export async function generateApplicationFunnelInsight(input: {
   const result = await callAnthropic({
     model: APPLICATION_AI_SUMMARY_MODEL,
     messages: [{ role: "user", content: buildPrompt(input.snapshot, input.formTitle) }],
-    maxTokens: 700,
+    maxTokens: 550,
     temperature: 0.2,
     logLabel: "application-funnel-insight",
   });

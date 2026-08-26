@@ -1,6 +1,6 @@
 /**
  * Server-side Anthropic (Claude) AI mini-summary for application responses.
- * API key: ANTHROPIC_API_KEY (server-only). Model: claude-sonnet-4-6.
+ * API key: ANTHROPIC_API_KEY (server-only). Fast model for mechanical Q&A summaries.
  */
 
 import type {
@@ -8,9 +8,9 @@ import type {
   ApplicationFormQuestion,
   ApplicationFormResponseWithAnswers,
 } from "@/lib/application-forms-types";
-import { AI_ASSISTANT_MODEL, callAnthropic } from "@/lib/ai-assistant";
+import { AI_FAST_MODEL, callAnthropic } from "@/lib/ai-assistant";
 
-export const APPLICATION_AI_SUMMARY_MODEL = AI_ASSISTANT_MODEL;
+export const APPLICATION_AI_SUMMARY_MODEL = AI_FAST_MODEL;
 
 function answerDisplay(
   q: ApplicationFormQuestion,
@@ -100,9 +100,10 @@ export async function generateApplicationAiSummary(input: {
   const prompt = buildPrompt(input.response, input.questions);
   const result = await callAnthropic({
     messages: [{ role: "user", content: prompt }],
-    maxTokens: 500,
+    maxTokens: 400,
     temperature: 0.2,
     logLabel: "application-ai-summary",
+    model: APPLICATION_AI_SUMMARY_MODEL,
   });
   return result?.text ?? null;
 }

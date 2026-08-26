@@ -1,10 +1,16 @@
 /**
  * Server-side Anthropic translation for application answer text.
- * Model: claude-sonnet-4-6 (same as AI summary).
+ * Uses Haiku for mechanical translation; caches by text hash.
  */
 
+import { createHash } from "node:crypto";
 import { APPLICATION_AI_SUMMARY_MODEL } from "@/lib/application-ai-summary";
 import { callAnthropic, extractJsonObject } from "@/lib/ai-assistant";
+import {
+  getAiFeatureCache,
+  isAiCacheStale,
+  upsertAiFeatureCache,
+} from "@/services/ai-feature-cache";
 
 export type ApplicationTranslationLang = "en" | "el";
 
@@ -14,6 +20,9 @@ export type ApplicationAnswerTranslationResult = {
   translation_lang: ApplicationTranslationLang;
   translated_text: string;
 };
+
+const FEATURE_KEY = "application_answer_translate";
+const MONTH_MS = 32 * 24 * 60 * 60 * 1000;
 
 function normalizeLangCode(raw: unknown): string {
   const s = String(raw ?? "")
@@ -59,29 +68,9 @@ ${text}
 """`;
 }
 
-/**
- * Translate one answer via Anthropic. Returns null if API key missing or call fails.
- */
-export async function translateApplicationAnswerText(
-  text: string,
-): Promise<ApplicationAnswerTranslationResult | null> {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-
-  const result = await callAnthropic({
-    model: APPLICATION_AI_SUMMARY_MODEL,
-    messages: [{ role: "user", content: buildPrompt(trimmed) }],
-    maxTokens: 2000,
-    temperature: 0.2,
-    logLabel: "application-ai-translate",
-  });
-  if (!result) return null;
-
-  const parsed = extractJsonObject(result.text);
-  if (!parsed) {
-    console.error("[application-ai-translate] failed to parse JSON", result.text.slice(0, 200));
-    return null;
-  }
+function parseTranslation(raw: string): ApplicationAnswerTranslationResult | null {
+  const parsed = extractJsonObject(raw);
+  if (!parsed) return null;
 
   const source_lang = normalizeLangCode(parsed.source_lang);
   const translation_lang: ApplicationTranslationLang =
@@ -102,6 +91,58 @@ export async function translateApplicationAnswerText(
     translation_lang,
     translated_text,
   };
+}
+
+/**
+ * Translate one answer via Anthropic. Returns null if API key missing or call fails.
+ */
+export async function translateApplicationAnswerText(
+  text: string,
+): Promise<ApplicationAnswerTranslationResult | null> {
+  const trimmed = text.trim().slice(0, 6000);
+  if (!trimmed) return null;
+
+  const cacheKey = createHash("sha256").update(trimmed).digest("hex").slice(0, 40);
+  const cached = await getAiFeatureCache(FEATURE_KEY, cacheKey);
+  if (cached && !isAiCacheStale(cached, MONTH_MS)) {
+    const fromSnap = cached.context_snapshot as Partial<ApplicationAnswerTranslationResult>;
+    if (fromSnap.translated_text && fromSnap.translation_lang) {
+      return {
+        source_lang: String(fromSnap.source_lang ?? "und"),
+        source_lang_label: String(fromSnap.source_lang_label ?? langLabel(String(fromSnap.source_lang ?? "und"))),
+        translation_lang: fromSnap.translation_lang as ApplicationTranslationLang,
+        translated_text: fromSnap.translated_text,
+      };
+    }
+    const parsedCached = parseTranslation(cached.content_text);
+    if (parsedCached) return parsedCached;
+  }
+
+  const maxTokens = Math.min(1200, Math.max(300, Math.ceil(trimmed.length * 1.2)));
+  const result = await callAnthropic({
+    model: APPLICATION_AI_SUMMARY_MODEL,
+    messages: [{ role: "user", content: buildPrompt(trimmed) }],
+    maxTokens,
+    temperature: 0.2,
+    logLabel: "application-ai-translate",
+  });
+  if (!result) return null;
+
+  const parsed = parseTranslation(result.text);
+  if (!parsed) {
+    console.error("[application-ai-translate] failed to parse JSON", result.text.slice(0, 200));
+    return null;
+  }
+
+  await upsertAiFeatureCache({
+    featureKey: FEATURE_KEY,
+    cacheKey,
+    contentText: result.text,
+    contextSnapshot: parsed as unknown as Record<string, unknown>,
+    model: result.model,
+  }).catch(() => null);
+
+  return parsed;
 }
 
 export function translationLangLabel(code: string | null | undefined): string {

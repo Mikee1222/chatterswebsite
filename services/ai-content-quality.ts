@@ -5,13 +5,17 @@
 
 import sharp from "sharp";
 import {
-  AI_ASSISTANT_MODEL,
+  AI_FAST_MODEL,
   AI_GROUNDING_RULES,
   callAnthropicVision,
   extractJsonObject,
   type AnthropicImageSource,
 } from "@/lib/ai-assistant";
-import { upsertAiFeatureCache } from "@/services/ai-feature-cache";
+import {
+  getAiFeatureCache,
+  isAiCacheStale,
+  upsertAiFeatureCache,
+} from "@/services/ai-feature-cache";
 import { AI_OPS_FEATURE_KEYS } from "@/services/ai-ops-features";
 
 export type ContentQualityFlag = {
@@ -104,10 +108,30 @@ export async function runContentQualityPreCheck(input: {
   fileUrl: string;
   assignmentId?: string | null;
   skipVision?: boolean;
+  force?: boolean;
 }): Promise<ContentQualityResult> {
   const fileUrl = input.fileUrl.trim();
   const programmatic: ContentQualityFlag[] = [];
   const generated_at = new Date().toISOString();
+  const cacheKey = `${input.assignmentId ?? "url"}:${fileUrl.slice(0, 160)}`;
+
+  if (!input.force && !input.skipVision) {
+    const cached = await getAiFeatureCache(AI_OPS_FEATURE_KEYS.CONTENT_QUALITY, cacheKey);
+    // Same URL/assignment → reuse for a week (media rarely changes mid-review).
+    if (cached && !isAiCacheStale(cached, 7 * 24 * 60 * 60 * 1000)) {
+      const snap = cached.context_snapshot as Partial<ContentQualityResult> | undefined;
+      if (snap?.programmatic && snap?.vision && snap?.recommendation) {
+        return {
+          assignment_id: input.assignmentId ?? null,
+          file_url: fileUrl,
+          programmatic: snap.programmatic,
+          vision: snap.vision,
+          recommendation: snap.recommendation,
+          generated_at: cached.generated_at,
+        };
+      }
+    }
+  }
 
   if (!fileUrl) {
     return {
@@ -251,10 +275,10 @@ ${AI_GROUNDING_RULES}`,
           base64: (thumb ?? imageBuffer).toString("base64"),
         },
       ],
-      maxTokens: 350,
+      maxTokens: 300,
       temperature: 0.1,
       logLabel: "content-quality-vision",
-      model: AI_ASSISTANT_MODEL,
+      model: AI_FAST_MODEL,
     });
 
     if (result) {
@@ -297,7 +321,7 @@ ${AI_GROUNDING_RULES}`,
 
   await upsertAiFeatureCache({
     featureKey: AI_OPS_FEATURE_KEYS.CONTENT_QUALITY,
-    cacheKey: `${input.assignmentId ?? "url"}:${fileUrl.slice(0, 120)}`,
+    cacheKey,
     contentText: visionSummary ?? programmatic.map((p) => p.message).join("; "),
     contextSnapshot: out as unknown as Record<string, unknown>,
     model: visionModel,

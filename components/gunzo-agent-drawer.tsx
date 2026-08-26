@@ -395,7 +395,9 @@ export function GunzoAgentDrawer({ canUse }: GunzoAgentDrawerProps) {
     };
     const prior =
       messages.length === 1 && messages[0]?.id === "welcome" ? [] : messages;
-    const payloadMessages = [...prior, userMsg].map((m) => ({
+    // Bound client payload — server also trims; keep last 12 text turns.
+    const recentPrior = prior.slice(-12);
+    const payloadMessages = [...recentPrior, userMsg].map((m) => ({
       role: m.role,
       content: m.content,
     }));

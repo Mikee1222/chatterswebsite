@@ -2,7 +2,12 @@
  * AI-powered feature generators — all grounded in real app data via callAnthropic.
  */
 
-import { AI_ASSISTANT_MODEL, AI_GROUNDING_RULES, callAnthropic } from "@/lib/ai-assistant";
+import {
+  AI_ASSISTANT_MODEL,
+  AI_FAST_MODEL,
+  AI_GROUNDING_RULES,
+  callAnthropic,
+} from "@/lib/ai-assistant";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import {
   getAiFeatureCache,
@@ -47,6 +52,8 @@ async function generateCachedInsight(opts: {
   logLabel: string;
   maxTokens?: number;
   temperature?: number;
+  /** Default: fast model — these are summaries of already-computed stats. */
+  model?: string;
 }): Promise<AiInsightResult> {
   if (!opts.force) {
     const cached = await getAiFeatureCache(opts.featureKey, opts.cacheKey);
@@ -64,6 +71,7 @@ async function generateCachedInsight(opts: {
     maxTokens: opts.maxTokens ?? 450,
     temperature: opts.temperature ?? 0.25,
     logLabel: opts.logLabel,
+    model: opts.model ?? AI_FAST_MODEL,
   });
   if (!result) throw new Error("Could not generate insight — check ANTHROPIC_API_KEY");
   const row = await upsertAiFeatureCache({
@@ -125,8 +133,14 @@ ${AI_GROUNDING_RULES}
 - Call out pending Applications, Spot Checks, Daily Review status, and IG Needs Attention when counts > 0.
 - Plain prose. No bullets. No greeting.
 Signals JSON:
-${JSON.stringify(signals, null, 2)}`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 400, temperature: 0.25, logLabel: "admin-home-briefing" });
+${JSON.stringify(signals)}`;
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 350,
+    temperature: 0.25,
+    logLabel: "admin-home-briefing",
+    model: AI_FAST_MODEL,
+  });
   if (!result) throw new Error("Could not generate briefing — check ANTHROPIC_API_KEY");
   const row = await upsertAiFeatureCache({ featureKey: AI_FEATURE_KEYS.ADMIN_HOME_BRIEFING, cacheKey, contentText: result.text, contextSnapshot: signals as unknown as Record<string, unknown>, model: result.model });
   return { text: row.content_text, generated_at: row.generated_at, cached: false, model: row.model };
@@ -139,14 +153,30 @@ export async function answerSopLibraryQuestion(input: {
   chunks: SopChatChunk[];
   history?: { role: "user" | "assistant"; content: string }[];
 }): Promise<string> {
-  const corpus = input.chunks.length === 0
+  const limitedChunks = input.chunks.slice(0, 8);
+  const corpus = limitedChunks.length === 0
     ? "(No SOP content available for this user.)"
-    : input.chunks.map((c, i) => `[SOP ${i + 1}] Role: ${c.role_name} | Function: ${c.function_name} | Dept: ${c.department_name}\n${c.content}`).join("\n\n---\n\n");
+    : limitedChunks
+        .map((c, i) => {
+          const body = c.content.length > 1800 ? `${c.content.slice(0, 1800)}…` : c.content;
+          return `[SOP ${i + 1}] Role: ${c.role_name} | Function: ${c.function_name} | Dept: ${c.department_name}\n${body}`;
+        })
+        .join("\n\n---\n\n");
   const system = `You are the SOP Library assistant for agency staff (VAs and chatters).
 Answer ONLY using the SOP excerpts provided. If the answer is not covered, say clearly that it is not covered in the available SOPs and suggest asking a manager.
 Do not invent policies, tools, or steps. Keep answers concise and practical. Quote the SOP function name when relevant.`;
-  const messages = [...(input.history ?? []).slice(-6), { role: "user" as const, content: `SOP excerpts:\n${corpus}\n\nQuestion: ${input.question.trim()}` }];
-  const result = await callAnthropic({ system, messages, maxTokens: 700, temperature: 0.2, logLabel: "sop-chat" });
+  const messages = [
+    ...(input.history ?? []).slice(-6),
+    { role: "user" as const, content: `SOP excerpts:\n${corpus}\n\nQuestion: ${input.question.trim()}` },
+  ];
+  const result = await callAnthropic({
+    system,
+    messages,
+    maxTokens: 600,
+    temperature: 0.2,
+    logLabel: "sop-chat",
+    model: AI_FAST_MODEL,
+  });
   if (!result) throw new Error("Could not answer — check ANTHROPIC_API_KEY");
   return result.text;
 }
@@ -160,13 +190,24 @@ export async function generateDailyReviewTeamSummary(input: {
     const cached = await getAiFeatureCache(AI_FEATURE_KEYS.DAILY_REVIEW_SUMMARY, cacheKey);
     if (cached && !isAiCacheStale(cached, DAY_MS)) return { text: cached.content_text, generated_at: cached.generated_at, cached: true };
   }
-  const snapshot = { review_date: input.reviewDate, team_summary: input.teamSummary, flagged_items: input.flaggedItems.slice(0, 40), va_leaderboard: input.vaLeaderboard.slice(0, 20) };
+  const snapshot = {
+    review_date: input.reviewDate,
+    team_summary: input.teamSummary,
+    flagged_items: input.flaggedItems.slice(0, 25),
+    va_leaderboard: input.vaLeaderboard.slice(0, 12),
+  };
   const prompt = `You summarize a completed Daily Review for agency admins.
 Write 3–5 sentences covering: verified vs flagged counts, notable VA flag patterns from the real per-item data, and anything that stands out. Plain prose.
 ${AI_GROUNDING_RULES}
 Data JSON:
-${JSON.stringify(snapshot, null, 2)}`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 500, temperature: 0.2, logLabel: "daily-review-summary" });
+${JSON.stringify(snapshot)}`;
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 450,
+    temperature: 0.2,
+    logLabel: "daily-review-summary",
+    model: AI_FAST_MODEL,
+  });
   if (!result) throw new Error("Could not generate summary — check ANTHROPIC_API_KEY");
   const row = await upsertAiFeatureCache({ featureKey: AI_FEATURE_KEYS.DAILY_REVIEW_SUMMARY, cacheKey, contentText: result.text, contextSnapshot: snapshot, model: result.model });
   return { text: row.content_text, generated_at: row.generated_at, cached: false };
@@ -181,15 +222,27 @@ export async function generateClientMonthlyReport(input: {
     const cached = await getAiFeatureCache(AI_FEATURE_KEYS.CLIENT_MONTHLY_REPORT, cacheKey);
     if (cached && !isAiCacheStale(cached, MONTH_MS)) return { text: cached.content_text, generated_at: cached.generated_at, cached: true };
   }
-  const snapshot = { year_month: input.yearMonth, client_name: input.clientName, models: input.modelNames, infloww: input.inflowwSnapshot, instagram: input.igSnapshot };
+  const snapshot = {
+    year_month: input.yearMonth,
+    client_name: input.clientName,
+    models: input.modelNames,
+    infloww: input.inflowwSnapshot,
+    instagram: input.igSnapshot,
+  };
   const prompt = `You write a monthly Gunzo Partnership performance narrative for a client (not internal staff).
 Tone: warm, clear, client-facing. 4–8 short sentences. Explain results plainly without jargon dumps.
 Cover OnlyFans/Infloww earnings highlights and Instagram signals when present.
 Never invent figures. If IG data is missing, skip IG (do not invent).
 ${AI_GROUNDING_RULES}
 Data JSON:
-${JSON.stringify(snapshot, null, 2)}`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 800, temperature: 0.3, logLabel: "client-monthly-report" });
+${JSON.stringify(snapshot)}`;
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 700,
+    temperature: 0.3,
+    logLabel: "client-monthly-report",
+    model: AI_ASSISTANT_MODEL,
+  });
   if (!result) throw new Error("Could not generate report — check ANTHROPIC_API_KEY");
   const row = await upsertAiFeatureCache({ featureKey: AI_FEATURE_KEYS.CLIENT_MONTHLY_REPORT, cacheKey, contentText: result.text, contextSnapshot: snapshot, model: result.model });
   return { text: row.content_text, generated_at: row.generated_at, cached: false };
@@ -205,14 +258,24 @@ export async function generateSpotMistakePatterns(input: {
     const cached = await getAiFeatureCache(AI_FEATURE_KEYS.SPOT_MISTAKE_PATTERNS, cacheKey);
     if (cached && !isAiCacheStale(cached, WEEK_MS)) return { text: cached.content_text, generated_at: cached.generated_at, cached: true };
   }
-  const snapshot = { subject: { id: input.subjectId, name: input.subjectName, kind: input.subjectKind }, spot_checks: input.spotChecks.slice(0, 80), mistakes: input.mistakes.slice(0, 80) };
+  const snapshot = {
+    subject: { id: input.subjectId, name: input.subjectName, kind: input.subjectKind },
+    spot_checks: input.spotChecks.slice(0, 40),
+    mistakes: input.mistakes.slice(0, 40),
+  };
   const prompt = `You detect recurring patterns in Spot Checks and Mistakes for agency admins viewing a performance profile.
 Write 3–6 sentences on recurring types, statuses, reasons, and severity — only from the records provided.
 If there are few records, say the sample is small. Plain prose.
 ${AI_GROUNDING_RULES}
 Data JSON:
-${JSON.stringify(snapshot, null, 2)}`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 600, temperature: 0.2, logLabel: "spot-mistake-patterns" });
+${JSON.stringify(snapshot)}`;
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 500,
+    temperature: 0.2,
+    logLabel: "spot-mistake-patterns",
+    model: AI_FAST_MODEL,
+  });
   if (!result) throw new Error("Could not generate patterns — check ANTHROPIC_API_KEY");
   const row = await upsertAiFeatureCache({ featureKey: AI_FEATURE_KEYS.SPOT_MISTAKE_PATTERNS, cacheKey, contentText: result.text, contextSnapshot: snapshot, model: result.model });
   return { text: row.content_text, generated_at: row.generated_at, cached: false };
@@ -235,23 +298,54 @@ Current draft:
 """
 ${input.draftScript.trim() || "(empty)"}
 """`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 700, temperature: 0.5, logLabel: "creative-script-brainstorm" });
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 600,
+    temperature: 0.5,
+    logLabel: "creative-script-brainstorm",
+    model: AI_ASSISTANT_MODEL,
+  });
   if (!result) throw new Error("Could not brainstorm — check ANTHROPIC_API_KEY");
   return result.text;
 }
 
 export async function generateNotificationDigestText(input: {
-  userId: string; ymd: string;
+  userId: string;
+  ymd: string;
   notifications: Array<{ title: string; body: string; event_type: string; created_at: string }>;
+  force?: boolean;
 }): Promise<string> {
+  const cacheKey = `${input.userId}:${input.ymd}`;
+  if (!input.force) {
+    const cached = await getAiFeatureCache(AI_FEATURE_KEYS.NOTIFICATION_DIGEST, cacheKey);
+    if (cached && !isAiCacheStale(cached, DAY_MS)) return cached.content_text;
+  }
+  const compact = input.notifications.slice(0, 40).map((n) => ({
+    title: n.title.slice(0, 120),
+    body: n.body.slice(0, 180),
+    event_type: n.event_type,
+  }));
   const prompt = `Summarize today's in-app notifications for this user in 3–4 sentences.
 Only use the listed notifications (already filtered to enabled categories).
 Group themes briefly. If the list is empty, say there was little activity today.
 ${AI_GROUNDING_RULES}
 Notifications JSON:
-${JSON.stringify(input.notifications.slice(0, 80), null, 2)}`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 400, temperature: 0.25, logLabel: "notification-digest" });
+${JSON.stringify(compact)}`;
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 350,
+    temperature: 0.25,
+    logLabel: "notification-digest",
+    model: AI_FAST_MODEL,
+  });
   if (!result) throw new Error("Could not generate digest — check ANTHROPIC_API_KEY");
+  await upsertAiFeatureCache({
+    featureKey: AI_FEATURE_KEYS.NOTIFICATION_DIGEST,
+    cacheKey,
+    contentText: result.text,
+    contextSnapshot: { count: compact.length, ymd: input.ymd },
+    model: result.model,
+  });
   return result.text;
 }
 
@@ -270,14 +364,24 @@ Caption / context:
 """
 ${input.caption?.trim() || "(none)"}
 """`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 600, temperature: 0.35, logLabel: "winner-creative-brief" });
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 550,
+    temperature: 0.35,
+    logLabel: "winner-creative-brief",
+    model: AI_ASSISTANT_MODEL,
+  });
   if (!result) throw new Error("Could not generate brief — check ANTHROPIC_API_KEY");
   return result.text;
 }
 
 export async function draftSopFromBullets(input: {
-  title: string; bullets: string; roleName?: string; departmentName?: string;
+  title: string;
+  bullets: string;
+  roleName?: string;
+  departmentName?: string;
 }): Promise<string> {
+  const bullets = input.bullets.trim().slice(0, 4000);
   const prompt = `You help admins draft SOP (Standard Operating Procedure) content from rough bullets.
 Produce structured markdown suitable for an SOP library: short intro, numbered steps, and optional notes/checklist.
 Never invent tools, policies, or metrics not implied by the bullets. Mark gaps as "[TO CONFIRM]".
@@ -287,9 +391,15 @@ Role: ${input.roleName || "—"}
 Department: ${input.departmentName || "—"}
 Bullets / notes:
 """
-${input.bullets.trim()}
+${bullets}
 """`;
-  const result = await callAnthropic({ messages: [{ role: "user", content: prompt }], maxTokens: 2000, temperature: 0.3, logLabel: "sop-draft" });
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 1400,
+    temperature: 0.3,
+    logLabel: "sop-draft",
+    model: AI_ASSISTANT_MODEL,
+  });
   if (!result) throw new Error("Could not draft SOP — check ANTHROPIC_API_KEY");
   return result.text;
 }
@@ -309,7 +419,7 @@ Write 2–4 sentences on agency-wide IG health: models up/down, reach/engagement
 Plain prose. No bullets. No greeting.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.IG_INSIGHTS_OVERVIEW,
     cacheKey,
@@ -318,6 +428,7 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "ig-insights-overview",
+    maxTokens: 350,
   });
 }
 
@@ -341,7 +452,7 @@ Cover reach/engagement/growth, content types, and posting consistency when data 
 2–4 sentences. Actionable but grounded. Plain prose.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.IG_INSIGHTS_MODEL,
     cacheKey,
@@ -350,6 +461,7 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "ig-insights-model",
+    maxTokens: 350,
   });
 }
 
@@ -367,7 +479,7 @@ Do NOT replace the Most Improved / Needs Attention lists — add interpretive co
 2–4 sentences. Plain prose.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.IG_INSIGHTS_COMPARE,
     cacheKey,
@@ -376,6 +488,7 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "ig-insights-compare",
+    maxTokens: 350,
   });
 }
 
@@ -392,7 +505,7 @@ Cover team sales health, standouts, golden ratio / unlock patterns, and alerts w
 2–4 sentences. Plain prose. No greeting.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.CHATTER_PERF_OVERVIEW,
     cacheKey,
@@ -401,6 +514,7 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "chatter-perf-overview",
+    maxTokens: 350,
   });
 }
 
@@ -438,7 +552,7 @@ Ground the note in golden ratio, response/unlock signals, sales, consistency, an
 2–4 sentences. Plain prose.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.CHATTER_PERF_DETAIL,
     cacheKey,
@@ -447,6 +561,7 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "chatter-perf-detail",
+    maxTokens: 350,
   });
 }
 
@@ -463,7 +578,7 @@ Cover revenue health (gross/net), refund rate, churn/auto-renew risk, and stando
 2–4 sentences. Plain prose. No greeting.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.CREATOR_EARNINGS_OVERVIEW,
     cacheKey,
@@ -472,6 +587,7 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "creator-earnings-overview",
+    maxTokens: 350,
   });
 }
 
@@ -495,7 +611,7 @@ Use gross/net, refund rate, churn/auto-renew, ARPU, subs/growth, and revenue cha
 2–4 sentences. Plain prose.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.CREATOR_EARNINGS_MODEL,
     cacheKey,
@@ -504,6 +620,7 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "creator-earnings-model",
+    maxTokens: 350,
   });
 }
 
@@ -528,7 +645,7 @@ Highlight progress and one grounded next focus when data supports it.
 2–3 sentences. Plain prose.
 ${AI_GROUNDING_RULES}
 Stats JSON:
-${JSON.stringify(snapshot, null, 2)}`;
+${JSON.stringify(snapshot)}`;
   return generateCachedInsight({
     featureKey: AI_FEATURE_KEYS.CREATOR_EARNINGS_MODEL_FACING,
     cacheKey,
@@ -537,8 +654,8 @@ ${JSON.stringify(snapshot, null, 2)}`;
     prompt,
     snapshot,
     logLabel: "creator-earnings-model-facing",
-    maxTokens: 350,
+    maxTokens: 300,
   });
 }
 
-export { AI_ASSISTANT_MODEL };
+export { AI_ASSISTANT_MODEL, AI_FAST_MODEL };

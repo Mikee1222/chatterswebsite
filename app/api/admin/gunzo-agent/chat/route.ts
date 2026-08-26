@@ -14,7 +14,7 @@ const bodySchema = z.object({
       }),
     )
     .min(1)
-    .max(40),
+    .max(16),
 });
 
 export async function POST(req: Request) {

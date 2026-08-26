@@ -1,6 +1,7 @@
 /**
  * Gunzo Agent — chat loop with Anthropic tools.
  * READ tools execute immediately; ACTION tools propose + stop for confirmation.
+ * Dedupes identical READ tool calls within a turn and bounds conversation history.
  */
 
 import type { AuthUser } from "@/lib/auth-config";
@@ -22,6 +23,8 @@ import { insertProposedAction, type AgentActionLogRow } from "@/services/gunzo-a
 
 /** Extra rounds so cross-system synthesis can chain multiple READ tool batches. */
 const MAX_ROUNDS = 6;
+/** Keep the last N user/assistant text turns (tool loops still append within the turn). */
+const MAX_HISTORY_MESSAGES = 12;
 
 export type GunzoChatMessage = {
   role: "user" | "assistant";
@@ -51,11 +54,33 @@ function adminAttribution(user: AuthUser): { executed_by: string; executed_by_na
 function stringifyToolResult(payload: unknown): string {
   try {
     const s = JSON.stringify(payload);
-    if (s.length > 12_000) return `${s.slice(0, 12_000)}…[truncated]`;
+    if (s.length > 8_000) return `${s.slice(0, 8_000)}…[truncated]`;
     return s;
   } catch {
     return String(payload);
   }
+}
+
+function toolCallKey(name: string, input: Record<string, unknown>): string {
+  try {
+    return `${name}:${JSON.stringify(input)}`;
+  } catch {
+    return `${name}:`;
+  }
+}
+
+/** Bound history: keep newest messages; optionally prepend a short note when trimmed. */
+function boundHistory(messages: GunzoChatMessage[]): GunzoChatMessage[] {
+  if (messages.length <= MAX_HISTORY_MESSAGES) return messages;
+  const kept = messages.slice(-MAX_HISTORY_MESSAGES);
+  return [
+    {
+      role: "assistant",
+      content:
+        "(Earlier messages in this chat were trimmed to save context. Continue from the recent turns below.)",
+    },
+    ...kept,
+  ];
 }
 
 export async function runGunzoAgentChat(
@@ -73,13 +98,15 @@ export async function runGunzoAgentChat(
     return { assistantText: "Send a message to get started.", pendingActions: [] };
   }
 
-  const thread: AnthropicToolMessage[] = cleaned.map((m) => ({
+  const thread: AnthropicToolMessage[] = boundHistory(cleaned).map((m) => ({
     role: m.role,
     content: m.content,
   }));
 
   const pendingActions: GunzoPendingAction[] = [];
   const readSummaries: string[] = [];
+  /** Deduplicate identical READ tool calls across rounds in this conversation turn. */
+  const readCache = new Map<string, string>();
   let lastText = "";
   const { executed_by, executed_by_name } = adminAttribution(user);
 
@@ -88,7 +115,7 @@ export async function runGunzoAgentChat(
       messages: thread,
       tools: GUNZO_AGENT_TOOLS,
       system: GUNZO_AGENT_SYSTEM,
-      maxTokens: 2048,
+      maxTokens: 1800,
       temperature: 0.35,
       logLabel: "gunzo-agent",
     });
@@ -181,12 +208,27 @@ export async function runGunzoAgentChat(
       }
 
       if (isGunzoReadTool(name)) {
+        const key = toolCallKey(name, input);
+        const cachedPayload = readCache.get(key);
+        if (cachedPayload) {
+          readSummaries.push(`${name}: (reused prior result)`);
+          toolResults.push({
+            type: "tool_result",
+            tool_use_id: use.id,
+            content: cachedPayload,
+            is_error: false,
+          });
+          continue;
+        }
+
         const result = await executeGunzoTool(name, input, { user, confirmed: false });
         readSummaries.push(`${name}: ${result.summary}`);
+        const payload = stringifyToolResult(result);
+        readCache.set(key, payload);
         toolResults.push({
           type: "tool_result",
           tool_use_id: use.id,
-          content: stringifyToolResult(result),
+          content: payload,
           is_error: !result.ok,
         });
       }
@@ -203,7 +245,7 @@ export async function runGunzoAgentChat(
         messages: thread,
         tools: GUNZO_AGENT_TOOLS,
         system: GUNZO_AGENT_SYSTEM,
-        maxTokens: 1024,
+        maxTokens: 800,
         temperature: 0.2,
         logLabel: "gunzo-agent-confirm-wrap",
       });

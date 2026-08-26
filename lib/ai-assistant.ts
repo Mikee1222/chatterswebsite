@@ -1,12 +1,21 @@
 /**
  * Shared Anthropic Messages API helper (server-side only).
- * Model: claude-sonnet-4-6 — same as Applications AI summary / translate / funnel insight.
+ * Default: claude-sonnet-4-6 for complex reasoning.
+ * Fast tier: claude-haiku-4-5 for mechanical summaries / captions / translation.
  * Never expose ANTHROPIC_API_KEY to the client.
  */
 
 export const AI_ASSISTANT_MODEL = "claude-sonnet-4-6";
+/** Cheaper/faster model for mechanical tasks (captions, translation, stats summaries). */
+export const AI_FAST_MODEL = "claude-haiku-4-5";
 
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+
+function recordUsage(featureKey: string, model: string, ok: boolean): void {
+  void import("@/services/ai-usage-log")
+    .then(({ logAiUsage }) => logAiUsage({ featureKey, model, ok }))
+    .catch(() => null);
+}
 
 type AnthropicContentBlock = {
   type?: string;
@@ -129,6 +138,7 @@ export async function callAnthropic(
     const data = (await res.json().catch(() => ({}))) as AnthropicMessagesResponse;
     if (!res.ok) {
       console.error(`[${label}] Anthropic error`, res.status, data?.error?.message ?? data);
+      recordUsage(label, model, false);
       return null;
     }
 
@@ -139,10 +149,15 @@ export async function callAnthropic(
       .join("\n")
       .trim();
 
-    if (!text) return null;
+    if (!text) {
+      recordUsage(label, model, false);
+      return null;
+    }
+    recordUsage(label, model, true);
     return { text, model };
   } catch (err) {
     console.error(`[${label}] fetch failed`, err);
+    recordUsage(label, model, false);
     return null;
   }
 }
@@ -190,6 +205,7 @@ export async function callAnthropicWithTools(
     const data = (await res.json().catch(() => ({}))) as AnthropicMessagesResponse;
     if (!res.ok) {
       console.error(`[${label}] Anthropic error`, res.status, data?.error?.message ?? data);
+      recordUsage(label, model, false);
       return null;
     }
 
@@ -212,6 +228,7 @@ export async function callAnthropicWithTools(
       }
     }
 
+    recordUsage(label, model, true);
     return {
       text,
       toolUses,
@@ -221,6 +238,7 @@ export async function callAnthropicWithTools(
     };
   } catch (err) {
     console.error(`[${label}] fetch failed`, err);
+    recordUsage(label, model, false);
     return null;
   }
 }
@@ -342,6 +360,7 @@ export async function callAnthropicVision(options: {
     const data = (await res.json().catch(() => ({}))) as AnthropicMessagesResponse;
     if (!res.ok) {
       console.error(`[${label}] Anthropic error`, res.status, data?.error?.message ?? data);
+      recordUsage(label, model, false);
       return null;
     }
 
@@ -352,10 +371,15 @@ export async function callAnthropicVision(options: {
       .join("\n")
       .trim();
 
-    if (!out) return null;
+    if (!out) {
+      recordUsage(label, model, false);
+      return null;
+    }
+    recordUsage(label, model, true);
     return { text: out, model };
   } catch (err) {
     console.error(`[${label}] fetch failed`, err);
+    recordUsage(label, model, false);
     return null;
   }
 }
