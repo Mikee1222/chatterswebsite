@@ -4,14 +4,7 @@
  */
 
 import { APPLICATION_AI_SUMMARY_MODEL } from "@/lib/application-ai-summary";
-
-const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
-
-type AnthropicContentBlock = { type?: string; text?: string };
-type AnthropicMessagesResponse = {
-  content?: AnthropicContentBlock[];
-  error?: { message?: string };
-};
+import { callAnthropic } from "@/lib/ai-assistant";
 
 function buildPrompt(snapshot: Record<string, unknown>, formTitle: string): string {
   return `You are analyzing recruitment funnel analytics for an application form titled "${formTitle}".
@@ -38,51 +31,13 @@ export async function generateApplicationFunnelInsight(input: {
   formTitle: string;
   snapshot: Record<string, unknown>;
 }): Promise<{ text: string; model: string } | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) {
-    console.warn("[application-funnel-insight] ANTHROPIC_API_KEY not set — skipping");
-    return null;
-  }
-
-  const prompt = buildPrompt(input.snapshot, input.formTitle);
-
-  try {
-    const res = await fetch(ANTHROPIC_MESSAGES_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: APPLICATION_AI_SUMMARY_MODEL,
-        max_tokens: 700,
-        temperature: 0.2,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    const data = (await res.json().catch(() => ({}))) as AnthropicMessagesResponse;
-    if (!res.ok) {
-      console.error(
-        "[application-funnel-insight] Anthropic error",
-        res.status,
-        data?.error?.message ?? data,
-      );
-      return null;
-    }
-
-    const text = (data.content ?? [])
-      .filter((b) => b.type === "text" && typeof b.text === "string")
-      .map((b) => b.text!.trim())
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-
-    if (!text) return null;
-    return { text, model: APPLICATION_AI_SUMMARY_MODEL };
-  } catch (err) {
-    console.error("[application-funnel-insight] fetch failed", err);
-    return null;
-  }
+  const result = await callAnthropic({
+    model: APPLICATION_AI_SUMMARY_MODEL,
+    messages: [{ role: "user", content: buildPrompt(input.snapshot, input.formTitle) }],
+    maxTokens: 700,
+    temperature: 0.2,
+    logLabel: "application-funnel-insight",
+  });
+  if (!result) return null;
+  return { text: result.text, model: result.model };
 }

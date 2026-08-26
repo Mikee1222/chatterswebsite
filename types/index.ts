@@ -1138,6 +1138,7 @@ export type NotificationEventType =
   | "account_deleted"
   | "daily_summary"
   | "va_statistics_weekly_summary"
+  | "ai_notification_digest"
   // Rewards
   | "points_awarded"
   | "level_up"

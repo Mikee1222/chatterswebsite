@@ -114,6 +114,8 @@ export function CreativeScriptsQueueClient({
   const [textOnScreenOpen, setTextOnScreenOpen] = React.useState(false);
   const [scriptBrief, setScriptBrief] = React.useState("");
   const [scriptBriefOpen, setScriptBriefOpen] = React.useState(false);
+  const [brainstormText, setBrainstormText] = React.useState<string | null>(null);
+  const [brainstormLoading, setBrainstormLoading] = React.useState(false);
   /** New direct-upload sb:// token; undefined = keep existing. */
   const [briefAttachmentToken, setBriefAttachmentToken] = React.useState<string | undefined>(
     undefined,
@@ -315,7 +317,46 @@ export function CreativeScriptsQueueClient({
         : null,
     );
     setBriefUploadError(null);
+    setBrainstormText(null);
     if (briefFileRef.current) briefFileRef.current.value = "";
+  }
+
+  async function handleBrainstorm(video: WinnerVideoRecord) {
+    setBrainstormLoading(true);
+    setBrainstormText(null);
+    try {
+      const typeLabel =
+        video.script_video_type?.trim() || video.content_type?.trim() || "";
+      const res = await fetch("/api/creative-scripts/ai-brainstorm", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          draftScript: scriptText,
+          brief: scriptBrief,
+          caption: video.note || video.admin_instructions || "",
+          videoType: typeLabel,
+          modelName: video.assigned_creator_name || video.reference_model_name || "",
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        suggestions?: string;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Brainstorm failed");
+      setBrainstormText(data.suggestions ?? "");
+    } catch (e) {
+      addToast(
+        winnerVideoLocalToast(
+          `brainstorm-${Date.now()}`,
+          "AI suggestions failed",
+          e instanceof Error ? e.message : "Try again",
+          "high",
+        ),
+      );
+    } finally {
+      setBrainstormLoading(false);
+    }
   }
 
   async function handleBriefFile(videoId: string, file: File | null) {
@@ -746,6 +787,24 @@ export function CreativeScriptsQueueClient({
                                           rows={10}
                                           placeholder="Write the full script here (or Text on Screen)…"
                                         />
+                                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                                          <button
+                                            type="button"
+                                            className={cn(VA_BTN_SECONDARY, "text-xs")}
+                                            disabled={brainstormLoading}
+                                            onClick={() => void handleBrainstorm(v)}
+                                          >
+                                            {brainstormLoading ? (
+                                              <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
+                                            ) : null}
+                                            Get AI suggestions
+                                          </button>
+                                        </div>
+                                        {brainstormText ? (
+                                          <div className="mt-2 rounded-xl border border-[#D4AF8C]/20 bg-[#D4AF8C]/[0.06] px-3 py-2.5 text-xs leading-relaxed text-white/75 whitespace-pre-wrap">
+                                            {brainstormText}
+                                          </div>
+                                        ) : null}
                                       </div>
 
                                       <div className="overflow-hidden rounded-xl border border-[#D4AF8C]/15 bg-[#D4AF8C]/[0.04]">

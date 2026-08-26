@@ -4,9 +4,12 @@ import { VA_CARD, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { VaReviewHistorySummary } from "@/services/marketing-reviews";
 import { SopFormSection } from "@/components/sop/sop-form-section";
+import { SpotMistakeAiPatternsCard } from "@/components/spot-mistake-ai-patterns-card";
 
 type Props = {
   history: VaReviewHistorySummary;
+  vaId: string;
+  vaName: string;
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -15,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   Escalated: "border-red-500/40 bg-red-500/15 text-red-300",
 };
 
-export function AccountReviewHistorySection({ history }: Props) {
+export function AccountReviewHistorySection({ history, vaId, vaName }: Props) {
   const typeEntries = Object.entries(history.spot_check_by_type);
   const statusEntries = Object.entries(history.spot_check_by_status);
 
@@ -26,6 +29,8 @@ export function AccountReviewHistorySection({ history }: Props) {
       defaultOpen
     >
       <div className="space-y-4">
+        <SpotMistakeAiPatternsCard subjectId={vaId} subjectName={vaName} subjectKind="va" />
+
         <div className={cn(VA_CARD, "p-4")}>
           <p className="text-sm text-white/80">
             <span className="text-2xl font-bold text-[#FFB3D9]">{history.spot_check_count_30d}</span>

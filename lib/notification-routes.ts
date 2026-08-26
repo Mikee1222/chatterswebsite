@@ -137,6 +137,7 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
   // Prefer event-specific deep links for system digests
   if (isAdmin && event_type === "va_statistics_weekly_summary") return ROUTES.admin.vaStatistics;
   if (isAdmin && event_type === "daily_summary") return ROUTES.admin.home;
+  if (event_type === "ai_notification_digest") return ROUTES.settings;
   const isModel = role === "model";
   const isVa = role === "virtual_assistant";
   const isClient = role === "client";
@@ -380,6 +381,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "account_update":
     case "daily_summary":
     case "va_statistics_weekly_summary":
+    case "ai_notification_digest":
       return "System";
     default:
       return "Alert";

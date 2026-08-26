@@ -30,6 +30,7 @@ import {
   useSopFullscreenReader,
 } from "@/components/sop/sop-fullscreen-reader";
 import { useSopMotion } from "@/components/sop/sop-motion";
+import { SopAiChatPanel } from "@/components/sop-ai-chat-panel";
 import { cn } from "@/lib/utils";
 
 const SIGNOFF_STATEMENT =
@@ -1117,12 +1118,15 @@ export function SopViewerClient({
         animate="show"
         variants={motionCfg.stagger}
       >
-        <motion.div variants={motionCfg.reveal}>
-          <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/55">Training</p>
-          <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">SOPs / Training</h1>
-          <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/55">
-            Role-based standards, KPIs, and walkthroughs for your position.
-          </p>
+        <motion.div variants={motionCfg.reveal} className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/55">Training</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">SOPs / Training</h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/55">
+              Role-based standards, KPIs, and walkthroughs for your position.
+            </p>
+          </div>
+          <SopAiChatPanel />
         </motion.div>
 
         {roleBundles.length === 0 ? (

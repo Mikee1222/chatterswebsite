@@ -34,6 +34,8 @@ import {
   Users,
   Video,
   X,
+  Sparkles,
+  Loader2,
 } from "lucide-react";
 import { AdminSopOverviewPanel } from "@/components/admin-sop-overview-panel";
 import { AdminSopQuizInsightsPanel } from "@/components/admin-sop-quiz-insights-panel";
@@ -709,6 +711,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
   const [fnViewing, setFnViewing] = React.useState<SopFunction | null>(null);
   const [fnForm, setFnForm] = React.useState<FunctionForm>(emptyFunctionForm());
   const [fnSaving, setFnSaving] = React.useState(false);
+  const [fnAiDrafting, setFnAiDrafting] = React.useState(false);
   const [fnFileUploading, setFnFileUploading] = React.useState(false);
   const [fnFileUploadError, setFnFileUploadError] = React.useState("");
   const fnFileInputRef = React.useRef<HTMLInputElement>(null);
@@ -1263,6 +1266,61 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
       });
     } catch {
       void loadQuizQuestions(fnEditing!.id);
+    }
+  }
+
+  async function draftFunctionWithAi() {
+    const bullets = fnForm.sop_content.trim();
+    if (!bullets) {
+      addToast(
+        localToast(
+          "sop-ai-val",
+          "Notes required",
+          "Paste rough bullets or notes into SOP content first — AI drafts from that text (form only, not saved).",
+          "normal",
+        ),
+      );
+      return;
+    }
+    setFnAiDrafting(true);
+    try {
+      const dept =
+        selectedRole?.department_id ? deptById.get(selectedRole.department_id) : undefined;
+      const res = await fetch("/api/admin/sops/ai-draft", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: fnForm.name.trim() || "Untitled SOP",
+          bullets,
+          roleName: selectedRole?.name,
+          departmentName: dept?.name,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { draft?: string; error?: string };
+      if (!res.ok) throw new Error(data.error || "Draft failed");
+      if (data.draft) {
+        setFnForm((f) => ({ ...f, sop_content: data.draft!, standard_type: "text" }));
+        addToast(
+          localToast(
+            "sop-ai-ok",
+            "Draft ready",
+            "AI filled the form — review before saving or publishing.",
+            "normal",
+          ),
+        );
+      }
+    } catch (e) {
+      addToast(
+        localToast(
+          "sop-ai-e",
+          "Draft failed",
+          e instanceof Error ? e.message : "Could not draft",
+          "high",
+        ),
+      );
+    } finally {
+      setFnAiDrafting(false);
     }
   }
 
@@ -1926,13 +1984,31 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
                         />
                       </div>
                       {fnForm.standard_type === "text" ? (
-                        <SopMarkdownField
-                          label="SOP content"
-                          value={fnForm.sop_content}
-                          onChange={(v) => setFnForm((f) => ({ ...f, sop_content: v }))}
-                          rows={10}
-                          placeholder="Step-by-step instructions (markdown)…"
-                        />
+                        <div className="space-y-3">
+                          <SopMarkdownField
+                            label="SOP content"
+                            value={fnForm.sop_content}
+                            onChange={(v) => setFnForm((f) => ({ ...f, sop_content: v }))}
+                            rows={10}
+                            placeholder="Step-by-step instructions (markdown)… or paste rough bullets, then Draft with AI"
+                          />
+                          <button
+                            type="button"
+                            disabled={fnAiDrafting || fnSaving}
+                            onClick={() => void draftFunctionWithAi()}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-pink-500/25 bg-pink-500/10 px-3 py-2 text-xs font-semibold text-pink-100 transition hover:bg-pink-500/15 disabled:opacity-40"
+                          >
+                            {fnAiDrafting ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                            ) : (
+                              <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                            )}
+                            Draft with AI
+                          </button>
+                          <p className="text-[11px] text-white/35">
+                            Fills this form only — never auto-saves or publishes.
+                          </p>
+                        </div>
                       ) : (
                         <div className="space-y-3">
                           <SopFormLabel>SOP file</SopFormLabel>

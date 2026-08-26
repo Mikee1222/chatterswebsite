@@ -590,7 +590,33 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     }).catch((err) => console.error("[research_assigned_to_creative] notify failed", err));
   }
 
-  return (await getWinnerVideoById(id)) ?? updated;
+  // Fire-and-forget AI creative brief when assigned + Needs Script (never block approve).
+  const final = (await getWinnerVideoById(id)) ?? updated;
+  if (
+    creativeId &&
+    final.script_status === "Needs Script" &&
+    !(final.script_brief ?? "").trim()
+  ) {
+    void (async () => {
+      try {
+        const { generateWinnerVideoCreativeBrief } = await import("./ai-powered-features");
+        const brief = await generateWinnerVideoCreativeBrief({
+          caption: final.note,
+          adminInstructions: final.admin_instructions,
+          qualityRating: final.quality_rating ?? undefined,
+          modelName: final.reference_model_name || final.assigned_creator_name,
+          researchNotes: final.note,
+        });
+        if (brief.trim()) {
+          await saveScriptBriefOnly(id, brief);
+        }
+      } catch (err) {
+        console.error("[approveWinnerVideo] AI script brief failed", id, err);
+      }
+    })();
+  }
+
+  return final;
 }
 
 export type RejectWinnerVideoInput = {
@@ -1010,6 +1036,19 @@ export async function saveCreativeScriptText(
   }
   await persistWinnerVideoFields(id, fields);
 
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after save");
+  return updated;
+}
+
+/** Persist script_brief only (e.g. AI-generated starting brief after approve). */
+export async function saveScriptBriefOnly(
+  id: string,
+  script_brief: string,
+): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  await persistWinnerVideoFields(id, { script_brief: script_brief.trim() });
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after save");
   return updated;

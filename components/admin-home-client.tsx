@@ -47,6 +47,7 @@ import {
 } from "@/components/infloww-performance-ui";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { LiveTimer } from "@/components/live-timer";
+import { AdminHomeAiBriefingCard } from "@/components/admin-home-ai-briefing-card";
 
 type ChatterOption = { id: string; full_name: string };
 
@@ -420,6 +421,19 @@ export function AdminHomeClient(props: Props) {
           </button>
         </div>
       </header>
+
+      <AdminHomeAiBriefingCard
+        todaySalesUsd={props.todaySalesUsd}
+        sparklineWowPct={sparklineWow.wowPercent}
+        topChatterName={props.topChatterName}
+        topChatterRevenue={props.topChatterRevenue}
+        topModelName={props.topModelName}
+        topModelRevenue={props.topModelRevenue}
+        monthlyRevenue={props.totalRevenue}
+        pendingCustoms={props.pendingCustomsCount}
+        activeChatterShifts={props.activeChatterShifts}
+        activeVaShifts={props.activeVaShifts}
+      />
 
       {targetModalOpen && (
         <div

@@ -370,7 +370,11 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
         {reviewHistory &&
         (role === "virtual_assistant" || secondaryRole === "virtual_assistant") &&
         (vaType === "marketing" || vaType === "both" || user.va_type === "marketing" || user.va_type === "both") ? (
-          <AccountReviewHistorySection history={reviewHistory} />
+          <AccountReviewHistorySection
+            history={reviewHistory}
+            vaId={user.id}
+            vaName={user.full_name || user.email || "VA"}
+          />
         ) : null}
 
         <SopFormSection title="Notes" description="Internal notes visible to admins only" defaultOpen={Boolean(user.notes)}>
