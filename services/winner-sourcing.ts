@@ -383,24 +383,27 @@ export async function createWinnerSubmission(input: {
       () => [],
     );
     const autoLabel = source === "auto_detected" ? " (auto-detected)" : "";
-    for (const u of holders) {
-      if (!u.id || u.id === input.submitted_by_id) continue;
-      await notify({
-        user_id: u.id,
-        event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: `${tier === "super_winner" ? "🔥 Super Winner" : "🏆 Winner"}${autoLabel}`,
-        body:
-          source === "auto_detected"
-            ? `${submission.model_name} hit ${viewCount.toLocaleString()} views — classified as ${tier === "super_winner" ? "Super Winner" : "Winner"}.`
-            : `${submission.submitted_by_name} submitted a ${tier === "super_winner" ? "Super Winner" : "Winner"} for ${submission.model_name} (${viewCount.toLocaleString()} views).`,
-        entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
-        entity_id: submission.id,
-        actor_user_id: input.submitted_by_id,
-        _triggerSource:
-          source === "auto_detected" ? "winner_auto_detect" : "winner_sourcing_submit",
-      }).catch(() => {});
-    }
+    await Promise.all(
+      holders
+        .filter((u) => u.id && u.id !== input.submitted_by_id)
+        .map((u) =>
+          notify({
+            user_id: u.id,
+            event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
+            priority: NOTIFICATION_PRIORITY.NORMAL,
+            title: `${tier === "super_winner" ? "🔥 Super Winner" : "🏆 Winner"}${autoLabel}`,
+            body:
+              source === "auto_detected"
+                ? `${submission.model_name} hit ${viewCount.toLocaleString()} views — classified as ${tier === "super_winner" ? "Super Winner" : "Winner"}.`
+                : `${submission.submitted_by_name} submitted a ${tier === "super_winner" ? "Super Winner" : "Winner"} for ${submission.model_name} (${viewCount.toLocaleString()} views).`,
+            entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
+            entity_id: submission.id,
+            actor_user_id: input.submitted_by_id,
+            _triggerSource:
+              source === "auto_detected" ? "winner_auto_detect" : "winner_sourcing_submit",
+          }).catch(() => {}),
+        ),
+    );
   }
 
   return submission;
