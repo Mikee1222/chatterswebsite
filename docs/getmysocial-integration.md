@@ -19,7 +19,7 @@ Timeframe values: `today`, `yesterday`, `thisWeek`, `lastWeek`, `thisMonth`, `la
 
 ## App wiring
 - Tables: `getmysocial_links`, `getmysocial_daily_analytics`, `getmysocial_referrers`, `getmysocial_breakdowns`, `getmysocial_visitor_events` (90d)
-- Cron: `/api/cron/sync-getmysocial` · GH Actions every 2h (`sync-getmysocial-2h.yml`) · daily Vercel fallback
+- Cron: `/api/cron/sync-getmysocial` · daily Vercel fallback (`vercel.json`) · optional 2h GitHub Action template at `docs/cron/sync-getmysocial-2h.yml.example` (copy into `.github/workflows/` with `workflow` scope)
 - Admin UI: Marketing → Instagram Insights → **Link Funnel** tab
 - Model UI: Earnings → link-in-bio card
 - Linking: Accounts → Models → Integrations → GetMySocial Link A/B
