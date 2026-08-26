@@ -19,6 +19,7 @@ export type GunzoToolMeta = {
 export const GUNZO_READ_TOOL_NAMES = [
   "get_chatter_performance",
   "get_model_revenue",
+  "get_model_subscriber_stats",
   "get_instagram_insights_summary",
   "get_link_analytics",
   "get_va_stats",
@@ -61,6 +62,13 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     kind: "read",
     requiredPermission: PERMISSIONS.EARNINGS_VIEW,
     description: "Creator/model revenue rankings (Creator Earnings source of truth)",
+  },
+  get_model_subscriber_stats: {
+    name: "get_model_subscriber_stats",
+    kind: "read",
+    requiredPermission: PERMISSIONS.EARNINGS_VIEW,
+    description:
+      "Daily creator subscriber/fan stats from synced Infloww creator report (new subs, renewals, active fans, conversion, chat volume)",
   },
   get_instagram_insights_summary: {
     name: "get_instagram_insights_summary",
@@ -246,6 +254,28 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
         },
       },
       required: [],
+    },
+  },
+  {
+    name: "get_model_subscriber_stats",
+    description:
+      "Daily OnlyFans subscriber/fan stats for one model from synced infloww_creator_daily_stats (same source as Weekly Progress cross-platform OF subs). Defaults to today (Athens) when date_range omitted. Use for questions like how many new subs did [model] get today, renewals, active fans, profile visitors, message/PPV counts, auto-renew health.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name_or_id: {
+          type: "string",
+          description: "Model name (e.g. Lina, Diana) or record id (required)",
+        },
+        date_range: {
+          type: "string",
+          enum: ["today", "this_week", "last_week", "this_month", "last_month", "custom"],
+          description: "Date range preset; defaults to today (Athens) when omitted",
+        },
+        start_ymd: { type: "string", description: "YYYY-MM-DD start when date_range=custom" },
+        end_ymd: { type: "string", description: "YYYY-MM-DD end when date_range=custom" },
+      },
+      required: ["model_name_or_id"],
     },
   },
   {
@@ -617,7 +647,7 @@ export const GUNZO_AGENT_SYSTEM = `You are Gunzo — a sharp, trusted strategic 
 - Opinions are fine only as data-grounded suggestions ("given X and Y, I'd look at Z"). Never present guesses as facts.
 
 ## Capabilities
-- CALL READ tools for live analytics and ops lists across systems: chatter/model revenue, Instagram, GetMySocial link-in-bio (get_link_analytics), VA stats, task timers, spot checks, mistakes, applications (funnel + candidate scores/flags), winner videos, weekly program, Password Library metadata (existence/coverage only), Marketing Control Room (accounts/phones/shadowban — no secrets), Bunch pipeline (filming/editing/iCloud), SOP completion, Client Gunzo Partnership.
+- CALL READ tools for live analytics and ops lists across systems: chatter/model revenue, model subscriber/fan stats (get_model_subscriber_stats — new subs, renewals, active fans, profile visitors, messages/PPVs; defaults to today Athens), Instagram, GetMySocial link-in-bio (get_link_analytics), VA stats, task timers, spot checks, mistakes, applications (funnel + candidate scores/flags), winner videos, weekly program, Password Library metadata (existence/coverage only), Marketing Control Room (accounts/phones/shadowban — no secrets), Bunch pipeline (filming/editing/iCloud), SOP completion, Client Gunzo Partnership.
 - PROPOSE ACTION tools for curated writes. Every action needs the human to Confirm in the UI — you never execute writes yourself.
 - After proposing an action, briefly explain what will happen and that they must confirm.
 
@@ -655,6 +685,6 @@ If asked for a prohibited operation, refuse clearly in one short sentence and su
   ## Actions — proposed writes or next steps that need Confirm
   ## Restrictions — hard refusals / what you cannot do
 - Proactive suggestions: when patterns in the data are clear, surface 1–3 grounded observations or ideas with citations. Never invent patterns.
-- Date ranges: prefer presets (this_week, this_month) unless the user specifies dates. For Instagram, omit year/month or use preset=this_month — current Athens month; do not assume July/prior months unless asked. Reach with views=0 before ~2026-08-07 is a historical views gap, not a blackout.
+- Date ranges: prefer presets (this_week, this_month) unless the user specifies dates. For get_model_subscriber_stats, omit date_range or use today for "today"/"how many new subs" questions (Athens calendar day). For Instagram, omit year/month or use preset=this_month — current Athens month; do not assume July/prior months unless asked. Reach with views=0 before ~2026-08-07 is a historical views gap, not a blackout.
 - When proposing actions, include the exact IDs and parameters you will use.
 - Do not re-list your full capability menu every turn — only on first orientation or when asked.`;

@@ -17,8 +17,14 @@ import {
   resolveInflowwStatsRange,
   currentAthensYearMonth,
   type InflowwStatsPreset,
+  type InflowwStatsRange,
 } from "@/services/infloww-performance";
-import { listCreatorModelRevenueRankings } from "@/services/infloww-creator-earnings";
+import { listCreatorModelRevenueRankings, listCreatorDailyStats } from "@/services/infloww-creator-earnings";
+import {
+  computeChurnRisk,
+  pickLatestCreatorDailySnapshot,
+} from "@/services/infloww-creator-analytics";
+import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { getInstagramWeeklyProgressReport } from "@/services/instagram-weekly-progress";
 import {
   getGetMySocialAnalyticsForModel,
@@ -153,6 +159,70 @@ function asPreset(v: unknown, fallback: InflowwStatsPreset = "this_month"): Infl
   return fallback;
 }
 
+type SubscriberStatsDateRange =
+  | "today"
+  | "this_week"
+  | "last_week"
+  | "this_month"
+  | "last_month"
+  | "custom";
+
+function resolveSubscriberStatsRange(
+  dateRange: unknown,
+  startYmd?: string | null,
+  endYmd?: string | null,
+): InflowwStatsRange {
+  const today = getTodayYmdAthens();
+  const dr = (str(dateRange).toLowerCase() || "today") as SubscriberStatsDateRange;
+  if (dr === "today") {
+    return { startYmd: today, endYmd: today, preset: "custom" };
+  }
+  if (dr === "custom") {
+    return resolveInflowwStatsRange("custom", startYmd || today, endYmd || today);
+  }
+  if (
+    dr === "this_week" ||
+    dr === "last_week" ||
+    dr === "this_month" ||
+    dr === "last_month"
+  ) {
+    return resolveInflowwStatsRange(dr);
+  }
+  return { startYmd: today, endYmd: today, preset: "custom" };
+}
+
+function subscriberConversion(newSubs: number, profileVisitors: number): number | null {
+  if (profileVisitors <= 0) return null;
+  return newSubs / profileVisitors;
+}
+
+function mapCreatorDailyStatsDay(row: Awaited<ReturnType<typeof listCreatorDailyStats>>[number]) {
+  const conversion = subscriberConversion(row.new_subscribers, row.profile_visitors);
+  const churn = computeChurnRisk({
+    active_fans: row.active_fans,
+    fans_with_renew_on: row.fans_with_renew_on,
+  });
+  return {
+    date: row.date,
+    performance_rank: row.performance_rank,
+    profile_visitors: row.profile_visitors,
+    guest_visitors: row.guest_visitors,
+    logged_in_visitors: row.logged_in_visitors,
+    active_fans: row.active_fans,
+    expired_fans: row.expired_fans,
+    new_subscribers: row.new_subscribers,
+    subscriber_renewals: row.renewals,
+    renewals: row.renewals,
+    fans_with_renew_on: row.fans_with_renew_on,
+    renew_on_share: churn.renew_on_share,
+    new_subscriber_conversion: conversion,
+    messages_sent: row.messages_sent,
+    ppvs_sent: row.ppvs_sent,
+    fans_chatted: row.fans_chatted,
+    reply_time_ms: row.reply_time_ms,
+  };
+}
+
 export async function executeGunzoTool(
   toolName: string,
   parameters: Record<string, unknown>,
@@ -246,6 +316,86 @@ export async function executeGunzoTool(
             truncated: capped.truncated,
             total: capped.total,
             models: capped.items,
+          },
+        };
+      }
+
+      case "get_model_subscriber_stats": {
+        const modelRecordId = str(parameters.model_name_or_id);
+        if (!modelRecordId) {
+          return {
+            ok: false,
+            summary: "model_name_or_id required",
+            error: "model_name_or_id required",
+          };
+        }
+        const range = resolveSubscriberStatsRange(
+          parameters.date_range,
+          str(parameters.start_ymd) || null,
+          str(parameters.end_ymd) || null,
+        );
+        const rows = await listCreatorDailyStats({
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          modelRecordId,
+        });
+        if (!rows.length) {
+          return {
+            ok: true,
+            summary: `No subscriber stats for model ${modelRecordId} (${range.startYmd}→${range.endYmd})`,
+            data: {
+              model_record_id: modelRecordId,
+              range,
+              days: [],
+              totals: null,
+              snapshot: null,
+            },
+          };
+        }
+        const days = rows.map(mapCreatorDailyStatsDay);
+        const latest = pickLatestCreatorDailySnapshot(rows);
+        const snapshot = latest ? mapCreatorDailyStatsDay(latest) : null;
+        const totals = {
+          new_subscribers: days.reduce((s, d) => s + d.new_subscribers, 0),
+          subscriber_renewals: days.reduce((s, d) => s + d.subscriber_renewals, 0),
+          profile_visitors: days.reduce((s, d) => s + d.profile_visitors, 0),
+          guest_visitors: days.reduce((s, d) => s + d.guest_visitors, 0),
+          logged_in_visitors: days.reduce((s, d) => s + d.logged_in_visitors, 0),
+          expired_fans: days.reduce((s, d) => s + d.expired_fans, 0),
+          messages_sent: days.reduce((s, d) => s + d.messages_sent, 0),
+          ppvs_sent: days.reduce((s, d) => s + d.ppvs_sent, 0),
+          fans_chatted: days.reduce((s, d) => s + d.fans_chatted, 0),
+          new_subscriber_conversion: subscriberConversion(
+            days.reduce((s, d) => s + d.new_subscribers, 0),
+            days.reduce((s, d) => s + d.profile_visitors, 0),
+          ),
+        };
+        const modelName = rows[0]?.model_name ?? modelRecordId;
+        const todaySubs = range.startYmd === range.endYmd ? days[0]?.new_subscribers ?? 0 : totals.new_subscribers;
+        return {
+          ok: true,
+          summary: `${modelName}: ${todaySubs} new subs (${range.startYmd}→${range.endYmd}) · ${snapshot?.active_fans ?? "—"} active fans`,
+          data: {
+            model_record_id: modelRecordId,
+            model_name: modelName,
+            creator_infloww_id: rows[0]?.creator_infloww_id ?? null,
+            range,
+            days,
+            totals,
+            snapshot: snapshot
+              ? {
+                  date: snapshot.date,
+                  active_fans: snapshot.active_fans,
+                  fans_with_renew_on: snapshot.fans_with_renew_on,
+                  renew_on_share: snapshot.renew_on_share,
+                  performance_rank: snapshot.performance_rank,
+                  churn_label: computeChurnRisk({
+                    active_fans: snapshot.active_fans,
+                    fans_with_renew_on: snapshot.fans_with_renew_on,
+                  }).label,
+                }
+              : null,
+            note: "Flow metrics (new subs, visitors, messages) sum over the range; active_fans and renew-on are point-in-time from the latest complete daily snapshot.",
           },
         };
       }
