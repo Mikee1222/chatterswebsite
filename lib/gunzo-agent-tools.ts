@@ -20,6 +20,7 @@ export const GUNZO_READ_TOOL_NAMES = [
   "get_chatter_performance",
   "get_model_revenue",
   "get_instagram_insights_summary",
+  "get_link_analytics",
   "get_va_stats",
   "get_task_timer_data",
   "get_spot_check_history",
@@ -67,6 +68,13 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     requiredPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
     description:
       "Instagram weekly progress for a calendar month (defaults to this Athens month)",
+  },
+  get_link_analytics: {
+    name: "get_link_analytics",
+    kind: "read",
+    requiredPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
+    description:
+      "GetMySocial link-in-bio analytics (bio clicks, UV, CTR, Link A/B, IG→OF funnel) for a model + date range",
   },
   get_va_stats: {
     name: "get_va_stats",
@@ -251,6 +259,28 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
         model_record_id: { type: "string" },
       },
       required: [],
+    },
+  },
+  {
+    name: "get_link_analytics",
+    description:
+      "GetMySocial link-in-bio analytics for one model: Link A/B pageviews & button clicks, UV, CTR, shield/bot blocked %, device mix, hour-of-day visitor sample, DoD/WoW click trends, A/B winners (today/week/period), rule-based talking points, and IG reach → bio clicks → OF new subs/revenue funnel (alignment, not hard attribution). Requires model_id. Date range via preset (this_week/this_month/…) or start_ymd+end_ymd. Use with get_instagram_insights_summary and get_model_revenue for cross-system funnel synthesis (high reach / low bio clicks, etc.).",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_id: {
+          type: "string",
+          description: "Model Airtable/record id (required)",
+        },
+        preset: {
+          type: "string",
+          enum: [...presetEnum],
+          description: "Date range preset; defaults to this_month when dates omitted",
+        },
+        start_ymd: { type: "string", description: "YYYY-MM-DD start (with end_ymd, or preset=custom)" },
+        end_ymd: { type: "string", description: "YYYY-MM-DD end (with start_ymd, or preset=custom)" },
+      },
+      required: ["model_id"],
     },
   },
   {
@@ -575,12 +605,14 @@ export const GUNZO_AGENT_SYSTEM = `You are Gunzo — a sharp, trusted strategic 
 - Opinions are fine only as data-grounded suggestions ("given X and Y, I'd look at Z"). Never present guesses as facts.
 
 ## Capabilities
-- CALL READ tools for live analytics and ops lists across systems: chatter/model revenue, Instagram, VA stats, task timers, spot checks, mistakes, applications (funnel + candidate scores/flags), winner videos, weekly program, Password Library metadata (existence/coverage only), Marketing Control Room (accounts/phones/shadowban — no secrets), Bunch pipeline (filming/editing/iCloud), SOP completion, Client Gunzo Partnership.
+- CALL READ tools for live analytics and ops lists across systems: chatter/model revenue, Instagram, GetMySocial link-in-bio (get_link_analytics), VA stats, task timers, spot checks, mistakes, applications (funnel + candidate scores/flags), winner videos, weekly program, Password Library metadata (existence/coverage only), Marketing Control Room (accounts/phones/shadowban — no secrets), Bunch pipeline (filming/editing/iCloud), SOP completion, Client Gunzo Partnership.
 - PROPOSE ACTION tools for curated writes. Every action needs the human to Confirm in the UI — you never execute writes yourself.
 - After proposing an action, briefly explain what will happen and that they must confirm.
 
 ## Cross-system synthesis
-- Prefer answering in one coherent take when the question spans systems. Call multiple READ tools in the same turn when useful (e.g. IG drop + OF new subs + revenue; shadowban + account status + model revenue; schedule gaps + VA timers).
+- Prefer answering in one coherent take when the question spans systems. Call multiple READ tools in the same turn when useful (e.g. IG reach + get_link_analytics bio clicks + OF new subs/revenue; shadowban + account status + model revenue; schedule gaps + VA timers).
+- When link performance is relevant (bio clicks, Link A vs B, funnel leaks), call get_link_analytics with the model_id. Pair with get_instagram_insights_summary and/or get_model_revenue for grounded funnel reads (high reach / low clicks, winning link, CTR).
+- Proactively surface link insights when tool data shows clear patterns (e.g. high IG reach with soft bio CTR, Link A crushing B, shield/bot blocking inflating noise) — cite the tools. Never invent link numbers.
 - Do NOT call the same READ tool twice with the same arguments in one conversation turn — reuse prior tool results already in the thread.
 - Weave results into one narrative — don't dump disconnected tool summaries.
 - For open-ended strategy questions ("what should we focus on?", "anything off?"), pull a few relevant READ tools, then offer grounded observations and optional next checks. Skip the capability menu unless they ask what you can do.

@@ -2,13 +2,18 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { getGetMySocialAnalyticsForModel } from "@/services/getmysocial-analytics";
+import {
+  getGetMySocialAgencyOverview,
+  getGetMySocialAnalyticsForModel,
+} from "@/services/getmysocial-analytics";
+import { resolveInflowwStatsRange } from "@/services/infloww-performance";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
  * GET /api/admin/getmysocial/analytics?modelId=…
+ * GET /api/admin/getmysocial/analytics?agency=1&start=&end=
  */
 export async function GET(request: Request) {
   const session = await getSessionFromCookies();
@@ -18,12 +23,28 @@ export async function GET(request: Request) {
   }
 
   const { searchParams } = new URL(request.url);
-  const modelId = searchParams.get("modelId")?.trim();
-  if (!modelId) {
-    return NextResponse.json({ error: "modelId is required" }, { status: 400 });
-  }
+  const agency = searchParams.get("agency") === "1" || searchParams.get("scope") === "agency";
 
   try {
+    if (agency) {
+      const start = searchParams.get("start")?.trim();
+      const end = searchParams.get("end")?.trim();
+      const range =
+        start && end
+          ? { startYmd: start, endYmd: end }
+          : resolveInflowwStatsRange("this_month", null, null);
+      const data = await getGetMySocialAgencyOverview({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+      });
+      return NextResponse.json({ data });
+    }
+
+    const modelId = searchParams.get("modelId")?.trim();
+    if (!modelId) {
+      return NextResponse.json({ error: "modelId is required (or agency=1)" }, { status: 400 });
+    }
+
     const data = await getGetMySocialAnalyticsForModel(modelId, {
       startYmd: searchParams.get("start")?.trim() || undefined,
       endYmd: searchParams.get("end")?.trim() || undefined,

@@ -21,6 +21,9 @@ import {
 import { listCreatorModelRevenueRankings } from "@/services/infloww-creator-earnings";
 import { getInstagramWeeklyProgressReport } from "@/services/instagram-weekly-progress";
 import {
+  getGetMySocialAnalyticsForModel,
+} from "@/services/getmysocial-analytics";
+import {
   computeVaStatisticsReport,
   resolveVaStatisticsRange,
   type VaStatisticsPreset,
@@ -304,6 +307,82 @@ export async function executeGunzoTool(
             total: models.total,
             models: models.items,
             team_month_totals: report.team_month_totals ?? null,
+          },
+        };
+      }
+
+      case "get_link_analytics": {
+        const modelId = str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_id required", error: "model_id required" };
+        }
+        const start = str(parameters.start_ymd);
+        const end = str(parameters.end_ymd);
+        const preset = asPreset(
+          parameters.preset,
+          start && end ? "custom" : "this_month",
+        );
+        const range = resolveInflowwStatsRange(
+          start && end ? "custom" : preset,
+          start || null,
+          end || null,
+        );
+        const summary = await getGetMySocialAnalyticsForModel(modelId, {
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          timeframe: "thisMonth",
+        });
+        if (!summary) {
+          return {
+            ok: true,
+            summary: `No GetMySocial links linked for model ${modelId}`,
+            data: { model_id: modelId, range, linked: false },
+          };
+        }
+        return {
+          ok: true,
+          summary: `${summary.modelName}: ${summary.totals.button_clicks} bio clicks · ${summary.totals.pageviews} views · CTR ${summary.totals.ctr_pct ?? "—"}% (${range.startYmd}→${range.endYmd})`,
+          data: {
+            linked: true,
+            range,
+            model_id: summary.modelId,
+            model_name: summary.modelName,
+            last_synced_at: summary.lastSyncedAt,
+            totals: summary.totals,
+            link_a: {
+              shortcode: summary.linkA.link?.shortcode ?? null,
+              pageviews: summary.linkA.pageviews,
+              button_clicks: summary.linkA.button_clicks,
+              unique_visitors: summary.linkA.unique_visitors,
+              ctr_pct: summary.linkA.ctr_pct,
+              shield_blocked_pct: summary.linkA.shield_blocked_pct,
+            },
+            link_b: {
+              shortcode: summary.linkB.link?.shortcode ?? null,
+              pageviews: summary.linkB.pageviews,
+              button_clicks: summary.linkB.button_clicks,
+              unique_visitors: summary.linkB.unique_visitors,
+              ctr_pct: summary.linkB.ctr_pct,
+              shield_blocked_pct: summary.linkB.shield_blocked_pct,
+            },
+            winners: summary.winners,
+            trends: {
+              clicks_dod: summary.trends.clicks_dod,
+              clicks_wow: summary.trends.clicks_wow,
+              pageviews_dod: summary.trends.pageviews_dod,
+              pageviews_wow: summary.trends.pageviews_wow,
+            },
+            mobile_device_pct: summary.mobile_device_pct,
+            visitor_insights: {
+              sample_size: summary.visitorInsights.sample_size,
+              bot_pct: summary.visitorInsights.bot_pct,
+              peak_hour_athens: summary.visitorInsights.peak_hour_athens,
+            },
+            funnel_totals: summary.funnelTotals,
+            top_referrers: summary.referrers.slice(0, 8),
+            top_devices: summary.devices.slice(0, 6),
+            talking_points: summary.talking_points,
+            note: "Funnel joins IG reach + bio clicks + OF subs/revenue by Athens day — correlation, not hard attribution.",
           },
         };
       }

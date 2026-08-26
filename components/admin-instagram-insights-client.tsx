@@ -212,6 +212,7 @@ type InsightsPayload = {
     } | null;
     models_with_data: number;
   };
+  linkAnalytics?: import("@/services/getmysocial-analytics").GetMySocialAgencyOverview | null;
   modelStats?: {
     growth_rate_pct: number | null;
     prior_growth_rate_pct: number | null;
@@ -408,6 +409,7 @@ export function AdminInstagramInsightsClient() {
   const erValue = data?.totals.avg_engagement_rate;
   const modelStats = data?.modelStats;
   const overview = data?.overview;
+  const linkAnalytics = data?.linkAnalytics ?? null;
 
   const filteredTopPosts = React.useMemo(() => {
     const posts = data?.topPosts ?? [];
@@ -825,6 +827,146 @@ export function AdminInstagramInsightsClient() {
                   />
                 </div>
               )}
+
+              {/* GetMySocial period totals alongside IG overview */}
+              {linkAnalytics &&
+              (linkAnalytics.totals.button_clicks > 0 ||
+                linkAnalytics.totals.pageviews > 0 ||
+                linkAnalytics.models.length > 0) ? (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <LuxuryStatCard
+                    label="Bio clicks"
+                    value={<CountUp value={linkAnalytics.totals.button_clicks} />}
+                    tooltip="GetMySocial button clicks across linked Link A/B pages in this period."
+                    accent="champagne"
+                    glow
+                  />
+                  <LuxuryStatCard
+                    label="Unique visitors"
+                    value={<CountUp value={linkAnalytics.totals.unique_visitors} />}
+                    tooltip="Sum of latest unique-visitor snapshots per linked model (GMS overview)."
+                    accent="champagne"
+                  />
+                  <LuxuryStatCard
+                    label="Bio CTR"
+                    value={
+                      linkAnalytics.totals.ctr_pct != null
+                        ? `${linkAnalytics.totals.ctr_pct}%`
+                        : "—"
+                    }
+                    hint={`${fmtNum(linkAnalytics.totals.pageviews)} pageviews`}
+                    tooltip="Button clicks ÷ pageviews across agency GetMySocial links this period."
+                    accent="pink"
+                  />
+                  <LuxuryStatCard
+                    label="Today bio clicks"
+                    value={<CountUp value={linkAnalytics.today.button_clicks} />}
+                    hint={`Athens day ${linkAnalytics.todayYmd.slice(5)}${
+                      linkAnalytics.lastSyncedAt
+                        ? ` · synced ${formatRelativeSync(linkAnalytics.lastSyncedAt)}`
+                        : ""
+                    }`}
+                    tooltip="Today's bio button clicks (Athens calendar day), refreshed on GetMySocial sync cadence."
+                    accent="emerald"
+                  />
+                </div>
+              ) : null}
+
+              {/* Today snapshot + Link A/B winners */}
+              {linkAnalytics && linkAnalytics.models.length > 0 ? (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <div className={cn(VA_CARD, "p-4")}>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <SectionLabel>
+                        <Link2 className="mr-1 inline h-3.5 w-3.5" />
+                        Today · bio clicks by model
+                      </SectionLabel>
+                      <button
+                        type="button"
+                        onClick={() => setTab("link_funnel")}
+                        className="text-[11px] font-medium text-[#FFB6DE] hover:underline"
+                      >
+                        Link Funnel →
+                      </button>
+                    </div>
+                    <p className="mb-3 text-[11px] text-white/40">
+                      Athens day {linkAnalytics.todayYmd}
+                      {linkAnalytics.lastSyncedAt
+                        ? ` · last sync ${formatRelativeSync(linkAnalytics.lastSyncedAt)}`
+                        : " · sync GetMySocial to refresh"}
+                    </p>
+                    {linkAnalytics.today.by_model.length ? (
+                      <RankedBarList
+                        items={linkAnalytics.today.by_model.slice(0, 8).map((m) => ({
+                          label: m.modelName,
+                          value: m.button_clicks,
+                        }))}
+                        accent="champagne"
+                      />
+                    ) : (
+                      <p className="text-xs text-white/40">No bio clicks yet today.</p>
+                    )}
+                  </div>
+                  <div className={cn(VA_CARD, "p-4")}>
+                    <div className="mb-2">
+                      <SectionLabel>Link A vs B · winning now</SectionLabel>
+                      <p className="mt-1 text-[11px] text-white/40">
+                        Winner by bio clicks — today and this Athens week
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      {linkAnalytics.models
+                        .filter((m) => m.winner_today || m.winner_week)
+                        .slice(0, 8)
+                        .map((m) => (
+                          <div
+                            key={m.modelId}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/8 bg-black/20 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm text-white/85">{m.modelName}</p>
+                              <p className="text-[10px] text-white/40">
+                                Today {fmtNum(m.today_button_clicks)} · Week{" "}
+                                {fmtNum(m.week_button_clicks)}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {m.winner_today && !m.winner_today.tie ? (
+                                <span className="rounded-md border border-[#D4AF8C]/35 bg-[#D4AF8C]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#D4AF8C]">
+                                  Today L{m.winner_today.role}
+                                  {m.winner_today.margin_pct != null
+                                    ? ` +${m.winner_today.margin_pct}%`
+                                    : ""}
+                                </span>
+                              ) : (
+                                <span className="rounded-md border border-white/10 px-2 py-0.5 text-[10px] text-white/35">
+                                  Today —
+                                </span>
+                              )}
+                              {m.winner_week && !m.winner_week.tie ? (
+                                <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                                  Week L{m.winner_week.role}
+                                  {m.winner_week.margin_pct != null
+                                    ? ` +${m.winner_week.margin_pct}%`
+                                    : ""}
+                                </span>
+                              ) : (
+                                <span className="rounded-md border border-white/10 px-2 py-0.5 text-[10px] text-white/35">
+                                  Week —
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      {!linkAnalytics.models.some((m) => m.winner_today || m.winner_week) ? (
+                        <p className="text-xs text-white/40">
+                          No A/B traffic yet — winners appear after sync brings clicks.
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
 
               <div className={cn(VA_CARD, "overflow-hidden")}>
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">

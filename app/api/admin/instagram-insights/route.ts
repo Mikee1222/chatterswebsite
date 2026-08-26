@@ -39,6 +39,7 @@ import {
 } from "@/services/clariosuite-sync";
 import { getCrossPlatformAnalytics } from "@/services/cross-platform-analytics";
 import { getInstagramWeeklyProgressReport } from "@/services/instagram-weekly-progress";
+import { getGetMySocialAgencyOverview } from "@/services/getmysocial-analytics";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -163,6 +164,7 @@ export async function GET(request: Request) {
       stories: { active: [], has_metrics: false, error: null },
       lastSyncedAt: null,
       crossPlatform: null,
+      linkAnalytics: null,
     });
   }
 
@@ -362,6 +364,16 @@ export async function GET(request: Request) {
       ? (topPosts[0] as { synced_at?: string }).synced_at!
       : null);
 
+  let linkAnalytics: Awaited<ReturnType<typeof getGetMySocialAgencyOverview>> | null = null;
+  try {
+    linkAnalytics = await getGetMySocialAgencyOverview({
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+    });
+  } catch (err) {
+    console.error("[instagram-insights] getmysocial agency overview", err);
+  }
+
   return NextResponse.json(
     {
       range,
@@ -424,6 +436,7 @@ export async function GET(request: Request) {
           : null,
         models_with_data: comparison.filter((c) => c.days > 0).length,
       },
+      linkAnalytics,
       modelStats: {
         growth_rate_pct: growthRate,
         prior_growth_rate_pct: priorGrowthRate,

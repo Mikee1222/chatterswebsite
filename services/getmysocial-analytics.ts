@@ -4,6 +4,7 @@
 
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
+  listAllGetMySocialModelLinks,
   listGetMySocialModelLinks,
   type GetMySocialModelLink,
   type GetMySocialLinkRole,
@@ -16,7 +17,18 @@ import {
   listCreatorTransactions,
 } from "@/services/infloww-creator-earnings";
 import { getModelById } from "@/services/modelss";
-import { ymdInAthens } from "@/lib/airtable-datetime";
+import {
+  addDaysAthensYmd,
+  getMondayOfWeekFromYmdAthens,
+  getTodayYmdAthens,
+  ymdInAthens,
+} from "@/lib/airtable-datetime";
+import { computePctChange, type PeriodChangeMetric } from "@/services/infloww-analytics";
+import {
+  generateGmsTalkingPoints,
+  pickGmsLinkWinner,
+  type GmsLinkWinner,
+} from "@/lib/getmysocial-insights";
 
 export type LinkRoleStats = {
   role: GetMySocialLinkRole;
@@ -35,6 +47,15 @@ export type GetMySocialFunnelDay = {
   bio_button_clicks: number;
   of_new_subscribers: number;
   of_revenue: number;
+};
+
+export type GetMySocialVisitorInsights = {
+  sample_size: number;
+  bot_count: number;
+  bot_pct: number | null;
+  proxy_count: number;
+  hours: Array<{ hour: number; count: number }>;
+  peak_hour_athens: number | null;
 };
 
 export type GetMySocialAnalyticsSummary = {
@@ -73,6 +94,21 @@ export type GetMySocialAnalyticsSummary = {
   countries: Array<{ label: string; label_code: string | null; count: number }>;
   devices: Array<{ label: string; count: number }>;
   browsers: Array<{ label: string; count: number }>;
+  /** Device share that looks mobile / phone. */
+  mobile_device_pct: number | null;
+  visitorInsights: GetMySocialVisitorInsights;
+  trends: {
+    clicks_dod: PeriodChangeMetric;
+    clicks_wow: PeriodChangeMetric;
+    pageviews_dod: PeriodChangeMetric;
+    pageviews_wow: PeriodChangeMetric;
+  };
+  winners: {
+    today: GmsLinkWinner | null;
+    this_week: GmsLinkWinner | null;
+    period: GmsLinkWinner | null;
+  };
+  talking_points: string;
 };
 
 function n(v: unknown): number {
@@ -89,6 +125,150 @@ function emptyRole(role: GetMySocialLinkRole): LinkRoleStats {
     unique_visitors: 0,
     ctr_pct: null,
     shield_blocked_pct: 0,
+  };
+}
+
+function athensHourFromIso(iso: string): number | null {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Athens",
+      hour: "numeric",
+      hour12: false,
+    }).formatToParts(new Date(iso));
+    const h = Number(parts.find((p) => p.type === "hour")?.value);
+    if (!Number.isFinite(h)) return null;
+    // en-GB hourCycle sometimes yields 24 for midnight
+    return h === 24 ? 0 : h;
+  } catch {
+    return null;
+  }
+}
+
+function isMobileDeviceLabel(label: string): boolean {
+  const s = label.toLowerCase();
+  return (
+    s.includes("mobile") ||
+    s.includes("phone") ||
+    s.includes("iphone") ||
+    s.includes("android") ||
+    s.includes("ipad") ||
+    s.includes("tablet")
+  );
+}
+
+function mobileShare(devices: Array<{ label: string; count: number }>): number | null {
+  const total = devices.reduce((s, d) => s + d.count, 0);
+  if (total <= 0) return null;
+  const mobile = devices
+    .filter((d) => isMobileDeviceLabel(d.label))
+    .reduce((s, d) => s + d.count, 0);
+  return Math.round((mobile / total) * 1000) / 10;
+}
+
+function sumClicksOnDate(
+  rows: Array<{ date: string; button_clicks: number; pageviews: number; link_role: string | null }>,
+  ymd: string,
+  role?: GetMySocialLinkRole
+): { button_clicks: number; pageviews: number } {
+  let button_clicks = 0;
+  let pageviews = 0;
+  for (const r of rows) {
+    if (r.date !== ymd) continue;
+    if (role && r.link_role !== role) continue;
+    button_clicks += r.button_clicks;
+    pageviews += r.pageviews;
+  }
+  return { button_clicks, pageviews };
+}
+
+function sumClicksInRange(
+  rows: Array<{ date: string; button_clicks: number; pageviews: number; link_role: string | null }>,
+  startYmd: string,
+  endYmd: string,
+  role?: GetMySocialLinkRole
+): { button_clicks: number; pageviews: number; ctr_pct: number | null } {
+  let button_clicks = 0;
+  let pageviews = 0;
+  for (const r of rows) {
+    if (r.date < startYmd || r.date > endYmd) continue;
+    if (role && r.link_role !== role) continue;
+    button_clicks += r.button_clicks;
+    pageviews += r.pageviews;
+  }
+  return {
+    button_clicks,
+    pageviews,
+    ctr_pct: pageviews > 0 ? Math.round((button_clicks / pageviews) * 1000) / 10 : null,
+  };
+}
+
+async function loadVisitorInsights(
+  linkIds: string[],
+  startYmd?: string,
+  endYmd?: string
+): Promise<GetMySocialVisitorInsights> {
+  const empty: GetMySocialVisitorInsights = {
+    sample_size: 0,
+    bot_count: 0,
+    bot_pct: null,
+    proxy_count: 0,
+    hours: [],
+    peak_hour_athens: null,
+  };
+  if (!linkIds.length) return empty;
+
+  const sb = getSupabaseServiceClient();
+  let q = sb
+    .from("getmysocial_visitor_events")
+    .select("event_timestamp,is_bot,is_proxy")
+    .in("getmysocial_link_id", linkIds)
+    .order("event_timestamp", { ascending: false })
+    .limit(2000);
+  if (startYmd) {
+    const startMs = Date.parse(`${startYmd}T00:00:00+03:00`);
+    if (Number.isFinite(startMs)) q = q.gte("event_timestamp", new Date(startMs).toISOString());
+  }
+  if (endYmd) {
+    const endMs = Date.parse(`${endYmd}T23:59:59.999+03:00`);
+    if (Number.isFinite(endMs)) q = q.lte("event_timestamp", new Date(endMs).toISOString());
+  }
+
+  const { data, error } = await q;
+  if (error || !data?.length) return empty;
+
+  const hourCounts = new Map<number, number>();
+  let bot_count = 0;
+  let proxy_count = 0;
+  for (const row of data) {
+    if (row.is_bot === true) bot_count += 1;
+    if (row.is_proxy === true) proxy_count += 1;
+    const ts = typeof row.event_timestamp === "string" ? row.event_timestamp : null;
+    if (!ts) continue;
+    const hour = athensHourFromIso(ts);
+    if (hour == null) continue;
+    hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
+  }
+
+  const hours = [...hourCounts.entries()]
+    .map(([hour, count]) => ({ hour, count }))
+    .sort((a, b) => a.hour - b.hour);
+  let peak_hour_athens: number | null = null;
+  let peakCount = 0;
+  for (const h of hours) {
+    if (h.count > peakCount) {
+      peakCount = h.count;
+      peak_hour_athens = h.hour;
+    }
+  }
+
+  const sample_size = data.length;
+  return {
+    sample_size,
+    bot_count,
+    bot_pct: sample_size > 0 ? Math.round((bot_count / sample_size) * 1000) / 10 : null,
+    proxy_count,
+    hours,
+    peak_hour_athens,
   };
 }
 
@@ -115,7 +295,7 @@ export async function getGetMySocialAnalyticsForModel(
   if (opts?.startYmd) analyticsQ = analyticsQ.gte("date", opts.startYmd);
   if (opts?.endYmd) analyticsQ = analyticsQ.lte("date", opts.endYmd);
 
-  const [analyticsRes, referrersRes, countriesRes, devicesRes, browsersRes, storyRes] =
+  const [analyticsRes, referrersRes, countriesRes, devicesRes, browsersRes, storyRes, visitorInsights] =
     await Promise.all([
       analyticsQ,
       sb
@@ -154,6 +334,7 @@ export async function getGetMySocialAnalyticsForModel(
         .select("link_a_url,link_b_url")
         .eq("model_id", mid)
         .maybeSingle(),
+      loadVisitorInsights(linkIds, opts?.startYmd, opts?.endYmd),
     ]);
 
   if (analyticsRes.error) throw new Error(analyticsRes.error.message);
@@ -318,6 +499,63 @@ export async function getGetMySocialAnalyticsForModel(
   const shield_blocked_count = Math.max(0, ...shieldRows.map((r) => n(r.shield_blocked_count)));
   const shield_blocked_pct = Math.max(0, ...shieldRows.map((r) => n(r.shield_blocked_pct)));
 
+  const devices = (devicesRes.data ?? []).map((r) => ({
+    label: String(r.label),
+    count: n(r.count),
+  }));
+  const mobile_device_pct = mobileShare(devices);
+
+  const todayYmd = getTodayYmdAthens();
+  const yesterdayYmd = addDaysAthensYmd(todayYmd, -1);
+  const weekStart = getMondayOfWeekFromYmdAthens(todayYmd);
+  const priorWeekStart = addDaysAthensYmd(weekStart, -7);
+  const priorWeekEnd = addDaysAthensYmd(weekStart, -1);
+
+  const todayClicks = sumClicksOnDate(daily, todayYmd);
+  const yesterdayClicks = sumClicksOnDate(daily, yesterdayYmd);
+  const weekClicks = sumClicksInRange(daily, weekStart, todayYmd);
+  const priorWeekClicks = sumClicksInRange(daily, priorWeekStart, priorWeekEnd);
+
+  const trends = {
+    clicks_dod: computePctChange(todayClicks.button_clicks, yesterdayClicks.button_clicks),
+    clicks_wow: computePctChange(weekClicks.button_clicks, priorWeekClicks.button_clicks),
+    pageviews_dod: computePctChange(todayClicks.pageviews, yesterdayClicks.pageviews),
+    pageviews_wow: computePctChange(weekClicks.pageviews, priorWeekClicks.pageviews),
+  };
+
+  const todayA = sumClicksOnDate(daily, todayYmd, "A");
+  const todayB = sumClicksOnDate(daily, todayYmd, "B");
+  const weekA = sumClicksInRange(daily, weekStart, todayYmd, "A");
+  const weekB = sumClicksInRange(daily, weekStart, todayYmd, "B");
+
+  const winners = {
+    today: pickGmsLinkWinner(
+      { ...todayA, ctr_pct: todayA.pageviews > 0 ? Math.round((todayA.button_clicks / todayA.pageviews) * 1000) / 10 : null },
+      { ...todayB, ctr_pct: todayB.pageviews > 0 ? Math.round((todayB.button_clicks / todayB.pageviews) * 1000) / 10 : null }
+    ),
+    this_week: pickGmsLinkWinner(weekA, weekB),
+    period: pickGmsLinkWinner(linkA, linkB),
+  };
+
+  const talking_points = generateGmsTalkingPoints({
+    modelName: model?.model_name ?? links[0]?.link_label ?? mid,
+    pageviews,
+    button_clicks,
+    unique_visitors,
+    ctr_pct: pageviews > 0 ? Math.round((button_clicks / pageviews) * 1000) / 10 : null,
+    shield_blocked_pct,
+    bot_visitor_pct: visitorInsights.bot_pct,
+    mobile_device_pct,
+    winnerToday: winners.today,
+    winnerWeek: winners.this_week,
+    clicksDod: trends.clicks_dod,
+    clicksWow: trends.clicks_wow,
+    igReach: funnelTotals.ig_reach,
+    ofNewSubs: funnelTotals.of_new_subscribers,
+    ofRevenue: funnelTotals.of_revenue,
+    peakHourAthens: visitorInsights.peak_hour_athens,
+  });
+
   return {
     modelId: mid,
     modelName: model?.model_name ?? links[0]?.link_label ?? mid,
@@ -350,13 +588,295 @@ export async function getGetMySocialAnalyticsForModel(
       label_code: (r.label_code as string | null) ?? null,
       count: n(r.count),
     })),
-    devices: (devicesRes.data ?? []).map((r) => ({
-      label: String(r.label),
-      count: n(r.count),
-    })),
+    devices,
     browsers: (browsersRes.data ?? []).map((r) => ({
       label: String(r.label),
       count: n(r.count),
     })),
+    mobile_device_pct,
+    visitorInsights,
+    trends,
+    winners,
+    talking_points,
+  };
+}
+
+export type GetMySocialAgencyModelDay = {
+  modelId: string;
+  modelName: string;
+  today_button_clicks: number;
+  today_pageviews: number;
+  week_button_clicks: number;
+  period_button_clicks: number;
+  period_pageviews: number;
+  period_unique_visitors: number;
+  period_ctr_pct: number | null;
+  winner_today: GmsLinkWinner | null;
+  winner_week: GmsLinkWinner | null;
+  lastSyncedAt: string | null;
+};
+
+export type GetMySocialAgencyOverview = {
+  range: { startYmd: string; endYmd: string };
+  todayYmd: string;
+  lastSyncedAt: string | null;
+  totals: {
+    pageviews: number;
+    button_clicks: number;
+    unique_visitors: number;
+    ctr_pct: number | null;
+    shield_blocked_pct: number;
+  };
+  today: {
+    button_clicks: number;
+    pageviews: number;
+    by_model: Array<{
+      modelId: string;
+      modelName: string;
+      button_clicks: number;
+      pageviews: number;
+      winner: GmsLinkWinner | null;
+    }>;
+  };
+  models: GetMySocialAgencyModelDay[];
+};
+
+/** Agency rollup of cached GMS daily analytics for Instagram Insights Overview. */
+export async function getGetMySocialAgencyOverview(opts: {
+  startYmd: string;
+  endYmd: string;
+}): Promise<GetMySocialAgencyOverview> {
+  const allLinks = await listAllGetMySocialModelLinks();
+  const todayYmd = getTodayYmdAthens();
+  const weekStart = getMondayOfWeekFromYmdAthens(todayYmd);
+  const empty: GetMySocialAgencyOverview = {
+    range: { startYmd: opts.startYmd, endYmd: opts.endYmd },
+    todayYmd,
+    lastSyncedAt: null,
+    totals: {
+      pageviews: 0,
+      button_clicks: 0,
+      unique_visitors: 0,
+      ctr_pct: null,
+      shield_blocked_pct: 0,
+    },
+    today: { button_clicks: 0, pageviews: 0, by_model: [] },
+    models: [],
+  };
+  if (!allLinks.length) return empty;
+
+  const linkIds = allLinks.map((l) => l.getmysocial_link_id);
+  const modelIds = [...new Set(allLinks.map((l) => l.model_id))];
+  const sb = getSupabaseServiceClient();
+
+  const lookbackStart =
+    opts.startYmd < weekStart ? opts.startYmd : addDaysAthensYmd(weekStart, -7);
+
+  const { data, error } = await sb
+    .from("getmysocial_daily_analytics")
+    .select(
+      "date,pageviews,button_clicks,unique_visitors,ctr_pct,shield_blocked_pct,getmysocial_link_id,link_role,synced_at"
+    )
+    .in("getmysocial_link_id", linkIds)
+    .gte("date", lookbackStart)
+    .lte("date", opts.endYmd > todayYmd ? opts.endYmd : todayYmd)
+    .order("date", { ascending: true });
+
+  if (error) throw new Error(error.message);
+
+  const linkToModel = new Map(allLinks.map((l) => [l.getmysocial_link_id, l]));
+  const nameCache = new Map<string, string>();
+  await Promise.all(
+    modelIds.map(async (id) => {
+      const m = await getModelById(id).catch(() => null);
+      nameCache.set(id, m?.model_name ?? id);
+    })
+  );
+
+  type Agg = {
+    modelId: string;
+    modelName: string;
+    period_pageviews: number;
+    period_button_clicks: number;
+    period_uv: number;
+    period_shield: number;
+    today_pageviews: number;
+    today_button_clicks: number;
+    week_button_clicks: number;
+    todayA: number;
+    todayB: number;
+    todayAViews: number;
+    todayBViews: number;
+    weekA: number;
+    weekB: number;
+    weekAViews: number;
+    weekBViews: number;
+    lastSyncedAt: string | null;
+  };
+
+  const byModel = new Map<string, Agg>();
+  for (const mid of modelIds) {
+    byModel.set(mid, {
+      modelId: mid,
+      modelName: nameCache.get(mid) ?? mid,
+      period_pageviews: 0,
+      period_button_clicks: 0,
+      period_uv: 0,
+      period_shield: 0,
+      today_pageviews: 0,
+      today_button_clicks: 0,
+      week_button_clicks: 0,
+      todayA: 0,
+      todayB: 0,
+      todayAViews: 0,
+      todayBViews: 0,
+      weekA: 0,
+      weekB: 0,
+      weekAViews: 0,
+      weekBViews: 0,
+      lastSyncedAt: null,
+    });
+  }
+
+  for (const row of data ?? []) {
+    const linkId = String(row.getmysocial_link_id);
+    const link = linkToModel.get(linkId);
+    if (!link) continue;
+    const agg = byModel.get(link.model_id);
+    if (!agg) continue;
+    const date = String(row.date).slice(0, 10);
+    const pv = n(row.pageviews);
+    const clicks = n(row.button_clicks);
+    const role = row.link_role === "B" ? "B" : "A";
+
+    if (date >= opts.startYmd && date <= opts.endYmd) {
+      agg.period_pageviews += pv;
+      agg.period_button_clicks += clicks;
+      agg.period_uv = Math.max(agg.period_uv, n(row.unique_visitors));
+      agg.period_shield = Math.max(agg.period_shield, n(row.shield_blocked_pct));
+    }
+    if (date === todayYmd) {
+      agg.today_pageviews += pv;
+      agg.today_button_clicks += clicks;
+      if (role === "A") {
+        agg.todayA += clicks;
+        agg.todayAViews += pv;
+      } else {
+        agg.todayB += clicks;
+        agg.todayBViews += pv;
+      }
+    }
+    if (date >= weekStart && date <= todayYmd) {
+      agg.week_button_clicks += clicks;
+      if (role === "A") {
+        agg.weekA += clicks;
+        agg.weekAViews += pv;
+      } else {
+        agg.weekB += clicks;
+        agg.weekBViews += pv;
+      }
+    }
+    const synced = typeof row.synced_at === "string" ? row.synced_at : null;
+    if (synced && (!agg.lastSyncedAt || synced > agg.lastSyncedAt)) {
+      agg.lastSyncedAt = synced;
+    }
+  }
+
+  const models: GetMySocialAgencyModelDay[] = [...byModel.values()]
+    .map((a) => {
+      const winner_today = pickGmsLinkWinner(
+        {
+          button_clicks: a.todayA,
+          pageviews: a.todayAViews,
+          ctr_pct:
+            a.todayAViews > 0 ? Math.round((a.todayA / a.todayAViews) * 1000) / 10 : null,
+        },
+        {
+          button_clicks: a.todayB,
+          pageviews: a.todayBViews,
+          ctr_pct:
+            a.todayBViews > 0 ? Math.round((a.todayB / a.todayBViews) * 1000) / 10 : null,
+        }
+      );
+      const winner_week = pickGmsLinkWinner(
+        {
+          button_clicks: a.weekA,
+          pageviews: a.weekAViews,
+          ctr_pct:
+            a.weekAViews > 0 ? Math.round((a.weekA / a.weekAViews) * 1000) / 10 : null,
+        },
+        {
+          button_clicks: a.weekB,
+          pageviews: a.weekBViews,
+          ctr_pct:
+            a.weekBViews > 0 ? Math.round((a.weekB / a.weekBViews) * 1000) / 10 : null,
+        }
+      );
+      return {
+        modelId: a.modelId,
+        modelName: a.modelName,
+        today_button_clicks: a.today_button_clicks,
+        today_pageviews: a.today_pageviews,
+        week_button_clicks: a.week_button_clicks,
+        period_button_clicks: a.period_button_clicks,
+        period_pageviews: a.period_pageviews,
+        period_unique_visitors: a.period_uv,
+        period_ctr_pct:
+          a.period_pageviews > 0
+            ? Math.round((a.period_button_clicks / a.period_pageviews) * 1000) / 10
+            : null,
+        winner_today: a.todayA + a.todayB > 0 ? winner_today : null,
+        winner_week: a.weekA + a.weekB > 0 ? winner_week : null,
+        lastSyncedAt: a.lastSyncedAt,
+      };
+    })
+    .sort((a, b) => b.today_button_clicks - a.today_button_clicks || b.period_button_clicks - a.period_button_clicks);
+
+  const totals = models.reduce(
+    (acc, m) => {
+      acc.pageviews += m.period_pageviews;
+      acc.button_clicks += m.period_button_clicks;
+      acc.unique_visitors += m.period_unique_visitors;
+      return acc;
+    },
+    { pageviews: 0, button_clicks: 0, unique_visitors: 0 }
+  );
+
+  const shield = Math.max(0, ...[...byModel.values()].map((a) => a.period_shield));
+  const lastSyncedAt =
+    models
+      .map((m) => m.lastSyncedAt)
+      .filter((x): x is string => Boolean(x))
+      .sort()
+      .reverse()[0] ?? null;
+
+  return {
+    range: { startYmd: opts.startYmd, endYmd: opts.endYmd },
+    todayYmd,
+    lastSyncedAt,
+    totals: {
+      pageviews: totals.pageviews,
+      button_clicks: totals.button_clicks,
+      unique_visitors: totals.unique_visitors,
+      ctr_pct:
+        totals.pageviews > 0
+          ? Math.round((totals.button_clicks / totals.pageviews) * 1000) / 10
+          : null,
+      shield_blocked_pct: shield,
+    },
+    today: {
+      button_clicks: models.reduce((s, m) => s + m.today_button_clicks, 0),
+      pageviews: models.reduce((s, m) => s + m.today_pageviews, 0),
+      by_model: models
+        .filter((m) => m.today_button_clicks > 0 || m.today_pageviews > 0)
+        .map((m) => ({
+          modelId: m.modelId,
+          modelName: m.modelName,
+          button_clicks: m.today_button_clicks,
+          pageviews: m.today_pageviews,
+          winner: m.winner_today,
+        })),
+    },
+    models,
   };
 }
