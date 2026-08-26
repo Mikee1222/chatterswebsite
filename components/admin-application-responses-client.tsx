@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Download, LayoutGrid, List, PartyPopper, Search } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  LayoutGrid,
+  List,
+  PartyPopper,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { toast } from "sonner";
 import { AdminRowAvatar } from "@/components/admin-list-primitives";
 import {
@@ -12,6 +20,12 @@ import {
   SectionLabel,
   StatInfoTooltip,
 } from "@/components/infloww-performance-ui";
+import {
+  FilterBar,
+  FilterChip,
+  ManagerReviewSelect,
+  ReviewFieldLabel,
+} from "@/components/manager-review-ui";
 import { ApplyButton } from "@/components/application-ui-buttons";
 import { ApplicationFlagBadges } from "@/components/application-flag-badges";
 import { ApplicationResponsesKanban } from "@/components/application-responses-kanban";
@@ -37,7 +51,7 @@ import {
   APPLY_CHART_TOOLTIP,
   RESPONSE_STATUS_STYLE,
 } from "@/lib/application-ui-tokens";
-import { VA_CARD, VA_FILTER_INPUT, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
 const COGNITIVE_SCORE_TIP =
@@ -46,6 +60,48 @@ const EQ_SCORE_TIP = "EQ score (0-100) from situational judgment scenarios";
 
 const RESPONSE_STAT_CHIP =
   "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-medium tabular-nums";
+
+type ResponseSort =
+  | "newest"
+  | "oldest"
+  | "cognitive_desc"
+  | "cognitive_asc"
+  | "eq_desc"
+  | "eq_asc"
+  | "typing_desc"
+  | "typing_asc";
+
+const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  ...APPLICATION_RESPONSE_STATUSES.map((s) => ({
+    value: s,
+    label: RESPONSE_STATUS_LABELS[s],
+  })),
+];
+
+const FLAG_FILTER_OPTIONS = [
+  { value: "", label: "All flags" },
+  ...APPLICATION_FLAG_FILTER_OPTIONS.map((f) => ({ value: f.id, label: f.label })),
+];
+
+const LANG_FILTER_OPTIONS = [
+  { value: "all", label: "All languages" },
+  { value: "en", label: "English" },
+  { value: "el", label: "Greek" },
+];
+
+const SORT_OPTIONS: { value: ResponseSort; label: string }[] = [
+  { value: "newest", label: "Newest first" },
+  { value: "oldest", label: "Oldest first" },
+  { value: "cognitive_desc", label: "Cognitive %ile ↓" },
+  { value: "cognitive_asc", label: "Cognitive %ile ↑" },
+  { value: "eq_desc", label: "EQ score ↓" },
+  { value: "eq_asc", label: "EQ score ↑" },
+  { value: "typing_desc", label: "Typing WPM ↓" },
+  { value: "typing_asc", label: "Typing WPM ↑" },
+];
+
+const LANG_LABEL: Record<string, string> = { en: "English", el: "Greek" };
 
 const RechartsBar = dynamic(
   () =>
@@ -111,16 +167,7 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
   const [responses, setResponses] = useState<ApplicationFormResponseWithAnswers[]>([]);
   const [analytics, setAnalytics] = useState<ApplicationFormAnalytics | null>(null);
   const [status, setStatus] = useState<string>("all");
-  const [sort, setSort] = useState<
-    | "newest"
-    | "oldest"
-    | "cognitive_desc"
-    | "cognitive_asc"
-    | "eq_desc"
-    | "eq_asc"
-    | "typing_desc"
-    | "typing_asc"
-  >("newest");
+  const [sort, setSort] = useState<ResponseSort>("newest");
   const [search, setSearch] = useState("");
   const [flag, setFlag] = useState("");
   const [lang, setLang] = useState("all");
@@ -133,6 +180,8 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [moreFiltersOpen, setMoreFiltersOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hireModal, setHireModal] = useState<{
     responseId: string;
@@ -199,6 +248,47 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
     const t = setTimeout(() => void load(), 200);
     return () => clearTimeout(t);
   }, [load]);
+
+  const hasRangeFilters = Boolean(
+    cognitiveMin || cognitiveMax || eqMin || eqMax || wpmMin || wpmMax || dateFrom || dateTo,
+  );
+
+  const hasActiveFilters = Boolean(
+    search.trim() ||
+      status !== "all" ||
+      flag ||
+      lang !== "all" ||
+      sort !== "newest" ||
+      hasRangeFilters,
+  );
+
+  const activeFilterCount = [
+    search.trim() ? 1 : 0,
+    status !== "all" ? 1 : 0,
+    flag ? 1 : 0,
+    lang !== "all" ? 1 : 0,
+    sort !== "newest" ? 1 : 0,
+    cognitiveMin || cognitiveMax ? 1 : 0,
+    eqMin || eqMax ? 1 : 0,
+    wpmMin || wpmMax ? 1 : 0,
+    dateFrom || dateTo ? 1 : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  function clearAllFilters() {
+    setSearch("");
+    setStatus("all");
+    setFlag("");
+    setLang("all");
+    setSort("newest");
+    setCognitiveMin("");
+    setCognitiveMax("");
+    setEqMin("");
+    setEqMax("");
+    setWpmMin("");
+    setWpmMax("");
+    setDateFrom("");
+    setDateTo("");
+  }
 
   const funnel = useMemo(() => {
     if (!analytics) return [];
@@ -344,11 +434,13 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <LuxuryStatCard
           label="Total"
           value={<CountUp value={analytics?.total ?? 0} />}
           accent="champagne"
+          glow
+          tooltip="All submitted responses for this form (unfiltered analytics snapshot)"
         />
         <LuxuryStatCard
           label="Avg cognitive %ile"
@@ -363,6 +455,8 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
             )
           }
           accent="pink"
+          glow
+          tooltip={COGNITIVE_SCORE_TIP}
         />
         <LuxuryStatCard
           label="Avg EQ score"
@@ -374,11 +468,15 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
             )
           }
           accent="champagne"
+          glow
+          tooltip={EQ_SCORE_TIP}
         />
         <LuxuryStatCard
           label="Shortlisted"
           value={<CountUp value={analytics?.by_status.shortlisted ?? 0} />}
           accent="pink"
+          glow
+          tooltip="Candidates currently in Shortlisted status"
         />
       </div>
 
@@ -413,138 +511,314 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         </div>
       )}
 
-      <div className="mt-8 space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search answers…"
-              className={cn(VA_FILTER_INPUT, "w-full pl-9")}
-            />
+      <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "mt-8 space-y-4 p-4 md:p-5")}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="hidden items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/70 md:inline-flex">
+              <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden />
+              Filters
+            </p>
+            {activeFilterCount > 0 ? (
+              <span className="hidden h-6 min-w-[1.5rem] items-center justify-center rounded-full border border-[#FF1493]/30 bg-[#FF1493]/15 px-2 text-[10px] font-semibold text-[#FFB6DE] md:inline-flex">
+                {activeFilterCount}
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen((o) => !o)}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-black/35 px-3.5 text-sm font-semibold text-white transition hover:border-[#FF1493]/35 hover:bg-[#FF1493]/10 md:hidden"
+              aria-expanded={mobileFiltersOpen}
+            >
+              <SlidersHorizontal className="h-4 w-4 text-[#FFB6DE]" aria-hidden />
+              Filters
+              {activeFilterCount > 0 ? (
+                <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border border-[#FF1493]/35 bg-[#FF1493]/25 px-1.5 text-[10px] font-bold text-[#FFB6DE]">
+                  {activeFilterCount}
+                </span>
+              ) : null}
+              <ChevronDown
+                className={cn(
+                  "h-3.5 w-3.5 text-white/45 transition",
+                  mobileFiltersOpen && "rotate-180",
+                )}
+                aria-hidden
+              />
+            </button>
           </div>
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className={VA_FILTER_INPUT}
-          >
-            <option value="all">All statuses</option>
-            {APPLICATION_RESPONSE_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {RESPONSE_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-          <select value={flag} onChange={(e) => setFlag(e.target.value)} className={VA_FILTER_INPUT}>
-            <option value="">All flags</option>
-            {APPLICATION_FLAG_FILTER_OPTIONS.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          <select value={lang} onChange={(e) => setLang(e.target.value)} className={VA_FILTER_INPUT}>
-            <option value="all">All languages</option>
-            <option value="en">English</option>
-            <option value="el">Greek</option>
-          </select>
+          {hasActiveFilters ? (
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="rounded-lg border border-[#D4AF8C]/25 bg-[#D4AF8C]/10 px-3 py-1.5 text-xs font-semibold text-[#D4AF8C] transition hover:border-[#D4AF8C]/40 hover:bg-[#D4AF8C]/15"
+            >
+              Clear all filters
+            </button>
+          ) : null}
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="flex gap-2">
-            <input
-              type="number"
-              placeholder="Cog min %"
-              value={cognitiveMin}
-              onChange={(e) => setCognitiveMin(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
-            <input
-              type="number"
-              placeholder="Cog max %"
-              value={cognitiveMax}
-              onChange={(e) => setCognitiveMax(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
+        <label className="relative block min-w-0">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search answers…"
+            className={cn(VA_FILTER_INPUT, "w-full pl-9")}
+            aria-label="Search answers"
+          />
+        </label>
+
+        <div
+          className={cn(
+            "space-y-4",
+            mobileFiltersOpen ? "block" : "hidden md:block",
+          )}
+        >
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                Status
+              </ReviewFieldLabel>
+              <ManagerReviewSelect
+                value={status}
+                onChange={setStatus}
+                options={STATUS_FILTER_OPTIONS}
+                triggerClassName="w-full"
+                aria-label="Filter by status"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                Flags
+              </ReviewFieldLabel>
+              <ManagerReviewSelect
+                value={flag}
+                onChange={setFlag}
+                options={FLAG_FILTER_OPTIONS}
+                triggerClassName="w-full"
+                aria-label="Filter by flag"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                Language
+              </ReviewFieldLabel>
+              <ManagerReviewSelect
+                value={lang}
+                onChange={setLang}
+                options={LANG_FILTER_OPTIONS}
+                triggerClassName="w-full"
+                aria-label="Filter by language"
+              />
+            </div>
+            {viewMode === "list" ? (
+              <div className="space-y-1.5">
+                <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                  Sort
+                </ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={sort}
+                  onChange={(v) => setSort(v as ResponseSort)}
+                  options={SORT_OPTIONS}
+                  triggerClassName="w-full"
+                  aria-label="Sort responses"
+                />
+              </div>
+            ) : (
+              <div className="hidden lg:block" aria-hidden />
+            )}
           </div>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              placeholder="EQ min"
-              value={eqMin}
-              onChange={(e) => setEqMin(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
-            <input
-              type="number"
-              placeholder="EQ max"
-              value={eqMax}
-              onChange={(e) => setEqMax(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="number"
-              placeholder="WPM min"
-              value={wpmMin}
-              onChange={(e) => setWpmMin(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
-            <input
-              type="number"
-              placeholder="WPM max"
-              value={wpmMax}
-              onChange={(e) => setWpmMax(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setMoreFiltersOpen((o) => !o)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-white/45 transition hover:text-white/70"
+              aria-expanded={moreFiltersOpen}
+            >
+              <ChevronDown
+                className={cn("h-3.5 w-3.5 transition", moreFiltersOpen && "rotate-180")}
+                aria-hidden
+              />
+              Score & date ranges
+              {hasRangeFilters ? (
+                <span className="rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 px-1.5 py-0.5 text-[10px] text-[#D4AF8C]">
+                  active
+                </span>
+              ) : null}
+            </button>
+
+            {moreFiltersOpen || hasRangeFilters ? (
+              <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-1.5">
+                  <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                    Cognitive %ile
+                  </ReviewFieldLabel>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={cognitiveMin}
+                      onChange={(e) => setCognitiveMin(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="Cognitive min percentile"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={cognitiveMax}
+                      onChange={(e) => setCognitiveMax(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="Cognitive max percentile"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                    EQ score
+                  </ReviewFieldLabel>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={eqMin}
+                      onChange={(e) => setEqMin(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="EQ min"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={eqMax}
+                      onChange={(e) => setEqMax(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="EQ max"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                    Typing WPM
+                  </ReviewFieldLabel>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      placeholder="Min"
+                      value={wpmMin}
+                      onChange={(e) => setWpmMin(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="WPM min"
+                    />
+                    <input
+                      type="number"
+                      placeholder="Max"
+                      value={wpmMax}
+                      onChange={(e) => setWpmMax(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="WPM max"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <ReviewFieldLabel className="text-[10px] font-semibold uppercase tracking-[0.14em]">
+                    Submitted
+                  </ReviewFieldLabel>
+                  <div className="flex gap-2">
+                    <input
+                      type="date"
+                      value={dateFrom}
+                      onChange={(e) => setDateFrom(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="From date"
+                    />
+                    <input
+                      type="date"
+                      value={dateTo}
+                      onChange={(e) => setDateTo(e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "w-full")}
+                      aria-label="To date"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {viewMode === "list" ? (
-          <select
-            value={sort}
-            onChange={(e) =>
-              setSort(
-                e.target.value as
-                  | "newest"
-                  | "oldest"
-                  | "cognitive_desc"
-                  | "cognitive_asc"
-                  | "eq_desc"
-                  | "eq_asc"
-                  | "typing_desc"
-                  | "typing_asc",
-              )
-            }
-            className={cn(VA_FILTER_INPUT, "max-w-xs")}
-          >
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="cognitive_desc">Cognitive %ile ↓</option>
-            <option value="cognitive_asc">Cognitive %ile ↑</option>
-            <option value="eq_desc">EQ score ↓</option>
-            <option value="eq_asc">EQ score ↑</option>
-            <option value="typing_desc">Typing WPM ↓</option>
-            <option value="typing_asc">Typing WPM ↑</option>
-          </select>
+        {hasActiveFilters ? (
+          <div className="flex flex-wrap items-center gap-2 border-t border-white/6 pt-3">
+            {search.trim() ? (
+              <FilterChip label={`Search: ${search.trim()}`} onRemove={() => setSearch("")} />
+            ) : null}
+            {status !== "all" ? (
+              <FilterChip
+                label={`Status: ${RESPONSE_STATUS_LABELS[status as ApplicationResponseStatus] ?? status}`}
+                onRemove={() => setStatus("all")}
+              />
+            ) : null}
+            {flag ? (
+              <FilterChip
+                label={`Flags: ${APPLICATION_FLAG_FILTER_OPTIONS.find((f) => f.id === flag)?.label ?? flag}`}
+                onRemove={() => setFlag("")}
+              />
+            ) : null}
+            {lang !== "all" ? (
+              <FilterChip
+                label={`Language: ${LANG_LABEL[lang] ?? lang}`}
+                onRemove={() => setLang("all")}
+              />
+            ) : null}
+            {sort !== "newest" ? (
+              <FilterChip
+                label={`Sort: ${SORT_OPTIONS.find((o) => o.value === sort)?.label ?? sort}`}
+                onRemove={() => setSort("newest")}
+              />
+            ) : null}
+            {cognitiveMin || cognitiveMax ? (
+              <FilterChip
+                label={`Cognitive: ${cognitiveMin || "…"}–${cognitiveMax || "…"}`}
+                onRemove={() => {
+                  setCognitiveMin("");
+                  setCognitiveMax("");
+                }}
+              />
+            ) : null}
+            {eqMin || eqMax ? (
+              <FilterChip
+                label={`EQ: ${eqMin || "…"}–${eqMax || "…"}`}
+                onRemove={() => {
+                  setEqMin("");
+                  setEqMax("");
+                }}
+              />
+            ) : null}
+            {wpmMin || wpmMax ? (
+              <FilterChip
+                label={`WPM: ${wpmMin || "…"}–${wpmMax || "…"}`}
+                onRemove={() => {
+                  setWpmMin("");
+                  setWpmMax("");
+                }}
+              />
+            ) : null}
+            {dateFrom || dateTo ? (
+              <FilterChip
+                label={`${dateFrom || "…"} → ${dateTo || "…"}`}
+                onRemove={() => {
+                  setDateFrom("");
+                  setDateTo("");
+                }}
+              />
+            ) : null}
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="text-xs text-[#D4AF8C]/70 hover:text-[#D4AF8C]"
+            >
+              Clear all
+            </button>
+          </div>
         ) : null}
-      </div>
+      </FilterBar>
 
       {viewMode === "kanban" ? (
         loading ? (
