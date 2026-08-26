@@ -17,6 +17,10 @@ import {
   defaultModelWinnerThresholds,
   listModelWinnerThresholdsMap,
 } from "@/services/model-winner-thresholds";
+import {
+  cacheWinnerThumbnailFromUrl,
+  needsWinnerThumbnailCache,
+} from "@/lib/winner-thumbnail-cache";
 import { createWinnerSubmission, type WinnerSubmission } from "@/services/winner-sourcing";
 
 export const CLARIOSUITE_AUTO_SUBMITTER_ID = "clariosuite_auto";
@@ -32,6 +36,8 @@ export type WinnerAutoDetectResult = {
   skippedDuplicateLink: number;
   errors: Array<{ media_id: string; message: string }>;
   created: WinnerSubmission[];
+  /** Existing submissions whose ephemeral IG CDN thumb was re-cached to Storage. */
+  thumbnailsCached: number;
 };
 
 type TopPostCandidate = {
@@ -143,6 +149,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     skippedDuplicateLink: 0,
     errors: [],
     created: [],
+    thumbnailsCached: 0,
   };
 
   const [posts, classifiedMedia, existingLinks, thresholdsMap] = await Promise.all([
@@ -195,6 +202,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     }
 
     try {
+      const ephemeralThumb = (post.image_url ?? "").trim();
       const submission = await createWinnerSubmission({
         model_id: modelId,
         model_name: post.model_name?.trim() || "Creator",
@@ -204,7 +212,8 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         submitted_by_name: CLARIOSUITE_AUTO_SUBMITTER_NAME,
         source: "auto_detected",
         clariosuite_media_id: post.media_id,
-        thumbnail_url: post.image_url ?? "",
+        // Prefer durable Storage cache; fall back to CDN URL until cache succeeds.
+        thumbnail_url: ephemeralThumb,
         caption: post.caption ?? "",
         posted_at: post.posted_at,
         thresholds: {
@@ -213,6 +222,19 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         },
         skipNotify: false,
       });
+
+      if (ephemeralThumb && needsWinnerThumbnailCache(ephemeralThumb)) {
+        const cached = await cacheWinnerThumbnailFromUrl({
+          sourceUrl: ephemeralThumb,
+          submissionId: submission.id,
+        });
+        if (cached) {
+          await updateSubmissionThumbnail(submission.id, cached);
+          submission.thumbnail_url = cached;
+          result.thumbnailsCached += 1;
+        }
+      }
+
       result.classified += 1;
       result.created.push(submission);
       classifiedMedia.add(post.media_id);
@@ -229,7 +251,201 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     }
   }
 
+  // After classify: re-cache any existing winners still pointing at expired IG CDN URLs,
+  // using freshly-synced clariosuite_top_posts.image_url from this sync cycle.
+  try {
+    const refreshed = await refreshWinnerThumbnailsFromTopPosts({
+      modelRecordId: opts?.modelRecordId,
+    });
+    result.thumbnailsCached += refreshed.cached;
+    for (const err of refreshed.errors) {
+      result.errors.push(err);
+    }
+  } catch (err) {
+    result.errors.push({
+      media_id: "thumbnail-refresh",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   return result;
+}
+
+async function updateSubmissionThumbnail(id: string, thumbnailUrl: string): Promise<void> {
+  const sb = getSupabaseServiceClient();
+  const { error } = await sb
+    .from("winner_submissions")
+    .update({ thumbnail_url: thumbnailUrl })
+    .eq("id", id);
+  if (error) throw new Error(`update thumbnail: ${error.message}`);
+}
+
+/**
+ * For winner_submissions still holding ephemeral Instagram CDN URLs (or empty),
+ * download the current clariosuite_top_posts.image_url and store an sb:// token.
+ * Falls back to a live ClarioSuite media list when the stored CDN URL is already expired.
+ */
+export async function refreshWinnerThumbnailsFromTopPosts(opts?: {
+  modelRecordId?: string;
+}): Promise<{
+  scanned: number;
+  cached: number;
+  skipped: number;
+  errors: Array<{ media_id: string; message: string }>;
+}> {
+  const out = { scanned: 0, cached: 0, skipped: 0, errors: [] as Array<{ media_id: string; message: string }> };
+  const sb = getSupabaseServiceClient();
+
+  let subQ = sb
+    .from("winner_submissions")
+    .select("id, thumbnail_url, clariosuite_media_id, model_id")
+    .not("clariosuite_media_id", "is", null);
+  if (opts?.modelRecordId) subQ = subQ.eq("model_id", opts.modelRecordId);
+  const { data: subs, error: subErr } = await subQ;
+  if (subErr) throw new Error(`load winner_submissions: ${subErr.message}`);
+
+  const needing = (subs ?? []).filter((row) =>
+    needsWinnerThumbnailCache(String((row as { thumbnail_url?: string }).thumbnail_url ?? "")),
+  );
+  out.scanned = needing.length;
+  if (!needing.length) return out;
+
+  const mediaIds = [
+    ...new Set(
+      needing
+        .map((r) => String((r as { clariosuite_media_id?: string }).clariosuite_media_id ?? "").trim())
+        .filter(Boolean),
+    ),
+  ];
+
+  let postQ = sb
+    .from("clariosuite_top_posts")
+    .select("media_id, image_url, ig_user_id, model_record_id")
+    .in("media_id", mediaIds);
+  if (opts?.modelRecordId) postQ = postQ.eq("model_record_id", opts.modelRecordId);
+  const { data: posts, error: postErr } = await postQ;
+  if (postErr) throw new Error(`load top posts for thumbs: ${postErr.message}`);
+
+  const imageByMedia = new Map<string, string>();
+  const igUserByMedia = new Map<string, string>();
+  for (const row of posts ?? []) {
+    const mediaId = String((row as { media_id?: string }).media_id ?? "").trim();
+    const imageUrl = String((row as { image_url?: string }).image_url ?? "").trim();
+    const igUserId = String((row as { ig_user_id?: string }).ig_user_id ?? "").trim();
+    if (mediaId && imageUrl) imageByMedia.set(mediaId, imageUrl);
+    if (mediaId && igUserId) igUserByMedia.set(mediaId, igUserId);
+  }
+
+  /** Lazily load live media lists per IG account when top_posts CDN URL is dead. */
+  const liveImageByMedia = new Map<string, string>();
+  const liveLoadedAccounts = new Set<string>();
+  const permalinkByMedia = new Map<string, string>();
+
+  // Need permalinks for oEmbed fallback when media drops out of ClarioSuite list.
+  {
+    const { data: linkRows } = await sb
+      .from("winner_submissions")
+      .select("clariosuite_media_id, video_link")
+      .in("clariosuite_media_id", mediaIds);
+    for (const row of linkRows ?? []) {
+      const mid = String((row as { clariosuite_media_id?: string }).clariosuite_media_id ?? "").trim();
+      const link = String((row as { video_link?: string }).video_link ?? "").trim();
+      if (mid && link) permalinkByMedia.set(mid, link);
+    }
+  }
+
+  async function ensureLiveImage(mediaId: string): Promise<string> {
+    const cached = liveImageByMedia.get(mediaId);
+    if (cached) return cached;
+    const igUserId = igUserByMedia.get(mediaId);
+    if (igUserId && !liveLoadedAccounts.has(igUserId)) {
+      liveLoadedAccounts.add(igUserId);
+      try {
+        const { listClarioSuiteMedia } = await import("@/lib/clariosuite-api");
+        // Winner reels may be older than the default page — pull a deeper slice.
+        const { data } = await listClarioSuiteMedia(igUserId, 250);
+        for (const item of data) {
+          const id = String(item.id ?? "").trim();
+          const url = String(item.imageUrl ?? "").trim();
+          if (id && url) liveImageByMedia.set(id, url);
+        }
+      } catch (err) {
+        out.errors.push({
+          media_id: mediaId,
+          message: `live media list ${igUserId}: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+    const fromList = liveImageByMedia.get(mediaId) ?? "";
+    if (fromList) return fromList;
+
+    const permalink = permalinkByMedia.get(mediaId) ?? "";
+    if (!permalink) return "";
+    try {
+      const oembedUrl = `https://www.instagram.com/api/v1/oembed/?url=${encodeURIComponent(permalink)}`;
+      const res = await fetch(oembedUrl, {
+        headers: { Accept: "application/json", "User-Agent": "GunzoAgencyWinnerThumbCache/1.0" },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) return "";
+      const json = (await res.json()) as { thumbnail_url?: string };
+      const thumb = String(json.thumbnail_url ?? "").trim();
+      if (thumb) {
+        liveImageByMedia.set(mediaId, thumb);
+        return thumb;
+      }
+    } catch (err) {
+      out.errors.push({
+        media_id: mediaId,
+        message: `oembed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+    return "";
+  }
+
+  for (const row of needing) {
+    const id = String((row as { id?: string }).id ?? "");
+    const mediaId = String((row as { clariosuite_media_id?: string }).clariosuite_media_id ?? "").trim();
+    if (!id || !mediaId) {
+      out.skipped += 1;
+      continue;
+    }
+
+    let sourceUrl = imageByMedia.get(mediaId) ?? "";
+    try {
+      let cached = sourceUrl
+        ? await cacheWinnerThumbnailFromUrl({ sourceUrl, submissionId: id })
+        : null;
+
+      if (!cached) {
+        sourceUrl = await ensureLiveImage(mediaId);
+        if (sourceUrl) {
+          cached = await cacheWinnerThumbnailFromUrl({ sourceUrl, submissionId: id });
+          // Keep top_posts in sync with a fresh signed URL for other surfaces.
+          if (cached) {
+            await sb
+              .from("clariosuite_top_posts")
+              .update({ image_url: sourceUrl, updated_at: new Date().toISOString() })
+              .eq("media_id", mediaId);
+          }
+        }
+      }
+
+      if (!cached) {
+        out.skipped += 1;
+        continue;
+      }
+      await updateSubmissionThumbnail(id, cached);
+      out.cached += 1;
+    } catch (err) {
+      out.errors.push({
+        media_id: mediaId,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  return out;
 }
 
 export { DEFAULT_MODEL_WINNER_THRESHOLDS };

@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ChevronDown,
   ExternalLink,
+  Film,
   FolderOpen,
   Info,
   Layers,
@@ -229,6 +230,13 @@ function VideoThumb({
   href: string;
   superTier?: boolean;
 }) {
+  const [broken, setBroken] = React.useState(false);
+  React.useEffect(() => {
+    setBroken(false);
+  }, [url]);
+
+  const showImage = Boolean(url) && !broken;
+
   return (
     <a
       href={href}
@@ -242,21 +250,35 @@ function VideoThumb({
       )}
       aria-label="View on Instagram"
     >
-      {url ? (
+      {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]" />
+        <img
+          src={url}
+          alt=""
+          className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
+          onError={() => setBroken(true)}
+        />
       ) : (
         <div
           className={cn(
-            "flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br",
+            "relative flex h-full w-full flex-col items-center justify-center gap-2 overflow-hidden bg-gradient-to-br",
             superTier
               ? "from-amber-500/20 via-[#1a1410] to-[#0D0B0D]"
               : "from-[#FF1493]/15 via-[#151015] to-[#0D0B0D]",
           )}
         >
-          <ExternalLink className="h-6 w-6 text-white/35 transition group-hover:text-[#FF1493]" />
-          <span className="text-[10px] font-medium uppercase tracking-[0.14em] text-white/30">
-            Instagram
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 opacity-[0.14]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 20% 30%, rgba(255,255,255,0.35) 0 1px, transparent 1.5px), radial-gradient(circle at 70% 60%, rgba(255,255,255,0.25) 0 1px, transparent 1.5px)",
+              backgroundSize: "18px 18px, 22px 22px",
+            }}
+          />
+          <Film className="relative h-7 w-7 text-white/40 transition group-hover:text-[#FF1493]" />
+          <span className="relative text-[10px] font-medium uppercase tracking-[0.14em] text-white/35">
+            No preview
           </span>
         </div>
       )}

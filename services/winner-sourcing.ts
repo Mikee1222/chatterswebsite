@@ -416,7 +416,14 @@ export async function listWinnerSubmissions(filters?: {
   if (filters?.status) q = q.eq("status", filters.status);
   const { data, error } = await q;
   if (error) throw new Error(`listWinnerSubmissions: ${error.message}`);
-  return (data ?? []).map((r) => mapSubmission(r as Record<string, unknown>));
+  const mapped = (data ?? []).map((r) => mapSubmission(r as Record<string, unknown>));
+  // Durable thumbs are stored as sb:// tokens — mint short-lived signed URLs for <img>.
+  const { resolveStorageUrls } = await import("@/lib/supabase-signed-url");
+  const signed = await resolveStorageUrls(mapped.map((s) => s.thumbnail_url));
+  return mapped.map((s, i) => ({
+    ...s,
+    thumbnail_url: signed[i] || s.thumbnail_url,
+  }));
 }
 
 export async function getWinnerSubmission(id: string): Promise<WinnerSubmission | null> {
