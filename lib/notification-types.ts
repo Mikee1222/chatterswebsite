@@ -77,6 +77,7 @@ export const NOTIFICATION_EVENT = {
   ACCOUNT_DELETED: "account_deleted" as const,
   DAILY_SUMMARY: "daily_summary" as const,
   VA_STATISTICS_WEEKLY_SUMMARY: "va_statistics_weekly_summary" as const,
+  AI_NOTIFICATION_DIGEST: "ai_notification_digest" as const,
   POINTS_AWARDED: "points_awarded" as const,
   LEVEL_UP: "level_up" as const,
   SPIN_AVAILABLE: "spin_available" as const,

@@ -290,6 +290,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "Weekly VA statistics digest for users with va_statistics:view.",
   },
+  ai_notification_digest: {
+    rule: "assigned_party_only",
+    description: "Opt-in AI summary of today's in-app notifications for the recipient.",
+  },
 
   // ---- Rewards ----
   points_awarded: {

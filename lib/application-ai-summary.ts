@@ -8,10 +8,9 @@ import type {
   ApplicationFormQuestion,
   ApplicationFormResponseWithAnswers,
 } from "@/lib/application-forms-types";
+import { AI_ASSISTANT_MODEL, callAnthropic } from "@/lib/ai-assistant";
 
-export const APPLICATION_AI_SUMMARY_MODEL = "claude-sonnet-4-6";
-
-const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+export const APPLICATION_AI_SUMMARY_MODEL = AI_ASSISTANT_MODEL;
 
 function answerDisplay(
   q: ApplicationFormQuestion,
@@ -91,13 +90,6 @@ Form Q&A:
 ${qaLines || "(no answers)"}`;
 }
 
-type AnthropicContentBlock = { type?: string; text?: string };
-
-type AnthropicMessagesResponse = {
-  content?: AnthropicContentBlock[];
-  error?: { message?: string };
-};
-
 /**
  * Call Anthropic Messages API. Returns null if API key missing or call fails.
  */
@@ -105,52 +97,14 @@ export async function generateApplicationAiSummary(input: {
   response: ApplicationFormResponseWithAnswers;
   questions: ApplicationFormQuestion[];
 }): Promise<string | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) {
-    console.warn("[application-ai-summary] ANTHROPIC_API_KEY not set — skipping");
-    return null;
-  }
-
   const prompt = buildPrompt(input.response, input.questions);
-
-  try {
-    const res = await fetch(ANTHROPIC_MESSAGES_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: APPLICATION_AI_SUMMARY_MODEL,
-        max_tokens: 500,
-        temperature: 0.2,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    const data = (await res.json().catch(() => ({}))) as AnthropicMessagesResponse;
-    if (!res.ok) {
-      console.error(
-        "[application-ai-summary] Anthropic error",
-        res.status,
-        data?.error?.message ?? data,
-      );
-      return null;
-    }
-
-    const text = (data.content ?? [])
-      .filter((b) => b.type === "text" && typeof b.text === "string")
-      .map((b) => b.text!.trim())
-      .filter(Boolean)
-      .join("\n")
-      .trim();
-
-    return text || null;
-  } catch (err) {
-    console.error("[application-ai-summary] fetch failed", err);
-    return null;
-  }
+  const result = await callAnthropic({
+    messages: [{ role: "user", content: prompt }],
+    maxTokens: 500,
+    temperature: 0.2,
+    logLabel: "application-ai-summary",
+  });
+  return result?.text ?? null;
 }
 
 /** Short card blurb from full summary (first ~160 chars / first sentence). */

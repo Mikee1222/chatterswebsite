@@ -245,6 +245,14 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   application_status_changed: ["admin", "manager"],
   daily_summary: ["admin", "manager"],
   va_statistics_weekly_summary: ["admin", "manager"],
+  ai_notification_digest: [
+    "admin",
+    "manager",
+    "chatter",
+    "virtual_assistant",
+    "model",
+    "client",
+  ],
 };
 
 /** Build per-role scope for personal (non-_admin) events. Admin/manager use _admin variants instead. */
@@ -1168,6 +1176,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Εβδομαδιαία σύνοψη απόδοσης VA για managers",
     ),
     eventEntry(
+      "ai_notification_digest",
+      "AI daily notification digest",
+      "Προαιρετική ημερήσια σύνοψη ειδοποιήσεων με AI (opt-in)",
+    ),
+    eventEntry(
       "login_new_device",
       "New login from unrecognized device",
       "Αποστέλλεται όταν γίνεται σύνδεση από νέα συσκευή"
@@ -1202,6 +1215,9 @@ export function deriveEventDefaultForRole(scope: NotificationRoleScope): boolean
   return scope !== "none";
 }
 
+/** Events that stay off by default even when in scope (personal opt-in only). */
+export const OPT_IN_EVENTS = new Set<string>(["ai_notification_digest"]);
+
 export function getNotificationEventEntry(eventKey: string): NotificationEventEntry | undefined {
   for (const catKey of NOTIFICATION_ROLE_DEFAULT_KEYS) {
     const found = NOTIFICATION_CATEGORY_EVENTS[catKey].find((e) => e.key === eventKey);
@@ -1219,7 +1235,7 @@ function buildScopedRoleDefaults(role: UserRole): NotificationRoleDefaults {
     for (const entry of NOTIFICATION_CATEGORY_EVENTS[catKey]) {
       const eventKey = parseEventKeyFromEntry(entry);
       const scope = getScopeForRole(entry, role);
-      const eventOn = deriveEventDefaultForRole(scope);
+      const eventOn = OPT_IN_EVENTS.has(eventKey) ? false : deriveEventDefaultForRole(scope);
       (result as Record<string, boolean>)[eventKey] = eventOn;
       if (eventOn) catOn = true;
     }

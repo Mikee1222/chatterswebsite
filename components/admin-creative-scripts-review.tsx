@@ -45,6 +45,7 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
   const [briefOpen, setBriefOpen] = React.useState<Record<string, boolean>>({});
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
+  const [aiBriefId, setAiBriefId] = React.useState<string | null>(null);
   const skipBlurSaveRef = React.useRef(false);
   const [expandedBunches, setExpandedBunches] = React.useState<Record<string, boolean>>({});
 
@@ -120,6 +121,39 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
       return true;
     } finally {
       setPendingId(null);
+    }
+  }
+
+  async function generateAiBrief(videoId: string) {
+    setAiBriefId(videoId);
+    try {
+      const res = await fetch("/api/admin/ai/winner-creative-brief", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, save: true }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { brief?: string; error?: string };
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `acs-ai-${Date.now()}`,
+            "AI brief failed",
+            data.error ?? "Could not generate",
+            "high",
+          ),
+        );
+        return;
+      }
+      if (data.brief) {
+        setBriefDrafts((prev) => ({ ...prev, [videoId]: data.brief! }));
+        setBriefOpen((prev) => ({ ...prev, [videoId]: true }));
+        setScripts((prev) =>
+          prev.map((s) => (s.id === videoId ? { ...s, script_brief: data.brief! } : s)),
+        );
+      }
+    } finally {
+      setAiBriefId(null);
     }
   }
 
@@ -377,6 +411,17 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
                       rows={4}
                       placeholder="Filming brief — tone, framing, wardrobe…"
                     />
+                    <button
+                      type="button"
+                      className={cn(VA_BTN_SECONDARY, "text-xs")}
+                      disabled={aiBriefId === v.id || pendingId === v.id}
+                      onClick={() => void generateAiBrief(v.id)}
+                    >
+                      {aiBriefId === v.id ? (
+                        <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
+                      ) : null}
+                      Generate AI brief
+                    </button>
                     {briefAttachment.length > 0 ? (
                       <div>
                         <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/65">

@@ -41,6 +41,7 @@ import { formatReviewDate, isoDateDaysAgo, todayReviewIso } from "@/lib/marketin
 import { cn } from "@/lib/utils";
 import type { AdminDailyReviewChecklistPayload } from "@/services/daily-review-checklist";
 import type { MarketingDailyReview } from "@/services/marketing-reviews";
+import { DailyReviewAiSummary } from "@/components/daily-review-ai-summary";
 
 const API_BASE = "/api/admin/marketing-reviews/daily-reviews";
 const HISTORY_PAGE_SIZE = 12;
@@ -241,6 +242,8 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
           className="!p-3"
         />
       </div>
+
+      <DailyReviewAiSummary date={selectedDate} />
 
       <section className={cn(VA_CARD, "flex flex-wrap items-end gap-3 p-4 md:gap-4 md:p-5")}>
         <label className="min-w-[10rem] flex-1 space-y-1.5 text-sm sm:flex-none">
