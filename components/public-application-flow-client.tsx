@@ -47,6 +47,11 @@ import {
   APPLY_PROGRESS_TRACK,
   APPLY_SURFACE,
 } from "@/lib/application-ui-tokens";
+import {
+  phaseToAnalyticsStep,
+  trackApplyAbandonedBeacon,
+  trackApplyAnalyticsEvent,
+} from "@/lib/application-apply-analytics-client";
 import { cn } from "@/lib/utils";
 
 type AnswerState = Record<string, { text?: string; options?: string[] }>;
@@ -109,6 +114,31 @@ export function PublicApplicationFlowClient({
   const [agreed, setAgreed] = useState(false);
   const [recordingConsent, setRecordingConsent] = useState(false);
   const [showTimedNotice, setShowTimedNotice] = useState(false);
+  const phaseRef = useRef<Phase>("language");
+  const completedRef = useRef(false);
+
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
+
+  // Funnel: page view once per tab session
+  useEffect(() => {
+    void trackApplyAnalyticsEvent(slug, "page_view", { once: true });
+  }, [slug]);
+
+  // Funnel: abandoned if they leave without submitting
+  useEffect(() => {
+    const onLeave = () => {
+      if (completedRef.current) return;
+      trackApplyAbandonedBeacon(slug, phaseToAnalyticsStep(phaseRef.current));
+    };
+    window.addEventListener("pagehide", onLeave);
+    window.addEventListener("beforeunload", onLeave);
+    return () => {
+      window.removeEventListener("pagehide", onLeave);
+      window.removeEventListener("beforeunload", onLeave);
+    };
+  }, [slug]);
 
   const ui = pipelineUi(lang ?? "en");
   const desc = pickLocalized(lang ?? "en", description, descriptionEl);
@@ -186,6 +216,16 @@ export function PublicApplicationFlowClient({
   }, [slug]);
 
   function advanceFrom(current: Phase) {
+    if (
+      current === "cognitive_screening" ||
+      current === "eq_screening" ||
+      current === "typing_speed_test"
+    ) {
+      void trackApplyAnalyticsEvent(slug, "step_complete", {
+        stepName: current,
+        once: true,
+      });
+    }
     if (current === "language") {
       setPhase("agreement");
       return;
@@ -206,6 +246,16 @@ export function PublicApplicationFlowClient({
     setPhase(enabled[idx + 1]!);
   }
 
+  function onFormPipelineComplete() {
+    completedRef.current = true;
+    void trackApplyAnalyticsEvent(slug, "step_complete", {
+      stepName: "application_form",
+      once: true,
+    });
+    void trackApplyAnalyticsEvent(slug, "submitted", { once: true });
+    setPhase("done");
+  }
+
   async function ensureSession(): Promise<string> {
     if (sessionId) return sessionId;
     return startSession(lang ?? "en");
@@ -217,6 +267,7 @@ export function PublicApplicationFlowClient({
     try {
       const sid = await startSession(next);
       await persistLang(next, sid);
+      void trackApplyAnalyticsEvent(slug, "started", { once: true });
       advanceFrom("language");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start");
@@ -555,7 +606,7 @@ export function PublicApplicationFlowClient({
         lang={lang}
         questions={questions}
         ensureSession={ensureSession}
-        onComplete={() => setPhase("done")}
+        onComplete={() => onFormPipelineComplete()}
       />
     </>
   );

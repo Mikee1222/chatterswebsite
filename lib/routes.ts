@@ -155,6 +155,8 @@ export const ROUTES = {
       `/admin/application-forms/${encodeURIComponent(id)}`,
     applicationFormResponses: (id: string) =>
       `/admin/application-forms/${encodeURIComponent(id)}/responses`,
+    applicationFormAnalytics: (id: string) =>
+      `/admin/application-forms/${encodeURIComponent(id)}/analytics`,
     applicationFormResponseDetail: (formId: string, responseId: string) =>
       `/admin/application-forms/${encodeURIComponent(formId)}/responses/${encodeURIComponent(responseId)}`,
   },

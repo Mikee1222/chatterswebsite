@@ -44,6 +44,7 @@ import {
 } from "@/lib/application-forms-types";
 import { ApplicationFormPreview } from "@/components/application-form-preview";
 import { ApplicationPipelineBuilder } from "@/components/application-pipeline-builder";
+import { ApplicationFormTabs } from "@/components/application-form-tabs";
 import { ApplyButton } from "@/components/application-ui-buttons";
 import {
   APPLY_INPUT,
@@ -459,14 +460,13 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
           <p className="mt-1 text-xs text-white/40">
             Status: {FORM_STATUS_LABELS[form.status]} · /apply/{form.slug}
           </p>
+          <ApplicationFormTabs
+            formId={form.id}
+            active="edit"
+            responseCount={form.response_count}
+          />
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
-            href={ROUTES.admin.applicationFormResponses(form.id)}
-            className="inline-flex items-center rounded-xl border border-white/12 bg-white/[0.03] px-3 py-2 text-xs text-white/70 transition hover:border-[#D4AF8C]/35 hover:text-[#D4AF8C]"
-          >
-            Responses ({form.response_count ?? 0})
-          </Link>
           {canManage && form.status !== "published" && (
             <ApplyButton
               variant="adminChampagne"

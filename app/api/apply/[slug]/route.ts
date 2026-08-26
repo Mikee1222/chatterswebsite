@@ -28,6 +28,9 @@ import {
 import { getEnabledPipelineSteps } from "@/lib/application-forms-types";
 import { detectDeviceType, isPipelineLanguage } from "@/lib/application-pipeline-i18n";
 import {
+  isApplicationLinkEventType,
+} from "@/lib/application-link-analytics-types";
+import {
   applicationResponseEntityId,
   applicationSubmittedCopy,
   candidateDisplayNameFromAnswers,
@@ -37,6 +40,7 @@ import {
   NOTIFICATION_EVENT,
   NOTIFICATION_PRIORITY,
 } from "@/lib/notification-types";
+import { recordApplicationLinkEvent } from "@/services/application-link-analytics";
 import { notifyAdmins } from "@/services/notification-service";
 
 export const dynamic = "force-dynamic";
@@ -46,16 +50,17 @@ type Ctx = { params: Promise<{ slug: string }> };
 
 const submitBuckets = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 8;
+const TRACK_RATE_LIMIT = 60;
 const RATE_WINDOW_MS = 10 * 60 * 1000;
 
-function checkRateLimit(key: string): boolean {
+function checkRateLimit(key: string, limit = RATE_LIMIT): boolean {
   const now = Date.now();
   const entry = submitBuckets.get(key);
   if (!entry || entry.resetAt <= now) {
     submitBuckets.set(key, { count: 1, resetAt: now + RATE_WINDOW_MS });
     return true;
   }
-  if (entry.count >= RATE_LIMIT) return false;
+  if (entry.count >= limit) return false;
   entry.count += 1;
   return true;
 }
@@ -133,6 +138,7 @@ export async function GET(_request: Request, ctx: Ctx) {
 /**
  * POST /api/apply/[slug]
  * body.action:
+ *   - track (funnel analytics — no PII)
  *   - start_session
  *   - set_language
  *   - record_consent
@@ -144,18 +150,14 @@ export async function GET(_request: Request, ctx: Ctx) {
 export async function POST(request: Request, ctx: Ctx) {
   const { slug } = await ctx.params;
   const ip = clientIp(request);
-  if (!checkRateLimit(`${ip}:${slug}`)) {
-    return NextResponse.json(
-      { error: "Too many submissions. Please try again later." },
-      { status: 429 },
-    );
-  }
 
   const body = (await request.json().catch(() => null)) as {
     action?: string;
     session_id?: string;
     preferred_language?: string;
     agreement_version?: string;
+    event_type?: string;
+    step_name?: string | null;
     answers?: {
       question_id?: string;
       answer_text?: string | null;
@@ -169,9 +171,23 @@ export async function POST(request: Request, ctx: Ctx) {
     passage_id?: string;
     passage_language?: string;
     device_type?: string;
+    referrer?: string | null;
     website?: string;
     company_url?: string;
   } | null;
+
+  // Analytics track is high-frequency and non-destructive — lighter bucket.
+  const isTrack = body?.action === "track";
+  if (!isTrack && !checkRateLimit(`${ip}:${slug}`)) {
+    return NextResponse.json(
+      { error: "Too many submissions. Please try again later." },
+      { status: 429 },
+    );
+  }
+  if (isTrack && !checkRateLimit(`track:${ip}:${slug}`, TRACK_RATE_LIMIT)) {
+    // Soft-fail analytics rather than blocking the apply UX
+    return NextResponse.json({ ok: true, skipped: true });
+  }
 
   if ((body?.website ?? "").trim() || (body?.company_url ?? "").trim()) {
     return NextResponse.json({ ok: true });
@@ -184,6 +200,31 @@ export async function POST(request: Request, ctx: Ctx) {
     }
 
     const action = body?.action ?? "submit_form";
+
+    if (action === "track") {
+      if (!body?.session_id || !isApplicationLinkEventType(body.event_type)) {
+        return NextResponse.json(
+          { error: "session_id and valid event_type required" },
+          { status: 400 },
+        );
+      }
+      const device =
+        body.device_type === "desktop" ||
+        body.device_type === "mobile" ||
+        body.device_type === "tablet" ||
+        body.device_type === "unknown"
+          ? body.device_type
+          : detectDeviceType(request.headers.get("user-agent"));
+      await recordApplicationLinkEvent({
+        formId: form.id,
+        sessionId: body.session_id,
+        eventType: body.event_type,
+        stepName: body.step_name ?? null,
+        deviceType: device,
+        referrer: body.referrer ?? request.headers.get("referer"),
+      });
+      return NextResponse.json({ ok: true });
+    }
 
     if (action === "start_session") {
       const preferred = isPipelineLanguage(body?.preferred_language)

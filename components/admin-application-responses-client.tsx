@@ -15,6 +15,7 @@ import {
 import { ApplyButton } from "@/components/application-ui-buttons";
 import { ApplicationFlagBadges } from "@/components/application-flag-badges";
 import { ApplicationResponsesKanban } from "@/components/application-responses-kanban";
+import { ApplicationFormTabs } from "@/components/application-form-tabs";
 import {
   ApplicationHireCredentialsModal,
   hireCandidateRequest,
@@ -298,6 +299,11 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
           <p className="mt-1 text-sm text-white/45">
             Pipeline, filters, AI summaries, Kanban, and CSV export.
           </p>
+          <ApplicationFormTabs
+            formId={form.id}
+            active="responses"
+            responseCount={form.response_count ?? responses.length}
+          />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
