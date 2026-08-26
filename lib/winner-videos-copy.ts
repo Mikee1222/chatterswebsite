@@ -40,9 +40,66 @@ export function formatWinnerVideoBulkCopy(videos: WinnerVideoRecord[]): string {
 
 export async function copyTextToClipboard(text: string): Promise<boolean> {
   try {
-    if (!navigator.clipboard?.writeText) return false;
-    await navigator.clipboard.writeText(text);
-    return true;
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fall through to execCommand (still works inside some gesture contexts).
+  }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.left = "-9999px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Copy text while preserving the user-gesture when the value itself must be
+ * fetched asynchronously (mobile Safari/Chrome revoke clipboard after await fetch).
+ * Prefer ClipboardItem + Promise when available; otherwise resolve then fallback copy.
+ */
+export async function copyTextPreservingGesture(
+  textOrPromise: string | Promise<string>,
+): Promise<boolean> {
+  if (typeof textOrPromise === "string") {
+    return copyTextToClipboard(textOrPromise);
+  }
+
+  const supportsDeferredClipboardItem =
+    typeof ClipboardItem !== "undefined" &&
+    typeof navigator.clipboard?.write === "function";
+
+  if (supportsDeferredClipboardItem) {
+    try {
+      const blobPromise = textOrPromise.then(
+        (text) => new Blob([text], { type: "text/plain" }),
+      );
+      await navigator.clipboard.write([
+        new ClipboardItem({ "text/plain": blobPromise }),
+      ]);
+      return true;
+    } catch {
+      // Fall through — some browsers reject Promise-valued ClipboardItem.
+    }
+  }
+
+  try {
+    const text = await textOrPromise;
+    return copyTextToClipboard(text);
   } catch {
     return false;
   }

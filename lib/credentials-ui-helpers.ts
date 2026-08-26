@@ -194,3 +194,53 @@ export function attentionReasonLabel(reason: AttentionReason): string {
       return "Not working";
   }
 }
+
+/** Split Notion-style / pasted backup codes into individual tokens. */
+export function parseBackupCodes(raw: string): string[] {
+  const text = raw.trim();
+  if (!text) return [];
+  const parts = text
+    .split(/[\n\r,;|]+|\s{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (parts.length > 1) return parts;
+  // Single long whitespace-separated line of codes
+  const spaced = text.split(/\s+/).map((p) => p.trim()).filter(Boolean);
+  return spaced.length > 1 ? spaced : [text];
+}
+
+export type LabeledNotePair = { label: string; value: string };
+
+/**
+ * Parse pipe-delimited labeled notes from Notion SIM imports, e.g.
+ * `Sim Number: 694… | Pin1: 0581 | PUK1: 86226079`
+ */
+export function parseLabeledPipeNotes(raw: string): LabeledNotePair[] | null {
+  const text = raw.trim();
+  if (!text.includes("|") || !text.includes(":")) return null;
+  const chunks = text.split("|").map((c) => c.trim()).filter(Boolean);
+  if (chunks.length < 2) return null;
+  const pairs: LabeledNotePair[] = [];
+  for (const chunk of chunks) {
+    const idx = chunk.indexOf(":");
+    if (idx <= 0) return null;
+    const label = chunk.slice(0, idx).trim();
+    const value = chunk.slice(idx + 1).trim();
+    if (!label || !value) return null;
+    pairs.push({ label, value });
+  }
+  return pairs;
+}
+
+/** Card preview when username/email are empty but notes hold the real payload (e.g. SIM). */
+export function entryCardSecondaryPreview(entry: {
+  category: string;
+  fields: { username?: string; email?: string };
+  has_value: Partial<Record<string, boolean>>;
+}): string | null {
+  if (entry.fields.username?.trim() || entry.fields.email?.trim()) return null;
+  if (!entry.has_value.notes) return null;
+  return normalizeCategoryKey(entry.category) === "sim"
+    ? "SIM number, PIN & PUK in notes — open to reveal"
+    : "Details stored in notes — open to reveal";
+}

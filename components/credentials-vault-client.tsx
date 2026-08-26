@@ -37,17 +37,21 @@ import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CountUp, LuxuryStatCard, SectionLabel } from "@/components/infloww-performance-ui";
-import { copyTextToClipboard } from "@/lib/winner-videos-copy";
+import { copyTextPreservingGesture, copyTextToClipboard } from "@/lib/winner-videos-copy";
 import {
   EXPECTED_CATEGORY_LABELS,
   attentionReasonLabel,
   categoryVisual,
+  entryCardSecondaryPreview,
   normalizeCategoryKey,
+  parseBackupCodes,
+  parseLabeledPipeNotes,
 } from "@/lib/credentials-ui-helpers";
 import {
   CREDENTIAL_CATEGORY_SUGGESTIONS,
   CREDENTIAL_FIELD_LABELS,
   CREDENTIAL_FIELDS,
+  CREDENTIAL_LIST_PLAINTEXT_FIELDS,
   MASKED_VALUE,
   toCustomFieldRef,
   type CredentialField,
@@ -256,6 +260,75 @@ function Tip({ label, children }: { label: string; children: React.ReactNode }) 
       </span>
     </span>
   );
+}
+
+function SecretChip({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      className="inline-flex max-w-full items-center rounded-full border px-2.5 py-1 font-mono text-[12px] tracking-wide text-[#F5E6D3]"
+      style={{ borderColor: GOLD_DIM, background: "rgba(212,175,140,0.12)" }}
+    >
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+function RevealedFieldValue({
+  field,
+  value,
+}: {
+  field: CredentialField | "custom";
+  value: string;
+}) {
+  if (!value || value === "—") {
+    return <p className="mt-1 font-mono text-sm text-white/45">—</p>;
+  }
+
+  if (field === "backup_codes") {
+    const codes = parseBackupCodes(value);
+    return (
+      <div className="mt-2 flex flex-wrap gap-2">
+        {codes.map((code, index) => (
+          <SecretChip key={`${code}-${index}`}>{code}</SecretChip>
+        ))}
+      </div>
+    );
+  }
+
+  if (field === "notes") {
+    const pairs = parseLabeledPipeNotes(value);
+    if (pairs) {
+      return (
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          {pairs.map((pair) => (
+            <div
+              key={pair.label}
+              className="rounded-lg border px-3 py-2"
+              style={{ borderColor: BORDER, background: "rgba(255,255,255,0.03)" }}
+            >
+              <p className="text-[10px] uppercase tracking-widest text-white/40">{pair.label}</p>
+              <p className="mt-1 break-all font-mono text-sm text-white/90">{pair.value}</p>
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return (
+      <p className="mt-1 whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-white/85">
+        {value}
+      </p>
+    );
+  }
+
+  if (field === "custom") {
+    return (
+      <p className="mt-1 whitespace-pre-wrap break-words font-mono text-sm leading-relaxed text-white/85">
+        {value}
+      </p>
+    );
+  }
+
+  return <p className="mt-1 break-all font-mono text-sm text-white/85">{value}</p>;
 }
 
 export function CredentialsVaultClient({
@@ -654,7 +727,10 @@ export function CredentialsVaultClient({
   }
 
   async function handleCopy(entryId: string, field: CredentialFieldRef, label?: string) {
-    try {
+    const fieldLabel = label ?? fieldDisplayLabel(field);
+    const cached = revealed[entryId]?.[field];
+
+    const fetchCopyValue = async (): Promise<string> => {
       const res = await fetch(`/api/admin/credentials/${entryId}/copy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -662,8 +738,34 @@ export function CredentialsVaultClient({
       });
       const body = (await res.json()) as { value?: string; error?: string };
       if (!res.ok) throw new Error(body.error ?? "Copy failed");
-      await copyTextToClipboard(body.value ?? "");
-      addToast(libraryToast("Copied", `${label ?? fieldDisplayLabel(field)} copied to clipboard`, "normal"));
+      const value = body.value ?? "";
+      setRevealed((prev) => ({
+        ...prev,
+        [entryId]: { ...(prev[entryId] ?? {}), [field]: value },
+      }));
+      return value;
+    };
+
+    try {
+      // Already revealed: write clipboard immediately (stays inside user gesture).
+      if (cached !== undefined) {
+        const ok = await copyTextToClipboard(cached);
+        if (!ok) throw new Error("Clipboard unavailable");
+        addToast(libraryToast("Copied!", `${fieldLabel} copied to clipboard`, "normal"));
+        // Audit log in background — do not await before clipboard write.
+        void fetch(`/api/admin/credentials/${entryId}/copy`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ field }),
+        }).catch(() => {});
+        return;
+      }
+
+      // Not revealed: ClipboardItem(Promise) keeps the gesture on Chromium/Safari;
+      // otherwise resolve then fallback writeText/execCommand.
+      const ok = await copyTextPreservingGesture(fetchCopyValue());
+      if (!ok) throw new Error("Clipboard unavailable");
+      addToast(libraryToast("Copied!", `${fieldLabel} copied to clipboard`, "normal"));
     } catch (err) {
       addToast(libraryToast("Copy failed", err instanceof Error ? err.message : "Could not copy", "high"));
     }
@@ -766,6 +868,12 @@ export function CredentialsVaultClient({
               {entry.fields.email ? (
                 <p className="mt-0.5 truncate font-mono text-xs text-white/40">{entry.fields.email}</p>
               ) : null}
+              {(() => {
+                const preview = entryCardSecondaryPreview(entry);
+                return preview ? (
+                  <p className="mt-2 text-xs leading-snug text-emerald-200/70">{preview}</p>
+                ) : null;
+              })()}
 
               {quickCopy ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1250,9 +1358,12 @@ export function CredentialsVaultClient({
   }
 
   function renderDetailPanel(entry: MaskedCredentialEntry) {
-    const standardFields = CREDENTIAL_FIELDS.filter(
-      (field) => entry.has_value[field] || field === "notes" || field === "username",
-    );
+    const isSim = normalizeCategoryKey(entry.category) === "sim";
+    const standardFields = CREDENTIAL_FIELDS.filter((field) => entry.has_value[field]).sort((a, b) => {
+      if (!isSim) return 0;
+      const rank = (field: CredentialField) => (field === "notes" ? 0 : field === "phone" ? 1 : 2);
+      return rank(a) - rank(b);
+    });
 
     return (
       <>
@@ -1289,6 +1400,18 @@ export function CredentialsVaultClient({
           )}
         </div>
 
+        {isSim && entry.has_value.notes && (
+          <div
+            className="mb-4 rounded-xl border px-3 py-3"
+            style={{ borderColor: "rgba(16,185,129,0.25)", background: "rgba(16,185,129,0.06)" }}
+          >
+            <p className="text-[10px] uppercase tracking-widest text-emerald-200/70">SIM details</p>
+            <p className="mt-1 text-sm text-white/70">
+              Number, PIN, and PUK live in Notes (Notion import). Reveal Notes below to view them as structured fields.
+            </p>
+          </div>
+        )}
+
         {entry.has_value.username && entry.has_value.password && (
           <div className="mb-4 grid gap-2 sm:grid-cols-2">
             <button
@@ -1314,12 +1437,13 @@ export function CredentialsVaultClient({
 
         <div className="space-y-3">
           {standardFields.map((field) => {
-            if (!entry.has_value[field] && field !== "username") return null;
             const value = displayFieldValue(entry, field);
-            const isSecret = !["username", "email"].includes(field) && field !== "notes";
+            const isPlain = (CREDENTIAL_LIST_PLAINTEXT_FIELDS as readonly string[]).includes(field);
+            const isSecret = !isPlain;
             const isRevealedNow = isFieldRevealed(entry.id, field);
             const revealKey = `${entry.id}:${field}`;
             const busy = revealingField === revealKey;
+            const showFormatted = !isSecret || isRevealedNow;
 
             return (
               <div
@@ -1331,20 +1455,19 @@ export function CredentialsVaultClient({
                   <div className="min-w-0 flex-1">
                     <p className="text-[10px] uppercase tracking-widest text-white/40">{CREDENTIAL_FIELD_LABELS[field]}</p>
                     <AnimatePresence mode="wait" initial={false}>
-                      <motion.p
+                      <motion.div
                         key={isSecret && !isRevealedNow ? "masked" : `value-${value}`}
                         initial={reduceMotion ? false : { opacity: 0, rotateX: -8 }}
                         animate={{ opacity: 1, rotateX: 0 }}
                         exit={reduceMotion ? undefined : { opacity: 0, rotateX: 8 }}
                         transition={{ duration: 0.2 }}
-                        className={cn(
-                          "mt-1 break-all text-sm",
-                          isSecret && !isRevealedNow ? "font-mono tracking-widest text-[#D4AF8C]/70" : "font-mono text-white/85",
-                          field === "notes" && "whitespace-pre-wrap font-sans tracking-normal",
-                        )}
                       >
-                        {value}
-                      </motion.p>
+                        {showFormatted ? (
+                          <RevealedFieldValue field={field} value={value} />
+                        ) : (
+                          <p className="mt-1 break-all font-mono text-sm tracking-widest text-[#D4AF8C]/70">{value}</p>
+                        )}
+                      </motion.div>
                     </AnimatePresence>
                   </div>
                   {entry.has_value[field] && (
@@ -1393,11 +1516,13 @@ export function CredentialsVaultClient({
                 style={{ borderColor: !isRevealedNow ? GOLD_DIM : BORDER, background: "rgba(255,255,255,0.02)" }}
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 overflow-hidden">
                     <p className="text-[10px] uppercase tracking-widest text-white/40">{key}</p>
-                    <p className={cn("mt-1 break-all font-mono text-sm", isRevealedNow ? "text-white/85" : "tracking-widest text-[#D4AF8C]/70")}>
-                      {value}
-                    </p>
+                    {isRevealedNow ? (
+                      <RevealedFieldValue field="custom" value={value} />
+                    ) : (
+                      <p className="mt-1 break-all font-mono text-sm tracking-widest text-[#D4AF8C]/70">{value}</p>
+                    )}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
                     <Tip label={isRevealedNow ? "Hide value" : "Reveal custom field (audit logged)"}>
@@ -1426,6 +1551,12 @@ export function CredentialsVaultClient({
               </div>
             );
           })}
+
+          {standardFields.length === 0 && entry.custom_field_keys.length === 0 && (
+            <p className="rounded-xl border border-dashed px-3 py-6 text-center text-sm text-white/40" style={{ borderColor: BORDER }}>
+              No stored fields on this entry.
+            </p>
+          )}
         </div>
 
         <p className="mt-4 text-xs text-white/35">
