@@ -34,6 +34,7 @@ import {
 } from "@/services/application-screening";
 import type { PipelineLanguage } from "@/lib/application-pipeline-i18n";
 import { isPipelineLanguage } from "@/lib/application-pipeline-i18n";
+import { parseAutoFlags } from "@/lib/application-candidate-flags";
 
 type FormRow = {
   id: string;
@@ -72,6 +73,11 @@ type ResponseRow = {
   status: string;
   internal_notes: string | null;
   preferred_language?: string | null;
+  ai_summary?: string | null;
+  auto_flags?: unknown;
+  generated_username?: string | null;
+  encrypted_hire_password?: string | null;
+  hire_credentials_created_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -131,6 +137,11 @@ function mapResponse(row: ResponseRow): ApplicationFormResponse {
     preferred_language: isPipelineLanguage(row.preferred_language)
       ? row.preferred_language
       : null,
+    ai_summary: row.ai_summary?.trim() ? row.ai_summary.trim() : null,
+    auto_flags: parseAutoFlags(row.auto_flags),
+    generated_username: row.generated_username?.trim() || null,
+    has_hire_password: Boolean(row.encrypted_hire_password?.trim()),
+    hire_credentials_created_at: row.hire_credentials_created_at ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -826,12 +837,35 @@ export async function listResponses(
       | "typing_desc"
       | "typing_asc";
     search?: string;
+    flag?: string | null;
+    preferredLanguage?: PipelineLanguage | "all" | null;
+    cognitiveMin?: number | null;
+    cognitiveMax?: number | null;
+    eqMin?: number | null;
+    eqMax?: number | null;
+    wpmMin?: number | null;
+    wpmMax?: number | null;
+    submittedFrom?: string | null;
+    submittedTo?: string | null;
   },
 ): Promise<ApplicationFormResponseWithAnswers[]> {
   const sb = getSupabaseServiceClient();
   let q = sb.from("application_form_responses").select("*").eq("form_id", formId);
   if (opts?.status && opts.status !== "all") {
     q = q.eq("status", opts.status);
+  }
+  if (opts?.preferredLanguage && opts.preferredLanguage !== "all") {
+    q = q.eq("preferred_language", opts.preferredLanguage);
+  }
+  if (opts?.submittedFrom) {
+    q = q.gte("submitted_at", opts.submittedFrom);
+  }
+  if (opts?.submittedTo) {
+    // Inclusive end-of-day if date-only YYYY-MM-DD
+    const to = opts.submittedTo;
+    const end =
+      /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to}T23:59:59.999Z` : to;
+    q = q.lte("submitted_at", end);
   }
   const dateAsc = opts?.sort === "oldest";
   q = q.order("submitted_at", { ascending: dateAsc });
@@ -864,6 +898,24 @@ export async function listResponses(
     typing: screening.typingByResponse.get(r.id) ?? null,
   }));
 
+  // Backfill flags in-memory when not yet cached (so filters/badges work immediately)
+  const formForFlags = await getApplicationFormById(formId).catch(() => null);
+  if (formForFlags) {
+    const { computeFlagsForResponse } = await import(
+      "@/services/application-response-enrichment"
+    );
+    const typingExpected = formForFlags.pipeline_config.some(
+      (s) => s.step === "typing_speed_test" && s.enabled,
+    );
+    result = result.map((r) => {
+      if (r.auto_flags.length > 0) return r;
+      return {
+        ...r,
+        auto_flags: computeFlagsForResponse(r, formForFlags.questions, { typingExpected }),
+      };
+    });
+  }
+
   const search = opts?.search?.trim().toLowerCase();
   if (search) {
     result = result.filter(
@@ -872,8 +924,52 @@ export async function listResponses(
           (a) =>
             (a.answer_text ?? "").toLowerCase().includes(search) ||
             a.answer_options.some((o) => o.toLowerCase().includes(search)),
-        ) || (r.internal_notes ?? "").toLowerCase().includes(search),
+        ) ||
+        (r.internal_notes ?? "").toLowerCase().includes(search) ||
+        (r.ai_summary ?? "").toLowerCase().includes(search) ||
+        (r.generated_username ?? "").toLowerCase().includes(search),
     );
+  }
+
+  const flagFilter = opts?.flag?.trim();
+  if (flagFilter) {
+    result = result.filter((r) => r.auto_flags.some((f) => f.id === flagFilter));
+  }
+
+  const cogMin = opts?.cognitiveMin;
+  const cogMax = opts?.cognitiveMax;
+  if (cogMin != null || cogMax != null) {
+    result = result.filter((r) => {
+      const v = r.cognitive?.percentile_at_time_of_completion;
+      if (v == null || !Number.isFinite(v)) return false;
+      if (cogMin != null && v < cogMin) return false;
+      if (cogMax != null && v > cogMax) return false;
+      return true;
+    });
+  }
+
+  const eqMin = opts?.eqMin;
+  const eqMax = opts?.eqMax;
+  if (eqMin != null || eqMax != null) {
+    result = result.filter((r) => {
+      const v = r.eq?.overall_score;
+      if (v == null || !Number.isFinite(v)) return false;
+      if (eqMin != null && v < eqMin) return false;
+      if (eqMax != null && v > eqMax) return false;
+      return true;
+    });
+  }
+
+  const wpmMin = opts?.wpmMin;
+  const wpmMax = opts?.wpmMax;
+  if (wpmMin != null || wpmMax != null) {
+    result = result.filter((r) => {
+      const v = r.typing?.wpm;
+      if (v == null || !Number.isFinite(v)) return false;
+      if (wpmMin != null && v < wpmMin) return false;
+      if (wpmMax != null && v > wpmMax) return false;
+      return true;
+    });
   }
 
   if (opts?.sort === "cognitive_desc" || opts?.sort === "cognitive_asc") {

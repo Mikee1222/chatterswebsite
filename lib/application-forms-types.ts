@@ -1,6 +1,7 @@
 /** Shared types for recruitment / application form builder. */
 
 import type { PipelineLanguage } from "@/lib/application-pipeline-i18n";
+import type { ApplicationAutoFlag } from "@/lib/application-candidate-flags";
 
 export const APPLICATION_FORM_STATUSES = ["draft", "published", "closed"] as const;
 export type ApplicationFormStatus = (typeof APPLICATION_FORM_STATUSES)[number];
@@ -177,9 +178,20 @@ export type ApplicationFormResponse = {
   status: ApplicationResponseStatus;
   internal_notes: string | null;
   preferred_language: PipelineLanguage | null;
+  /** Cached Anthropic mini-summary (null until generated). */
+  ai_summary: string | null;
+  /** Cached rule-based flags for badges / filters. */
+  auto_flags: ApplicationAutoFlag[];
+  /** Cosmetic hire username (email format). Never a real mailbox. */
+  generated_username: string | null;
+  /** True when an encrypted hire password is stored (never expose ciphertext to clients). */
+  has_hire_password: boolean;
+  hire_credentials_created_at: string | null;
   created_at: string;
   updated_at: string;
 };
+
+export type { ApplicationAutoFlag };
 
 export type CognitiveResultSummary = {
   id: string;

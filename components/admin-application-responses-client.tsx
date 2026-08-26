@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { Download, Search } from "lucide-react";
+import { Download, LayoutGrid, List, PartyPopper, Search } from "lucide-react";
 import { toast } from "sonner";
 import { AdminRowAvatar } from "@/components/admin-list-primitives";
 import {
@@ -13,6 +13,13 @@ import {
   StatInfoTooltip,
 } from "@/components/infloww-performance-ui";
 import { ApplyButton } from "@/components/application-ui-buttons";
+import { ApplicationFlagBadges } from "@/components/application-flag-badges";
+import { ApplicationResponsesKanban } from "@/components/application-responses-kanban";
+import {
+  ApplicationHireCredentialsModal,
+  hireCandidateRequest,
+  type HireCredentialsPayload,
+} from "@/components/application-hire-credentials-modal";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
@@ -22,6 +29,8 @@ import {
   type ApplicationFormWithQuestions,
   type ApplicationResponseStatus,
 } from "@/lib/application-forms-types";
+import { APPLICATION_FLAG_FILTER_OPTIONS } from "@/lib/application-candidate-flags";
+import { shortAiSummary } from "@/lib/application-ai-summary";
 import {
   APPLY_CHART,
   APPLY_CHART_TOOLTIP,
@@ -84,9 +93,17 @@ type Props = {
   canManage: boolean;
 };
 
+type ViewMode = "list" | "kanban";
+
 function candidateLabel(r: ApplicationFormResponseWithAnswers): string {
   const first = r.answers.find((a) => (a.answer_text ?? "").trim());
   return first?.answer_text?.trim() || "Candidate";
+}
+
+function parseNum(raw: string): number | null {
+  if (!raw.trim()) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function AdminApplicationResponsesClient({ form, canManage }: Props) {
@@ -104,7 +121,23 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
     | "typing_asc"
   >("newest");
   const [search, setSearch] = useState("");
+  const [flag, setFlag] = useState("");
+  const [lang, setLang] = useState("all");
+  const [cognitiveMin, setCognitiveMin] = useState("");
+  const [cognitiveMax, setCognitiveMax] = useState("");
+  const [eqMin, setEqMin] = useState("");
+  const [eqMax, setEqMax] = useState("");
+  const [wpmMin, setWpmMin] = useState("");
+  const [wpmMax, setWpmMax] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [loading, setLoading] = useState(true);
+  const [hireModal, setHireModal] = useState<{
+    responseId: string;
+    credentials: HireCredentialsPayload;
+  } | null>(null);
+  const [hiringId, setHiringId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -115,6 +148,23 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         analytics: "1",
       });
       if (search.trim()) params.set("search", search.trim());
+      if (flag) params.set("flag", flag);
+      if (lang !== "all") params.set("lang", lang);
+      const cMin = parseNum(cognitiveMin);
+      const cMax = parseNum(cognitiveMax);
+      const eMin = parseNum(eqMin);
+      const eMax = parseNum(eqMax);
+      const wMin = parseNum(wpmMin);
+      const wMax = parseNum(wpmMax);
+      if (cMin != null) params.set("cognitiveMin", String(cMin));
+      if (cMax != null) params.set("cognitiveMax", String(cMax));
+      if (eMin != null) params.set("eqMin", String(eMin));
+      if (eMax != null) params.set("eqMax", String(eMax));
+      if (wMin != null) params.set("wpmMin", String(wMin));
+      if (wMax != null) params.set("wpmMax", String(wMax));
+      if (dateFrom) params.set("from", dateFrom);
+      if (dateTo) params.set("to", dateTo);
+
       const res = await fetch(
         `/api/admin/application-forms/${form.id}/responses?${params.toString()}`,
       );
@@ -127,7 +177,22 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [form.id, status, sort, search]);
+  }, [
+    form.id,
+    status,
+    sort,
+    search,
+    flag,
+    lang,
+    cognitiveMin,
+    cognitiveMax,
+    eqMin,
+    eqMax,
+    wpmMin,
+    wpmMax,
+    dateFrom,
+    dateTo,
+  ]);
 
   useEffect(() => {
     const t = setTimeout(() => void load(), 200);
@@ -162,6 +227,58 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
     }
   }
 
+  async function patchStatus(responseId: string, next: ApplicationResponseStatus) {
+    const res = await fetch(
+      `/api/admin/application-forms/${form.id}/responses/${responseId}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      },
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Update failed");
+    setResponses((prev) =>
+      prev.map((r) =>
+        r.id === responseId
+          ? { ...r, ...data.response, answers: r.answers, cognitive: r.cognitive, eq: r.eq, typing: r.typing, auto_flags: r.auto_flags, ai_summary: r.ai_summary }
+          : r,
+      ),
+    );
+  }
+
+  async function handleHire(r: ApplicationFormResponseWithAnswers) {
+    setHiringId(r.id);
+    try {
+      const result = await hireCandidateRequest(form.id, r.id);
+      setResponses((prev) =>
+        prev.map((row) =>
+          row.id === r.id
+            ? {
+                ...row,
+                status: "hired",
+                generated_username: result.username,
+                has_hire_password: true,
+              }
+            : row,
+        ),
+      );
+      setHireModal({
+        responseId: r.id,
+        credentials: {
+          username: result.username,
+          password: result.password,
+          created: result.created,
+        },
+      });
+      toast.success(result.created ? "Hired — credentials ready" : "Credentials loaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Hire failed");
+    } finally {
+      setHiringId(null);
+    }
+  }
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -178,15 +295,47 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
             {form.title}
           </h1>
-          <p className="mt-1 text-sm text-white/45">Pipeline, search, analytics, and CSV export.</p>
+          <p className="mt-1 text-sm text-white/45">
+            Pipeline, filters, AI summaries, Kanban, and CSV export.
+          </p>
         </div>
-        <ApplyButton
-          variant="adminSecondary"
-          iconLeft={<Download className="h-3.5 w-3.5" />}
-          onClick={() => void exportCsv()}
-        >
-          Export CSV
-        </ApplyButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                viewMode === "list"
+                  ? "bg-[#FF1493]/20 text-[#FF1493]"
+                  : "text-white/50 hover:text-white/80",
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition",
+                viewMode === "kanban"
+                  ? "bg-[#FF1493]/20 text-[#FF1493]"
+                  : "text-white/50 hover:text-white/80",
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Kanban
+            </button>
+          </div>
+          <ApplyButton
+            variant="adminSecondary"
+            iconLeft={<Download className="h-3.5 w-3.5" />}
+            onClick={() => void exportCsv()}
+          >
+            Export CSV
+          </ApplyButton>
+        </div>
       </div>
 
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -258,208 +407,309 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         </div>
       )}
 
-      {analytics &&
-        (analytics.cognitive_score_distribution.some((b) => b.count > 0) ||
-          analytics.eq_score_distribution.some((b) => b.count > 0)) && (
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
-                Cognitive percentile distribution
-              </p>
-              <RechartsBar
-                data={analytics.cognitive_score_distribution.map((d) => ({
-                  label: d.bucket,
-                  count: d.count,
-                }))}
-                dataKey="count"
-                nameKey="label"
-                fill={APPLY_CHART.primary}
-              />
-            </div>
-            <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
-              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
-                EQ score distribution
-              </p>
-              <RechartsBar
-                data={analytics.eq_score_distribution.map((d) => ({
-                  label: d.bucket,
-                  count: d.count,
-                }))}
-                dataKey="count"
-                nameKey="label"
-                fill={APPLY_CHART.secondary}
-              />
-            </div>
+      <div className="mt-8 space-y-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search answers…"
+              className={cn(VA_FILTER_INPUT, "w-full pl-9")}
+            />
           </div>
-        )}
-
-      {analytics && analytics.choice_distributions.length > 0 && (
-        <div className="mt-6 space-y-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
-            Choice distributions
-          </p>
-          <div className="grid gap-4 md:grid-cols-2">
-            {analytics.choice_distributions.map((dist) => (
-              <div
-                key={dist.question_id}
-                className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}
-              >
-                <p className="mb-3 line-clamp-2 text-sm text-white/80">{dist.question_text}</p>
-                <RechartsBar
-                  data={dist.buckets}
-                  dataKey="count"
-                  nameKey="label"
-                  fill={APPLY_CHART.primary}
-                />
-              </div>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className={VA_FILTER_INPUT}
+          >
+            <option value="all">All statuses</option>
+            {APPLICATION_RESPONSE_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {RESPONSE_STATUS_LABELS[s]}
+              </option>
             ))}
+          </select>
+          <select value={flag} onChange={(e) => setFlag(e.target.value)} className={VA_FILTER_INPUT}>
+            <option value="">All flags</option>
+            {APPLICATION_FLAG_FILTER_OPTIONS.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+          <select value={lang} onChange={(e) => setLang(e.target.value)} className={VA_FILTER_INPUT}>
+            <option value="all">All languages</option>
+            <option value="en">English</option>
+            <option value="el">Greek</option>
+          </select>
+        </div>
+
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex gap-2">
+            <input
+              type="number"
+              placeholder="Cog min %"
+              value={cognitiveMin}
+              onChange={(e) => setCognitiveMin(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
+            <input
+              type="number"
+              placeholder="Cog max %"
+              value={cognitiveMax}
+              onChange={(e) => setCognitiveMax(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              placeholder="EQ min"
+              value={eqMin}
+              onChange={(e) => setEqMin(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
+            <input
+              type="number"
+              placeholder="EQ max"
+              value={eqMax}
+              onChange={(e) => setEqMax(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="number"
+              placeholder="WPM min"
+              value={wpmMin}
+              onChange={(e) => setWpmMin(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
+            <input
+              type="number"
+              placeholder="WPM max"
+              value={wpmMax}
+              onChange={(e) => setWpmMax(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className={VA_FILTER_INPUT}
+            />
           </div>
         </div>
-      )}
 
-      <div className="mt-8 grid gap-3 sm:grid-cols-3">
-        <div className="relative sm:col-span-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search answers…"
-            className={cn(VA_FILTER_INPUT, "w-full pl-9")}
-          />
-        </div>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-          className={VA_FILTER_INPUT}
-        >
-          <option value="all">All statuses</option>
-          {APPLICATION_RESPONSE_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {RESPONSE_STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
-        <select
-          value={sort}
-          onChange={(e) =>
-            setSort(
-              e.target.value as
-                | "newest"
-                | "oldest"
-                | "cognitive_desc"
-                | "cognitive_asc"
-                | "eq_desc"
-                | "eq_asc"
-                | "typing_desc"
-                | "typing_asc",
-            )
-          }
-          className={VA_FILTER_INPUT}
-        >
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-          <option value="cognitive_desc">Cognitive %ile ↓</option>
-          <option value="cognitive_asc">Cognitive %ile ↑</option>
-          <option value="eq_desc">EQ score ↓</option>
-          <option value="eq_asc">EQ score ↑</option>
-          <option value="typing_desc">Typing WPM ↓</option>
-          <option value="typing_asc">Typing WPM ↑</option>
-        </select>
+        {viewMode === "list" ? (
+          <select
+            value={sort}
+            onChange={(e) =>
+              setSort(
+                e.target.value as
+                  | "newest"
+                  | "oldest"
+                  | "cognitive_desc"
+                  | "cognitive_asc"
+                  | "eq_desc"
+                  | "eq_asc"
+                  | "typing_desc"
+                  | "typing_asc",
+              )
+            }
+            className={cn(VA_FILTER_INPUT, "max-w-xs")}
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="cognitive_desc">Cognitive %ile ↓</option>
+            <option value="cognitive_asc">Cognitive %ile ↑</option>
+            <option value="eq_desc">EQ score ↓</option>
+            <option value="eq_asc">EQ score ↑</option>
+            <option value="typing_desc">Typing WPM ↓</option>
+            <option value="typing_asc">Typing WPM ↑</option>
+          </select>
+        ) : null}
       </div>
 
-      <div className="mt-4 space-y-2.5">
-        {loading ? (
+      {viewMode === "kanban" ? (
+        loading ? (
           <p className="py-12 text-center text-sm text-white/40">Loading…</p>
-        ) : responses.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-white/10 px-4 py-12 text-center text-sm text-white/40">
-            No responses match your filters.
-          </p>
         ) : (
-          responses.map((r) => {
-            const name = candidateLabel(r);
-            const cognitivePct = r.cognitive?.percentile_at_time_of_completion;
-            const eqScore = r.eq?.overall_score;
-            const typingWpm = r.typing?.wpm;
-            const detailHref = ROUTES.admin.applicationFormResponseDetail(form.id, r.id);
-            return (
-              <div
-                key={r.id}
-                className={cn(
-                  VA_CARD,
-                  "relative flex flex-col gap-3 border border-white/10 bg-[#0D0B0D]/80 p-4 transition hover:border-[#FF1493]/25 sm:flex-row sm:items-center sm:justify-between",
-                )}
-              >
-                <Link
-                  href={detailHref}
-                  className="absolute inset-0 z-0 rounded-[inherit]"
-                  aria-label={`View response from ${name}`}
-                />
-                <div className="pointer-events-none relative z-[1] flex min-w-0 items-start gap-3">
-                  <AdminRowAvatar name={name} />
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-white/90">{name}</p>
-                    <p className="mt-1 text-xs text-white/40">
-                      {new Date(r.submitted_at).toLocaleString()}
-                      {canManage && r.respondent_ip ? ` · ${r.respondent_ip}` : ""}
-                    </p>
+          <ApplicationResponsesKanban
+            formId={form.id}
+            responses={responses}
+            canManage={canManage}
+            onStatusChange={patchStatus}
+            onHired={(responseId, payload, response) => {
+              const resp = response as ApplicationFormResponseWithAnswers | undefined;
+              setResponses((prev) =>
+                prev.map((r) =>
+                  r.id === responseId
+                    ? {
+                        ...r,
+                        ...(resp ?? {}),
+                        status: "hired",
+                        generated_username: payload.username,
+                        has_hire_password: true,
+                        answers: r.answers,
+                        cognitive: r.cognitive,
+                        eq: r.eq,
+                        typing: r.typing,
+                        auto_flags: resp?.auto_flags ?? r.auto_flags,
+                        ai_summary: resp?.ai_summary ?? r.ai_summary,
+                      }
+                    : r,
+                ),
+              );
+              setHireModal({ responseId, credentials: payload });
+            }}
+          />
+        )
+      ) : (
+        <div className="mt-4 space-y-2.5">
+          {loading ? (
+            <p className="py-12 text-center text-sm text-white/40">Loading…</p>
+          ) : responses.length === 0 ? (
+            <p className="rounded-2xl border border-dashed border-white/10 px-4 py-12 text-center text-sm text-white/40">
+              No responses match your filters.
+            </p>
+          ) : (
+            responses.map((r) => {
+              const name = candidateLabel(r);
+              const cognitivePct = r.cognitive?.percentile_at_time_of_completion;
+              const eqScore = r.eq?.overall_score;
+              const typingWpm = r.typing?.wpm;
+              const detailHref = ROUTES.admin.applicationFormResponseDetail(form.id, r.id);
+              const blurb = shortAiSummary(r.ai_summary, 140);
+              return (
+                <div
+                  key={r.id}
+                  className={cn(
+                    VA_CARD,
+                    "relative flex flex-col gap-3 border border-white/10 bg-[#0D0B0D]/80 p-4 transition hover:border-[#FF1493]/25 sm:flex-row sm:items-center sm:justify-between",
+                  )}
+                >
+                  <Link
+                    href={detailHref}
+                    className="absolute inset-0 z-0 rounded-[inherit]"
+                    aria-label={`View response from ${name}`}
+                  />
+                  <div className="pointer-events-none relative z-[1] flex min-w-0 items-start gap-3">
+                    <AdminRowAvatar name={name} />
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-white/90">{name}</p>
+                      <p className="mt-1 text-xs text-white/40">
+                        {new Date(r.submitted_at).toLocaleString()}
+                        {canManage && r.respondent_ip ? ` · ${r.respondent_ip}` : ""}
+                        {r.preferred_language ? ` · ${r.preferred_language.toUpperCase()}` : ""}
+                      </p>
+                      <ApplicationFlagBadges
+                        flags={r.auto_flags}
+                        className="pointer-events-none mt-2"
+                      />
+                      {blurb ? (
+                        <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-white/40">
+                          {blurb}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-                <div className="relative z-[1] flex flex-wrap items-center gap-2.5 sm:justify-end">
-                  <span
-                    className={cn(
-                      RESPONSE_STAT_CHIP,
-                      "pointer-events-none border-[#FF1493]/20 bg-[#FF1493]/10 text-[#FF1493]/90",
-                    )}
-                  >
-                    Cognitive:{" "}
-                    {cognitivePct != null ? `${cognitivePct}th percentile` : "Not completed"}
-                    <span className="pointer-events-auto">
-                      <StatInfoTooltip text={COGNITIVE_SCORE_TIP} />
-                    </span>
-                  </span>
-                  <span
-                    className={cn(
-                      RESPONSE_STAT_CHIP,
-                      "pointer-events-none border-[#D4AF8C]/25 bg-[#D4AF8C]/10 text-[#D4AF8C]",
-                    )}
-                  >
-                    EQ: {eqScore != null ? `${eqScore}/100` : "Not completed"}
-                    <span className="pointer-events-auto">
-                      <StatInfoTooltip text={EQ_SCORE_TIP} />
-                    </span>
-                  </span>
-                  {typingWpm != null ? (
+                  <div className="relative z-[1] flex flex-wrap items-center gap-2.5 sm:justify-end">
                     <span
                       className={cn(
                         RESPONSE_STAT_CHIP,
-                        "pointer-events-none border-white/10 bg-white/[0.04] text-white/70",
+                        "pointer-events-none border-[#FF1493]/20 bg-[#FF1493]/10 text-[#FF1493]/90",
                       )}
                     >
-                      Typing: {typingWpm} WPM
-                      {r.typing?.accuracy_percent != null
-                        ? ` · ${r.typing.accuracy_percent}%`
-                        : ""}
+                      Cognitive:{" "}
+                      {cognitivePct != null ? `${cognitivePct}th percentile` : "Not completed"}
+                      <span className="pointer-events-auto">
+                        <StatInfoTooltip text={COGNITIVE_SCORE_TIP} />
+                      </span>
                     </span>
-                  ) : null}
-                  <span
-                    className="pointer-events-none hidden h-4 w-px shrink-0 bg-white/15 sm:block"
-                    aria-hidden
-                  />
-                  <span
-                    className={cn(
-                      VA_STATUS_BADGE,
-                      "pointer-events-none",
-                      RESPONSE_STATUS_STYLE[r.status as ApplicationResponseStatus],
-                    )}
-                  >
-                    {RESPONSE_STATUS_LABELS[r.status]}
-                  </span>
+                    <span
+                      className={cn(
+                        RESPONSE_STAT_CHIP,
+                        "pointer-events-none border-[#D4AF8C]/25 bg-[#D4AF8C]/10 text-[#D4AF8C]",
+                      )}
+                    >
+                      EQ: {eqScore != null ? `${eqScore}/100` : "Not completed"}
+                      <span className="pointer-events-auto">
+                        <StatInfoTooltip text={EQ_SCORE_TIP} />
+                      </span>
+                    </span>
+                    {typingWpm != null ? (
+                      <span
+                        className={cn(
+                          RESPONSE_STAT_CHIP,
+                          "pointer-events-none border-white/10 bg-white/[0.04] text-white/70",
+                        )}
+                      >
+                        Typing: {typingWpm} WPM
+                        {r.typing?.accuracy_percent != null
+                          ? ` · ${r.typing.accuracy_percent}%`
+                          : ""}
+                      </span>
+                    ) : null}
+                    <span
+                      className="pointer-events-none hidden h-4 w-px shrink-0 bg-white/15 sm:block"
+                      aria-hidden
+                    />
+                    <span
+                      className={cn(
+                        VA_STATUS_BADGE,
+                        "pointer-events-none",
+                        RESPONSE_STATUS_STYLE[r.status as ApplicationResponseStatus],
+                      )}
+                    >
+                      {RESPONSE_STATUS_LABELS[r.status]}
+                    </span>
+                    {canManage ? (
+                      <button
+                        type="button"
+                        disabled={hiringId === r.id}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          void handleHire(r);
+                        }}
+                        className={cn(
+                          "pointer-events-auto relative z-[2] inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition",
+                          r.status === "hired"
+                            ? "border-white/12 bg-white/[0.04] text-white/70 hover:bg-white/[0.07]"
+                            : "border-[#D4AF8C]/40 bg-[#D4AF8C]/15 text-[#D4AF8C] hover:bg-[#D4AF8C]/25",
+                        )}
+                      >
+                        <PartyPopper className="h-3 w-3" aria-hidden />
+                        {r.status === "hired" && r.has_hire_password ? "Credentials" : "Hire"}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-            );
-          })
-        )}
-      </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {hireModal ? (
+        <ApplicationHireCredentialsModal
+          formId={form.id}
+          responseId={hireModal.responseId}
+          open
+          credentials={hireModal.credentials}
+          onClose={() => setHireModal(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -35,7 +35,10 @@ export async function GET(_request: Request, ctx: Ctx) {
 
   const { rid } = await ctx.params;
   try {
-    const response = await getResponseDetail(rid);
+    const { ensureResponseEnrichment } = await import(
+      "@/services/application-response-enrichment"
+    );
+    const response = await ensureResponseEnrichment(rid, { generateAi: true });
     if (!response) return NextResponse.json({ error: "Not found" }, { status: 404 });
     return NextResponse.json({ response });
   } catch (err) {

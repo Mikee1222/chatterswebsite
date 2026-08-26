@@ -6,6 +6,12 @@ import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { AdminRowAvatar } from "@/components/admin-list-primitives";
 import { StatInfoTooltip } from "@/components/infloww-performance-ui";
+import { ApplicationFlagBadges } from "@/components/application-flag-badges";
+import {
+  ApplicationHireCredentialsModal,
+  hireCandidateRequest,
+  type HireCredentialsPayload,
+} from "@/components/application-hire-credentials-modal";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
@@ -14,11 +20,16 @@ import {
   type ApplicationFormResponseWithAnswers,
   type ApplicationResponseStatus,
 } from "@/lib/application-forms-types";
-import { RESPONSE_STATUS_STYLE, APPLY_SECTION, APPLY_INPUT, APPLY_EYEBROW } from "@/lib/application-ui-tokens";
+import {
+  RESPONSE_STATUS_STYLE,
+  APPLY_SECTION,
+  APPLY_INPUT,
+  APPLY_EYEBROW,
+} from "@/lib/application-ui-tokens";
 import { ApplyButton } from "@/components/application-ui-buttons";
 import { VA_CARD, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import { Check } from "lucide-react";
+import { Check, PartyPopper, Sparkles } from "lucide-react";
 
 const COGNITIVE_SCORE_TIP =
   "Cognitive percentile shows how this candidate compares to others who took the screening — this becomes more meaningful as more candidates apply";
@@ -100,14 +111,7 @@ function ScoreCard({
         ? "text-[#D4AF8C]/85"
         : "text-white/50";
   return (
-    <div
-      className={cn(
-        VA_CARD,
-        "border bg-gradient-to-br to-transparent p-4",
-        border,
-        glow,
-      )}
-    >
+    <div className={cn(VA_CARD, "border bg-gradient-to-br to-transparent p-4", border, glow)}>
       <p
         className={cn(
           "inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]",
@@ -134,13 +138,13 @@ export function AdminApplicationResponseDetailClient({
   const [busy, setBusy] = useState(false);
   const [hireBurst, setHireBurst] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [hireCreds, setHireCreds] = useState<HireCredentialsPayload | null>(null);
   const prevStatus = useRef(initialResponse.status);
 
   useEffect(() => setMounted(true), []);
 
   const answersByQ = useMemo(() => {
-    const m = new Map(response.answers.map((a) => [a.question_id, a]));
-    return m;
+    return new Map(response.answers.map((a) => [a.question_id, a]));
   }, [response.answers]);
 
   const displayName = useMemo(() => {
@@ -179,10 +183,40 @@ export function AdminApplicationResponseDetailClient({
         cognitive: prev.cognitive,
         eq: prev.eq,
         typing: prev.typing,
+        auto_flags: data.response?.auto_flags ?? prev.auto_flags,
+        ai_summary: data.response?.ai_summary ?? prev.ai_summary,
       }));
       toast.success(nextStatus === "hired" ? "Hired — congratulations!" : "Updated");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleHire() {
+    setBusy(true);
+    try {
+      const result = await hireCandidateRequest(formId, response.id);
+      if (prevStatus.current !== "hired") {
+        setHireBurst(true);
+        window.setTimeout(() => setHireBurst(false), 2200);
+      }
+      prevStatus.current = "hired";
+      setResponse((prev) => ({
+        ...prev,
+        status: "hired",
+        generated_username: result.username,
+        has_hire_password: true,
+      }));
+      setHireCreds({
+        username: result.username,
+        password: result.password,
+        created: result.created,
+      });
+      toast.success(result.created ? "Hired — credentials ready" : "Credentials loaded");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Hire failed");
     } finally {
       setBusy(false);
     }
@@ -213,93 +247,127 @@ export function AdminApplicationResponseDetailClient({
             <p className="mt-1 text-xs text-white/35">
               Submitted {new Date(response.submitted_at).toLocaleString()}
               {response.respondent_ip ? ` · ${response.respondent_ip}` : ""}
+              {response.preferred_language
+                ? ` · ${response.preferred_language.toUpperCase()}`
+                : ""}
             </p>
+            <ApplicationFlagBadges flags={response.auto_flags} className="mt-3" />
           </div>
-          <span
-            className={cn(
-              VA_STATUS_BADGE,
-              RESPONSE_STATUS_STYLE[response.status],
-              response.status === "hired" && "hire-status-glow",
-            )}
-          >
-            {RESPONSE_STATUS_LABELS[response.status]}
-          </span>
+          <div className="flex flex-col items-end gap-2">
+            <span
+              className={cn(
+                VA_STATUS_BADGE,
+                RESPONSE_STATUS_STYLE[response.status],
+                response.status === "hired" && "hire-status-glow",
+              )}
+            >
+              {RESPONSE_STATUS_LABELS[response.status]}
+            </span>
+            {canManage ? (
+              <ApplyButton
+                variant="adminPrimary"
+                loading={busy}
+                iconLeft={<PartyPopper className="h-3.5 w-3.5" aria-hidden />}
+                onClick={() => void handleHire()}
+                className="!min-h-[40px] !px-3 !text-xs"
+              >
+                {response.status === "hired" && response.has_hire_password
+                  ? "Credentials"
+                  : "Hire"}
+              </ApplyButton>
+            ) : null}
+          </div>
         </div>
       </div>
+
+      {response.ai_summary ? (
+        <div className={cn(APPLY_SECTION, "mt-6 p-5")}>
+          <p className={cn(APPLY_EYEBROW, "inline-flex items-center gap-1.5")}>
+            <Sparkles className="h-3.5 w-3.5" aria-hidden />
+            AI mini summary
+          </p>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-white/80">
+            {response.ai_summary}
+          </p>
+        </div>
+      ) : null}
 
       {(response.cognitive || response.eq || response.typing) && (
         <div className="mt-6">
           <p className={APPLY_EYEBROW}>Screening results</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {response.cognitive && (
-            <ScoreCard
-              eyebrow="Cognitive screening"
-              accent="pink"
-              tooltip={COGNITIVE_SCORE_TIP}
-            >
-              <p className="mt-2 text-2xl font-semibold text-white">
-                {response.cognitive.raw_score}/{response.cognitive.total_questions}
-              </p>
-              <p className="mt-1 text-sm text-white/55">
-                {response.cognitive.percentile_at_time_of_completion != null
-                  ? `${response.cognitive.percentile_at_time_of_completion}th percentile`
-                  : "Percentile not available"}{" "}
-                · {Math.round(response.cognitive.time_taken_seconds / 60)}m{" "}
-                {response.cognitive.time_taken_seconds % 60}s
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                {Object.entries(response.cognitive.category_breakdown).map(([cat, v]) => (
-                  <div
-                    key={cat}
-                    className="rounded-lg border border-white/8 bg-black/25 px-2 py-1.5 text-xs text-white/55"
-                  >
-                    <span className="capitalize">{cat}</span>: {v.correct}/{v.total}
-                  </div>
-                ))}
-              </div>
-            </ScoreCard>
-          )}
-          {response.eq && (
-            <ScoreCard
-              eyebrow="EQ — situational judgment"
-              accent="champagne"
-              tooltip={EQ_SCORE_TIP}
-            >
-              <p className="mt-2 text-2xl font-semibold text-white">
-                {response.eq.overall_score}/100
-              </p>
-              <p className="mt-1 text-sm text-white/55">
-                {Math.round(response.eq.time_taken_seconds / 60)}m{" "}
-                {response.eq.time_taken_seconds % 60}s
-              </p>
-              <div className="mt-3 space-y-1.5">
-                {Object.entries(response.eq.dimension_breakdown).map(([dim, v]) => (
-                  <div key={dim} className="flex items-center justify-between text-xs text-white/55">
-                    <span className="capitalize">{dim.replace(/_/g, " ")}</span>
-                    <span>
-                      {v.points}/{v.max}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </ScoreCard>
-          )}
-          {response.typing ? (
-            <ScoreCard eyebrow="Typing speed" accent="muted">
-              <p className="mt-2 text-2xl font-semibold text-white">
-                {response.typing.wpm}{" "}
-                <span className="text-base font-normal text-white/45">WPM</span>
-              </p>
-              <p className="mt-1 text-sm text-white/55">
-                {response.typing.accuracy_percent}% accuracy ·{" "}
-                {response.typing.passage_language.toUpperCase()} · {response.typing.device_type}
-              </p>
-            </ScoreCard>
-          ) : (
-            <ScoreCard eyebrow="Typing speed" accent="muted">
-              <p className="mt-2 text-lg font-medium text-white/55">Not completed</p>
-            </ScoreCard>
-          )}
+            {response.cognitive && (
+              <ScoreCard
+                eyebrow="Cognitive screening"
+                accent="pink"
+                tooltip={COGNITIVE_SCORE_TIP}
+              >
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {response.cognitive.raw_score}/{response.cognitive.total_questions}
+                </p>
+                <p className="mt-1 text-sm text-white/55">
+                  {response.cognitive.percentile_at_time_of_completion != null
+                    ? `${response.cognitive.percentile_at_time_of_completion}th percentile`
+                    : "Percentile not available"}{" "}
+                  · {Math.round(response.cognitive.time_taken_seconds / 60)}m{" "}
+                  {response.cognitive.time_taken_seconds % 60}s
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {Object.entries(response.cognitive.category_breakdown).map(([cat, v]) => (
+                    <div
+                      key={cat}
+                      className="rounded-lg border border-white/8 bg-black/25 px-2 py-1.5 text-xs text-white/55"
+                    >
+                      <span className="capitalize">{cat}</span>: {v.correct}/{v.total}
+                    </div>
+                  ))}
+                </div>
+              </ScoreCard>
+            )}
+            {response.eq && (
+              <ScoreCard
+                eyebrow="EQ — situational judgment"
+                accent="champagne"
+                tooltip={EQ_SCORE_TIP}
+              >
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {response.eq.overall_score}/100
+                </p>
+                <p className="mt-1 text-sm text-white/55">
+                  {Math.round(response.eq.time_taken_seconds / 60)}m{" "}
+                  {response.eq.time_taken_seconds % 60}s
+                </p>
+                <div className="mt-3 space-y-1.5">
+                  {Object.entries(response.eq.dimension_breakdown).map(([dim, v]) => (
+                    <div
+                      key={dim}
+                      className="flex items-center justify-between text-xs text-white/55"
+                    >
+                      <span className="capitalize">{dim.replace(/_/g, " ")}</span>
+                      <span>
+                        {v.points}/{v.max}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </ScoreCard>
+            )}
+            {response.typing ? (
+              <ScoreCard eyebrow="Typing speed" accent="muted">
+                <p className="mt-2 text-2xl font-semibold text-white">
+                  {response.typing.wpm}{" "}
+                  <span className="text-base font-normal text-white/45">WPM</span>
+                </p>
+                <p className="mt-1 text-sm text-white/55">
+                  {response.typing.accuracy_percent}% accuracy ·{" "}
+                  {response.typing.passage_language.toUpperCase()} · {response.typing.device_type}
+                </p>
+              </ScoreCard>
+            ) : (
+              <ScoreCard eyebrow="Typing speed" accent="muted">
+                <p className="mt-2 text-lg font-medium text-white/55">Not completed</p>
+              </ScoreCard>
+            )}
           </div>
           <p className="mt-3 text-[11px] text-white/35">
             Screening scores are relative practical comparisons among candidates — not clinically
@@ -343,6 +411,12 @@ export function AdminApplicationResponseDetailClient({
               );
             })}
           </div>
+          {response.generated_username ? (
+            <p className="text-xs text-white/45">
+              Hire username:{" "}
+              <span className="font-medium text-[#D4AF8C]">{response.generated_username}</span>
+            </p>
+          ) : null}
           <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">
             Internal notes
           </label>
@@ -371,24 +445,21 @@ export function AdminApplicationResponseDetailClient({
       <div className="mt-8">
         <p className={APPLY_EYEBROW}>Form answers</p>
         <div className="mt-3 space-y-3">
-        {questions.map((q, idx) => {
-          const a = answersByQ.get(q.id);
-          const display =
-            q.question_type === "checkboxes" && a?.answer_options.length
-              ? a.answer_options.join(", ")
-              : a?.answer_text || a?.answer_options.join(", ") || "—";
-          return (
-            <div
-              key={q.id}
-              className={cn(APPLY_SECTION, "p-4")}
-            >
-              <p className="text-xs text-[#FF1493]/80">
-                {idx + 1}. {q.question_text}
-              </p>
-              <p className="mt-2 whitespace-pre-wrap text-sm text-white/90">{display}</p>
-            </div>
-          );
-        })}
+          {questions.map((q, idx) => {
+            const a = answersByQ.get(q.id);
+            const display =
+              q.question_type === "checkboxes" && a?.answer_options.length
+                ? a.answer_options.join(", ")
+                : a?.answer_text || a?.answer_options.join(", ") || "—";
+            return (
+              <div key={q.id} className={cn(APPLY_SECTION, "p-4")}>
+                <p className="text-xs text-[#FF1493]/80">
+                  {idx + 1}. {q.question_text}
+                </p>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-white/90">{display}</p>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -404,6 +475,16 @@ export function AdminApplicationResponseDetailClient({
           </ApplyButton>
         </div>
       )}
+
+      {hireCreds ? (
+        <ApplicationHireCredentialsModal
+          formId={formId}
+          responseId={response.id}
+          open
+          credentials={hireCreds}
+          onClose={() => setHireCreds(null)}
+        />
+      ) : null}
     </div>
   );
 }

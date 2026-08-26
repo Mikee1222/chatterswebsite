@@ -404,6 +404,11 @@ export async function POST(request: Request, ctx: Ctx) {
       actor_name: candidateName,
     }).catch((err) => console.error("[application_submitted] notify failed", err));
 
+    const { scheduleResponseEnrichment } = await import(
+      "@/services/application-response-enrichment"
+    );
+    scheduleResponseEnrichment(response.id);
+
     return NextResponse.json({ ok: true, response_id: response.id }, { status: 201 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Submit failed";

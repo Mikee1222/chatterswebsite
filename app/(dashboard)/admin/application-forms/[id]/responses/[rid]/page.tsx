@@ -6,6 +6,7 @@ import {
   getApplicationFormById,
   getResponseDetail,
 } from "@/services/application-forms";
+import { ensureResponseEnrichment } from "@/services/application-response-enrichment";
 import { AdminApplicationResponseDetailClient } from "@/components/admin-application-response-detail-client";
 
 type Props = { params: Promise<{ id: string; rid: string }> };
@@ -16,12 +17,17 @@ export default async function AdminApplicationResponseDetailPage({ params }: Pro
     PERMISSIONS.APPLICATIONS_VIEW,
   );
   const { id, rid } = await params;
-  const [form, response, canManage] = await Promise.all([
+  const [form, canManage] = await Promise.all([
     getApplicationFormById(id),
-    getResponseDetail(rid),
     hasPermission(session, PERMISSIONS.APPLICATIONS_MANAGE),
   ]);
-  if (!form || !response || response.form_id !== form.id) notFound();
+  if (!form) notFound();
+
+  // Lazy AI summary + flags on first admin view (cached thereafter)
+  const response =
+    (await ensureResponseEnrichment(rid, { generateAi: true })) ??
+    (await getResponseDetail(rid));
+  if (!response || response.form_id !== form.id) notFound();
 
   return (
     <AdminApplicationResponseDetailClient
