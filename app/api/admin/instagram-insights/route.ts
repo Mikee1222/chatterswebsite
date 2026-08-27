@@ -34,6 +34,7 @@ import {
   queryClarioSuiteAudienceSnapshots,
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
+  queryClarioSuiteTopPostsForModels,
   sumAudienceFollowers,
   sumClarioSuitePeriodViews,
 } from "@/services/clariosuite-sync";
@@ -190,9 +191,11 @@ export async function GET(request: Request) {
     topPostsRaw,
     allDaily,
     priorDaily,
-    allTopPosts,
+    topPostsByModel,
     crossPlatform,
     periodViewsByAccount,
+    stories,
+    linkAnalyticsRaw,
   ] = await Promise.all([
       queryClarioSuiteDailyInsights({
         modelRecordId: selected.modelRecordId,
@@ -221,23 +224,11 @@ export async function GET(request: Request) {
         startYmd: priorRange.startYmd,
         endYmd: priorRange.endYmd,
       }),
-      Promise.all(
-        linked.map(async (m) => {
-          const posts: Awaited<ReturnType<typeof queryClarioSuiteTopPosts>> = [];
-          for (const a of m.accounts) {
-            const chunk = await queryClarioSuiteTopPosts({
-              igUserId: a.igUserId,
-              limit: 25,
-            });
-            posts.push(...chunk);
-          }
-          return {
-            modelId: m.modelRecordId,
-            igUserId: m.igUserId,
-            posts,
-          };
-        })
-      ),
+      // Batch (was N+1 per IG account) — same pattern as Weekly Progress perf fix
+      queryClarioSuiteTopPostsForModels({
+        modelRecordIds: linked.map((m) => m.modelRecordId),
+        limitPerModel: 50,
+      }),
       getCrossPlatformAnalytics({
         modelRecordId: selected.modelRecordId,
         modelName: selected.modelName,
@@ -247,7 +238,23 @@ export async function GET(request: Request) {
       trailingDays
         ? fetchClarioSuitePeriodViewsByAccount(allIgUserIds, trailingDays)
         : Promise.resolve(new Map<string, number>()),
+      // Was sequential after Promise.all — blocked the whole page for Link Funnel
+      fetchClarioSuiteStoriesPayload(selectedIgUserId ?? selected.igUserId),
+      getGetMySocialAgencyOverview({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+      }).catch((err) => {
+        console.error("[instagram-insights] getmysocial agency overview", err);
+        return null;
+      }),
     ]);
+
+  const allTopPosts = linked.map((m) => ({
+    modelId: m.modelRecordId,
+    igUserId: m.igUserId,
+    posts: topPostsByModel.get(m.modelRecordId) ?? [],
+  }));
+  const linkAnalytics = linkAnalyticsRaw;
 
   const daily = selectedIgUserId ? dailyRaw : aggregateIgDailyByDate(dailyRaw);
   const topPosts = selectedIgUserId
@@ -344,11 +351,6 @@ export async function GET(request: Request) {
     daily,
   });
 
-  // Stories — live list; metrics only if API attaches them
-  const stories = await fetchClarioSuiteStoriesPayload(
-    selectedIgUserId ?? selected.igUserId
-  );
-
   const online = asOnlineHours(audienceRow?.online_followers_by_hour);
   const countries = asBuckets(audienceRow?.countries);
   const topCountry = countries[0]?.label ?? null;
@@ -363,16 +365,6 @@ export async function GET(request: Request) {
     (topPosts.length && typeof (topPosts[0] as { synced_at?: string }).synced_at === "string"
       ? (topPosts[0] as { synced_at?: string }).synced_at!
       : null);
-
-  let linkAnalytics: Awaited<ReturnType<typeof getGetMySocialAgencyOverview>> | null = null;
-  try {
-    linkAnalytics = await getGetMySocialAgencyOverview({
-      startYmd: range.startYmd,
-      endYmd: range.endYmd,
-    });
-  } catch (err) {
-    console.error("[instagram-insights] getmysocial agency overview", err);
-  }
 
   return NextResponse.json(
     {

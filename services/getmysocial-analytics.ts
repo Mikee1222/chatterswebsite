@@ -12,16 +12,14 @@ import {
 import { queryClarioSuiteDailyInsights } from "@/services/clariosuite-sync";
 import { listClarioSuiteModelAccounts, resolvePrimaryIgUserId } from "@/services/clariosuite-model-accounts";
 import {
-  creatorTxRevenueAmount,
   listCreatorDailyStats,
-  listCreatorTransactions,
+  listCreatorRevenueByAthensDay,
 } from "@/services/infloww-creator-earnings";
 import { getModelById } from "@/services/modelss";
 import {
   addDaysAthensYmd,
   getMondayOfWeekFromYmdAthens,
   getTodayYmdAthens,
-  ymdInAthens,
 } from "@/lib/airtable-datetime";
 import {
   computePctChange,
@@ -37,7 +35,6 @@ import {
   type GmsAbConversionCorrelation,
   type GmsLinkWinner,
 } from "@/lib/getmysocial-insights";
-import { getGetMySocialCtr, isGetMySocialConfigured } from "@/lib/getmysocial-api";
 import type { GetMySocialTimeframe } from "@/types/getmysocial";
 
 export type LinkRoleStats = {
@@ -232,62 +229,28 @@ export function resolveGmsTimeframeForRange(
   return "thisMonth";
 }
 
-function athensRangeIso(startYmd: string, endYmd: string): { start_date: string; end_date: string } {
-  return {
-    start_date: `${startYmd}T00:00:00`,
-    end_date: `${endYmd}T23:59:59`,
-  };
-}
-
-async function sumOfNewSubsForModel(
-  modelRecordId: string,
-  creatorInflowwId: string | null | undefined,
+function sumOfNewSubsFromRows(
+  rows: Array<{ date: string; new_subscribers: number }>,
   startYmd: string,
   endYmd: string
-): Promise<number> {
-  try {
-    const rows = creatorInflowwId
-      ? await listCreatorDailyStats({ creatorInflowwId, startYmd, endYmd })
-      : await listCreatorDailyStats({ modelRecordId, startYmd, endYmd });
-    return rows.reduce((s, r) => s + n(r.new_subscribers), 0);
-  } catch (err) {
-    console.error("[getmysocial] of new subs", err);
-    return 0;
-  }
+): number {
+  return rows
+    .filter((r) => r.date >= startYmd && r.date <= endYmd)
+    .reduce((s, r) => s + n(r.new_subscribers), 0);
 }
 
+/**
+ * Button CTR breakdown used to hit live GetMySocial (~500ms rate-limit gap per link)
+ * on every page load. Prefer empty here — Traffic tab still has referrers/devices from cache.
+ * Sync cron remains the source of truth for click totals.
+ */
 async function loadButtonBreakdown(
-  links: GetMySocialModelLink[],
-  startYmd: string,
-  endYmd: string,
+  _links: GetMySocialModelLink[],
+  _startYmd: string,
+  _endYmd: string,
   _timeframe: GetMySocialTimeframe
 ): Promise<GetMySocialButtonStat[]> {
-  if (!links.length || !isGetMySocialConfigured()) return [];
-  const iso = athensRangeIso(startYmd, endYmd);
-  const out: GetMySocialButtonStat[] = [];
-  await Promise.all(
-    links.map(async (link) => {
-      try {
-        const ctr = await getGetMySocialCtr(link.getmysocial_link_id, {
-          ...iso,
-          timezone: "Europe/Athens",
-        });
-        for (const b of ctr.top_buttons ?? []) {
-          const label = (b.label ?? "").trim() || `Button ${b.index + 1}`;
-          out.push({
-            link_role: link.link_role,
-            shortcode: link.shortcode,
-            label: `Link ${link.link_role} · ${label}`,
-            clicks: n(b.clicks),
-            url: b.url ?? null,
-          });
-        }
-      } catch (err) {
-        console.error("[getmysocial] ctr buttons", link.getmysocial_link_id, err);
-      }
-    })
-  );
-  return out.sort((a, b) => b.clicks - a.clicks);
+  return [];
 }
 
 async function loadAgencyConversionRanking(
@@ -302,24 +265,27 @@ async function loadAgencyConversionRanking(
   const modelIds = [...new Set(allLinks.map((l) => l.model_id))];
   const linkIds = allLinks.map((l) => l.getmysocial_link_id);
   const sb = getSupabaseServiceClient();
-  const { data, error } = await sb
-    .from("getmysocial_daily_analytics")
-    .select("date,button_clicks,getmysocial_link_id")
-    .in("getmysocial_link_id", linkIds)
-    .gte("date", startYmd)
-    .lte("date", endYmd);
-  if (error) throw new Error(error.message);
+
+  const [analyticsRes, ofRows] = await Promise.all([
+    sb
+      .from("getmysocial_daily_analytics")
+      .select("date,button_clicks,getmysocial_link_id")
+      .in("getmysocial_link_id", linkIds)
+      .gte("date", startYmd)
+      .lte("date", endYmd),
+    listCreatorDailyStats({ startYmd, endYmd }),
+  ]);
+  if (analyticsRes.error) throw new Error(analyticsRes.error.message);
 
   const linkToModel = new Map(allLinks.map((l) => [l.getmysocial_link_id, l.model_id]));
   const clicksByModel = new Map<string, number>();
   for (const mid of modelIds) clicksByModel.set(mid, 0);
-  for (const row of data ?? []) {
+  for (const row of analyticsRes.data ?? []) {
     const mid = linkToModel.get(String(row.getmysocial_link_id));
     if (!mid) continue;
     clicksByModel.set(mid, (clicksByModel.get(mid) ?? 0) + n(row.button_clicks));
   }
 
-  const ofRows = await listCreatorDailyStats({ startYmd, endYmd });
   const subsByModel = new Map<string, number>();
   for (const row of ofRows) {
     const mid = row.model_record_id;
@@ -610,67 +576,95 @@ export async function getGetMySocialAnalyticsForModel(
     });
   }
 
-  if (model && rangeStart && rangeEnd) {
-    try {
-      const accounts = await listClarioSuiteModelAccounts(model.id);
-      const ig = resolvePrimaryIgUserId(model, accounts);
-      if (ig) {
-        const igRows = await queryClarioSuiteDailyInsights({
-          igUserId: ig,
-          startYmd: rangeStart,
-          endYmd: rangeEnd,
-        });
-        for (const row of igRows) {
-          const date = String(row.date).slice(0, 10);
-          const f = funnelMap.get(date);
-          if (!f) continue;
-          f.ig_reach += n(row.reach);
-        }
-      }
-    } catch (err) {
-      console.error("[getmysocial] funnel ig", err);
-    }
+  let ofRowsForConversion: Array<{ date: string; new_subscribers: number }> = [];
+  let agencyRankingResult: {
+    avg_rate_pct: number | null;
+    ranked: Array<{ modelId: string; rate: number }>;
+  } = { avg_rate_pct: null, ranked: [] };
 
-    try {
-      const creatorId = model.infloww_creator_id?.trim();
-      const ofRows = creatorId
-        ? await listCreatorDailyStats({
-            creatorInflowwId: creatorId,
-            startYmd: lookbackStart,
-            endYmd: rangeEnd,
-          })
-        : await listCreatorDailyStats({
-            modelRecordId: mid,
-            startYmd: lookbackStart,
+  if (model && rangeStart && rangeEnd) {
+    const creatorId = model.infloww_creator_id?.trim();
+    const [igResult, ofResult, revenueResult, agencyRanking] = await Promise.all([
+      (async () => {
+        try {
+          const accounts = await listClarioSuiteModelAccounts(model.id);
+          const ig = resolvePrimaryIgUserId(model, accounts);
+          if (!ig) return [] as Awaited<ReturnType<typeof queryClarioSuiteDailyInsights>>;
+          return queryClarioSuiteDailyInsights({
+            igUserId: ig,
+            startYmd: rangeStart,
             endYmd: rangeEnd,
           });
-      for (const row of ofRows) {
-        const date = String(row.date).slice(0, 10);
-        if (date < rangeStart || date > rangeEnd) continue;
-        const f = funnelMap.get(date);
-        if (!f) continue;
-        f.of_new_subscribers += n(row.new_subscribers);
-      }
-
-      if (creatorId) {
-        const txs = await listCreatorTransactions({
-          creatorInflowwId: creatorId,
-          startYmd: rangeStart,
-          endYmd: rangeEnd,
-          fetchAll: true,
-          revenueOnly: true,
-        });
-        for (const tx of txs) {
-          const date = ymdInAthens(tx.created_time);
-          if (!date) continue;
-          const f = funnelMap.get(date);
-          if (!f) continue;
-          f.of_revenue += creatorTxRevenueAmount(tx);
+        } catch (err) {
+          console.error("[getmysocial] funnel ig", err);
+          return [] as Awaited<ReturnType<typeof queryClarioSuiteDailyInsights>>;
         }
-      }
-    } catch (err) {
-      console.error("[getmysocial] funnel of", err);
+      })(),
+      (async () => {
+        try {
+          return creatorId
+            ? await listCreatorDailyStats({
+                creatorInflowwId: creatorId,
+                startYmd: lookbackStart,
+                endYmd: rangeEnd,
+              })
+            : await listCreatorDailyStats({
+                modelRecordId: mid,
+                startYmd: lookbackStart,
+                endYmd: rangeEnd,
+              });
+        } catch (err) {
+          console.error("[getmysocial] funnel of", err);
+          return [] as Awaited<ReturnType<typeof listCreatorDailyStats>>;
+        }
+      })(),
+      // Prefer Athens-day RPC over fetchAll transactions (Weekly Progress pattern)
+      (async () => {
+        try {
+          return await listCreatorRevenueByAthensDay({
+            modelRecordId: mid,
+            startYmd: rangeStart,
+            endYmd: rangeEnd,
+          });
+        } catch (err) {
+          console.error("[getmysocial] funnel revenue", err);
+          return [] as Awaited<ReturnType<typeof listCreatorRevenueByAthensDay>>;
+        }
+      })(),
+      loadAgencyConversionRanking(rangeStart, rangeEnd).catch((err) => {
+        console.error("[getmysocial] agency conversion", err);
+        return {
+          avg_rate_pct: null as number | null,
+          ranked: [] as Array<{ modelId: string; rate: number }>,
+        };
+      }),
+    ]);
+
+    for (const row of igResult) {
+      const date = String(row.date).slice(0, 10);
+      const f = funnelMap.get(date);
+      if (!f) continue;
+      f.ig_reach += n(row.reach);
     }
+
+    ofRowsForConversion = ofResult.map((r) => ({
+      date: String(r.date).slice(0, 10),
+      new_subscribers: n(r.new_subscribers),
+    }));
+    for (const row of ofRowsForConversion) {
+      if (row.date < rangeStart || row.date > rangeEnd) continue;
+      const f = funnelMap.get(row.date);
+      if (!f) continue;
+      f.of_new_subscribers += row.new_subscribers;
+    }
+
+    for (const row of revenueResult) {
+      const f = funnelMap.get(row.date);
+      if (!f) continue;
+      f.of_revenue += row.revenue;
+    }
+
+    agencyRankingResult = agencyRanking;
   }
 
   const funnel = [...funnelMap.values()].sort((a, b) => a.date.localeCompare(b.date));
@@ -765,23 +759,13 @@ export async function getGetMySocialAnalyticsForModel(
   };
 
   // Conversion: period + WoW (Athens week) + MoM (equal-length prior window)
+  // Reuse already-fetched OF daily stats — no extra N+1 listCreatorDailyStats calls.
   const periodRate = clickToSubRatePct(funnelTotals.of_new_subscribers, button_clicks);
 
-  const weekSubs = await sumOfNewSubsForModel(
-    mid,
-    model?.infloww_creator_id,
-    weekStart,
-    todayYmd
-  );
-  const priorWeekSubs = await sumOfNewSubsForModel(
-    mid,
-    model?.infloww_creator_id,
-    priorWeekStart,
-    priorWeekEnd
-  );
-  const priorPeriodSubs = await sumOfNewSubsForModel(
-    mid,
-    model?.infloww_creator_id,
+  const weekSubs = sumOfNewSubsFromRows(ofRowsForConversion, weekStart, todayYmd);
+  const priorWeekSubs = sumOfNewSubsFromRows(ofRowsForConversion, priorWeekStart, priorWeekEnd);
+  const priorPeriodSubs = sumOfNewSubsFromRows(
+    ofRowsForConversion,
     prior.startYmd,
     prior.endYmd
   );
@@ -800,19 +784,10 @@ export async function getGetMySocialAnalyticsForModel(
   });
   const link_ab = computeAbConversionCorrelation(abDays);
 
-  // Agency conversion ranking for Talking Points
-  let agency_avg_rate_pct: number | null = null;
-  let agency_rank: number | null = null;
-  let agency_model_count = 0;
-  try {
-    const agency = await loadAgencyConversionRanking(rangeStart, rangeEnd);
-    agency_avg_rate_pct = agency.avg_rate_pct;
-    agency_model_count = agency.ranked.length;
-    const idx = agency.ranked.findIndex((m) => m.modelId === mid);
-    agency_rank = idx >= 0 ? idx + 1 : null;
-  } catch (err) {
-    console.error("[getmysocial] agency conversion", err);
-  }
+  const agency_avg_rate_pct = agencyRankingResult.avg_rate_pct;
+  const agency_model_count = agencyRankingResult.ranked.length;
+  const agencyRankIdx = agencyRankingResult.ranked.findIndex((m) => m.modelId === mid);
+  const agency_rank = agencyRankIdx >= 0 ? agencyRankIdx + 1 : null;
 
   const conversion: GetMySocialConversionStats = {
     rate_pct: periodRate,
@@ -985,26 +960,57 @@ export async function getGetMySocialAgencyOverview(opts: {
   const lookbackStart =
     opts.startYmd < weekStart ? opts.startYmd : addDaysAthensYmd(weekStart, -7);
 
-  const { data, error } = await sb
-    .from("getmysocial_daily_analytics")
-    .select(
-      "date,pageviews,button_clicks,unique_visitors,ctr_pct,shield_blocked_pct,getmysocial_link_id,link_role,synced_at"
-    )
-    .in("getmysocial_link_id", linkIds)
-    .gte("date", lookbackStart)
-    .lte("date", opts.endYmd > todayYmd ? opts.endYmd : todayYmd)
-    .order("date", { ascending: true });
+  // Parallel: GMS analytics + OF daily stats + batched model names (was N+1 getModelById)
+  const [analyticsRes, ofRows, nameRes] = await Promise.all([
+    sb
+      .from("getmysocial_daily_analytics")
+      .select(
+        "date,pageviews,button_clicks,unique_visitors,ctr_pct,shield_blocked_pct,getmysocial_link_id,link_role,synced_at,model_name"
+      )
+      .in("getmysocial_link_id", linkIds)
+      .gte("date", lookbackStart)
+      .lte("date", opts.endYmd > todayYmd ? opts.endYmd : todayYmd)
+      .order("date", { ascending: true }),
+    listCreatorDailyStats({
+      startYmd: opts.startYmd,
+      endYmd: opts.endYmd,
+    }).catch((err) => {
+      console.error("[getmysocial] agency of stats", err);
+      return [] as Awaited<ReturnType<typeof listCreatorDailyStats>>;
+    }),
+    sb.from("modelss").select("id,airtable_id,model_name").in("airtable_id", modelIds),
+  ]);
 
-  if (error) throw new Error(error.message);
+  if (analyticsRes.error) throw new Error(analyticsRes.error.message);
+  const data = analyticsRes.data;
+
+  const nameCache = new Map<string, string>();
+  for (const row of nameRes.data ?? []) {
+    const r = row as { id: string; airtable_id?: string | null; model_name?: string | null };
+    const name = r.model_name?.trim();
+    if (!name) continue;
+    if (r.airtable_id) nameCache.set(String(r.airtable_id), name);
+    if (r.id) nameCache.set(String(r.id), name);
+  }
+  // Fallback: model_name stamped on daily analytics rows during sync
+  for (const row of data ?? []) {
+    const link = allLinks.find((l) => l.getmysocial_link_id === String(row.getmysocial_link_id));
+    if (!link) continue;
+    if (nameCache.has(link.model_id)) continue;
+    const stamped = typeof row.model_name === "string" ? row.model_name.trim() : "";
+    if (stamped) nameCache.set(link.model_id, stamped);
+    else if (link.link_label) {
+      nameCache.set(
+        link.model_id,
+        link.link_label.replace(/\s+Link\s+[AB]$/i, "").trim() || link.model_id
+      );
+    }
+  }
+  for (const mid of modelIds) {
+    if (!nameCache.has(mid)) nameCache.set(mid, mid);
+  }
 
   const linkToModel = new Map(allLinks.map((l) => [l.getmysocial_link_id, l]));
-  const nameCache = new Map<string, string>();
-  await Promise.all(
-    modelIds.map(async (id) => {
-      const m = await getModelById(id).catch(() => null);
-      nameCache.set(id, m?.model_name ?? id);
-    })
-  );
 
   type Agg = {
     modelId: string;
@@ -1095,13 +1101,6 @@ export async function getGetMySocialAgencyOverview(opts: {
     }
   }
 
-  const ofRows = await listCreatorDailyStats({
-    startYmd: opts.startYmd,
-    endYmd: opts.endYmd,
-  }).catch((err) => {
-    console.error("[getmysocial] agency of stats", err);
-    return [] as Awaited<ReturnType<typeof listCreatorDailyStats>>;
-  });
   const subsByModel = new Map<string, number>();
   for (const row of ofRows) {
     const mid = row.model_record_id;
