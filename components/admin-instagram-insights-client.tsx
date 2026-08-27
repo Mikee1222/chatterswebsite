@@ -872,6 +872,30 @@ export function AdminInstagramInsightsClient() {
                 </div>
               ) : null}
 
+              {linkAnalytics && linkAnalytics.conversion_ranking?.length ? (
+                <div className={cn(VA_CARD, "p-4")}>
+                  <div className="mb-2 flex items-center gap-1.5">
+                    <SectionLabel>Bio click → new sub · agency</SectionLabel>
+                    <StatInfoTooltip text="OF new subscribers ÷ GetMySocial bio button clicks for the selected period, per model. Period correlation — not verified per-click attribution." />
+                  </div>
+                  <p className="mb-3 text-[11px] text-white/40">
+                    Agency rate{" "}
+                    {linkAnalytics.totals.click_to_sub_rate_pct != null
+                      ? `${linkAnalytics.totals.click_to_sub_rate_pct}%`
+                      : "—"}{" "}
+                    · {fmtNum(linkAnalytics.totals.new_subscribers ?? 0)} new subs /{" "}
+                    {fmtNum(linkAnalytics.totals.button_clicks)} clicks
+                  </p>
+                  <RankedBarList
+                    items={linkAnalytics.conversion_ranking.slice(0, 8).map((m) => ({
+                      label: `${m.modelName} · ${m.rate_pct}%`,
+                      value: m.rate_pct,
+                    }))}
+                    accent="champagne"
+                  />
+                </div>
+              ) : null}
+
               {/* Today snapshot + Link A/B winners */}
               {linkAnalytics && linkAnalytics.models.length > 0 ? (
                 <div className="grid gap-4 lg:grid-cols-2">
@@ -1743,6 +1767,8 @@ export function AdminInstagramInsightsClient() {
               modelId={modelId || data?.selectedModelId || null}
               modelName={data?.selectedModelName ?? undefined}
               canSync
+              startYmd={data?.range.startYmd ?? customFrom ?? null}
+              endYmd={data?.range.endYmd ?? customTo ?? null}
             />
           ) : null}
         </motion.div>

@@ -156,10 +156,15 @@ export function GetMySocialLinkAnalyticsPanel({
   modelId,
   modelName,
   canSync,
+  startYmd,
+  endYmd,
 }: {
   modelId: string | null;
   modelName?: string;
   canSync?: boolean;
+  /** Athens YMD — required for date filtering; when omitted defaults to this month server-side. */
+  startYmd?: string | null;
+  endYmd?: string | null;
 }) {
   const [data, setData] = React.useState<GetMySocialAnalyticsSummary | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -168,14 +173,17 @@ export function GetMySocialLinkAnalyticsPanel({
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [subTab, setSubTab] = React.useState<FunnelSubTab>("overview");
 
-  const load = React.useCallback(async (id: string) => {
+  const load = React.useCallback(async (id: string, start?: string | null, end?: string | null) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/admin/getmysocial/analytics?modelId=${encodeURIComponent(id)}&timeframe=thisMonth`,
-        { cache: "no-store" }
-      );
+      const params = new URLSearchParams({ modelId: id });
+      if (start?.trim()) params.set("start", start.trim().slice(0, 10));
+      if (end?.trim()) params.set("end", end.trim().slice(0, 10));
+      if (!start?.trim() && !end?.trim()) params.set("timeframe", "thisMonth");
+      const res = await fetch(`/api/admin/getmysocial/analytics?${params.toString()}`, {
+        cache: "no-store",
+      });
       const json = (await res.json()) as {
         data?: GetMySocialAnalyticsSummary | null;
         error?: string;
@@ -195,8 +203,8 @@ export function GetMySocialLinkAnalyticsPanel({
       setData(null);
       return;
     }
-    void load(modelId);
-  }, [modelId, load]);
+    void load(modelId, startYmd, endYmd);
+  }, [modelId, startYmd, endYmd, load]);
 
   async function syncNow() {
     if (!modelId || !canSync) return;
@@ -223,7 +231,7 @@ export function GetMySocialLinkAnalyticsPanel({
           ? json.skipReason || "Skipped"
           : `Synced ${json.analyticsRowsUpserted ?? 0} daily rows`
       );
-      await load(modelId);
+      await load(modelId, startYmd, endYmd);
     } catch (e) {
       setSyncMsg(e instanceof Error ? e.message : "Sync failed");
     } finally {
@@ -287,9 +295,21 @@ export function GetMySocialLinkAnalyticsPanel({
     ...d,
     short: d.date.slice(5),
   }));
+  const ctrChart = (data.ctrTrend ?? []).map((d) => ({
+    ...d,
+    short: d.date.slice(5),
+    ctr: d.ctr_pct ?? 0,
+  }));
   const periodWinner = data.winners?.period;
   const winA = periodWinner && !periodWinner.tie && periodWinner.role === "A";
   const winB = periodWinner && !periodWinner.tie && periodWinner.role === "B";
+  const conv = data.conversion;
+  const rangeLabel =
+    data.range?.startYmd && data.range?.endYmd
+      ? data.range.startYmd === data.range.endYmd
+        ? data.range.startYmd
+        : `${data.range.startYmd} → ${data.range.endYmd}`
+      : null;
 
   return (
     <div className="space-y-5">
@@ -301,6 +321,7 @@ export function GetMySocialLinkAnalyticsPanel({
           </SectionLabel>
           <p className="mt-1 text-xs text-white/45">
             {data.modelName}
+            {rangeLabel ? ` · ${rangeLabel}` : ""}
             {data.lastSyncedAt ? ` · synced ${formatRelativeSync(data.lastSyncedAt)}` : ""}
           </p>
         </div>
@@ -344,7 +365,14 @@ export function GetMySocialLinkAnalyticsPanel({
             <LuxuryStatCard
               label="Total pageviews"
               value={<CountUp value={data.totals.pageviews} />}
-              hint={<PeriodBadge change={data.trends.pageviews_wow} />}
+              hint={
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <PeriodBadge change={data.trends.pageviews_wow} />
+                  <span className="text-[10px] text-white/35">WoW</span>
+                  <PeriodBadge change={data.trends.pageviews_mom} />
+                  <span className="text-[10px] text-white/35">vs prior</span>
+                </span>
+              }
             />
             <LuxuryStatCard
               label="Total button clicks"
@@ -355,6 +383,8 @@ export function GetMySocialLinkAnalyticsPanel({
                   <span className="text-[10px] text-white/35">DoD</span>
                   <PeriodBadge change={data.trends.clicks_wow} />
                   <span className="text-[10px] text-white/35">WoW</span>
+                  <PeriodBadge change={data.trends.clicks_mom} />
+                  <span className="text-[10px] text-white/35">vs prior</span>
                 </span>
               }
             />
@@ -365,10 +395,43 @@ export function GetMySocialLinkAnalyticsPanel({
             <LuxuryStatCard
               label="CTR"
               value={data.totals.ctr_pct != null ? `${data.totals.ctr_pct}%` : "—"}
+              hint={
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <PeriodBadge change={data.trends.ctr_wow} />
+                  <span className="text-[10px] text-white/35">WoW</span>
+                  <PeriodBadge change={data.trends.ctr_mom} />
+                  <span className="text-[10px] text-white/35">vs prior</span>
+                </span>
+              }
             />
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <LuxuryStatCard
+              label="Click → sub rate"
+              value={conv?.rate_pct != null ? `${conv.rate_pct}%` : "—"}
+              tooltip="OF new subscribers ÷ bio button clicks for this period. Period-level correlation — not verified per-click attribution."
+              hint={
+                <span className="inline-flex flex-wrap items-center gap-1.5">
+                  <PeriodBadge change={conv?.wow ?? { current: 0, previous: 0, pct_change: null, direction: "na" }} />
+                  <span className="text-[10px] text-white/35">WoW</span>
+                  <PeriodBadge change={conv?.mom ?? { current: 0, previous: 0, pct_change: null, direction: "na" }} />
+                  <span className="text-[10px] text-white/35">vs prior</span>
+                </span>
+              }
+            />
+            <LuxuryStatCard
+              label="OF new subs"
+              value={<CountUp value={conv?.new_subscribers ?? data.funnelTotals.of_new_subscribers} />}
+              hint={
+                conv?.agency_avg_rate_pct != null
+                  ? `Team avg ${conv.agency_avg_rate_pct}%${
+                      conv.agency_rank != null ? ` · #${conv.agency_rank}/${conv.agency_model_count}` : ""
+                    }`
+                  : "Infloww daily stats"
+              }
+              tooltip="Same-period Infloww new_subscribers for this model."
+            />
             <LuxuryStatCard
               label="Shield blocked"
               value={`${data.totals.shield_blocked_pct}%`}
@@ -381,30 +444,6 @@ export function GetMySocialLinkAnalyticsPanel({
               }
             />
             <LuxuryStatCard
-              label="Bot visits (sample)"
-              value={
-                data.visitorInsights.bot_pct != null
-                  ? `${data.visitorInsights.bot_pct}%`
-                  : "—"
-              }
-              hint={
-                data.visitorInsights.sample_size > 0
-                  ? `${fmtNum(data.visitorInsights.bot_count)} / ${fmtNum(data.visitorInsights.sample_size)} events`
-                  : "No visitor sample"
-              }
-              tooltip="Share of cached visitor events flagged is_bot (recent sample)."
-            />
-            <LuxuryStatCard
-              label="Mobile share"
-              value={data.mobile_device_pct != null ? `${data.mobile_device_pct}%` : "—"}
-              hint={
-                <span className="inline-flex items-center gap-1">
-                  <Smartphone className="h-3 w-3" />
-                  Device mix
-                </span>
-              }
-            />
-            <LuxuryStatCard
               label="Peak hour (Athens)"
               value={
                 data.visitorInsights.peak_hour_athens != null
@@ -412,13 +451,131 @@ export function GetMySocialLinkAnalyticsPanel({
                   : "—"
               }
               hint={
-                data.winners.today && !data.winners.today.tie
-                  ? `Today winner: Link ${data.winners.today.role}`
-                  : data.winners.this_week && !data.winners.this_week.tie
-                    ? `Week winner: Link ${data.winners.this_week.role}`
-                    : undefined
+                data.mobile_device_pct != null ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Smartphone className="h-3 w-3" />
+                    {data.mobile_device_pct}% mobile
+                  </span>
+                ) : undefined
               }
             />
+          </div>
+
+          {conv?.link_ab ? (
+            <div className={cn(VA_CARD, "space-y-2 p-4")}>
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-white/50">
+                Link A vs B · conversion correlation
+                <StatInfoTooltip text={conv.link_ab.note} />
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/10 px-3 py-2">
+                  <p className="text-[10px] uppercase text-[#D4AF8C]/80">
+                    Link A dominant days ({conv.link_ab.a_dominant_days})
+                  </p>
+                  <p className="text-lg tabular-nums text-white/90">
+                    {conv.link_ab.a_rate_pct != null ? `${conv.link_ab.a_rate_pct}%` : "—"}
+                  </p>
+                  <p className="text-[10px] text-white/40">
+                    {fmtNum(conv.link_ab.a_correlated_subs)} subs / {fmtNum(conv.link_ab.a_clicks)}{" "}
+                    clicks
+                  </p>
+                </div>
+                <div className="rounded-lg border border-white/10 px-3 py-2">
+                  <p className="text-[10px] uppercase text-[#D4AF8C]/80">
+                    Link B dominant days ({conv.link_ab.b_dominant_days})
+                  </p>
+                  <p className="text-lg tabular-nums text-white/90">
+                    {conv.link_ab.b_rate_pct != null ? `${conv.link_ab.b_rate_pct}%` : "—"}
+                  </p>
+                  <p className="text-[10px] text-white/40">
+                    {fmtNum(conv.link_ab.b_correlated_subs)} subs / {fmtNum(conv.link_ab.b_clicks)}{" "}
+                    clicks
+                  </p>
+                </div>
+              </div>
+              {conv.link_ab.correlated_winner ? (
+                <p className="text-[11px] text-emerald-300/85">
+                  Correlation leans Link {conv.link_ab.correlated_winner} — not proven per-click
+                  attribution.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className={cn(VA_CARD, "p-4")}>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">
+                Clicks vs new subs
+              </div>
+              {funnelChart.length > 0 ? (
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={funnelChart}>
+                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                      <XAxis dataKey="short" tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} />
+                      <YAxis yAxisId="left" tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} />
+                      <YAxis
+                        yAxisId="right"
+                        orientation="right"
+                        tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
+                      />
+                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                      <Legend />
+                      <Line
+                        yAxisId="left"
+                        type="monotone"
+                        dataKey="bio_button_clicks"
+                        name="Bio clicks"
+                        stroke="rgba(212,175,140,0.95)"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                      <Line
+                        yAxisId="right"
+                        type="monotone"
+                        dataKey="of_new_subscribers"
+                        name="OF new subs"
+                        stroke="#34d399"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-xs text-white/40">No daily series in this range.</p>
+              )}
+            </div>
+            <div className={cn(VA_CARD, "p-4")}>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">
+                CTR trend
+              </div>
+              {ctrChart.length > 0 ? (
+                <div className="h-48 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={ctrChart}>
+                      <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                      <XAxis dataKey="short" tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} />
+                      <YAxis
+                        tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
+                        unit="%"
+                      />
+                      <Tooltip contentStyle={CHART_TOOLTIP_STYLE} />
+                      <Line
+                        type="monotone"
+                        dataKey="ctr"
+                        name="CTR %"
+                        stroke="#FF1493"
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-xs text-white/40">No CTR series in this range.</p>
+              )}
+            </div>
           </div>
 
           <div className={cn(VA_CARD, "p-4")}>
@@ -426,8 +583,28 @@ export function GetMySocialLinkAnalyticsPanel({
               Hour of day · visitor events (Athens)
             </div>
             <HourBars hours={data.visitorInsights.hours} />
-            <p className="mt-2 text-[10px] text-white/35">0–23 Athens wall clock from visitor sample</p>
+            <p className="mt-2 text-[10px] text-white/35">
+              0–23 Athens wall clock from visitor sample
+              {data.visitorInsights.sample_size
+                ? ` · n=${fmtNum(data.visitorInsights.sample_size)}`
+                : ""}
+            </p>
           </div>
+
+          {data.buttons?.length ? (
+            <div className={cn(VA_CARD, "p-4")}>
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">
+                Per-button clicks
+              </div>
+              <RankedBarList
+                items={data.buttons.slice(0, 8).map((b) => ({
+                  label: b.label,
+                  value: b.clicks,
+                }))}
+                accent="champagne"
+              />
+            </div>
+          ) : null}
         </div>
       ) : null}
 

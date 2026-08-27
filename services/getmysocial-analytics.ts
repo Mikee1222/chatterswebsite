@@ -23,12 +23,22 @@ import {
   getTodayYmdAthens,
   ymdInAthens,
 } from "@/lib/airtable-datetime";
-import { computePctChange, type PeriodChangeMetric } from "@/services/infloww-analytics";
 import {
+  computePctChange,
+  previousPeriodRange,
+  type PeriodChangeMetric,
+} from "@/services/infloww-analytics";
+import { resolveInflowwStatsRange } from "@/services/infloww-performance";
+import {
+  clickToSubRatePct,
+  computeAbConversionCorrelation,
   generateGmsTalkingPoints,
   pickGmsLinkWinner,
+  type GmsAbConversionCorrelation,
   type GmsLinkWinner,
 } from "@/lib/getmysocial-insights";
+import { getGetMySocialCtr, isGetMySocialConfigured } from "@/lib/getmysocial-api";
+import type { GetMySocialTimeframe } from "@/types/getmysocial";
 
 export type LinkRoleStats = {
   role: GetMySocialLinkRole;
@@ -58,9 +68,32 @@ export type GetMySocialVisitorInsights = {
   peak_hour_athens: number | null;
 };
 
+export type GetMySocialButtonStat = {
+  link_role: GetMySocialLinkRole | null;
+  shortcode: string | null;
+  label: string;
+  clicks: number;
+  url: string | null;
+};
+
+export type GetMySocialConversionStats = {
+  /** new_subscribers ÷ button_clicks × 100 for the selected period. */
+  rate_pct: number | null;
+  new_subscribers: number;
+  button_clicks: number;
+  framing: "period_correlation";
+  wow: PeriodChangeMetric;
+  mom: PeriodChangeMetric;
+  link_ab: GmsAbConversionCorrelation;
+  agency_avg_rate_pct: number | null;
+  agency_rank: number | null;
+  agency_model_count: number;
+};
+
 export type GetMySocialAnalyticsSummary = {
   modelId: string;
   modelName: string;
+  range: { startYmd: string; endYmd: string };
   links: GetMySocialModelLink[];
   lastSyncedAt: string | null;
   linkA: LinkRoleStats;
@@ -81,6 +114,13 @@ export type GetMySocialAnalyticsSummary = {
     link_role: string | null;
     link_label: string | null;
   }>;
+  /** Daily CTR % series for trend chart. */
+  ctrTrend: Array<{
+    date: string;
+    pageviews: number;
+    button_clicks: number;
+    ctr_pct: number | null;
+  }>;
   funnel: GetMySocialFunnelDay[];
   funnelTotals: {
     ig_reach: number;
@@ -89,6 +129,8 @@ export type GetMySocialAnalyticsSummary = {
     of_new_subscribers: number;
     of_revenue: number;
   };
+  conversion: GetMySocialConversionStats;
+  buttons: GetMySocialButtonStat[];
   storyLinks: { link_a_url: string | null; link_b_url: string | null };
   referrers: Array<{ referrer: string; count: number; link_role: string | null }>;
   countries: Array<{ label: string; label_code: string | null; count: number }>;
@@ -100,8 +142,12 @@ export type GetMySocialAnalyticsSummary = {
   trends: {
     clicks_dod: PeriodChangeMetric;
     clicks_wow: PeriodChangeMetric;
+    clicks_mom: PeriodChangeMetric;
     pageviews_dod: PeriodChangeMetric;
     pageviews_wow: PeriodChangeMetric;
+    pageviews_mom: PeriodChangeMetric;
+    ctr_wow: PeriodChangeMetric;
+    ctr_mom: PeriodChangeMetric;
   };
   winners: {
     today: GmsLinkWinner | null;
@@ -163,6 +209,138 @@ function mobileShare(devices: Array<{ label: string; count: number }>): number |
     .filter((d) => isMobileDeviceLabel(d.label))
     .reduce((s, d) => s + d.count, 0);
   return Math.round((mobile / total) * 1000) / 10;
+}
+
+/** Best-effort GetMySocial timeframe for referrer/breakdown caches. */
+export function resolveGmsTimeframeForRange(
+  startYmd: string,
+  endYmd: string
+): GetMySocialTimeframe {
+  const today = getTodayYmdAthens();
+  const yesterday = addDaysAthensYmd(today, -1);
+  if (startYmd === endYmd) {
+    if (startYmd === today) return "today";
+    if (startYmd === yesterday) return "yesterday";
+  }
+  const weekStart = getMondayOfWeekFromYmdAthens(today);
+  if (startYmd === weekStart && endYmd === today) return "thisWeek";
+  const priorWeekStart = addDaysAthensYmd(weekStart, -7);
+  const priorWeekEnd = addDaysAthensYmd(weekStart, -1);
+  if (startYmd === priorWeekStart && endYmd === priorWeekEnd) return "lastWeek";
+  const monthStart = `${today.slice(0, 7)}-01`;
+  if (startYmd === monthStart && endYmd === today) return "thisMonth";
+  return "thisMonth";
+}
+
+function athensRangeIso(startYmd: string, endYmd: string): { start_date: string; end_date: string } {
+  return {
+    start_date: `${startYmd}T00:00:00`,
+    end_date: `${endYmd}T23:59:59`,
+  };
+}
+
+async function sumOfNewSubsForModel(
+  modelRecordId: string,
+  creatorInflowwId: string | null | undefined,
+  startYmd: string,
+  endYmd: string
+): Promise<number> {
+  try {
+    const rows = creatorInflowwId
+      ? await listCreatorDailyStats({ creatorInflowwId, startYmd, endYmd })
+      : await listCreatorDailyStats({ modelRecordId, startYmd, endYmd });
+    return rows.reduce((s, r) => s + n(r.new_subscribers), 0);
+  } catch (err) {
+    console.error("[getmysocial] of new subs", err);
+    return 0;
+  }
+}
+
+async function loadButtonBreakdown(
+  links: GetMySocialModelLink[],
+  startYmd: string,
+  endYmd: string,
+  _timeframe: GetMySocialTimeframe
+): Promise<GetMySocialButtonStat[]> {
+  if (!links.length || !isGetMySocialConfigured()) return [];
+  const iso = athensRangeIso(startYmd, endYmd);
+  const out: GetMySocialButtonStat[] = [];
+  await Promise.all(
+    links.map(async (link) => {
+      try {
+        const ctr = await getGetMySocialCtr(link.getmysocial_link_id, {
+          ...iso,
+          timezone: "Europe/Athens",
+        });
+        for (const b of ctr.top_buttons ?? []) {
+          const label = (b.label ?? "").trim() || `Button ${b.index + 1}`;
+          out.push({
+            link_role: link.link_role,
+            shortcode: link.shortcode,
+            label: `Link ${link.link_role} · ${label}`,
+            clicks: n(b.clicks),
+            url: b.url ?? null,
+          });
+        }
+      } catch (err) {
+        console.error("[getmysocial] ctr buttons", link.getmysocial_link_id, err);
+      }
+    })
+  );
+  return out.sort((a, b) => b.clicks - a.clicks);
+}
+
+async function loadAgencyConversionRanking(
+  startYmd: string,
+  endYmd: string
+): Promise<{
+  avg_rate_pct: number | null;
+  ranked: Array<{ modelId: string; rate: number }>;
+}> {
+  const allLinks = await listAllGetMySocialModelLinks();
+  if (!allLinks.length) return { avg_rate_pct: null, ranked: [] };
+  const modelIds = [...new Set(allLinks.map((l) => l.model_id))];
+  const linkIds = allLinks.map((l) => l.getmysocial_link_id);
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("getmysocial_daily_analytics")
+    .select("date,button_clicks,getmysocial_link_id")
+    .in("getmysocial_link_id", linkIds)
+    .gte("date", startYmd)
+    .lte("date", endYmd);
+  if (error) throw new Error(error.message);
+
+  const linkToModel = new Map(allLinks.map((l) => [l.getmysocial_link_id, l.model_id]));
+  const clicksByModel = new Map<string, number>();
+  for (const mid of modelIds) clicksByModel.set(mid, 0);
+  for (const row of data ?? []) {
+    const mid = linkToModel.get(String(row.getmysocial_link_id));
+    if (!mid) continue;
+    clicksByModel.set(mid, (clicksByModel.get(mid) ?? 0) + n(row.button_clicks));
+  }
+
+  const ofRows = await listCreatorDailyStats({ startYmd, endYmd });
+  const subsByModel = new Map<string, number>();
+  for (const row of ofRows) {
+    const mid = row.model_record_id;
+    if (!mid || !clicksByModel.has(mid)) continue;
+    subsByModel.set(mid, (subsByModel.get(mid) ?? 0) + n(row.new_subscribers));
+  }
+
+  const ranked = modelIds
+    .map((modelId) => {
+      const clicks = clicksByModel.get(modelId) ?? 0;
+      const subs = subsByModel.get(modelId) ?? 0;
+      const rate = clickToSubRatePct(subs, clicks);
+      return rate == null ? null : { modelId, rate };
+    })
+    .filter((x): x is { modelId: string; rate: number } => Boolean(x))
+    .sort((a, b) => b.rate - a.rate);
+
+  const avg_rate_pct = ranked.length
+    ? Math.round((ranked.reduce((s, m) => s + m.rate, 0) / ranked.length) * 10) / 10
+    : null;
+  return { avg_rate_pct, ranked };
 }
 
 function sumClicksOnDate(
@@ -283,7 +461,22 @@ export async function getGetMySocialAnalyticsForModel(
   const model = await getModelById(mid).catch(() => null);
   const linkIds = links.map((l) => l.getmysocial_link_id);
   const sb = getSupabaseServiceClient();
-  const timeframe = opts?.timeframe ?? "thisMonth";
+
+  const defaultRange = resolveInflowwStatsRange("this_month", null, null);
+  const startYmd = (opts?.startYmd?.trim() || defaultRange.startYmd).slice(0, 10);
+  const endYmd = (opts?.endYmd?.trim() || defaultRange.endYmd).slice(0, 10);
+  const rangeStart = startYmd <= endYmd ? startYmd : endYmd;
+  const rangeEnd = startYmd <= endYmd ? endYmd : startYmd;
+  const timeframe = (opts?.timeframe?.trim() ||
+    resolveGmsTimeframeForRange(rangeStart, rangeEnd)) as GetMySocialTimeframe;
+
+  const prior = previousPeriodRange(rangeStart, rangeEnd);
+  const todayYmd = getTodayYmdAthens();
+  const yesterdayYmd = addDaysAthensYmd(todayYmd, -1);
+  const weekStart = getMondayOfWeekFromYmdAthens(todayYmd);
+  const priorWeekStart = addDaysAthensYmd(weekStart, -7);
+  const priorWeekEnd = addDaysAthensYmd(weekStart, -1);
+  const lookbackStart = [rangeStart, prior.startYmd, priorWeekStart].sort()[0]!;
 
   let analyticsQ = sb
     .from("getmysocial_daily_analytics")
@@ -291,11 +484,11 @@ export async function getGetMySocialAnalyticsForModel(
       "date,pageviews,button_clicks,unique_visitors,ctr_pct,shield_blocked_pct,shield_blocked_count,getmysocial_link_id,link_role,link_label,synced_at,overview_json"
     )
     .in("getmysocial_link_id", linkIds)
+    .gte("date", lookbackStart)
+    .lte("date", rangeEnd > todayYmd ? rangeEnd : todayYmd)
     .order("date", { ascending: true });
-  if (opts?.startYmd) analyticsQ = analyticsQ.gte("date", opts.startYmd);
-  if (opts?.endYmd) analyticsQ = analyticsQ.lte("date", opts.endYmd);
 
-  const [analyticsRes, referrersRes, countriesRes, devicesRes, browsersRes, storyRes, visitorInsights] =
+  const [analyticsRes, referrersRes, countriesRes, devicesRes, browsersRes, storyRes, visitorInsights, buttons] =
     await Promise.all([
       analyticsQ,
       sb
@@ -334,12 +527,13 @@ export async function getGetMySocialAnalyticsForModel(
         .select("link_a_url,link_b_url")
         .eq("model_id", mid)
         .maybeSingle(),
-      loadVisitorInsights(linkIds, opts?.startYmd, opts?.endYmd),
+      loadVisitorInsights(linkIds, rangeStart, rangeEnd),
+      loadButtonBreakdown(links, rangeStart, rangeEnd, timeframe),
     ]);
 
   if (analyticsRes.error) throw new Error(analyticsRes.error.message);
 
-  const daily = (analyticsRes.data ?? []).map((r) => ({
+  const allDaily = (analyticsRes.data ?? []).map((r) => ({
     date: String(r.date).slice(0, 10),
     pageviews: n(r.pageviews),
     button_clicks: n(r.button_clicks),
@@ -347,17 +541,22 @@ export async function getGetMySocialAnalyticsForModel(
     link_role: (r.link_role as string | null) ?? null,
     link_label: (r.link_label as string | null) ?? null,
   }));
+  const daily = allDaily.filter((d) => d.date >= rangeStart && d.date <= rangeEnd);
 
   const roleStats = (role: GetMySocialLinkRole): LinkRoleStats => {
     const link = links.find((l) => l.link_role === role) ?? null;
     if (!link) return emptyRole(role);
-    const rows = (analyticsRes.data ?? []).filter(
-      (r) => String(r.getmysocial_link_id) === link.getmysocial_link_id
+    const rows = daily.filter((r) => r.getmysocial_link_id === link.getmysocial_link_id);
+    const pageviews = rows.reduce((s, r) => s + r.pageviews, 0);
+    const button_clicks = rows.reduce((s, r) => s + r.button_clicks, 0);
+    const uvRows = (analyticsRes.data ?? []).filter(
+      (r) =>
+        String(r.getmysocial_link_id) === link.getmysocial_link_id &&
+        String(r.date).slice(0, 10) >= rangeStart &&
+        String(r.date).slice(0, 10) <= rangeEnd
     );
-    const pageviews = rows.reduce((s, r) => s + n(r.pageviews), 0);
-    const button_clicks = rows.reduce((s, r) => s + n(r.button_clicks), 0);
-    const uv = Math.max(0, ...rows.map((r) => n(r.unique_visitors)));
-    const shield = Math.max(0, ...rows.map((r) => n(r.shield_blocked_pct)));
+    const uv = Math.max(0, ...uvRows.map((r) => n(r.unique_visitors)), 0);
+    const shield = Math.max(0, ...uvRows.map((r) => n(r.shield_blocked_pct)), 0);
     return {
       role,
       link,
@@ -381,21 +580,26 @@ export async function getGetMySocialAnalyticsForModel(
       .sort()
       .reverse()[0] ?? null;
 
-  // Funnel: IG reach (ClarioSuite) → bio clicks (GMS) → OF subs/revenue (Infloww)
-  const dates = [...new Set(daily.map((d) => d.date))].sort();
-  const startYmd = opts?.startYmd ?? dates[0];
-  const endYmd = opts?.endYmd ?? dates[dates.length - 1];
-  const bioByDate = new Map<string, { pageviews: number; button_clicks: number }>();
+  // Fill every day in the selected range so single-day picks still render.
+  const dates: string[] = [];
+  for (let d = rangeStart; d <= rangeEnd; d = addDaysAthensYmd(d, 1)) {
+    dates.push(d);
+    if (dates.length > 400) break;
+  }
+
+  const bioByDate = new Map<string, { pageviews: number; button_clicks: number; a: number; b: number }>();
   for (const d of daily) {
-    const cur = bioByDate.get(d.date) ?? { pageviews: 0, button_clicks: 0 };
+    const cur = bioByDate.get(d.date) ?? { pageviews: 0, button_clicks: 0, a: 0, b: 0 };
     cur.pageviews += d.pageviews;
     cur.button_clicks += d.button_clicks;
+    if (d.link_role === "B") cur.b += d.button_clicks;
+    else cur.a += d.button_clicks;
     bioByDate.set(d.date, cur);
   }
 
   const funnelMap = new Map<string, GetMySocialFunnelDay>();
   for (const date of dates) {
-    const bio = bioByDate.get(date) ?? { pageviews: 0, button_clicks: 0 };
+    const bio = bioByDate.get(date) ?? { pageviews: 0, button_clicks: 0, a: 0, b: 0 };
     funnelMap.set(date, {
       date,
       ig_reach: 0,
@@ -406,28 +610,21 @@ export async function getGetMySocialAnalyticsForModel(
     });
   }
 
-  if (model && startYmd && endYmd) {
+  if (model && rangeStart && rangeEnd) {
     try {
       const accounts = await listClarioSuiteModelAccounts(model.id);
       const ig = resolvePrimaryIgUserId(model, accounts);
       if (ig) {
         const igRows = await queryClarioSuiteDailyInsights({
           igUserId: ig,
-          startYmd,
-          endYmd,
+          startYmd: rangeStart,
+          endYmd: rangeEnd,
         });
         for (const row of igRows) {
           const date = String(row.date).slice(0, 10);
-          const f = funnelMap.get(date) ?? {
-            date,
-            ig_reach: 0,
-            bio_pageviews: 0,
-            bio_button_clicks: 0,
-            of_new_subscribers: 0,
-            of_revenue: 0,
-          };
+          const f = funnelMap.get(date);
+          if (!f) continue;
           f.ig_reach += n(row.reach);
-          funnelMap.set(date, f);
         }
       }
     } catch (err) {
@@ -436,30 +633,30 @@ export async function getGetMySocialAnalyticsForModel(
 
     try {
       const creatorId = model.infloww_creator_id?.trim();
-      if (creatorId) {
-        const ofRows = await listCreatorDailyStats({
-          creatorInflowwId: creatorId,
-          startYmd,
-          endYmd,
-        });
-        for (const row of ofRows) {
-          const date = String(row.date).slice(0, 10);
-          const f = funnelMap.get(date) ?? {
-            date,
-            ig_reach: 0,
-            bio_pageviews: 0,
-            bio_button_clicks: 0,
-            of_new_subscribers: 0,
-            of_revenue: 0,
-          };
-          f.of_new_subscribers += n(row.new_subscribers);
-          funnelMap.set(date, f);
-        }
+      const ofRows = creatorId
+        ? await listCreatorDailyStats({
+            creatorInflowwId: creatorId,
+            startYmd: lookbackStart,
+            endYmd: rangeEnd,
+          })
+        : await listCreatorDailyStats({
+            modelRecordId: mid,
+            startYmd: lookbackStart,
+            endYmd: rangeEnd,
+          });
+      for (const row of ofRows) {
+        const date = String(row.date).slice(0, 10);
+        if (date < rangeStart || date > rangeEnd) continue;
+        const f = funnelMap.get(date);
+        if (!f) continue;
+        f.of_new_subscribers += n(row.new_subscribers);
+      }
 
+      if (creatorId) {
         const txs = await listCreatorTransactions({
           creatorInflowwId: creatorId,
-          startYmd,
-          endYmd,
+          startYmd: rangeStart,
+          endYmd: rangeEnd,
           fetchAll: true,
           revenueOnly: true,
         });
@@ -495,9 +692,22 @@ export async function getGetMySocialAnalyticsForModel(
     }
   );
 
-  const shieldRows = analyticsRes.data ?? [];
-  const shield_blocked_count = Math.max(0, ...shieldRows.map((r) => n(r.shield_blocked_count)));
-  const shield_blocked_pct = Math.max(0, ...shieldRows.map((r) => n(r.shield_blocked_pct)));
+  const ctrTrend = funnel.map((d) => ({
+    date: d.date,
+    pageviews: d.bio_pageviews,
+    button_clicks: d.bio_button_clicks,
+    ctr_pct:
+      d.bio_pageviews > 0
+        ? Math.round((d.bio_button_clicks / d.bio_pageviews) * 1000) / 10
+        : null,
+  }));
+
+  const shieldRows = (analyticsRes.data ?? []).filter((r) => {
+    const date = String(r.date).slice(0, 10);
+    return date >= rangeStart && date <= rangeEnd;
+  });
+  const shield_blocked_count = Math.max(0, ...shieldRows.map((r) => n(r.shield_blocked_count)), 0);
+  const shield_blocked_pct = Math.max(0, ...shieldRows.map((r) => n(r.shield_blocked_pct)), 0);
 
   const devices = (devicesRes.data ?? []).map((r) => ({
     label: String(r.label),
@@ -505,36 +715,116 @@ export async function getGetMySocialAnalyticsForModel(
   }));
   const mobile_device_pct = mobileShare(devices);
 
-  const todayYmd = getTodayYmdAthens();
-  const yesterdayYmd = addDaysAthensYmd(todayYmd, -1);
-  const weekStart = getMondayOfWeekFromYmdAthens(todayYmd);
-  const priorWeekStart = addDaysAthensYmd(weekStart, -7);
-  const priorWeekEnd = addDaysAthensYmd(weekStart, -1);
+  const todayClicks = sumClicksOnDate(allDaily, todayYmd);
+  const yesterdayClicks = sumClicksOnDate(allDaily, yesterdayYmd);
+  const weekClicks = sumClicksInRange(allDaily, weekStart, todayYmd);
+  const priorWeekClicks = sumClicksInRange(allDaily, priorWeekStart, priorWeekEnd);
+  const periodClicks = sumClicksInRange(allDaily, rangeStart, rangeEnd);
+  const priorPeriodClicks = sumClicksInRange(allDaily, prior.startYmd, prior.endYmd);
 
-  const todayClicks = sumClicksOnDate(daily, todayYmd);
-  const yesterdayClicks = sumClicksOnDate(daily, yesterdayYmd);
-  const weekClicks = sumClicksInRange(daily, weekStart, todayYmd);
-  const priorWeekClicks = sumClicksInRange(daily, priorWeekStart, priorWeekEnd);
+  const periodCtr = periodClicks.ctr_pct ?? 0;
+  const priorCtr = priorPeriodClicks.ctr_pct ?? 0;
+  const weekCtr = weekClicks.ctr_pct ?? 0;
+  const priorWeekCtr = priorWeekClicks.ctr_pct ?? 0;
 
   const trends = {
     clicks_dod: computePctChange(todayClicks.button_clicks, yesterdayClicks.button_clicks),
     clicks_wow: computePctChange(weekClicks.button_clicks, priorWeekClicks.button_clicks),
+    clicks_mom: computePctChange(periodClicks.button_clicks, priorPeriodClicks.button_clicks),
     pageviews_dod: computePctChange(todayClicks.pageviews, yesterdayClicks.pageviews),
     pageviews_wow: computePctChange(weekClicks.pageviews, priorWeekClicks.pageviews),
+    pageviews_mom: computePctChange(periodClicks.pageviews, priorPeriodClicks.pageviews),
+    ctr_wow: computePctChange(weekCtr, priorWeekCtr),
+    ctr_mom: computePctChange(periodCtr, priorCtr),
   };
 
-  const todayA = sumClicksOnDate(daily, todayYmd, "A");
-  const todayB = sumClicksOnDate(daily, todayYmd, "B");
-  const weekA = sumClicksInRange(daily, weekStart, todayYmd, "A");
-  const weekB = sumClicksInRange(daily, weekStart, todayYmd, "B");
+  const todayA = sumClicksOnDate(allDaily, todayYmd, "A");
+  const todayB = sumClicksOnDate(allDaily, todayYmd, "B");
+  const weekA = sumClicksInRange(allDaily, weekStart, todayYmd, "A");
+  const weekB = sumClicksInRange(allDaily, weekStart, todayYmd, "B");
 
   const winners = {
     today: pickGmsLinkWinner(
-      { ...todayA, ctr_pct: todayA.pageviews > 0 ? Math.round((todayA.button_clicks / todayA.pageviews) * 1000) / 10 : null },
-      { ...todayB, ctr_pct: todayB.pageviews > 0 ? Math.round((todayB.button_clicks / todayB.pageviews) * 1000) / 10 : null }
+      {
+        ...todayA,
+        ctr_pct:
+          todayA.pageviews > 0
+            ? Math.round((todayA.button_clicks / todayA.pageviews) * 1000) / 10
+            : null,
+      },
+      {
+        ...todayB,
+        ctr_pct:
+          todayB.pageviews > 0
+            ? Math.round((todayB.button_clicks / todayB.pageviews) * 1000) / 10
+            : null,
+      }
     ),
     this_week: pickGmsLinkWinner(weekA, weekB),
     period: pickGmsLinkWinner(linkA, linkB),
+  };
+
+  // Conversion: period + WoW (Athens week) + MoM (equal-length prior window)
+  const periodRate = clickToSubRatePct(funnelTotals.of_new_subscribers, button_clicks);
+
+  const weekSubs = await sumOfNewSubsForModel(
+    mid,
+    model?.infloww_creator_id,
+    weekStart,
+    todayYmd
+  );
+  const priorWeekSubs = await sumOfNewSubsForModel(
+    mid,
+    model?.infloww_creator_id,
+    priorWeekStart,
+    priorWeekEnd
+  );
+  const priorPeriodSubs = await sumOfNewSubsForModel(
+    mid,
+    model?.infloww_creator_id,
+    prior.startYmd,
+    prior.endYmd
+  );
+  const weekRate = clickToSubRatePct(weekSubs, weekClicks.button_clicks) ?? 0;
+  const priorWeekRate = clickToSubRatePct(priorWeekSubs, priorWeekClicks.button_clicks) ?? 0;
+  const priorPeriodRate =
+    clickToSubRatePct(priorPeriodSubs, priorPeriodClicks.button_clicks) ?? 0;
+
+  const abDays = dates.map((date) => {
+    const bio = bioByDate.get(date) ?? { pageviews: 0, button_clicks: 0, a: 0, b: 0 };
+    return {
+      a_clicks: bio.a,
+      b_clicks: bio.b,
+      of_new_subscribers: funnelMap.get(date)?.of_new_subscribers ?? 0,
+    };
+  });
+  const link_ab = computeAbConversionCorrelation(abDays);
+
+  // Agency conversion ranking for Talking Points
+  let agency_avg_rate_pct: number | null = null;
+  let agency_rank: number | null = null;
+  let agency_model_count = 0;
+  try {
+    const agency = await loadAgencyConversionRanking(rangeStart, rangeEnd);
+    agency_avg_rate_pct = agency.avg_rate_pct;
+    agency_model_count = agency.ranked.length;
+    const idx = agency.ranked.findIndex((m) => m.modelId === mid);
+    agency_rank = idx >= 0 ? idx + 1 : null;
+  } catch (err) {
+    console.error("[getmysocial] agency conversion", err);
+  }
+
+  const conversion: GetMySocialConversionStats = {
+    rate_pct: periodRate,
+    new_subscribers: funnelTotals.of_new_subscribers,
+    button_clicks,
+    framing: "period_correlation",
+    wow: computePctChange(weekRate, priorWeekRate),
+    mom: computePctChange(periodRate ?? 0, priorPeriodRate),
+    link_ab,
+    agency_avg_rate_pct,
+    agency_rank,
+    agency_model_count,
   };
 
   const talking_points = generateGmsTalkingPoints({
@@ -554,11 +844,16 @@ export async function getGetMySocialAnalyticsForModel(
     ofNewSubs: funnelTotals.of_new_subscribers,
     ofRevenue: funnelTotals.of_revenue,
     peakHourAthens: visitorInsights.peak_hour_athens,
+    clickToSubRatePct: periodRate,
+    clickToSubWow: conversion.wow,
+    agencyAvgClickToSubRatePct: agency_avg_rate_pct,
+    abConversion: link_ab,
   });
 
   return {
     modelId: mid,
     modelName: model?.model_name ?? links[0]?.link_label ?? mid,
+    range: { startYmd: rangeStart, endYmd: rangeEnd },
     links,
     lastSyncedAt,
     linkA,
@@ -572,8 +867,11 @@ export async function getGetMySocialAnalyticsForModel(
       shield_blocked_count,
     },
     daily,
+    ctrTrend,
     funnel,
     funnelTotals,
+    conversion,
+    buttons,
     storyLinks: {
       link_a_url: (storyRes.data?.link_a_url as string | null) ?? null,
       link_b_url: (storyRes.data?.link_b_url as string | null) ?? null,
@@ -611,6 +909,8 @@ export type GetMySocialAgencyModelDay = {
   period_pageviews: number;
   period_unique_visitors: number;
   period_ctr_pct: number | null;
+  period_new_subscribers: number;
+  period_click_to_sub_rate_pct: number | null;
   winner_today: GmsLinkWinner | null;
   winner_week: GmsLinkWinner | null;
   lastSyncedAt: string | null;
@@ -626,6 +926,8 @@ export type GetMySocialAgencyOverview = {
     unique_visitors: number;
     ctr_pct: number | null;
     shield_blocked_pct: number;
+    new_subscribers: number;
+    click_to_sub_rate_pct: number | null;
   };
   today: {
     button_clicks: number;
@@ -638,6 +940,14 @@ export type GetMySocialAgencyOverview = {
       winner: GmsLinkWinner | null;
     }>;
   };
+  /** Models ranked by click→sub conversion (highest first). */
+  conversion_ranking: Array<{
+    modelId: string;
+    modelName: string;
+    button_clicks: number;
+    new_subscribers: number;
+    rate_pct: number;
+  }>;
   models: GetMySocialAgencyModelDay[];
 };
 
@@ -659,8 +969,11 @@ export async function getGetMySocialAgencyOverview(opts: {
       unique_visitors: 0,
       ctr_pct: null,
       shield_blocked_pct: 0,
+      new_subscribers: 0,
+      click_to_sub_rate_pct: null,
     },
     today: { button_clicks: 0, pageviews: 0, by_model: [] },
+    conversion_ranking: [],
     models: [],
   };
   if (!allLinks.length) return empty;
@@ -782,6 +1095,20 @@ export async function getGetMySocialAgencyOverview(opts: {
     }
   }
 
+  const ofRows = await listCreatorDailyStats({
+    startYmd: opts.startYmd,
+    endYmd: opts.endYmd,
+  }).catch((err) => {
+    console.error("[getmysocial] agency of stats", err);
+    return [] as Awaited<ReturnType<typeof listCreatorDailyStats>>;
+  });
+  const subsByModel = new Map<string, number>();
+  for (const row of ofRows) {
+    const mid = row.model_record_id;
+    if (!mid || !byModel.has(mid)) continue;
+    subsByModel.set(mid, (subsByModel.get(mid) ?? 0) + n(row.new_subscribers));
+  }
+
   const models: GetMySocialAgencyModelDay[] = [...byModel.values()]
     .map((a) => {
       const winner_today = pickGmsLinkWinner(
@@ -812,6 +1139,7 @@ export async function getGetMySocialAgencyOverview(opts: {
             a.weekBViews > 0 ? Math.round((a.weekB / a.weekBViews) * 1000) / 10 : null,
         }
       );
+      const period_new_subscribers = subsByModel.get(a.modelId) ?? 0;
       return {
         modelId: a.modelId,
         modelName: a.modelName,
@@ -825,6 +1153,11 @@ export async function getGetMySocialAgencyOverview(opts: {
           a.period_pageviews > 0
             ? Math.round((a.period_button_clicks / a.period_pageviews) * 1000) / 10
             : null,
+        period_new_subscribers,
+        period_click_to_sub_rate_pct: clickToSubRatePct(
+          period_new_subscribers,
+          a.period_button_clicks
+        ),
         winner_today: a.todayA + a.todayB > 0 ? winner_today : null,
         winner_week: a.weekA + a.weekB > 0 ? winner_week : null,
         lastSyncedAt: a.lastSyncedAt,
@@ -837,18 +1170,30 @@ export async function getGetMySocialAgencyOverview(opts: {
       acc.pageviews += m.period_pageviews;
       acc.button_clicks += m.period_button_clicks;
       acc.unique_visitors += m.period_unique_visitors;
+      acc.new_subscribers += m.period_new_subscribers;
       return acc;
     },
-    { pageviews: 0, button_clicks: 0, unique_visitors: 0 }
+    { pageviews: 0, button_clicks: 0, unique_visitors: 0, new_subscribers: 0 }
   );
 
-  const shield = Math.max(0, ...[...byModel.values()].map((a) => a.period_shield));
+  const shield = Math.max(0, ...[...byModel.values()].map((a) => a.period_shield), 0);
   const lastSyncedAt =
     models
       .map((m) => m.lastSyncedAt)
       .filter((x): x is string => Boolean(x))
       .sort()
       .reverse()[0] ?? null;
+
+  const conversion_ranking = models
+    .filter((m) => m.period_click_to_sub_rate_pct != null)
+    .map((m) => ({
+      modelId: m.modelId,
+      modelName: m.modelName,
+      button_clicks: m.period_button_clicks,
+      new_subscribers: m.period_new_subscribers,
+      rate_pct: m.period_click_to_sub_rate_pct as number,
+    }))
+    .sort((a, b) => b.rate_pct - a.rate_pct);
 
   return {
     range: { startYmd: opts.startYmd, endYmd: opts.endYmd },
@@ -863,6 +1208,8 @@ export async function getGetMySocialAgencyOverview(opts: {
           ? Math.round((totals.button_clicks / totals.pageviews) * 1000) / 10
           : null,
       shield_blocked_pct: shield,
+      new_subscribers: totals.new_subscribers,
+      click_to_sub_rate_pct: clickToSubRatePct(totals.new_subscribers, totals.button_clicks),
     },
     today: {
       button_clicks: models.reduce((s, m) => s + m.today_button_clicks, 0),
@@ -877,6 +1224,7 @@ export async function getGetMySocialAgencyOverview(opts: {
           winner: m.winner_today,
         })),
     },
+    conversion_ranking,
     models,
   };
 }

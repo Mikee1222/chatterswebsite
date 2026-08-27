@@ -536,10 +536,13 @@ export async function executeGunzoTool(
               peak_hour_athens: summary.visitorInsights.peak_hour_athens,
             },
             funnel_totals: summary.funnelTotals,
+            conversion: summary.conversion,
+            ctr_trend_days: summary.ctrTrend.length,
+            top_buttons: summary.buttons.slice(0, 8),
             top_referrers: summary.referrers.slice(0, 8),
             top_devices: summary.devices.slice(0, 6),
             talking_points: summary.talking_points,
-            note: "Funnel joins IG reach + bio clicks + OF subs/revenue by Athens day — correlation, not hard attribution.",
+            note: "Funnel joins IG reach + bio clicks + OF new_subs/revenue by Athens day. Click→sub rate and Link A/B conversion are period correlations — not hard attribution.",
           },
         };
       }

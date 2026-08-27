@@ -49,6 +49,85 @@ export function pickGmsLinkWinner(
   return { role: winner, metric, a_value: aVal, b_value: bVal, margin_pct, tie: false };
 }
 
+/** Click → new-sub period conversion as a display %. Null when no clicks. */
+export function clickToSubRatePct(newSubscribers: number, buttonClicks: number): number | null {
+  if (buttonClicks <= 0) return null;
+  return Math.round((newSubscribers / buttonClicks) * 1000) / 10;
+}
+
+export type GmsAbConversionCorrelation = {
+  framing: "dominant_day_correlation";
+  a_dominant_days: number;
+  b_dominant_days: number;
+  a_clicks: number;
+  b_clicks: number;
+  a_correlated_subs: number;
+  b_correlated_subs: number;
+  a_rate_pct: number | null;
+  b_rate_pct: number | null;
+  correlated_winner: GetMySocialLinkRole | null;
+  note: string;
+};
+
+/**
+ * Link A vs B "conversion" via dominant-day correlation:
+ * on days where A out-clicked B (and vice versa), compare same-day OF new-subs ÷ bio clicks.
+ * NOT per-click attribution — GetMySocial has no OF conversion join.
+ */
+export function computeAbConversionCorrelation(
+  days: Array<{ a_clicks: number; b_clicks: number; of_new_subscribers: number }>
+): GmsAbConversionCorrelation {
+  let a_dominant_days = 0;
+  let b_dominant_days = 0;
+  let a_clicks = 0;
+  let b_clicks = 0;
+  let a_correlated_subs = 0;
+  let b_correlated_subs = 0;
+
+  for (const d of days) {
+    const a = Math.max(0, d.a_clicks);
+    const b = Math.max(0, d.b_clicks);
+    const subs = Math.max(0, d.of_new_subscribers);
+    if (a === b) continue;
+    if (a > b) {
+      a_dominant_days += 1;
+      a_clicks += a + b;
+      a_correlated_subs += subs;
+    } else {
+      b_dominant_days += 1;
+      b_clicks += a + b;
+      b_correlated_subs += subs;
+    }
+  }
+
+  const a_rate_pct = clickToSubRatePct(a_correlated_subs, a_clicks);
+  const b_rate_pct = clickToSubRatePct(b_correlated_subs, b_clicks);
+
+  let correlated_winner: GetMySocialLinkRole | null = null;
+  if (a_rate_pct != null && b_rate_pct != null && a_rate_pct !== b_rate_pct) {
+    correlated_winner = a_rate_pct > b_rate_pct ? "A" : "B";
+  } else if (a_rate_pct != null && b_rate_pct == null) {
+    correlated_winner = "A";
+  } else if (b_rate_pct != null && a_rate_pct == null) {
+    correlated_winner = "B";
+  }
+
+  return {
+    framing: "dominant_day_correlation",
+    a_dominant_days,
+    b_dominant_days,
+    a_clicks,
+    b_clicks,
+    a_correlated_subs,
+    b_correlated_subs,
+    a_rate_pct,
+    b_rate_pct,
+    correlated_winner,
+    note:
+      "CORRELATION: compares OF new-sub rates on Link-A-dominant vs Link-B-dominant days — not proven per-click conversion.",
+  };
+}
+
 function fmtCompact(n: number): string {
   if (!Number.isFinite(n)) return "0";
   if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -86,6 +165,11 @@ export type GmsTalkingPointsContext = {
   ofNewSubs: number;
   ofRevenue: number;
   peakHourAthens: number | null;
+  /** Period click→sub conversion % (new_subs ÷ bio clicks). */
+  clickToSubRatePct?: number | null;
+  clickToSubWow?: PeriodChangeMetric | null;
+  agencyAvgClickToSubRatePct?: number | null;
+  abConversion?: GmsAbConversionCorrelation | null;
 };
 
 /** Built from rule-based signals — not LLM-generated. */
@@ -111,6 +195,44 @@ export function generateGmsTalkingPoints(ctx: GmsTalkingPointsContext): string {
   } else {
     parts.push(
       `${name} has little/no GetMySocial traffic in this window — confirm Link A/B mapping and sync cadence.`
+    );
+  }
+
+  if (ctx.clickToSubRatePct != null && ctx.button_clicks > 0) {
+    const convWow = fmtPct(ctx.clickToSubWow ?? null, "WoW on conversion");
+    const team =
+      ctx.agencyAvgClickToSubRatePct != null
+        ? ` vs the team average of ${ctx.agencyAvgClickToSubRatePct}%`
+        : "";
+    const lift =
+      ctx.agencyAvgClickToSubRatePct != null &&
+      ctx.clickToSubRatePct > ctx.agencyAvgClickToSubRatePct * 1.15
+        ? ` — her/their CTA copy may be worth testing on other models`
+        : ctx.agencyAvgClickToSubRatePct != null &&
+            ctx.clickToSubRatePct < ctx.agencyAvgClickToSubRatePct * 0.75
+          ? ` — below team pace; review bio CTA vs peers`
+          : "";
+    parts.push(
+      `${name}'s bio link converts at ${ctx.clickToSubRatePct}%` +
+        team +
+        lift +
+        (convWow ? ` (${convWow})` : "") +
+        " (period correlation: OF new subs ÷ bio clicks)."
+    );
+  } else if (ctx.ofNewSubs > 0 || ctx.ofRevenue > 0) {
+    parts.push(
+      `Downstream OF: ${fmtCompact(ctx.ofNewSubs)} new subs` +
+        (ctx.ofRevenue > 0 ? `, $${Math.round(ctx.ofRevenue).toLocaleString()} revenue` : "") +
+        " in the aligned window (correlation, not hard attribution)."
+    );
+  }
+
+  if (ctx.abConversion?.correlated_winner && ctx.abConversion.a_rate_pct != null && ctx.abConversion.b_rate_pct != null) {
+    const w = ctx.abConversion.correlated_winner;
+    const wr = w === "A" ? ctx.abConversion.a_rate_pct : ctx.abConversion.b_rate_pct;
+    const lr = w === "A" ? ctx.abConversion.b_rate_pct : ctx.abConversion.a_rate_pct;
+    parts.push(
+      `CORRELATION: Link ${w} days associate with a higher click→sub rate (${wr}% vs ${lr}%) — not proven per-click attribution.`
     );
   }
 
@@ -141,14 +263,6 @@ export function generateGmsTalkingPoints(ctx: GmsTalkingPointsContext): string {
     );
   }
 
-  if (ctx.ofNewSubs > 0 || ctx.ofRevenue > 0) {
-    parts.push(
-      `Downstream OF: ${fmtCompact(ctx.ofNewSubs)} new subs` +
-        (ctx.ofRevenue > 0 ? `, $${Math.round(ctx.ofRevenue).toLocaleString()} revenue` : "") +
-        " in the aligned window (correlation, not hard attribution)."
-    );
-  }
-
   if (ctx.shield_blocked_pct >= 20 || (ctx.bot_visitor_pct != null && ctx.bot_visitor_pct >= 15)) {
     const botBit =
       ctx.bot_visitor_pct != null ? ` · ~${Math.round(ctx.bot_visitor_pct)}% bot visits` : "";
@@ -167,5 +281,5 @@ export function generateGmsTalkingPoints(ctx: GmsTalkingPointsContext): string {
     parts.push(`Peak visitor hour cluster around ${label}.`);
   }
 
-  return parts.slice(0, 5).join(" ");
+  return parts.slice(0, 6).join(" ");
 }
