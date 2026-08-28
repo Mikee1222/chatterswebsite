@@ -9,10 +9,39 @@ const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
+/** Normalize env value: trim whitespace and optional surrounding quotes. */
+function normalizeEncryptionKeyRaw(raw: string): string {
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 function parseEncryptionKey(raw: string): Buffer {
-  const key = /^[0-9a-fA-F]{64}$/.test(raw)
-    ? Buffer.from(raw, "hex")
-    : Buffer.from(raw, "base64");
+  const normalized = normalizeEncryptionKeyRaw(raw);
+
+  if (/^sk-(ant-)?api/i.test(normalized)) {
+    throw new Error(
+      "CREDENTIALS_ENCRYPTION_KEY appears to be an Anthropic API key (sk-ant-…). " +
+        "Set a dedicated 32-byte key here (openssl rand -hex 32 or openssl rand -base64 32) — " +
+        "do not reuse ANTHROPIC_API_KEY.",
+    );
+  }
+
+  let key: Buffer;
+  if (/^[0-9a-fA-F]{64}$/.test(normalized)) {
+    key = Buffer.from(normalized, "hex");
+  } else {
+    const padded =
+      normalized.length % 4 === 0
+        ? normalized
+        : normalized + "=".repeat(4 - (normalized.length % 4));
+    key = Buffer.from(padded, "base64");
+  }
 
   if (key.length !== 32) {
     throw new Error(
@@ -23,11 +52,16 @@ function parseEncryptionKey(raw: string): Buffer {
 }
 
 function getEncryptionKey(): Buffer {
-  const raw = process.env.CREDENTIALS_ENCRYPTION_KEY?.trim();
-  if (!raw) {
+  const raw = process.env.CREDENTIALS_ENCRYPTION_KEY;
+  if (!raw?.trim()) {
     throw new Error("CREDENTIALS_ENCRYPTION_KEY is not configured");
   }
 
+  return parseEncryptionKey(raw);
+}
+
+/** Test-only export: validate key material without touching process.env. */
+export function parseCredentialsEncryptionKeyForTest(raw: string): Buffer {
   return parseEncryptionKey(raw);
 }
 
