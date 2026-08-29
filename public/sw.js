@@ -1,6 +1,6 @@
 /* Gunzo Partner – Service Worker: push, notificationclick, optional cache */
 
-const CACHE_NAME = "chatter-v2";
+const CACHE_NAME = "chatter-v3";
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -90,7 +90,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (u.pathname.startsWith("/_next/static/") || u.pathname.startsWith("/icons/") || /^\/icon-\d/.test(u.pathname)) {
+  if (
+    u.pathname.startsWith("/_next/static/") ||
+    u.pathname.startsWith("/icons/") ||
+    u.pathname.startsWith("/apple-touch-icon") ||
+    /^\/icon-\d/.test(u.pathname)
+  ) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
         cache.match(event.request).then((cached) => {

@@ -3,6 +3,7 @@ import { ApplyAmbientBg } from "@/components/application-public-chrome";
 import { APPLY_SHELL } from "@/lib/application-ui-tokens";
 import {
   APPLY_SITE_DESCRIPTION,
+  PWA_ICONS_METADATA,
   SITE_NAME,
   SITE_TITLE,
   absoluteUrl,
@@ -20,13 +21,7 @@ export const metadata: Metadata = {
   // `null` unsets parent values (unlike `undefined`, which inherits).
   manifest: null,
   appleWebApp: null,
-  icons: {
-    icon: [
-      { url: "/icon-192-v2.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512-v2.png", sizes: "512x512", type: "image/png" },
-    ],
-    apple: [{ url: "/apple-touch-icon-v2.png", sizes: "180x180", type: "image/png" }],
-  },
+  icons: PWA_ICONS_METADATA,
   openGraph: buildOpenGraph({
     title: `Careers — ${SITE_TITLE}`,
     description: APPLY_SITE_DESCRIPTION,

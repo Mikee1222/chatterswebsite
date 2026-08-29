@@ -30,6 +30,25 @@ export const OG_IMAGE_PATH = "/og-image.png";
 /** Dashboard-only PWA manifest (internal Greek description). */
 export const DASHBOARD_MANIFEST_PATH = "/manifest-dashboard.json";
 
+/** Public PWA manifest (English marketing copy). */
+export const PUBLIC_MANIFEST_PATH = "/manifest.json";
+
+/** PNG PWA / favicon assets in /public (Gunzo “G” logo). */
+export const PWA_ICON_192 = "/icon-192-v2.png";
+export const PWA_ICON_512 = "/icon-512-v2.png";
+export const PWA_APPLE_TOUCH_ICON = "/apple-touch-icon-v2.png";
+export const PWA_APPLE_TOUCH_ICON_PRECOMPOSED = "/apple-touch-icon-precomposed-v2.png";
+
+/** Shared Next.js metadata icons block for layouts that need explicit PWA icons. */
+export const PWA_ICONS_METADATA: NonNullable<Metadata["icons"]> = {
+  icon: [
+    { url: PWA_ICON_192, sizes: "192x192", type: "image/png" },
+    { url: PWA_ICON_512, sizes: "512x512", type: "image/png" },
+  ],
+  apple: [{ url: PWA_APPLE_TOUCH_ICON, sizes: "180x180", type: "image/png" }],
+  shortcut: PWA_ICON_192,
+};
+
 /** Known public apply forms → branded English title + invite description. */
 const APPLY_FORM_META: Record<string, { title: string; description: string }> = {
   "new-va-application": {

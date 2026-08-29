@@ -33,6 +33,7 @@ import { defaultNavPreferencesForRole } from "@/lib/nav-preferences";
 import {
   DASHBOARD_MANIFEST_PATH,
   INTERNAL_SITE_DESCRIPTION,
+  PWA_ICONS_METADATA,
   SITE_NAME,
   SITE_TITLE,
 } from "@/lib/site-metadata";
@@ -41,6 +42,7 @@ import {
 export const metadata: Metadata = {
   applicationName: "Gunzo Partner",
   description: INTERNAL_SITE_DESCRIPTION,
+  icons: PWA_ICONS_METADATA,
   manifest: DASHBOARD_MANIFEST_PATH,
   appleWebApp: {
     capable: true,
