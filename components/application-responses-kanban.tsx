@@ -61,6 +61,7 @@ function KanbanCardInner({
   const eq = r.eq?.overall_score;
   const wpm = r.typing?.wpm;
   const blurb = shortAiSummary(r.ai_summary, 120);
+  const summaryPending = !r.ai_summary;
 
   return (
     <div
@@ -98,6 +99,8 @@ function KanbanCardInner({
       </div>
       {blurb ? (
         <p className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-white/40">{blurb}</p>
+      ) : summaryPending ? (
+        <p className="mt-2 text-[11px] italic text-white/30">Generating summary…</p>
       ) : null}
       {canManage && r.status !== "hired" ? (
         <button

@@ -160,6 +160,43 @@ export function AdminApplicationResponseDetailClient({
 
   useEffect(() => setMounted(true), []);
 
+  useEffect(() => {
+    if (response.ai_summary) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 25;
+
+    const poll = async () => {
+      if (cancelled || attempts >= maxAttempts || response.ai_summary) return;
+      attempts += 1;
+      try {
+        const res = await fetch(
+          `/api/admin/application-forms/${formId}/responses/${response.id}`,
+        );
+        const data = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok) return;
+        if (data.response?.ai_summary) {
+          setResponse((prev) => ({
+            ...prev,
+            ai_summary: data.response.ai_summary,
+            auto_flags: data.response.auto_flags ?? prev.auto_flags,
+          }));
+          return;
+        }
+        window.setTimeout(() => void poll(), 4000);
+      } catch {
+        if (!cancelled) window.setTimeout(() => void poll(), 6000);
+      }
+    };
+
+    const timer = window.setTimeout(() => void poll(), 3000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [formId, response.id, response.ai_summary]);
+
   const answersByQ = useMemo(() => {
     return new Map(response.answers.map((a) => [a.question_id, a]));
   }, [response.answers]);
@@ -420,7 +457,15 @@ export function AdminApplicationResponseDetailClient({
             {response.ai_summary}
           </p>
         </div>
-      ) : null}
+      ) : (
+        <div className={cn(APPLY_SECTION, "mt-6 p-5")}>
+          <p className={cn(APPLY_EYEBROW, "inline-flex items-center gap-1.5")}>
+            <Sparkles className="h-3.5 w-3.5 animate-pulse" aria-hidden />
+            AI mini summary
+          </p>
+          <p className="mt-3 text-sm italic text-white/45">Generating summary…</p>
+        </div>
+      )}
 
       {(response.cognitive || response.eq || response.typing) && (
         <div className="mt-6">

@@ -257,6 +257,17 @@ export type ApplicationFormAnalytics = {
   avg_typing_wpm: number | null;
 };
 
+/** Lightweight stats for the responses list dashboard (no choice distributions). */
+export type ApplicationResponsesListAnalytics = Pick<
+  ApplicationFormAnalytics,
+  | "total"
+  | "by_status"
+  | "volume_by_day"
+  | "avg_cognitive_percentile"
+  | "avg_eq_score"
+  | "avg_typing_wpm"
+>;
+
 export function isApplicationFormStatus(v: unknown): v is ApplicationFormStatus {
   return typeof v === "string" && (APPLICATION_FORM_STATUSES as readonly string[]).includes(v);
 }

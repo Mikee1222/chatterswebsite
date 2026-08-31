@@ -3,8 +3,13 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { isApplicationResponseStatus } from "@/lib/application-forms-types";
-import { isPipelineLanguage } from "@/lib/application-pipeline-i18n";
-import { getFormAnalytics, listResponses } from "@/services/application-forms";
+import type { ApplicationResponseStatus } from "@/lib/application-forms-types";
+import { isPipelineLanguage, type PipelineLanguage } from "@/lib/application-pipeline-i18n";
+import {
+  getResponsesListAnalytics,
+  listResponses,
+} from "@/services/application-forms";
+import { scheduleResponsesEnrichment } from "@/services/application-response-enrichment";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -29,7 +34,16 @@ export async function GET(request: Request, ctx: Ctx) {
   const url = new URL(request.url);
   const statusParam = url.searchParams.get("status") ?? "all";
   const sortParam = url.searchParams.get("sort") ?? "newest";
-  const sort =
+  type ResponseSort =
+    | "newest"
+    | "oldest"
+    | "cognitive_desc"
+    | "cognitive_asc"
+    | "eq_desc"
+    | "eq_asc"
+    | "typing_desc"
+    | "typing_asc";
+  const sort: ResponseSort =
     sortParam === "oldest" ||
     sortParam === "cognitive_desc" ||
     sortParam === "cognitive_asc" ||
@@ -41,12 +55,13 @@ export async function GET(request: Request, ctx: Ctx) {
       : "newest";
   const search = url.searchParams.get("search") ?? undefined;
   const includeAnalytics = url.searchParams.get("analytics") === "1";
+  const analyticsOnly = url.searchParams.get("analyticsOnly") === "1";
   const flag = url.searchParams.get("flag")?.trim() || null;
   const langParam = url.searchParams.get("lang") ?? "all";
-  const preferredLanguage =
+  const preferredLanguage: PipelineLanguage | "all" =
     langParam === "all" ? "all" : isPipelineLanguage(langParam) ? langParam : "all";
 
-  const status =
+  const status: ApplicationResponseStatus | "all" =
     statusParam === "all"
       ? "all"
       : isApplicationResponseStatus(statusParam)
@@ -54,7 +69,12 @@ export async function GET(request: Request, ctx: Ctx) {
         : "all";
 
   try {
-    const responses = await listResponses(formId, {
+    if (analyticsOnly) {
+      const analytics = await getResponsesListAnalytics(formId);
+      return NextResponse.json({ analytics });
+    }
+
+    const listOpts = {
       status,
       sort,
       search,
@@ -68,9 +88,27 @@ export async function GET(request: Request, ctx: Ctx) {
       wpmMax: parseOptionalNumber(url.searchParams.get("wpmMax")),
       submittedFrom: url.searchParams.get("from")?.trim() || null,
       submittedTo: url.searchParams.get("to")?.trim() || null,
-    });
-    if (!includeAnalytics) return NextResponse.json({ responses });
-    const analytics = await getFormAnalytics(formId);
+    };
+
+    if (!includeAnalytics) {
+      const responses = await listResponses(formId, listOpts);
+      const needsEnrichment = responses
+        .filter((r) => !r.ai_summary)
+        .map((r) => r.id);
+      if (needsEnrichment.length > 0) {
+        scheduleResponsesEnrichment(needsEnrichment);
+      }
+      return NextResponse.json({ responses });
+    }
+
+    const [responses, analytics] = await Promise.all([
+      listResponses(formId, listOpts),
+      getResponsesListAnalytics(formId),
+    ]);
+    const needsEnrichment = responses.filter((r) => !r.ai_summary).map((r) => r.id);
+    if (needsEnrichment.length > 0) {
+      scheduleResponsesEnrichment(needsEnrichment);
+    }
     return NextResponse.json({ responses, analytics });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to load responses";

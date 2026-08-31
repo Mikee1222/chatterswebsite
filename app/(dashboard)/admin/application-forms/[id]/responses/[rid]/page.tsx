@@ -6,7 +6,7 @@ import {
   getApplicationFormById,
   getResponseDetail,
 } from "@/services/application-forms";
-import { ensureResponseEnrichment } from "@/services/application-response-enrichment";
+import { scheduleResponseEnrichment } from "@/services/application-response-enrichment";
 import { AdminApplicationResponseDetailClient } from "@/components/admin-application-response-detail-client";
 
 type Props = { params: Promise<{ id: string; rid: string }> };
@@ -23,11 +23,12 @@ export default async function AdminApplicationResponseDetailPage({ params }: Pro
   ]);
   if (!form) notFound();
 
-  // Lazy AI summary + flags on first admin view (cached thereafter)
-  const response =
-    (await ensureResponseEnrichment(rid, { generateAi: true })) ??
-    (await getResponseDetail(rid));
+  const response = await getResponseDetail(rid);
   if (!response || response.form_id !== form.id) notFound();
+
+  if (!response.ai_summary) {
+    scheduleResponseEnrichment(rid);
+  }
 
   return (
     <AdminApplicationResponseDetailClient

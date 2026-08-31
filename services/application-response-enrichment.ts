@@ -131,3 +131,27 @@ export function scheduleResponseEnrichment(responseId: string): void {
     console.error("[scheduleResponseEnrichment]", err),
   );
 }
+
+const ENRICHMENT_BATCH_CONCURRENCY = 2;
+
+/**
+ * Background enrichment for list rows missing cached AI summary or flags.
+ * Never blocks the HTTP response — summaries appear on refresh/poll.
+ */
+export function scheduleResponsesEnrichment(responseIds: string[]): void {
+  const unique = [...new Set(responseIds.filter(Boolean))];
+  if (unique.length === 0) return;
+
+  void (async () => {
+    for (let i = 0; i < unique.length; i += ENRICHMENT_BATCH_CONCURRENCY) {
+      const batch = unique.slice(i, i + ENRICHMENT_BATCH_CONCURRENCY);
+      await Promise.all(
+        batch.map((id) =>
+          ensureResponseEnrichment(id, { generateAi: true }).catch((err) =>
+            console.error("[scheduleResponsesEnrichment]", id, err),
+          ),
+        ),
+      );
+    }
+  })();
+}

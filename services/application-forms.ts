@@ -26,6 +26,7 @@ import {
   type ApplicationQuestionType,
   type ApplicationRecentActivityItem,
   type ApplicationResponseStatus,
+  type ApplicationResponsesListAnalytics,
   type PipelineStepConfig,
 } from "@/lib/application-forms-types";
 import {
@@ -856,27 +857,29 @@ export async function listResponses(
   },
 ): Promise<ApplicationFormResponseWithAnswers[]> {
   const sb = getSupabaseServiceClient();
-  let q = sb.from("application_form_responses").select("*").eq("form_id", formId);
-  if (opts?.status && opts.status !== "all") {
-    q = q.eq("status", opts.status);
-  }
-  if (opts?.preferredLanguage && opts.preferredLanguage !== "all") {
-    q = q.eq("preferred_language", opts.preferredLanguage);
-  }
-  if (opts?.submittedFrom) {
-    q = q.gte("submitted_at", opts.submittedFrom);
-  }
-  if (opts?.submittedTo) {
-    // Inclusive end-of-day if date-only YYYY-MM-DD
-    const to = opts.submittedTo;
-    const end =
-      /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to}T23:59:59.999Z` : to;
-    q = q.lte("submitted_at", end);
-  }
-  const dateAsc = opts?.sort === "oldest";
-  q = q.order("submitted_at", { ascending: dateAsc });
-
-  const { data: responses, error } = await q;
+  const [{ data: responses, error }, formForFlags] = await Promise.all([
+    (() => {
+      let q = sb.from("application_form_responses").select("*").eq("form_id", formId);
+      if (opts?.status && opts.status !== "all") {
+        q = q.eq("status", opts.status);
+      }
+      if (opts?.preferredLanguage && opts.preferredLanguage !== "all") {
+        q = q.eq("preferred_language", opts.preferredLanguage);
+      }
+      if (opts?.submittedFrom) {
+        q = q.gte("submitted_at", opts.submittedFrom);
+      }
+      if (opts?.submittedTo) {
+        const to = opts.submittedTo;
+        const end =
+          /^\d{4}-\d{2}-\d{2}$/.test(to) ? `${to}T23:59:59.999Z` : to;
+        q = q.lte("submitted_at", end);
+      }
+      const dateAsc = opts?.sort === "oldest";
+      return q.order("submitted_at", { ascending: dateAsc });
+    })(),
+    getApplicationFormById(formId).catch(() => null),
+  ]);
   if (error) throw new Error(error.message);
   const responseRows = (responses ?? []) as ResponseRow[];
   if (responseRows.length === 0) return [];
@@ -905,7 +908,6 @@ export async function listResponses(
   }));
 
   // Backfill flags in-memory when not yet cached (so filters/badges work immediately)
-  const formForFlags = await getApplicationFormById(formId).catch(() => null);
   if (formForFlags) {
     const { computeFlagsForResponse } = await import(
       "@/services/application-response-enrichment"
@@ -1080,6 +1082,99 @@ export async function updateAnswerTranslation(
     .single();
   if (error) throw new Error(error.message);
   return mapAnswer(data as AnswerRow);
+}
+
+export async function getResponsesListAnalytics(
+  formId: string,
+): Promise<ApplicationResponsesListAnalytics> {
+  const sb = getSupabaseServiceClient();
+  const { data: rows, error } = await sb
+    .from("application_form_responses")
+    .select("id, status, submitted_at")
+    .eq("form_id", formId);
+  if (error) throw new Error(error.message);
+
+  const responseRows = rows ?? [];
+  const by_status = {
+    new: 0,
+    reviewed: 0,
+    shortlisted: 0,
+    rejected: 0,
+    hired: 0,
+  } satisfies Record<ApplicationResponseStatus, number>;
+
+  const dayMap = new Map<string, number>();
+  const ids: string[] = [];
+  for (const row of responseRows) {
+    const status = isApplicationResponseStatus(row.status) ? row.status : "new";
+    by_status[status] += 1;
+    const day = String(row.submitted_at).slice(0, 10);
+    dayMap.set(day, (dayMap.get(day) ?? 0) + 1);
+    ids.push(row.id as string);
+  }
+
+  const volume_by_day = [...dayMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
+
+  if (ids.length === 0) {
+    return {
+      total: 0,
+      by_status,
+      volume_by_day,
+      avg_cognitive_percentile: null,
+      avg_eq_score: null,
+      avg_typing_wpm: null,
+    };
+  }
+
+  const [{ data: cog }, { data: eq }, { data: typing }] = await Promise.all([
+    sb
+      .from("application_cognitive_results")
+      .select("percentile_at_time_of_completion")
+      .in("response_id", ids),
+    sb.from("application_eq_results").select("overall_score").in("response_id", ids),
+    sb.from("application_typing_results").select("wpm").in("response_id", ids),
+  ]);
+
+  let cogPctSum = 0;
+  let cogPctN = 0;
+  for (const row of cog ?? []) {
+    const p = row.percentile_at_time_of_completion;
+    if (p != null && Number.isFinite(p)) {
+      cogPctSum += p;
+      cogPctN += 1;
+    }
+  }
+
+  let eqSum = 0;
+  let eqN = 0;
+  for (const row of eq ?? []) {
+    const s = row.overall_score;
+    if (s != null && Number.isFinite(s)) {
+      eqSum += s;
+      eqN += 1;
+    }
+  }
+
+  let typingSum = 0;
+  let typingN = 0;
+  for (const row of typing ?? []) {
+    const w = row.wpm;
+    if (w != null && Number.isFinite(w)) {
+      typingSum += w;
+      typingN += 1;
+    }
+  }
+
+  return {
+    total: responseRows.length,
+    by_status,
+    volume_by_day,
+    avg_cognitive_percentile: cogPctN ? Math.round((cogPctSum / cogPctN) * 10) / 10 : null,
+    avg_eq_score: eqN ? Math.round((eqSum / eqN) * 10) / 10 : null,
+    avg_typing_wpm: typingN ? Math.round((typingSum / typingN) * 10) / 10 : null,
+  };
 }
 
 export async function getFormAnalytics(formId: string): Promise<ApplicationFormAnalytics> {

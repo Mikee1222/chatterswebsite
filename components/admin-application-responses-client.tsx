@@ -39,10 +39,10 @@ import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
   RESPONSE_STATUS_LABELS,
-  type ApplicationFormAnalytics,
   type ApplicationFormResponseWithAnswers,
   type ApplicationFormWithQuestions,
   type ApplicationResponseStatus,
+  type ApplicationResponsesListAnalytics,
 } from "@/lib/application-forms-types";
 import { APPLICATION_FLAG_FILTER_OPTIONS } from "@/lib/application-candidate-flags";
 import { shortAiSummary } from "@/lib/application-ai-display";
@@ -165,7 +165,8 @@ function parseNum(raw: string): number | null {
 
 export function AdminApplicationResponsesClient({ form, canManage }: Props) {
   const [responses, setResponses] = useState<ApplicationFormResponseWithAnswers[]>([]);
-  const [analytics, setAnalytics] = useState<ApplicationFormAnalytics | null>(null);
+  const [analytics, setAnalytics] = useState<ApplicationResponsesListAnalytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [status, setStatus] = useState<string>("all");
   const [sort, setSort] = useState<ResponseSort>("newest");
   const [search, setSearch] = useState("");
@@ -189,46 +190,30 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
   } | null>(null);
   const [hiringId, setHiringId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        status,
-        sort,
-        analytics: "1",
-      });
-      if (search.trim()) params.set("search", search.trim());
-      if (flag) params.set("flag", flag);
-      if (lang !== "all") params.set("lang", lang);
-      const cMin = parseNum(cognitiveMin);
-      const cMax = parseNum(cognitiveMax);
-      const eMin = parseNum(eqMin);
-      const eMax = parseNum(eqMax);
-      const wMin = parseNum(wpmMin);
-      const wMax = parseNum(wpmMax);
-      if (cMin != null) params.set("cognitiveMin", String(cMin));
-      if (cMax != null) params.set("cognitiveMax", String(cMax));
-      if (eMin != null) params.set("eqMin", String(eMin));
-      if (eMax != null) params.set("eqMax", String(eMax));
-      if (wMin != null) params.set("wpmMin", String(wMin));
-      if (wMax != null) params.set("wpmMax", String(wMax));
-      if (dateFrom) params.set("from", dateFrom);
-      if (dateTo) params.set("to", dateTo);
-
-      const res = await fetch(
-        `/api/admin/application-forms/${form.id}/responses?${params.toString()}`,
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to load");
-      setResponses(data.responses ?? []);
-      setAnalytics(data.analytics ?? null);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load");
-    } finally {
-      setLoading(false);
-    }
+  const buildFilterParams = useCallback(() => {
+    const params = new URLSearchParams({
+      status,
+      sort,
+    });
+    if (search.trim()) params.set("search", search.trim());
+    if (flag) params.set("flag", flag);
+    if (lang !== "all") params.set("lang", lang);
+    const cMin = parseNum(cognitiveMin);
+    const cMax = parseNum(cognitiveMax);
+    const eMin = parseNum(eqMin);
+    const eMax = parseNum(eqMax);
+    const wMin = parseNum(wpmMin);
+    const wMax = parseNum(wpmMax);
+    if (cMin != null) params.set("cognitiveMin", String(cMin));
+    if (cMax != null) params.set("cognitiveMax", String(cMax));
+    if (eMin != null) params.set("eqMin", String(eMin));
+    if (eMax != null) params.set("eqMax", String(eMax));
+    if (wMin != null) params.set("wpmMin", String(wMin));
+    if (wMax != null) params.set("wpmMax", String(wMax));
+    if (dateFrom) params.set("from", dateFrom);
+    if (dateTo) params.set("to", dateTo);
+    return params;
   }, [
-    form.id,
     status,
     sort,
     search,
@@ -244,10 +229,94 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
     dateTo,
   ]);
 
+  const loadAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/application-forms/${form.id}/responses?analyticsOnly=1`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to load analytics");
+      setAnalytics(data.analytics ?? null);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load analytics");
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [form.id]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = buildFilterParams();
+      const res = await fetch(
+        `/api/admin/application-forms/${form.id}/responses?${params.toString()}`,
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to load");
+      setResponses(data.responses ?? []);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
+  }, [form.id, buildFilterParams]);
+
+  useEffect(() => {
+    void loadAnalytics();
+  }, [loadAnalytics]);
+
   useEffect(() => {
     const t = setTimeout(() => void load(), 200);
     return () => clearTimeout(t);
   }, [load]);
+
+  const pendingSummaryIds = useMemo(
+    () => responses.filter((r) => !r.ai_summary).map((r) => r.id),
+    [responses],
+  );
+
+  useEffect(() => {
+    if (pendingSummaryIds.length === 0) return;
+
+    let cancelled = false;
+    let attempts = 0;
+    const maxAttempts = 20;
+
+    const poll = async () => {
+      if (cancelled || attempts >= maxAttempts) return;
+      attempts += 1;
+      try {
+        const params = buildFilterParams();
+        const res = await fetch(
+          `/api/admin/application-forms/${form.id}/responses?${params.toString()}`,
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || cancelled) return;
+        const next = (data.responses ?? []) as ApplicationFormResponseWithAnswers[];
+        setResponses((prev) => {
+          const byId = new Map(next.map((r) => [r.id, r]));
+          return prev.map((row) => {
+            const fresh = byId.get(row.id);
+            if (!fresh?.ai_summary) return row;
+            return { ...row, ai_summary: fresh.ai_summary, auto_flags: fresh.auto_flags };
+          });
+        });
+        const stillPending = next.some((r) => pendingSummaryIds.includes(r.id) && !r.ai_summary);
+        if (stillPending && !cancelled) {
+          window.setTimeout(() => void poll(), 4000);
+        }
+      } catch {
+        if (!cancelled) window.setTimeout(() => void poll(), 6000);
+      }
+    };
+
+    const timer = window.setTimeout(() => void poll(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [form.id, buildFilterParams, pendingSummaryIds.join(",")]);
 
   const hasRangeFilters = Boolean(
     cognitiveMin || cognitiveMax || eqMin || eqMax || wpmMin || wpmMax || dateFrom || dateTo,
@@ -437,7 +506,13 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
       <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <LuxuryStatCard
           label="Total"
-          value={<CountUp value={analytics?.total ?? 0} />}
+          value={
+            analyticsLoading ? (
+              "…"
+            ) : (
+              <CountUp value={analytics?.total ?? 0} />
+            )
+          }
           accent="champagne"
           glow
           tooltip="All submitted responses for this form (unfiltered analytics snapshot)"
@@ -870,6 +945,7 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
               const typingWpm = r.typing?.wpm;
               const detailHref = ROUTES.admin.applicationFormResponseDetail(form.id, r.id);
               const blurb = shortAiSummary(r.ai_summary, 140);
+              const summaryPending = !r.ai_summary;
               return (
                 <div
                   key={r.id}
@@ -899,6 +975,10 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                       {blurb ? (
                         <p className="mt-1.5 line-clamp-2 text-[11px] leading-relaxed text-white/40">
                           {blurb}
+                        </p>
+                      ) : summaryPending ? (
+                        <p className="mt-1.5 text-[11px] italic text-white/30">
+                          Generating summary…
                         </p>
                       ) : null}
                     </div>

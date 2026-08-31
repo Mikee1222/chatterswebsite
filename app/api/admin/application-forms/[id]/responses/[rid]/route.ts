@@ -35,11 +35,14 @@ export async function GET(_request: Request, ctx: Ctx) {
 
   const { rid } = await ctx.params;
   try {
-    const { ensureResponseEnrichment } = await import(
-      "@/services/application-response-enrichment"
-    );
-    const response = await ensureResponseEnrichment(rid, { generateAi: true });
+    const response = await getResponseDetail(rid);
     if (!response) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!response.ai_summary) {
+      const { scheduleResponseEnrichment } = await import(
+        "@/services/application-response-enrichment"
+      );
+      scheduleResponseEnrichment(rid);
+    }
     return NextResponse.json({ response });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Failed to load response";
