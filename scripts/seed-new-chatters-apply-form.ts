@@ -65,6 +65,12 @@ const QUESTIONS: Q[] = [
     is_required: true,
   },
   {
+    question_text: "Telegram username (e.g. @username)",
+    question_text_el: "Telegram username (π.χ. @username)",
+    question_type: "short_text",
+    is_required: true,
+  },
+  {
     question_text: "Country / City",
     question_text_el: "Χώρα / Πόλη",
     question_type: "short_text",

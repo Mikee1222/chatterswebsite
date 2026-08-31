@@ -65,6 +65,12 @@ const QUESTIONS: Q[] = [
     is_required: true,
   },
   {
+    question_text: "Telegram username (e.g. @username)",
+    question_text_el: "Telegram username (π.χ. @username)",
+    question_type: "short_text",
+    is_required: true,
+  },
+  {
     question_text: "Country / City",
     question_text_el: "Χώρα / Πόλη",
     question_type: "short_text",
@@ -182,8 +188,8 @@ const QUESTIONS: Q[] = [
 ];
 
 async function main() {
-  if (QUESTIONS.length !== 17) {
-    throw new Error(`Expected 17 questions, got ${QUESTIONS.length}`);
+  if (QUESTIONS.length !== 18) {
+    throw new Error(`Expected 18 questions, got ${QUESTIONS.length}`);
   }
 
   const existing = await getFormBySlugAnyStatus(SLUG);

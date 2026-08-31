@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { SectionLabel } from "@/components/infloww-performance-ui";
 import { ROUTES } from "@/lib/routes";
 import {
+  APPLICATION_CONTACT_QUESTION_PRESETS,
   APPLICATION_QUESTION_TYPES,
   CHOICE_QUESTION_TYPES,
   FORM_STATUS_LABELS,
@@ -338,16 +339,18 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
     }
   }
 
-  async function addQuestion() {
+  async function addQuestion(preset?: (typeof APPLICATION_CONTACT_QUESTION_PRESETS)[number]) {
     try {
       const res = await fetch(`/api/admin/application-forms/${form.id}/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          question_text: "Untitled question",
-          question_type: "short_text",
-          is_required: false,
-        }),
+        body: JSON.stringify(
+          preset ?? {
+            question_text: "Untitled question",
+            question_type: "short_text",
+            is_required: false,
+          },
+        ),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to add question");
@@ -634,6 +637,30 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
               </ApplyButton>
             )}
           </div>
+
+          {canManage ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-white/30">
+                Suggested contact fields
+              </span>
+              {APPLICATION_CONTACT_QUESTION_PRESETS.map((preset) => {
+                const exists = form.questions.some(
+                  (q) => q.question_text.trim() === preset.question_text,
+                );
+                return (
+                  <button
+                    key={preset.question_text}
+                    type="button"
+                    disabled={exists}
+                    onClick={() => void addQuestion(preset)}
+                    className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/60 transition hover:border-[#D4AF8C]/30 hover:text-[#D4AF8C] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {preset.question_text.replace(/ \(e\.g\.[^)]+\)/, "")}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext

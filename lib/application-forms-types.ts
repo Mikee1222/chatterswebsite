@@ -67,6 +67,33 @@ export const QUESTION_TYPE_LABELS: Record<ApplicationQuestionType, string> = {
   date: "Date",
 };
 
+/** Quick-add presets for common contact fields in the form builder. */
+export const APPLICATION_CONTACT_QUESTION_PRESETS: ReadonlyArray<{
+  question_text: string;
+  question_text_el: string;
+  question_type: ApplicationQuestionType;
+  is_required: boolean;
+}> = [
+  {
+    question_text: "Discord username (e.g. @jahd)",
+    question_text_el: "Discord username (π.χ. @jahd)",
+    question_type: "short_text",
+    is_required: true,
+  },
+  {
+    question_text: "Telegram username (e.g. @username)",
+    question_text_el: "Telegram username (π.χ. @username)",
+    question_type: "short_text",
+    is_required: true,
+  },
+  {
+    question_text: "Phone Number",
+    question_text_el: "Τηλέφωνο",
+    question_type: "short_text",
+    is_required: true,
+  },
+];
+
 export const FORM_STATUS_LABELS: Record<ApplicationFormStatus, string> = {
   draft: "Draft",
   published: "Published",
