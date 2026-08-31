@@ -169,15 +169,15 @@ export function AdminApplicationResponseDetailClient({
     [questions, response.answers],
   );
 
-  const approvalMessage = useMemo(
-    () =>
-      buildApplicationApprovalMessage({
-        fullName: displayName,
-        formTitle,
-        preferredLanguage: response.preferred_language,
-      }),
-    [displayName, formTitle, response.preferred_language],
-  );
+  const approvalMessage = useMemo(() => {
+    if (!shouldShowApprovalMessage(response.status)) return "";
+    return buildApplicationApprovalMessage({
+      fullName: displayName,
+      formTitle,
+      preferredLanguage: response.preferred_language,
+      status: response.status,
+    });
+  }, [displayName, formTitle, response.preferred_language, response.status]);
 
   const [approvalCopied, setApprovalCopied] = useState(false);
 
