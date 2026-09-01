@@ -18,6 +18,19 @@ type SeedItem = {
   step_type?: TaskStepType;
 };
 
+/** Legacy combined template name — removed by split migration/seed. */
+export const NEW_ACCOUNT_WARMUP_US_LEGACY_TEMPLATE_NAME = "New Account Warm-Up (US)";
+
+export const NEW_ACCOUNT_WARMUP_US_DAYS_1_4_TEMPLATE_NAME =
+  "New Account Warm-Up (US) - Days 1-4";
+export const NEW_ACCOUNT_WARMUP_US_DAYS_4_7_TEMPLATE_NAME =
+  "New Account Warm-Up (US) - Days 4-7";
+
+export const NEW_ACCOUNT_WARMUP_US_TEMPLATE_NAMES = [
+  NEW_ACCOUNT_WARMUP_US_DAYS_1_4_TEMPLATE_NAME,
+  NEW_ACCOUNT_WARMUP_US_DAYS_4_7_TEMPLATE_NAME,
+] as const;
+
 function stage1PlatformItems(platform: Platform, sortStart: number): SeedItem[] {
   return [
     {
@@ -107,7 +120,7 @@ function stage2BasePhaseItems(): SeedItem[] {
   return items;
 }
 
-function stage2Phase4Extras(): SeedItem[] {
+function stage2Phase1Extras(): SeedItem[] {
   const items: SeedItem[] = [];
   let sort = NEW_ACCOUNT_WARMUP_US_PLATFORMS.length * 5;
   for (const platform of NEW_ACCOUNT_WARMUP_US_PLATFORMS) {
@@ -131,7 +144,7 @@ function stage2Phase4Extras(): SeedItem[] {
   return items;
 }
 
-function stage2Phase6Extras(): SeedItem[] {
+function stage2Phase3Extras(): SeedItem[] {
   const items: SeedItem[] = [];
   let sort = NEW_ACCOUNT_WARMUP_US_PLATFORMS.length * 5;
   for (const platform of NEW_ACCOUNT_WARMUP_US_PLATFORMS) {
@@ -155,66 +168,103 @@ function stage2Phase6Extras(): SeedItem[] {
   return items;
 }
 
-export const NEW_ACCOUNT_WARMUP_US_TEMPLATE_NAME = "New Account Warm-Up (US)";
-
-export const NEW_ACCOUNT_WARMUP_US_TEMPLATE: TaskTemplateCreateInput = {
-  name: NEW_ACCOUNT_WARMUP_US_TEMPLATE_NAME,
+export const NEW_ACCOUNT_WARMUP_US_DAYS_1_4_TEMPLATE: TaskTemplateCreateInput = {
+  name: NEW_ACCOUNT_WARMUP_US_DAYS_1_4_TEMPLATE_NAME,
   description:
-    "7-day gradual warm-up protocol for newly-created accounts before resuming normal daily posting cadence. Days 1-4: engagement-only, no posting, no follows. Days 4-7: engagement + first content + follows. After Day 7, manager decides next steps.",
+    "Days 1-4 warm-up for newly-created US accounts. Engagement only: scroll, likes, reposts, and comments. No posting or follows.",
   category: "marketing",
   phases: [
     {
       phase_number: 1,
-      title: "Stage 1 - Days 1-4 (11am-2pm)",
+      title: "Stage 1 (11am-2pm)",
       description:
         "Days 1-4 warm-up — engagement only (scroll, likes, reposts, comments). No posting or follows.",
       items: stage1PhaseItems(),
     },
     {
       phase_number: 2,
-      title: "Stage 1 - Days 1-4 (3pm-6pm)",
+      title: "Stage 1 (3pm-6pm)",
       description:
         "Days 1-4 warm-up — engagement only (scroll, likes, reposts, comments). No posting or follows.",
       items: stage1PhaseItems(),
     },
     {
       phase_number: 3,
-      title: "Stage 1 - Days 1-4 (7pm-9pm)",
+      title: "Stage 1 (7pm-9pm)",
       description:
         "Days 1-4 warm-up — engagement only (scroll, likes, reposts, comments). No posting or follows.",
       items: stage1PhaseItems(),
     },
+  ],
+};
+
+export const NEW_ACCOUNT_WARMUP_US_DAYS_4_7_TEMPLATE: TaskTemplateCreateInput = {
+  name: NEW_ACCOUNT_WARMUP_US_DAYS_4_7_TEMPLATE_NAME,
+  description:
+    "Days 4-7 ramp for newly-created US accounts. Increased engagement, follows, first content posts, CTA stories, and comment replies. After Day 7, manager decides next steps.",
+  category: "marketing",
+  phases: [
     {
-      phase_number: 4,
-      title: "Stage 2 - Days 4-7 (11am-2pm)",
+      phase_number: 1,
+      title: "Stage 2 (11am-2pm)",
       description:
         "Days 4-7 ramp — increased engagement, follows, and first content (post + daily story).",
-      items: [...stage2BasePhaseItems(), ...stage2Phase4Extras()],
+      items: [...stage2BasePhaseItems(), ...stage2Phase1Extras()],
     },
     {
-      phase_number: 5,
-      title: "Stage 2 - Days 4-7 (3pm-6pm)",
+      phase_number: 2,
+      title: "Stage 2 (3pm-6pm)",
       description: "Days 4-7 ramp — increased engagement and follows.",
       items: stage2BasePhaseItems(),
     },
     {
-      phase_number: 6,
-      title: "Stage 2 - Days 4-7 (7pm-9pm)",
+      phase_number: 3,
+      title: "Stage 2 (7pm-9pm)",
       description:
         "Days 4-7 ramp — increased engagement, follows, CTA stories, and comment replies.",
-      items: [...stage2BasePhaseItems(), ...stage2Phase6Extras()],
+      items: [...stage2BasePhaseItems(), ...stage2Phase3Extras()],
     },
   ],
 };
 
-export function countNewAccountWarmupUsItems(): {
+export const NEW_ACCOUNT_WARMUP_US_TEMPLATES: TaskTemplateCreateInput[] = [
+  NEW_ACCOUNT_WARMUP_US_DAYS_1_4_TEMPLATE,
+  NEW_ACCOUNT_WARMUP_US_DAYS_4_7_TEMPLATE,
+];
+
+export type NewAccountWarmupUsTemplateSeed = {
+  slug: string;
+  logicalTemplateId: string;
+  template: TaskTemplateCreateInput;
+};
+
+export const NEW_ACCOUNT_WARMUP_US_TEMPLATE_SEEDS: NewAccountWarmupUsTemplateSeed[] = [
+  {
+    slug: "d14",
+    logicalTemplateId: "tpl_new_account_warmup_us_days_1_4",
+    template: NEW_ACCOUNT_WARMUP_US_DAYS_1_4_TEMPLATE,
+  },
+  {
+    slug: "d47",
+    logicalTemplateId: "tpl_new_account_warmup_us_days_4_7",
+    template: NEW_ACCOUNT_WARMUP_US_DAYS_4_7_TEMPLATE,
+  },
+];
+
+export function countNewAccountWarmupUsItems(template: TaskTemplateCreateInput): {
   total: number;
-  stage1: number;
-  stage2: number;
   byPhase: number[];
 } {
-  const byPhase = NEW_ACCOUNT_WARMUP_US_TEMPLATE.phases!.map((p) => p.items?.length ?? 0);
-  const stage1 = byPhase.slice(0, 3).reduce((a, b) => a + b, 0);
-  const stage2 = byPhase.slice(3).reduce((a, b) => a + b, 0);
-  return { total: stage1 + stage2, stage1, stage2, byPhase };
+  const byPhase = template.phases?.map((p) => p.items?.length ?? 0) ?? [];
+  return { total: byPhase.reduce((a, b) => a + b, 0), byPhase };
+}
+
+export function countAllNewAccountWarmupUsItems(): {
+  days14: ReturnType<typeof countNewAccountWarmupUsItems>;
+  days47: ReturnType<typeof countNewAccountWarmupUsItems>;
+  combined: number;
+} {
+  const days14 = countNewAccountWarmupUsItems(NEW_ACCOUNT_WARMUP_US_DAYS_1_4_TEMPLATE);
+  const days47 = countNewAccountWarmupUsItems(NEW_ACCOUNT_WARMUP_US_DAYS_4_7_TEMPLATE);
+  return { days14, days47, combined: days14.total + days47.total };
 }
