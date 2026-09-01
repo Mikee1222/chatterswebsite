@@ -171,6 +171,19 @@ export async function sbDeleteByPublicId(table: string, publicOrUuid: string): P
   if (error) throw new Error(`sbDelete ${table}: ${error.message}`);
 }
 
+/** Bulk delete by Postgres uuid primary keys (chunked for URL safety). */
+export async function sbDeleteByIds(table: string, ids: string[]): Promise<void> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return;
+  const sb = getSupabaseServiceClient();
+  const chunkSize = 100;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { error } = await sb.from(table).delete().in("id", chunk);
+    if (error) throw new Error(`sbDeleteByIds ${table}: ${error.message}`);
+  }
+}
+
 export async function sbUpsertByAirtableId<T extends SbRow>(
   table: string,
   row: Record<string, unknown> & { airtable_id?: string }
