@@ -1,3 +1,5 @@
+-- marketing_executives_us SOP functions batch 4
+
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -5,7 +7,7 @@ INSERT INTO public.sop_functions (
 SELECT
   'sop_fn_me_us_16',
   'Weekly highlights & profile maintenance',
-  '5 active highlights refreshed weekly; 0 stale (>2 weeks no update); bio/PFP matches Master',
+  'Highlights refreshed weekly per creator categories (set with Marketing Manager); 0 stale (>2 weeks no update); bio/PFP matches Master',
   'text',
   '**Purpose**
 Weekly profile maintenance — highlights refresh, cover updates, bio sync, PFP verification. Profile drift = trust score erosion.
@@ -13,8 +15,14 @@ Weekly profile maintenance — highlights refresh, cover updates, bio sync, PFP 
 **When**
 Once per week (default Friday or off-peak). Per account.
 
+**Tools**
+- Account Master Reference
+- iCloud (highlight cover assets)
+- IG app
+- Marketing Manager (per-creator highlight category list)
+
 **Steps**
-1. Check 5 standard highlights: Gym/Fitness, Food/Lifestyle, Trips/Travel, Daily Vibes, OnlyFans Link (verified or Manager approval only).
+1. Open creator''s profile → check highlight categories **defined per-creator with Marketing Manager** (not a fixed global list).
 2. Per highlight: last update <14 days. Stale → add 1–2 new stories.
 3. Refresh highlight covers. Verify bio matches Master template. Verify PFP is approved and not identical to another creator account.
 4. Verify link in bio works. Account Center check for unauthorized Meta connections.
@@ -22,6 +30,12 @@ Once per week (default Friday or off-peak). Per account.
 
 **Time**
 15–25 minutes per account.
+
+**Common mistakes**
+- Assuming default categories instead of per-creator list → wrong profile structure.
+- Skipping because it "looks fine" → drift accumulates.
+- Identical PFP cross-creator → Meta fingerprint match.
+- Forgetting Account Center check → unauthorized link sneaks in.
 
 **Escalation**
 Unauthorized Meta connection → Marketing Manager + Head of Account Defense. Unexpected bio change → possible compromise, ping immediately.',
@@ -43,15 +57,21 @@ WHERE r.slug = 'marketing-executives-us'
 
 UPDATE public.sop_functions f SET
   name = 'Weekly highlights & profile maintenance',
-  kpi = '5 active highlights refreshed weekly; 0 stale (>2 weeks no update); bio/PFP matches Master',
+  kpi = 'Highlights refreshed weekly per creator categories (set with Marketing Manager); 0 stale (>2 weeks no update); bio/PFP matches Master',
   sop_content = '**Purpose**
 Weekly profile maintenance — highlights refresh, cover updates, bio sync, PFP verification. Profile drift = trust score erosion.
 
 **When**
 Once per week (default Friday or off-peak). Per account.
 
+**Tools**
+- Account Master Reference
+- iCloud (highlight cover assets)
+- IG app
+- Marketing Manager (per-creator highlight category list)
+
 **Steps**
-1. Check 5 standard highlights: Gym/Fitness, Food/Lifestyle, Trips/Travel, Daily Vibes, OnlyFans Link (verified or Manager approval only).
+1. Open creator''s profile → check highlight categories **defined per-creator with Marketing Manager** (not a fixed global list).
 2. Per highlight: last update <14 days. Stale → add 1–2 new stories.
 3. Refresh highlight covers. Verify bio matches Master template. Verify PFP is approved and not identical to another creator account.
 4. Verify link in bio works. Account Center check for unauthorized Meta connections.
@@ -59,6 +79,12 @@ Once per week (default Friday or off-peak). Per account.
 
 **Time**
 15–25 minutes per account.
+
+**Common mistakes**
+- Assuming default categories instead of per-creator list → wrong profile structure.
+- Skipping because it "looks fine" → drift accumulates.
+- Identical PFP cross-creator → Meta fingerprint match.
+- Forgetting Account Center check → unauthorized link sneaks in.
 
 **Escalation**
 Unauthorized Meta connection → Marketing Manager + Head of Account Defense. Unexpected bio change → possible compromise, ping immediately.',
@@ -71,7 +97,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 16;
-
 
 
 INSERT INTO public.sop_functions (
@@ -149,7 +174,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 17;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -215,7 +239,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 18;
-
 
 
 INSERT INTO public.sop_functions (
@@ -291,7 +314,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 19;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -305,7 +327,6 @@ SELECT
 Batch-process Trial Reel variants from iCloud Manager → make each unique per upload (cut, brightness, overlay) → ready for posting.
 
 **Steps**
-1. Open `/Month_Day/Trials/`. Per video: download, open CapCut, trim 0.1s, brightness +5 to +10, invisible username overlay (opacity 0%), remove CapCut watermark/outro, export as new file.
 2. Delete downloaded copy from device; keep iCloud master intact.
 3. Max 2 settings per session dramatic. Always cut min 1 sec. Source always Trials, never Winners directly.
 
@@ -313,7 +334,7 @@ Batch-process Trial Reel variants from iCloud Manager → make each unique per u
 3–5 min per video; batch 10–15 = ~45–75 min weekly.
 
 **Escalation**
-Trials folder empty → iCloud Manager. Similar content flag after edit → escalate variant rotation.',
+Trial subfolder empty → iCloud Manager. Similar content flag after edit → escalate variant rotation.',
   'weekly',
   'When iCloud Manager updates Trials folder',
   20,
@@ -337,7 +358,6 @@ UPDATE public.sop_functions f SET
 Batch-process Trial Reel variants from iCloud Manager → make each unique per upload (cut, brightness, overlay) → ready for posting.
 
 **Steps**
-1. Open `/Month_Day/Trials/`. Per video: download, open CapCut, trim 0.1s, brightness +5 to +10, invisible username overlay (opacity 0%), remove CapCut watermark/outro, export as new file.
 2. Delete downloaded copy from device; keep iCloud master intact.
 3. Max 2 settings per session dramatic. Always cut min 1 sec. Source always Trials, never Winners directly.
 
@@ -345,7 +365,7 @@ Batch-process Trial Reel variants from iCloud Manager → make each unique per u
 3–5 min per video; batch 10–15 = ~45–75 min weekly.
 
 **Escalation**
-Trials folder empty → iCloud Manager. Similar content flag after edit → escalate variant rotation.',
+Trial subfolder empty → iCloud Manager. Similar content flag after edit → escalate variant rotation.',
   cadence_type = 'weekly',
   cadence_note = 'When iCloud Manager updates Trials folder',
   department = ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
@@ -355,3 +375,5 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 20;
+
+

@@ -1,3 +1,5 @@
+-- marketing_executives_us SOP functions batch 3
+
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -125,7 +127,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 11;
-
 
 
 INSERT INTO public.sop_functions (
@@ -265,7 +266,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 12;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -273,10 +273,10 @@ INSERT INTO public.sop_functions (
 SELECT
   'sop_fn_me_us_13',
   'F4F + scrolling + likes routine (engagement)',
-  '50–100 follows/day on Alt; 20–30 on Main; 50 likes max/day; ratio healthy',
+  'Follow amounts per assigned Task checklist; ratio healthy; hard cap respected',
   'text',
   '**Purpose**
-Daily engagement routine — F4F (Alt accounts), unfollow stale, 30min scroll algorithm-training, niche post + story likes.
+Daily engagement routine — F4F (Alt accounts), unfollow stale, scroll algorithm-training, niche post + story likes. Follow amounts defined in the assigned Task checklist — not hardcoded here.
 
 **When**
 Daily, on all accounts. Order: **Scrolling → Likes → F4F → Unfollow (delayed 5–7 days)**.
@@ -284,15 +284,16 @@ Daily, on all accounts. Order: **Scrolling → Likes → F4F → Unfollow (delay
 **Tools**
 - IG/TT/FB app
 - Niche shortlist (creators to F4F from)
+- Assigned Task checklist (follow/like targets)
 
 **Steps**
-1. **Scrolling (30min)** — Reels/FYP tab, niche only. Watch to completion. Skip <2s = negative signal, do not.
-2. **Post likes** — 50 max/day per account, 5-sec pause between. Niche only.
-3. **Story likes** — 10–20/day, mix likes + short replies.
-4. **F4F (Alt accounts):** 50–100 follows/day per Alt, 1 follow per 5–10 sec. Niche-relevant only. Glance at 1–2 posts before following. New Alt: start 10–15/day, ramp 2 weeks.
-5. **F4F (Main):** 20–30 follows/day max, split 2–3 sessions.
+1. **Scrolling** — Reels/FYP tab, niche only. Watch to completion. Skip <2s = negative signal, do not.
+2. **Post likes** — amounts per assigned Task checklist, 5-sec pause between. Niche only.
+3. **Story likes** — per Task checklist, mix likes + short replies.
+4. **F4F (Alt accounts):** follow amounts per Task checklist, **1 follow per 5–10 sec**. Niche-relevant only. Glance at 1–2 posts before following.
+5. **F4F (Main):** follow amounts per Task checklist, split 2–3 sessions.
 6. **Unfollow** (Alt) — anyone who hasn''t followed back in 5–7 days. Never mass-unfollow. Spread throughout the day.
-7. Hard cap: **150 follows + 200 likes per device per day combined across all accounts**.
+7. **Hard cap (safety ceiling):** 150 follows + 200 likes per device per day combined across all accounts — never exceed even if Task asks more.
 
 **Time**
 45–60 min daily total.
@@ -301,7 +302,8 @@ Daily, on all accounts. Order: **Scrolling → Likes → F4F → Unfollow (delay
 - Scrolling Following tab instead of FYP → wrong algorithm signal.
 - Skip videos in <2s → negative preference signal.
 - Mass-follow burst → instant flag. Likes burst → spam.
-- Forgetting 150/200 device cap. Mass-unfollow in 1 batch → shadowban.
+- Exceed 150/200 device hard cap.
+- Mass-unfollow in 1 batch → shadowban.
 
 **Escalation**
 - Action block popup → STOP follows/likes/comments, continue posting/stories/DMs, report + wait 48h.
@@ -324,9 +326,9 @@ WHERE r.slug = 'marketing-executives-us'
 
 UPDATE public.sop_functions f SET
   name = 'F4F + scrolling + likes routine (engagement)',
-  kpi = '50–100 follows/day on Alt; 20–30 on Main; 50 likes max/day; ratio healthy',
+  kpi = 'Follow amounts per assigned Task checklist; ratio healthy; hard cap respected',
   sop_content = '**Purpose**
-Daily engagement routine — F4F (Alt accounts), unfollow stale, 30min scroll algorithm-training, niche post + story likes.
+Daily engagement routine — F4F (Alt accounts), unfollow stale, scroll algorithm-training, niche post + story likes. Follow amounts defined in the assigned Task checklist — not hardcoded here.
 
 **When**
 Daily, on all accounts. Order: **Scrolling → Likes → F4F → Unfollow (delayed 5–7 days)**.
@@ -334,15 +336,16 @@ Daily, on all accounts. Order: **Scrolling → Likes → F4F → Unfollow (delay
 **Tools**
 - IG/TT/FB app
 - Niche shortlist (creators to F4F from)
+- Assigned Task checklist (follow/like targets)
 
 **Steps**
-1. **Scrolling (30min)** — Reels/FYP tab, niche only. Watch to completion. Skip <2s = negative signal, do not.
-2. **Post likes** — 50 max/day per account, 5-sec pause between. Niche only.
-3. **Story likes** — 10–20/day, mix likes + short replies.
-4. **F4F (Alt accounts):** 50–100 follows/day per Alt, 1 follow per 5–10 sec. Niche-relevant only. Glance at 1–2 posts before following. New Alt: start 10–15/day, ramp 2 weeks.
-5. **F4F (Main):** 20–30 follows/day max, split 2–3 sessions.
+1. **Scrolling** — Reels/FYP tab, niche only. Watch to completion. Skip <2s = negative signal, do not.
+2. **Post likes** — amounts per assigned Task checklist, 5-sec pause between. Niche only.
+3. **Story likes** — per Task checklist, mix likes + short replies.
+4. **F4F (Alt accounts):** follow amounts per Task checklist, **1 follow per 5–10 sec**. Niche-relevant only. Glance at 1–2 posts before following.
+5. **F4F (Main):** follow amounts per Task checklist, split 2–3 sessions.
 6. **Unfollow** (Alt) — anyone who hasn''t followed back in 5–7 days. Never mass-unfollow. Spread throughout the day.
-7. Hard cap: **150 follows + 200 likes per device per day combined across all accounts**.
+7. **Hard cap (safety ceiling):** 150 follows + 200 likes per device per day combined across all accounts — never exceed even if Task asks more.
 
 **Time**
 45–60 min daily total.
@@ -351,7 +354,8 @@ Daily, on all accounts. Order: **Scrolling → Likes → F4F → Unfollow (delay
 - Scrolling Following tab instead of FYP → wrong algorithm signal.
 - Skip videos in <2s → negative preference signal.
 - Mass-follow burst → instant flag. Likes burst → spam.
-- Forgetting 150/200 device cap. Mass-unfollow in 1 batch → shadowban.
+- Exceed 150/200 device hard cap.
+- Mass-unfollow in 1 batch → shadowban.
 
 **Escalation**
 - Action block popup → STOP follows/likes/comments, continue posting/stories/DMs, report + wait 48h.
@@ -365,7 +369,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 13;
-
 
 
 INSERT INTO public.sop_functions (
@@ -455,7 +458,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 14;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -466,7 +468,6 @@ SELECT
   '0 rule violations/session; 100% always-on rules followed; all flags reported same-minute; EOD compliance log 100% filled',
   'text',
   '**Purpose**
-Account Defense is shared responsibility. Head of Account Defense owns the system, escalations, appeals, and recovery protocols. The Marketing Executive owns **daily rule compliance** and **early signal capture**. Without VA-side compliance, the system fails — most bans come from VA negligence (Wi-Fi, missed warm-up, banned hashtag, watermark leftover), not platform bugs.
 
 **When**
 Always-on every session. Explicit self-check in EOD report.
@@ -475,17 +476,14 @@ Always-on every session. Explicit self-check in EOD report.
 - Ultimate Account Safety & Restrictions SOP (Notion)
 - Account Status page (Settings → Account Status)
 - Discord/Telegram Account Defense channel
-- WhatIsMyIp.com bookmark
 - EOD compliance log
 
 **Daily compliance — 12 always-on rules**
 1. **Device:** Assigned device only, physical SIM, iCloud Backup + Find My OFF, no personal accounts.
-2. **Network:** Mobile data only — NEVER Wi-Fi/VPN/Proxy/eSIM. IP rotation before every account switch.
-3. **Warm-up:** 10-min warm-up before action. Never post-and-ghost (stay 5min post-post).
+3. **Warm-up:** 15-min warm-up before action. Never post-and-ghost (stay 5min post-post).
 4. **Visual content:** Zero prohibited content. Lifestyle-first.
 5. **Caption:** Zero forbidden words ("OnlyFans", "OF", "exclusive content", etc.).
 6. **Posting mix:** 70–80% safe, 20–30% slight edge. Max 3 Reels/24h/account. Unique PFP + bio + highlights.
-7. **Repurposing:** Never reupload with watermark. Unique edits always (trim + brightness + invisible username overlay).
 8. **Hashtags:** Verify each new hashtag. Max 5/post. Rotate every 3–4 posts.
 9. **Stories & link sticker:** Link sticker only on verified or with Manager approval. Never direct OF link.
 10. **Action limits:** Max 150 follows/day per device, max 200 likes/day per device. Never same DM to multiple users. Never link in DM.
@@ -496,7 +494,6 @@ Always-on every session. Explicit self-check in EOD report.
 Orange flag → screenshot + report Head of Account Defense within minutes. Action block → STOP as required, continue allowed actions, report. Reach drop >50% in 24h → screenshot + report. Mass-removed content → screenshot + report. Login security check → screenshot + STOP, report.
 
 **EOD self-check (5 min)**
-In daily report include: devices used + Wi-Fi ever ON (Y/N); IP rotated before each switch (Y/N); total follows + likes vs cap; hashtags rotated (Y/N); watermarks in today''s posts (Y/N expected N); Account Center clean (Y/N); flags spotted (list or "0").
 
 **Time**
 ~7 min standalone overhead/day plus always-on discipline.
@@ -523,7 +520,6 @@ UPDATE public.sop_functions f SET
   name = 'Account Defense compliance (shared ownership)',
   kpi = '0 rule violations/session; 100% always-on rules followed; all flags reported same-minute; EOD compliance log 100% filled',
   sop_content = '**Purpose**
-Account Defense is shared responsibility. Head of Account Defense owns the system, escalations, appeals, and recovery protocols. The Marketing Executive owns **daily rule compliance** and **early signal capture**. Without VA-side compliance, the system fails — most bans come from VA negligence (Wi-Fi, missed warm-up, banned hashtag, watermark leftover), not platform bugs.
 
 **When**
 Always-on every session. Explicit self-check in EOD report.
@@ -532,17 +528,14 @@ Always-on every session. Explicit self-check in EOD report.
 - Ultimate Account Safety & Restrictions SOP (Notion)
 - Account Status page (Settings → Account Status)
 - Discord/Telegram Account Defense channel
-- WhatIsMyIp.com bookmark
 - EOD compliance log
 
 **Daily compliance — 12 always-on rules**
 1. **Device:** Assigned device only, physical SIM, iCloud Backup + Find My OFF, no personal accounts.
-2. **Network:** Mobile data only — NEVER Wi-Fi/VPN/Proxy/eSIM. IP rotation before every account switch.
-3. **Warm-up:** 10-min warm-up before action. Never post-and-ghost (stay 5min post-post).
+3. **Warm-up:** 15-min warm-up before action. Never post-and-ghost (stay 5min post-post).
 4. **Visual content:** Zero prohibited content. Lifestyle-first.
 5. **Caption:** Zero forbidden words ("OnlyFans", "OF", "exclusive content", etc.).
 6. **Posting mix:** 70–80% safe, 20–30% slight edge. Max 3 Reels/24h/account. Unique PFP + bio + highlights.
-7. **Repurposing:** Never reupload with watermark. Unique edits always (trim + brightness + invisible username overlay).
 8. **Hashtags:** Verify each new hashtag. Max 5/post. Rotate every 3–4 posts.
 9. **Stories & link sticker:** Link sticker only on verified or with Manager approval. Never direct OF link.
 10. **Action limits:** Max 150 follows/day per device, max 200 likes/day per device. Never same DM to multiple users. Never link in DM.
@@ -553,7 +546,6 @@ Always-on every session. Explicit self-check in EOD report.
 Orange flag → screenshot + report Head of Account Defense within minutes. Action block → STOP as required, continue allowed actions, report. Reach drop >50% in 24h → screenshot + report. Mass-removed content → screenshot + report. Login security check → screenshot + STOP, report.
 
 **EOD self-check (5 min)**
-In daily report include: devices used + Wi-Fi ever ON (Y/N); IP rotated before each switch (Y/N); total follows + likes vs cap; hashtags rotated (Y/N); watermarks in today''s posts (Y/N expected N); Account Center clean (Y/N); flags spotted (list or "0").
 
 **Time**
 ~7 min standalone overhead/day plus always-on discipline.
@@ -569,3 +561,5 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 15;
+
+

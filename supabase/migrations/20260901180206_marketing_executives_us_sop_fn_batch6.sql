@@ -1,3 +1,5 @@
+-- marketing_executives_us SOP functions batch 6
+
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -7,7 +9,7 @@ SELECT
   'Trial Reels launch (per new variant batch)',
   '100% Trials posted with toggle ON; 0 grid contamination; post verified in Trials section <60s; log filled',
   'text',
-  '**[PER EVENT — Daily cadence placeholder. Trigger: iCloud Manager updates Trials folder + variant edited per Repurpose SOP]**
+  '**[PER EVENT — Daily cadence placeholder. Trigger: iCloud Manager updates Trial subfolder + variant edited per Repurpose SOP]**
 
 **Purpose**
 Post a Trial Reel — IG feature showing reel only to non-followers, never on grid, fully reusable. Gunzo''s core cold-traffic scaling weapon.
@@ -16,7 +18,7 @@ Post a Trial Reel — IG feature showing reel only to non-followers, never on gr
 New (<30d): 1–3/day. Aged (30+d): 5–20/day. Warmed (90+d): 20–50/day. Power Pages (200+d): 50–100+/day.
 
 **Steps**
-Enable Trial Reels in Professional Dashboard (one-time). Pull variant → New Reel → caption from Templates → cover → **Toggle Trial ON** → post → wait 60s verify in Trials section NOT grid → screenshot log → move to AlreadyPosted.
+Enable Trial Reels in Professional Dashboard (one-time). Pull variant → New Reel → caption from Templates → cover → **Toggle Trial ON** → post → wait 60s verify in Trials section NOT grid → screenshot log → move to Grid (posted) subfolder.
 
 **Time**
 5–8 min per Trial post.
@@ -42,7 +44,7 @@ WHERE r.slug = 'marketing-executives-us'
 UPDATE public.sop_functions f SET
   name = 'Trial Reels launch (per new variant batch)',
   kpi = '100% Trials posted with toggle ON; 0 grid contamination; post verified in Trials section <60s; log filled',
-  sop_content = '**[PER EVENT — Daily cadence placeholder. Trigger: iCloud Manager updates Trials folder + variant edited per Repurpose SOP]**
+  sop_content = '**[PER EVENT — Daily cadence placeholder. Trigger: iCloud Manager updates Trial subfolder + variant edited per Repurpose SOP]**
 
 **Purpose**
 Post a Trial Reel — IG feature showing reel only to non-followers, never on grid, fully reusable. Gunzo''s core cold-traffic scaling weapon.
@@ -51,7 +53,7 @@ Post a Trial Reel — IG feature showing reel only to non-followers, never on gr
 New (<30d): 1–3/day. Aged (30+d): 5–20/day. Warmed (90+d): 20–50/day. Power Pages (200+d): 50–100+/day.
 
 **Steps**
-Enable Trial Reels in Professional Dashboard (one-time). Pull variant → New Reel → caption from Templates → cover → **Toggle Trial ON** → post → wait 60s verify in Trials section NOT grid → screenshot log → move to AlreadyPosted.
+Enable Trial Reels in Professional Dashboard (one-time). Pull variant → New Reel → caption from Templates → cover → **Toggle Trial ON** → post → wait 60s verify in Trials section NOT grid → screenshot log → move to Grid (posted) subfolder.
 
 **Time**
 5–8 min per Trial post.
@@ -67,7 +69,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 26;
-
 
 
 INSERT INTO public.sop_functions (
@@ -159,7 +160,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 27;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -176,9 +176,9 @@ Execute ad-hoc creative production — TT/IG carousels, story sets, reel edits, 
 
 **Steps**
 1. Receive brief, deadline, assets, expected output. Acknowledge + ETA within 1h.
-2. Pull source from iCloud/Templates. Cross-check Master voice + aesthetic.
+2. Pull source from iCloud (Social Media Posts / Stories / Video To Upload) + Templates. Cross-check Master voice + aesthetic.
 3. Execute per type (carousel 3–7 slides, story set, reel edit per repurpose rules, caption remix).
-4. Quality-check vs safety rules. Deliver to iCloud + request thread. Archive in Ready_To_Post folder.
+4. Quality-check vs safety rules. Deliver to iCloud + request thread. Archive in Social Media Posts folder (correct month/carousel slot).
 
 **Time**
 30 min – 2h per request.
@@ -211,9 +211,9 @@ Execute ad-hoc creative production — TT/IG carousels, story sets, reel edits, 
 
 **Steps**
 1. Receive brief, deadline, assets, expected output. Acknowledge + ETA within 1h.
-2. Pull source from iCloud/Templates. Cross-check Master voice + aesthetic.
+2. Pull source from iCloud (Social Media Posts / Stories / Video To Upload) + Templates. Cross-check Master voice + aesthetic.
 3. Execute per type (carousel 3–7 slides, story set, reel edit per repurpose rules, caption remix).
-4. Quality-check vs safety rules. Deliver to iCloud + request thread. Archive in Ready_To_Post folder.
+4. Quality-check vs safety rules. Deliver to iCloud + request thread. Archive in Social Media Posts folder (correct month/carousel slot).
 
 **Time**
 30 min – 2h per request.
@@ -229,7 +229,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 28;
-
 
 
 INSERT INTO public.sop_functions (
@@ -250,7 +249,7 @@ Clean offboarding of an account from one VA to another (or to dormancy). Protect
 1. Receive handoff order from Head of Account Defense: target VA, date, account list.
 2. Day-of: change credentials same-day; transfer via password manager only; verify new VA access.
 3. If VA leaving: factory reset device, sign out iCloud, check Account Center, revoke password manager/Telegram/Discord access, return device to Head of Account Defense.
-4. If creator pause: lower cadence or full pause per Manager; keep IP rotation; log pause date.
+4. If creator pause: lower cadence or full pause per Manager; log pause date.
 5. New VA confirms login; first 3 days flagged for supervision.
 
 **Time**
@@ -286,7 +285,7 @@ Clean offboarding of an account from one VA to another (or to dormancy). Protect
 1. Receive handoff order from Head of Account Defense: target VA, date, account list.
 2. Day-of: change credentials same-day; transfer via password manager only; verify new VA access.
 3. If VA leaving: factory reset device, sign out iCloud, check Account Center, revoke password manager/Telegram/Discord access, return device to Head of Account Defense.
-4. If creator pause: lower cadence or full pause per Manager; keep IP rotation; log pause date.
+4. If creator pause: lower cadence or full pause per Manager; log pause date.
 5. New VA confirms login; first 3 days flagged for supervision.
 
 **Time**
@@ -303,3 +302,5 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 29;
+
+

@@ -1,41 +1,41 @@
+-- marketing_executives_us SOP functions batch 2
+
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
 )
 SELECT
   'sop_fn_me_us_6',
-  'TikTok daily post (midday)',
-  '1 TT post/account/day; 0 IG watermark incidents; vertical 9:16 100%',
+  'TikTok daily post',
+  '2 TT posts/account/day; vertical 9:16 100%',
   'text',
   '**Purpose**
-Daily TikTok post — repurposed from IG winner (default) or recreated trend (when no IG match exists).
+Daily TikTok posting — video from assigned iCloud Video To Upload folder (Trial or Grid path). You do not pick the source; follow the assigned Task.
 
 **When**
-Daily midday window. Order: **Scroll → Like → Post → F4F**.
+Per assigned Task schedule (2 posts/account/day). Order: **Scroll → Like → Post → F4F**.
 
 **Tools**
-- IG (source video)
-- Watermark removal tool (approved)
+- iCloud → Video To Upload (assigned day/account/Trial or Grid)
 - TikTok app
 - Trending sounds library (TT)
 
 **Steps**
-1. IP check + 20–30min FYP scroll (algorithm warm-up).
-2. Pick yesterday''s IG Reel with best engagement OR find a trending format to recreate.
-3. Download IG video **without watermark** (approved tool). Any other watermark = downrank.
-4. TikTok → + → gallery → select.
-5. Add **trending sound** — not original IG audio.
-6. Caption: 1–2 short lines + 3–5 niche hashtags.
-7. Verify vertical 9:16.
-8. Post.
-9. Stay in app 1–2 minutes (active-user signal).
-10. Log post ID/link in daily sheet.
+1. 15-min FYP scroll (algorithm warm-up).
+2. Download video from assigned iCloud Video To Upload folder.
+3. TikTok → + → gallery → select.
+4. Add **trending sound** — not original IG audio if repurposed.
+5. Caption: 1–2 short lines + 3–5 niche hashtags.
+6. Verify vertical 9:16.
+7. Post.
+8. Stay in app 1–2 minutes (active-user signal).
+9. Log post ID/link in daily sheet.
+10. Repeat for 2nd post/account per Task schedule.
 
 **Time**
-6–10 minutes per post (includes pre-post scroll).
+6–10 minutes per post.
 
 **Common mistakes**
-- Keeping IG watermark → instant downrank.
 - Original IG audio instead of trending TT sound → no velocity push.
 - Long caption → kills retention.
 - Photo-only post → TT default rejection.
@@ -43,9 +43,9 @@ Daily midday window. Order: **Scroll → Like → Post → F4F**.
 
 **Escalation**
 - Trial option missing → account not eligible, ping Marketing Manager.
-- Watermark removal tool down → use alternative listed in Templates & Assets, or delay post.',
+- Assigned folder empty → iCloud Manager.',
   'daily',
-  'Daily midday, 1 post/account',
+  'Per assigned Task schedule — 2 posts/account/day',
   6,
   ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
   ARRAY[r.id]::uuid[],
@@ -61,37 +61,35 @@ WHERE r.slug = 'marketing-executives-us'
   );
 
 UPDATE public.sop_functions f SET
-  name = 'TikTok daily post (midday)',
-  kpi = '1 TT post/account/day; 0 IG watermark incidents; vertical 9:16 100%',
+  name = 'TikTok daily post',
+  kpi = '2 TT posts/account/day; vertical 9:16 100%',
   sop_content = '**Purpose**
-Daily TikTok post — repurposed from IG winner (default) or recreated trend (when no IG match exists).
+Daily TikTok posting — video from assigned iCloud Video To Upload folder (Trial or Grid path). You do not pick the source; follow the assigned Task.
 
 **When**
-Daily midday window. Order: **Scroll → Like → Post → F4F**.
+Per assigned Task schedule (2 posts/account/day). Order: **Scroll → Like → Post → F4F**.
 
 **Tools**
-- IG (source video)
-- Watermark removal tool (approved)
+- iCloud → Video To Upload (assigned day/account/Trial or Grid)
 - TikTok app
 - Trending sounds library (TT)
 
 **Steps**
-1. IP check + 20–30min FYP scroll (algorithm warm-up).
-2. Pick yesterday''s IG Reel with best engagement OR find a trending format to recreate.
-3. Download IG video **without watermark** (approved tool). Any other watermark = downrank.
-4. TikTok → + → gallery → select.
-5. Add **trending sound** — not original IG audio.
-6. Caption: 1–2 short lines + 3–5 niche hashtags.
-7. Verify vertical 9:16.
-8. Post.
-9. Stay in app 1–2 minutes (active-user signal).
-10. Log post ID/link in daily sheet.
+1. 15-min FYP scroll (algorithm warm-up).
+2. Download video from assigned iCloud Video To Upload folder.
+3. TikTok → + → gallery → select.
+4. Add **trending sound** — not original IG audio if repurposed.
+5. Caption: 1–2 short lines + 3–5 niche hashtags.
+6. Verify vertical 9:16.
+7. Post.
+8. Stay in app 1–2 minutes (active-user signal).
+9. Log post ID/link in daily sheet.
+10. Repeat for 2nd post/account per Task schedule.
 
 **Time**
-6–10 minutes per post (includes pre-post scroll).
+6–10 minutes per post.
 
 **Common mistakes**
-- Keeping IG watermark → instant downrank.
 - Original IG audio instead of trending TT sound → no velocity push.
 - Long caption → kills retention.
 - Photo-only post → TT default rejection.
@@ -99,9 +97,9 @@ Daily midday window. Order: **Scroll → Like → Post → F4F**.
 
 **Escalation**
 - Trial option missing → account not eligible, ping Marketing Manager.
-- Watermark removal tool down → use alternative listed in Templates & Assets, or delay post.',
+- Assigned folder empty → iCloud Manager.',
   cadence_type = 'daily',
-  cadence_note = 'Daily midday, 1 post/account',
+  cadence_note = 'Per assigned Task schedule — 2 posts/account/day',
   department = ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
   is_active = true,
   updated_at = now()
@@ -109,7 +107,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 6;
-
 
 
 INSERT INTO public.sop_functions (
@@ -125,29 +122,26 @@ SELECT
 Daily FB Reel cross-post from IG (+50% distribution boost when same-day) + accept inbound friend requests. FB is a live channel, not a passive mirror.
 
 **When**
-Daily. Order: **IP Check → Cross Post → Accept Requests → Scrolling → Liking**. Min 30 min gap from IG upload on the same device.
+Daily. Order: **Cross Post → Accept Requests → Scrolling → Liking**. Min 30 min gap from IG upload on the same device.
 
 **Tools**
 - IG app (source)
 - FB app
-- WhatIsMyIp.com
 
 **Steps**
 1. IG → find today''s Reel → download video to phone.
-2. IP check **before** switching apps. IP must differ from what you used for IG upload.
-3. FB → Reels → select video.
-4. Caption: same as IG, optionally slightly different hook for FB.
-5. Post.
-6. Open Friend Requests → accept ALL legitimate (not spam/non-target language/zero-photo profiles).
-7. 20–30min Feed scroll; watch niche videos to completion.
-8. 30–50 niche post likes with 5-sec gaps. 10–15 niche story likes.
+2. FB → Reels → select video.
+3. Caption: same as IG, optionally slightly different hook for FB.
+4. Post.
+5. Open Friend Requests → accept ALL legitimate (not spam/non-target language/zero-photo profiles).
+6. 20–30min Feed scroll; watch niche videos to completion.
+7. 30–50 niche post likes with 5-sec gaps. 10–15 niche story likes.
 
 **Time**
 20–30 minutes (cross-post + accept + scroll).
 
 **Common mistakes**
 - Cross-posting IG + FB simultaneously → FB flags as bot.
-- Using Wi-Fi to save data → accounts linked via IP.
 - Accepting Arabic/spam requests → engagement rate tanks.
 - 50 likes in a 2-minute burst → spam flag.
 - Skipping same-day crosspost → lose distribution boost.
@@ -178,29 +172,26 @@ UPDATE public.sop_functions f SET
 Daily FB Reel cross-post from IG (+50% distribution boost when same-day) + accept inbound friend requests. FB is a live channel, not a passive mirror.
 
 **When**
-Daily. Order: **IP Check → Cross Post → Accept Requests → Scrolling → Liking**. Min 30 min gap from IG upload on the same device.
+Daily. Order: **Cross Post → Accept Requests → Scrolling → Liking**. Min 30 min gap from IG upload on the same device.
 
 **Tools**
 - IG app (source)
 - FB app
-- WhatIsMyIp.com
 
 **Steps**
 1. IG → find today''s Reel → download video to phone.
-2. IP check **before** switching apps. IP must differ from what you used for IG upload.
-3. FB → Reels → select video.
-4. Caption: same as IG, optionally slightly different hook for FB.
-5. Post.
-6. Open Friend Requests → accept ALL legitimate (not spam/non-target language/zero-photo profiles).
-7. 20–30min Feed scroll; watch niche videos to completion.
-8. 30–50 niche post likes with 5-sec gaps. 10–15 niche story likes.
+2. FB → Reels → select video.
+3. Caption: same as IG, optionally slightly different hook for FB.
+4. Post.
+5. Open Friend Requests → accept ALL legitimate (not spam/non-target language/zero-photo profiles).
+6. 20–30min Feed scroll; watch niche videos to completion.
+7. 30–50 niche post likes with 5-sec gaps. 10–15 niche story likes.
 
 **Time**
 20–30 minutes (cross-post + accept + scroll).
 
 **Common mistakes**
 - Cross-posting IG + FB simultaneously → FB flags as bot.
-- Using Wi-Fi to save data → accounts linked via IP.
 - Accepting Arabic/spam requests → engagement rate tanks.
 - 50 likes in a 2-minute burst → spam flag.
 - Skipping same-day crosspost → lose distribution boost.
@@ -219,7 +210,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 7;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -227,43 +217,39 @@ INSERT INTO public.sop_functions (
 SELECT
   'sop_fn_me_us_8',
   'Daily Stories cadence (lifestyle slots)',
-  '3–5 stories/day delivered; 100% mix (lifestyle + engagement); 0 explicit story bans',
+  '2 lifestyle/engagement stories/day delivered; 100% mix; 0 explicit story bans',
   'text',
   '**Purpose**
-Daily IG stories — closest touchpoint with the audience. Mix lifestyle + activity + engagement sticker. Builds trust + warms audience before the evening CTA story.
+Daily IG stories — closest touchpoint with the audience. 2 lifestyle/engagement stories/day. Builds trust + warms audience before the CTA story.
 
 **When**
-Daily, 3–5 stories spread across morning / midday / afternoon / evening. Never batch.
+Daily, 2 stories spread across the day. Never batch. CTA story follows weekly Link A/B schedule (model_story_link_config): Monday Link A, Wednesday Link B, Friday Highlights redirect, Saturday Link A.
 
 **Tools**
-- iCloud (story-approved photos)
+- iCloud → Stories To Upload → Daily (assigned week/day)
 - Templates & Assets channel (ready stickers/copy)
 - IG app
 
 **Steps**
-1. Morning slot (8:00–11:00 AM local): soft lifestyle — coffee, breakfast, gym mirror selfie.
-2. Midday slot (12:00–3:00 PM local): activity — gym set, food, walk, outfit.
-3. Afternoon slot (4:00–6:00 PM local): engagement sticker — poll, quiz, "this or that".
-4. Evening slot (7:00–10:00 PM local): suggestive tease (but not explicit). Low-light selfie, outfit reveal.
-5. Reshare today''s Reel to story **within the 1st hour** of the Reel post (velocity signal).
-6. At least 2 stories/week with poll or quiz sticker (boosts engagement rank).
-7. Reply to story replies within 30 min per reply.
-8. Stop at 5 stories/day max — past 5, read-rate collapses.
+1. Story 1 (morning/midday): lifestyle or activity — coffee, gym, walk, outfit.
+2. Story 2 (afternoon/evening): engagement sticker — poll, quiz, "this or that" or suggestive tease (not explicit).
+3. Reshare today''s Reel to story **within the 1st hour** of the Reel post (velocity signal).
+4. At least 2 stories/week with poll or quiz sticker (boosts engagement rank).
+5. Reply to story replies within 30 min per reply.
 
 **Time**
-15–25 minutes spread across the day (3–5 min per slot).
+10–15 minutes spread across the day.
 
 **Common mistakes**
-- Batching all 5 stories in the morning → 80% never get seen.
+- Batching both stories in the morning → low read-rate.
 - Explicit story → ban risk + downrank.
-- No CTA story all day — leaves Evening CTA SOP without buildup.
 - Story replies ignored >30 min → miss conversion window.
 
 **Escalation**
-- Link sticker unavailable → bio-only CTA today, ping Marketing Manager (possible feature restriction).
+- Link sticker unavailable → **Highlight redirect** (standard fallback — never bio for CTA). Ping Marketing Manager.
 - 3 consecutive days with 0 story views → possible shadowban, escalate.',
   'daily',
-  'Daily, 3–5 stories spread morning/midday/evening (creator local US time)',
+  'Daily, 2 stories spread across day (creator local US time)',
   8,
   ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
   ARRAY[r.id]::uuid[],
@@ -280,42 +266,38 @@ WHERE r.slug = 'marketing-executives-us'
 
 UPDATE public.sop_functions f SET
   name = 'Daily Stories cadence (lifestyle slots)',
-  kpi = '3–5 stories/day delivered; 100% mix (lifestyle + engagement); 0 explicit story bans',
+  kpi = '2 lifestyle/engagement stories/day delivered; 100% mix; 0 explicit story bans',
   sop_content = '**Purpose**
-Daily IG stories — closest touchpoint with the audience. Mix lifestyle + activity + engagement sticker. Builds trust + warms audience before the evening CTA story.
+Daily IG stories — closest touchpoint with the audience. 2 lifestyle/engagement stories/day. Builds trust + warms audience before the CTA story.
 
 **When**
-Daily, 3–5 stories spread across morning / midday / afternoon / evening. Never batch.
+Daily, 2 stories spread across the day. Never batch. CTA story follows weekly Link A/B schedule (model_story_link_config): Monday Link A, Wednesday Link B, Friday Highlights redirect, Saturday Link A.
 
 **Tools**
-- iCloud (story-approved photos)
+- iCloud → Stories To Upload → Daily (assigned week/day)
 - Templates & Assets channel (ready stickers/copy)
 - IG app
 
 **Steps**
-1. Morning slot (8:00–11:00 AM local): soft lifestyle — coffee, breakfast, gym mirror selfie.
-2. Midday slot (12:00–3:00 PM local): activity — gym set, food, walk, outfit.
-3. Afternoon slot (4:00–6:00 PM local): engagement sticker — poll, quiz, "this or that".
-4. Evening slot (7:00–10:00 PM local): suggestive tease (but not explicit). Low-light selfie, outfit reveal.
-5. Reshare today''s Reel to story **within the 1st hour** of the Reel post (velocity signal).
-6. At least 2 stories/week with poll or quiz sticker (boosts engagement rank).
-7. Reply to story replies within 30 min per reply.
-8. Stop at 5 stories/day max — past 5, read-rate collapses.
+1. Story 1 (morning/midday): lifestyle or activity — coffee, gym, walk, outfit.
+2. Story 2 (afternoon/evening): engagement sticker — poll, quiz, "this or that" or suggestive tease (not explicit).
+3. Reshare today''s Reel to story **within the 1st hour** of the Reel post (velocity signal).
+4. At least 2 stories/week with poll or quiz sticker (boosts engagement rank).
+5. Reply to story replies within 30 min per reply.
 
 **Time**
-15–25 minutes spread across the day (3–5 min per slot).
+10–15 minutes spread across the day.
 
 **Common mistakes**
-- Batching all 5 stories in the morning → 80% never get seen.
+- Batching both stories in the morning → low read-rate.
 - Explicit story → ban risk + downrank.
-- No CTA story all day — leaves Evening CTA SOP without buildup.
 - Story replies ignored >30 min → miss conversion window.
 
 **Escalation**
-- Link sticker unavailable → bio-only CTA today, ping Marketing Manager (possible feature restriction).
+- Link sticker unavailable → **Highlight redirect** (standard fallback — never bio for CTA). Ping Marketing Manager.
 - 3 consecutive days with 0 story views → possible shadowban, escalate.',
   cadence_type = 'daily',
-  cadence_note = 'Daily, 3–5 stories spread morning/midday/evening (creator local US time)',
+  cadence_note = 'Daily, 2 stories spread across day (creator local US time)',
   department = ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
   is_active = true,
   updated_at = now()
@@ -325,7 +307,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 8;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -333,23 +314,22 @@ INSERT INTO public.sop_functions (
 SELECT
   'sop_fn_me_us_9',
   'Evening CTA story with link sticker',
-  '1 CTA story/day posted in 7:00–11:00 PM local window; 100% link verified post-publish; 0 explicit ban incidents',
+  '1 CTA story/day per weekly Link A/B schedule; 100% link verified post-publish; 0 explicit ban incidents',
   'text',
   '**Purpose**
 The main daily CTA push — evening story with link sticker, sexy but not explicit, curiosity-driven, drives clicks → OnlyFans funnel.
 
 **When**
-Daily **7:00–11:00 PM** in the creator''s local US time zone. 1 story/day (in addition to the 3–5 lifestyle slots).
+Per weekly Link A/B schedule (model_story_link_config): Monday Link A, Wednesday Link B, Friday Highlights redirect, Saturday Link A. 1 CTA story on the assigned slot (in addition to the 2 lifestyle stories).
 
 **Tools**
-- iCloud (approved CTA photo)
+- iCloud → Stories To Upload → CTA (assigned week/day)
 - OF link or landing URL (clipboard ready)
 - IG app
 
 **Steps**
-1. IP check first.
 2. Tap **+** → Camera → upload approved photo.
-3. Swipe up → sticker bar → **Link** sticker → paste link.
+3. Swipe up → sticker bar → **Link** sticker → paste link per weekly schedule (Link A or Link B from model_story_link_config).
 4. Caption: **max 3 words** + 1–3 emojis. Examples: "my secrets" / "you know where" / "exclusive".
 5. Position link sticker — do not cover face/body/outfit reveal.
 6. Tap Done → upload.
@@ -376,10 +356,10 @@ Daily **7:00–11:00 PM** in the creator''s local US time zone. 1 story/day (in 
 - Forgetting to verify link post-publish → broken funnel for 4h.
 
 **Escalation**
-- Link sticker unavailable on this account → bio-driven CTA, escalate (verified account or Marketing Manager approval needed).
+- Link sticker unavailable → **Highlight redirect** (standard fallback — never bio for CTA). Escalate to Marketing Manager.
 - Story removed by IG → screenshot + Marketing Manager (content review).',
   'daily',
-  'Daily 7:00–11:00 PM local, 1 story',
+  'Per weekly Link A/B schedule (model_story_link_config): Monday Link A, Wednesday Link B, Friday Highlights redirect, Saturday Link A — 1 CTA story on assigned slot',
   9,
   ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
   ARRAY[r.id]::uuid[],
@@ -396,22 +376,21 @@ WHERE r.slug = 'marketing-executives-us'
 
 UPDATE public.sop_functions f SET
   name = 'Evening CTA story with link sticker',
-  kpi = '1 CTA story/day posted in 7:00–11:00 PM local window; 100% link verified post-publish; 0 explicit ban incidents',
+  kpi = '1 CTA story/day per weekly Link A/B schedule; 100% link verified post-publish; 0 explicit ban incidents',
   sop_content = '**Purpose**
 The main daily CTA push — evening story with link sticker, sexy but not explicit, curiosity-driven, drives clicks → OnlyFans funnel.
 
 **When**
-Daily **7:00–11:00 PM** in the creator''s local US time zone. 1 story/day (in addition to the 3–5 lifestyle slots).
+Per weekly Link A/B schedule (model_story_link_config): Monday Link A, Wednesday Link B, Friday Highlights redirect, Saturday Link A. 1 CTA story on the assigned slot (in addition to the 2 lifestyle stories).
 
 **Tools**
-- iCloud (approved CTA photo)
+- iCloud → Stories To Upload → CTA (assigned week/day)
 - OF link or landing URL (clipboard ready)
 - IG app
 
 **Steps**
-1. IP check first.
 2. Tap **+** → Camera → upload approved photo.
-3. Swipe up → sticker bar → **Link** sticker → paste link.
+3. Swipe up → sticker bar → **Link** sticker → paste link per weekly schedule (Link A or Link B from model_story_link_config).
 4. Caption: **max 3 words** + 1–3 emojis. Examples: "my secrets" / "you know where" / "exclusive".
 5. Position link sticker — do not cover face/body/outfit reveal.
 6. Tap Done → upload.
@@ -438,10 +417,10 @@ Daily **7:00–11:00 PM** in the creator''s local US time zone. 1 story/day (in 
 - Forgetting to verify link post-publish → broken funnel for 4h.
 
 **Escalation**
-- Link sticker unavailable on this account → bio-driven CTA, escalate (verified account or Marketing Manager approval needed).
+- Link sticker unavailable → **Highlight redirect** (standard fallback — never bio for CTA). Escalate to Marketing Manager.
 - Story removed by IG → screenshot + Marketing Manager (content review).',
   cadence_type = 'daily',
-  cadence_note = 'Daily 7:00–11:00 PM local, 1 story',
+  cadence_note = 'Per weekly Link A/B schedule (model_story_link_config): Monday Link A, Wednesday Link B, Friday Highlights redirect, Saturday Link A — 1 CTA story on assigned slot',
   department = ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
   is_active = true,
   updated_at = now()
@@ -449,7 +428,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 9;
-
 
 
 INSERT INTO public.sop_functions (
@@ -571,3 +549,5 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 10;
+
+

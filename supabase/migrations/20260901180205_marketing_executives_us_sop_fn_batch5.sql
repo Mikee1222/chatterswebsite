@@ -1,3 +1,5 @@
+-- marketing_executives_us SOP functions batch 5
+
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -71,7 +73,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 21;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -137,7 +138,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 22;
-
 
 
 INSERT INTO public.sop_functions (
@@ -207,7 +207,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 23;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -215,12 +214,11 @@ INSERT INTO public.sop_functions (
 SELECT
   'sop_fn_me_us_24',
   'New IG/TikTok account setup (Day 1)',
-  '100% Day 1 setup complete before handoff; credentials logged same-minute; 0 Wi-Fi/IP violations',
+  '100% Day 1 setup complete before handoff; credentials logged same-minute; 0 Wi-Fi violations',
   'text',
   '**[PER EVENT — Daily cadence used as placeholder. Trigger: Head of Account Defense assigns new handle for warm-up]**
 
 **Purpose**
-Lean Day-1 setup of a new IG/TikTok account — fresh email + IP-safe creation + username + profile basics. Hand off to Growth Playbook (Phase 2 — Warm-Up) after.
 
 **IG Steps**
 Mobile data only → fresh Gmail/Yahoo → 30min email warm-up → create IG account per Master → verify email → no link in bio, no posts → approved PFP → bio `19 | FL` or `19 | FL | fitness` → save credentials → idle 24h → hand off.
@@ -234,8 +232,7 @@ Never reuse email. Never TT password = email password. Never personal Apple ID o
 **Time**
 ~2 hours spread over Day 1.
 
-**Escalation**
-Gmail blocks creation → Android/laptop/Yahoo fallback. Phone verification required → Head of Account Defense. Same IP after 3 retries → SIM/device swap.',
+**Escalation**',
   'daily',
   'PER EVENT — when Head of Account Defense assigns new handle',
   24,
@@ -254,11 +251,10 @@ WHERE r.slug = 'marketing-executives-us'
 
 UPDATE public.sop_functions f SET
   name = 'New IG/TikTok account setup (Day 1)',
-  kpi = '100% Day 1 setup complete before handoff; credentials logged same-minute; 0 Wi-Fi/IP violations',
+  kpi = '100% Day 1 setup complete before handoff; credentials logged same-minute; 0 Wi-Fi violations',
   sop_content = '**[PER EVENT — Daily cadence used as placeholder. Trigger: Head of Account Defense assigns new handle for warm-up]**
 
 **Purpose**
-Lean Day-1 setup of a new IG/TikTok account — fresh email + IP-safe creation + username + profile basics. Hand off to Growth Playbook (Phase 2 — Warm-Up) after.
 
 **IG Steps**
 Mobile data only → fresh Gmail/Yahoo → 30min email warm-up → create IG account per Master → verify email → no link in bio, no posts → approved PFP → bio `19 | FL` or `19 | FL | fitness` → save credentials → idle 24h → hand off.
@@ -272,8 +268,7 @@ Never reuse email. Never TT password = email password. Never personal Apple ID o
 **Time**
 ~2 hours spread over Day 1.
 
-**Escalation**
-Gmail blocks creation → Android/laptop/Yahoo fallback. Phone verification required → Head of Account Defense. Same IP after 3 retries → SIM/device swap.',
+**Escalation**',
   cadence_type = 'daily',
   cadence_note = 'PER EVENT — when Head of Account Defense assigns new handle',
   department = ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
@@ -283,7 +278,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 24;
-
 
 
 INSERT INTO public.sop_functions (
@@ -361,3 +355,5 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 25;
+
+

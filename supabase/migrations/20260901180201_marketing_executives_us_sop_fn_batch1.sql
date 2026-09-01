@@ -1,44 +1,41 @@
+-- marketing_executives_us SOP functions batch 1
+
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
 )
 SELECT
   'sop_fn_me_us_1',
-  'IP rotation & account status check (morning)',
-  '100% of sessions start with verified IP + Account Status check; 0 incidents from Wi-Fi or missed IP rotation',
+  'Account status check (morning)',
+  '100% of sessions start with Account Status check; 0 incidents from missed status review',
   'text',
   '**Purpose**
-Before you touch any account, confirm the device is on mobile data, the IP has changed, and Account Status is green on every handle you will work today.
+Before you touch any account, confirm Account Status is green on every handle you will work today. The device is farm-controlled — no IP management needed on your end.
 
 **When**
 First task of every session, and again each time you switch accounts on the same device.
 
 **Tools**
 - Phone (work device — assigned hardware)
-- WhatIsMyIp.com (bookmarked)
 - IG/FB/TT app → Settings → Account Status
 
 **Steps**
 1. Confirm the device is on mobile data — Wi-Fi OFF, eSIM/VPN/Proxy OFF.
-2. Airplane mode ON → wait 10–30 seconds → airplane mode OFF → mobile data ON.
-3. Open WhatIsMyIp.com and confirm the IP changed from the previous session. Same IP → retry.
-4. Open each account you will work → Settings → Account Status. All sections must be green.
-5. If you see an orange flag → screenshot immediately + ping Marketing Manager. Do NOT start posting/engagement until you have guidance.
-6. Log in the daily sheet: timestamp + last 2 digits of IP + status per account.
+2. Open each account you will work → Settings → Account Status. All sections must be green.
+3. If you see an orange flag → screenshot immediately + ping Marketing Manager. Do NOT start posting/engagement until you have guidance.
+4. Log in the daily sheet: timestamp + status per account.
 
 **Time**
-3–5 minutes for IP rotation + status check (scales with number of accounts on the device).
+2–3 minutes (scales with number of accounts on the device).
 
 **Common mistakes**
-- Saying "I changed IP" without verifying on WhatIsMyIp — the same IP can hide behind an airplane-mode toggle if you do not wait long enough.
-- Turning on Wi-Fi "just for 2 minutes to download something" — instant link between accounts.
 - Skipping Account Status to save time — most bans start from an ignored orange flag.
 - Continuing to post with an orange flag — accelerates shadowban/disable.
+- Turning on Wi-Fi "just for 2 minutes" — security violation.
 
 **Escalation**
 - Orange on Account Status → Marketing Manager + screenshot.
-- Action block popup → STOP likes/follows/comments; continue only posting/stories/DM replies; report.
-- Same IP after 3 retries → swap SIM/device with Marketing Manager.',
+- Action block popup → STOP likes/follows/comments; continue only posting/stories/DM replies; report.',
   'daily',
   'Daily, before every session — first task',
   1,
@@ -56,40 +53,35 @@ WHERE r.slug = 'marketing-executives-us'
   );
 
 UPDATE public.sop_functions f SET
-  name = 'IP rotation & account status check (morning)',
-  kpi = '100% of sessions start with verified IP + Account Status check; 0 incidents from Wi-Fi or missed IP rotation',
+  name = 'Account status check (morning)',
+  kpi = '100% of sessions start with Account Status check; 0 incidents from missed status review',
   sop_content = '**Purpose**
-Before you touch any account, confirm the device is on mobile data, the IP has changed, and Account Status is green on every handle you will work today.
+Before you touch any account, confirm Account Status is green on every handle you will work today. The device is farm-controlled — no IP management needed on your end.
 
 **When**
 First task of every session, and again each time you switch accounts on the same device.
 
 **Tools**
 - Phone (work device — assigned hardware)
-- WhatIsMyIp.com (bookmarked)
 - IG/FB/TT app → Settings → Account Status
 
 **Steps**
 1. Confirm the device is on mobile data — Wi-Fi OFF, eSIM/VPN/Proxy OFF.
-2. Airplane mode ON → wait 10–30 seconds → airplane mode OFF → mobile data ON.
-3. Open WhatIsMyIp.com and confirm the IP changed from the previous session. Same IP → retry.
-4. Open each account you will work → Settings → Account Status. All sections must be green.
-5. If you see an orange flag → screenshot immediately + ping Marketing Manager. Do NOT start posting/engagement until you have guidance.
-6. Log in the daily sheet: timestamp + last 2 digits of IP + status per account.
+2. Open each account you will work → Settings → Account Status. All sections must be green.
+3. If you see an orange flag → screenshot immediately + ping Marketing Manager. Do NOT start posting/engagement until you have guidance.
+4. Log in the daily sheet: timestamp + status per account.
 
 **Time**
-3–5 minutes for IP rotation + status check (scales with number of accounts on the device).
+2–3 minutes (scales with number of accounts on the device).
 
 **Common mistakes**
-- Saying "I changed IP" without verifying on WhatIsMyIp — the same IP can hide behind an airplane-mode toggle if you do not wait long enough.
-- Turning on Wi-Fi "just for 2 minutes to download something" — instant link between accounts.
 - Skipping Account Status to save time — most bans start from an ignored orange flag.
 - Continuing to post with an orange flag — accelerates shadowban/disable.
+- Turning on Wi-Fi "just for 2 minutes" — security violation.
 
 **Escalation**
 - Orange on Account Status → Marketing Manager + screenshot.
-- Action block popup → STOP likes/follows/comments; continue only posting/stories/DM replies; report.
-- Same IP after 3 retries → swap SIM/device with Marketing Manager.',
+- Action block popup → STOP likes/follows/comments; continue only posting/stories/DM replies; report.',
   cadence_type = 'daily',
   cadence_note = 'Daily, before every session — first task',
   department = ARRAY['1c6713c4-ffa4-468e-bc2f-bb972cd24182']::uuid[],
@@ -99,7 +91,6 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 1;
-
 
 
 INSERT INTO public.sop_functions (
@@ -205,7 +196,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 2;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -219,19 +209,22 @@ SELECT
 Gather all content assets you need for the day: today''s brief from Content Director, video files in iCloud, and templates from the Templates & Assets channel.
 
 **When**
-Daily morning, after IP/status check, before you start posting.
+Daily morning, after Account Status check, before you start posting.
 
 **Tools**
-- iCloud folder per creator (`/Creator_Name/Not Used/`, `/Used/`, `/Trials/`)
+- iCloud folders per creator:
+  - **Social Media Posts:** Model → Content to Upload → Social Media Posts → Year → Month → Carousel 1, 2…
+  - **Stories:** Model → Content to Upload → Stories To Upload → CTA or Daily → Year → Month → Week → Day (weeks 1–7, 8–15, etc.)
+  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account or Secondary Account → Trial or Grid
 - Telegram → Templates & Assets channel
 - Discord → today''s brief / caption drop from Marketing Manager
 
 **Steps**
 1. Open Discord/Telegram → check today''s brief: captions, hooks, posting concepts.
-2. Open iCloud → `/Creator_Name/Not Used/` → identify videos for Main + Alt + Trial.
-3. Open `/Month_Day/Trials/` — if not ready, ping iCloud Manager.
+2. Open iCloud → `Model → Content to Upload → Video To Upload → … → Trial or Grid` → identify videos in Video To Upload path (Main/Secondary → Trial or Grid).
+3. Open `Model → Content to Upload → Video To Upload → … → Trial` — if not ready, ping iCloud Manager.
 4. Open Templates & Assets channel — pull ready stories/captions before building from scratch.
-5. Pre-check: all videos are 9:16 vertical, no IG/TikTok watermark, no CapCut watermark/outro.
+5. Pre-check: all videos are 9:16 vertical.
 6. Mental plan: which post goes where, what time (creator''s US local time zone), which account.
 
 **Time**
@@ -240,12 +233,11 @@ Daily morning, after IP/status check, before you start posting.
 **Common mistakes**
 - Building from scratch when a template exists — duplicate effort + inconsistent voice.
 - Not checking iCloud before posting → discover missing brief at noon.
-- Using a file already marked "Used" → duplicate detection penalty.
-- Watermark left on video → instant downrank.
+- Re-using a file already marked posted in Grid/Trial folder → duplicate detection penalty.
 
 **Escalation**
 - Missing brief for the day after 10:00 AM local → ping Marketing Manager + Content Director.
-- Trials folder empty → iCloud Manager.
+- Trial subfolder empty → iCloud Manager.
 - Template gap (no caption fits) → flag in Questions channel.',
   'daily',
   'Daily morning, before posting',
@@ -270,19 +262,22 @@ UPDATE public.sop_functions f SET
 Gather all content assets you need for the day: today''s brief from Content Director, video files in iCloud, and templates from the Templates & Assets channel.
 
 **When**
-Daily morning, after IP/status check, before you start posting.
+Daily morning, after Account Status check, before you start posting.
 
 **Tools**
-- iCloud folder per creator (`/Creator_Name/Not Used/`, `/Used/`, `/Trials/`)
+- iCloud folders per creator:
+  - **Social Media Posts:** Model → Content to Upload → Social Media Posts → Year → Month → Carousel 1, 2…
+  - **Stories:** Model → Content to Upload → Stories To Upload → CTA or Daily → Year → Month → Week → Day (weeks 1–7, 8–15, etc.)
+  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account or Secondary Account → Trial or Grid
 - Telegram → Templates & Assets channel
 - Discord → today''s brief / caption drop from Marketing Manager
 
 **Steps**
 1. Open Discord/Telegram → check today''s brief: captions, hooks, posting concepts.
-2. Open iCloud → `/Creator_Name/Not Used/` → identify videos for Main + Alt + Trial.
-3. Open `/Month_Day/Trials/` — if not ready, ping iCloud Manager.
+2. Open iCloud → `Model → Content to Upload → Video To Upload → … → Trial or Grid` → identify videos in Video To Upload path (Main/Secondary → Trial or Grid).
+3. Open `Model → Content to Upload → Video To Upload → … → Trial` — if not ready, ping iCloud Manager.
 4. Open Templates & Assets channel — pull ready stories/captions before building from scratch.
-5. Pre-check: all videos are 9:16 vertical, no IG/TikTok watermark, no CapCut watermark/outro.
+5. Pre-check: all videos are 9:16 vertical.
 6. Mental plan: which post goes where, what time (creator''s US local time zone), which account.
 
 **Time**
@@ -291,12 +286,11 @@ Daily morning, after IP/status check, before you start posting.
 **Common mistakes**
 - Building from scratch when a template exists — duplicate effort + inconsistent voice.
 - Not checking iCloud before posting → discover missing brief at noon.
-- Using a file already marked "Used" → duplicate detection penalty.
-- Watermark left on video → instant downrank.
+- Re-using a file already marked posted in Grid/Trial folder → duplicate detection penalty.
 
 **Escalation**
 - Missing brief for the day after 10:00 AM local → ping Marketing Manager + Content Director.
-- Trials folder empty → iCloud Manager.
+- Trial subfolder empty → iCloud Manager.
 - Template gap (no caption fits) → flag in Questions channel.',
   cadence_type = 'daily',
   cadence_note = 'Daily morning, before posting',
@@ -309,28 +303,25 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 3;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
 )
 SELECT
   'sop_fn_me_us_4',
-  'Account warm-up routine (daily 10-min)',
+  'Account warm-up routine (daily 15-min)',
   '100% of accounts warmed up before posting; 0 post-and-ghost incidents',
   'text',
   '**Purpose**
-10-minute daily warm-up before any action — trains the algorithm that the account is a real user, not a bot. Strongest trust-score signal Gunzo has.
+15-minute daily warm-up before any action — trains the algorithm that the account is a real user, not a bot. Strongest trust-score signal Gunzo has.
 
 **When**
-Daily before posting/engagement, per account. Again after every IP switch.
-
-**Tools**
+Daily before posting/engagement, per account. **Tools**
 - IG/TT/FB app (platform-appropriate)
 
 **Steps**
 1. Open app → Explore/Reels/FYP feed.
-2. Scroll for 3–5 minutes; watch videos to completion (do not skip at 1 sec).
+2. Scroll for 15 minutes; watch videos to completion (do not skip at 1 sec).
 3. Like 3–5 random posts outside the niche (natural behavior).
 4. Watch 5–10 stories.
 5. Send 1–2 reels via DM to other accounts (strongest human signal for the algorithm).
@@ -338,7 +329,7 @@ Daily before posting/engagement, per account. Again after every IP switch.
 7. Only then → start posting/engagement.
 
 **Time**
-10 minutes per account.
+15 minutes per account.
 
 **Common mistakes**
 - Skipping warm-up "because I don''t have time" — single biggest reason for shadowban.
@@ -365,20 +356,18 @@ WHERE r.slug = 'marketing-executives-us'
   );
 
 UPDATE public.sop_functions f SET
-  name = 'Account warm-up routine (daily 10-min)',
+  name = 'Account warm-up routine (daily 15-min)',
   kpi = '100% of accounts warmed up before posting; 0 post-and-ghost incidents',
   sop_content = '**Purpose**
-10-minute daily warm-up before any action — trains the algorithm that the account is a real user, not a bot. Strongest trust-score signal Gunzo has.
+15-minute daily warm-up before any action — trains the algorithm that the account is a real user, not a bot. Strongest trust-score signal Gunzo has.
 
 **When**
-Daily before posting/engagement, per account. Again after every IP switch.
-
-**Tools**
+Daily before posting/engagement, per account. **Tools**
 - IG/TT/FB app (platform-appropriate)
 
 **Steps**
 1. Open app → Explore/Reels/FYP feed.
-2. Scroll for 3–5 minutes; watch videos to completion (do not skip at 1 sec).
+2. Scroll for 15 minutes; watch videos to completion (do not skip at 1 sec).
 3. Like 3–5 random posts outside the niche (natural behavior).
 4. Watch 5–10 stories.
 5. Send 1–2 reels via DM to other accounts (strongest human signal for the algorithm).
@@ -386,7 +375,7 @@ Daily before posting/engagement, per account. Again after every IP switch.
 7. Only then → start posting/engagement.
 
 **Time**
-10 minutes per account.
+15 minutes per account.
 
 **Common mistakes**
 - Skipping warm-up "because I don''t have time" — single biggest reason for shadowban.
@@ -407,7 +396,6 @@ WHERE r.slug = 'marketing-executives-us'
   AND f.sort_order = 4;
 
 
-
 INSERT INTO public.sop_functions (
   function_id, name, kpi, standard_type, sop_content, cadence_type, cadence_note,
   sort_order, department, sop_role, is_active, content_version, created_at, updated_at
@@ -415,7 +403,7 @@ INSERT INTO public.sop_functions (
 SELECT
   'sop_fn_me_us_5',
   'IG Reel/feed post (midday + evening)',
-  '100% of posts published on schedule; 0 watermark/duplicate flags; posting log complete',
+  '100% of posts published on schedule; 0 duplicate flags; posting log complete',
   'text',
   '**Purpose**
 Daily IG Reel posting from Main + Alt accounts at scheduled times, with correct caption, hashtags, and cover.
@@ -424,14 +412,14 @@ Daily IG Reel posting from Main + Alt accounts at scheduled times, with correct 
 Main: **12:00 PM** and **8:00 PM** in the creator''s local US time zone. Alt: +1 repurposed copy mid-shift. Min 2h gap between posts on the same account.
 
 **Tools**
-- iCloud (assigned video)
+- iCloud → Video To Upload (assigned day/account)
 - IG app
 - Caption from Content Director (Discord/Telegram drop)
 - Approved hashtag list
 
 **Steps**
-1. IP check + warm-up done.
-2. Download video from iCloud → Not Used.
+1. Account status check + warm-up done.
+2. Download video from iCloud → Video To Upload → assigned day folder → Trial or Grid.
 3. IG → + → Reel → select.
 4. Pick a strong cover frame — not random.
 5. Paste caption from Content Director **as-is** — do not rewrite.
@@ -439,7 +427,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator''s local US time zone. Alt: +1
 7. Audio: trending sound only if it fits; otherwise original.
 8. Verify Trial toggle: OFF for normal Reel, ON for trial (separate SOP).
 9. Share → confirm live → screenshot.
-10. Move file: `Not Used → Used → IG → [Date] → Main`.
+10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Grid (posted).
 11. Stay in app 1–2 minutes (active-user signal).
 12. Log post in daily sheet: account / time / post ID / first 30min views.
 
@@ -452,7 +440,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator''s local US time zone. Alt: +1
 - Same hashtag set on every post → algorithm flag.
 - Identical file on Main + Alt → duplicate penalty.
 - Post + close app immediately → "post-and-ghost" penalty.
-- Forgetting to move file to Used → re-upload risk.
+- Forgetting to move file to posted subfolder → re-upload risk.
 
 **Escalation**
 - Post stuck at 0 views >1h → possible shadowban, ping Marketing Manager.
@@ -476,7 +464,7 @@ WHERE r.slug = 'marketing-executives-us'
 
 UPDATE public.sop_functions f SET
   name = 'IG Reel/feed post (midday + evening)',
-  kpi = '100% of posts published on schedule; 0 watermark/duplicate flags; posting log complete',
+  kpi = '100% of posts published on schedule; 0 duplicate flags; posting log complete',
   sop_content = '**Purpose**
 Daily IG Reel posting from Main + Alt accounts at scheduled times, with correct caption, hashtags, and cover.
 
@@ -484,14 +472,14 @@ Daily IG Reel posting from Main + Alt accounts at scheduled times, with correct 
 Main: **12:00 PM** and **8:00 PM** in the creator''s local US time zone. Alt: +1 repurposed copy mid-shift. Min 2h gap between posts on the same account.
 
 **Tools**
-- iCloud (assigned video)
+- iCloud → Video To Upload (assigned day/account)
 - IG app
 - Caption from Content Director (Discord/Telegram drop)
 - Approved hashtag list
 
 **Steps**
-1. IP check + warm-up done.
-2. Download video from iCloud → Not Used.
+1. Account status check + warm-up done.
+2. Download video from iCloud → Video To Upload → assigned day folder → Trial or Grid.
 3. IG → + → Reel → select.
 4. Pick a strong cover frame — not random.
 5. Paste caption from Content Director **as-is** — do not rewrite.
@@ -499,7 +487,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator''s local US time zone. Alt: +1
 7. Audio: trending sound only if it fits; otherwise original.
 8. Verify Trial toggle: OFF for normal Reel, ON for trial (separate SOP).
 9. Share → confirm live → screenshot.
-10. Move file: `Not Used → Used → IG → [Date] → Main`.
+10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Grid (posted).
 11. Stay in app 1–2 minutes (active-user signal).
 12. Log post in daily sheet: account / time / post ID / first 30min views.
 
@@ -512,7 +500,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator''s local US time zone. Alt: +1
 - Same hashtag set on every post → algorithm flag.
 - Identical file on Main + Alt → duplicate penalty.
 - Post + close app immediately → "post-and-ghost" penalty.
-- Forgetting to move file to Used → re-upload risk.
+- Forgetting to move file to posted subfolder → re-upload risk.
 
 **Escalation**
 - Post stuck at 0 views >1h → possible shadowban, ping Marketing Manager.
@@ -527,3 +515,5 @@ FROM public.sop_roles r
 WHERE r.slug = 'marketing-executives-us'
   AND r.id = ANY(f.sop_role)
   AND f.sort_order = 5;
+
+
