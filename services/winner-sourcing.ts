@@ -1011,6 +1011,20 @@ export async function updateVideoBunchStatus(
   return mapBunch(data as Record<string, unknown>);
 }
 
+export async function renameVideoBunch(id: string, name: string): Promise<VideoBunch> {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Bunch name is required");
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("video_bunches")
+    .update({ name: trimmed, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("*")
+    .single();
+  if (error) throw new Error(`renameVideoBunch: ${error.message}`);
+  return mapBunch(data as Record<string, unknown>);
+}
+
 export type VideoBunchDeleteImpact = {
   bunch_id: string;
   bunch_name: string;

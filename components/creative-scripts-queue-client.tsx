@@ -282,7 +282,11 @@ export function CreativeScriptsQueueClient({
     return () => window.clearInterval(id);
   }, [isSupabaseBackend]);
 
-  useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
+  useSupabaseRealtimeRefresh(
+    ["winner_videos", "video_bunches"],
+    () => void reloadRef.current(),
+    { debounceMs: 600 },
+  );
 
   function openForm(video: WinnerVideoRecord) {
     const isRejected = video.script_status === "Rejected";

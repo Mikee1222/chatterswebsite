@@ -10,6 +10,7 @@ import {
   FolderOpen,
   FolderPlus,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Search,
@@ -27,6 +28,7 @@ import {
 import { FilterBar, FilterChip, ReviewEmptyState } from "@/components/manager-review-ui";
 import { CountUp, InflowwCustomDateRange, LuxuryStatCard } from "@/components/infloww-performance-ui";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { GlassModal } from "@/components/ui/glass-modal";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -208,6 +210,10 @@ export function AdminBunchesClient({
   );
   const [slotDeleteImpactLoading, setSlotDeleteImpactLoading] = React.useState(false);
   const [slotDeleteLoading, setSlotDeleteLoading] = React.useState(false);
+
+  const [renameTarget, setRenameTarget] = React.useState<VideoBunch | null>(null);
+  const [renameValue, setRenameValue] = React.useState("");
+  const [renameLoading, setRenameLoading] = React.useState(false);
 
   const [search, setSearch] = React.useState("");
   const [modelFilter, setModelFilter] = React.useState("all");
@@ -627,6 +633,67 @@ export function AdminBunchesClient({
       await refreshAll();
     } finally {
       setBusyId(null);
+    }
+  }
+
+  function openRenameModal(bunch: VideoBunch) {
+    setRenameTarget(bunch);
+    setRenameValue(bunch.name);
+  }
+
+  function closeRenameModal() {
+    if (renameLoading) return;
+    setRenameTarget(null);
+    setRenameValue("");
+  }
+
+  async function confirmRenameBunch() {
+    if (!renameTarget) return;
+    const nextName = renameValue.trim();
+    if (!nextName) {
+      addToast(
+        winnerVideoLocalToast(`ws-rename-${Date.now()}`, "Name required", "Enter a bunch name.", "high"),
+      );
+      return;
+    }
+    if (nextName === renameTarget.name.trim()) {
+      closeRenameModal();
+      return;
+    }
+    setRenameLoading(true);
+    try {
+      const res = await fetch(`/api/winner-sourcing/bunches/${encodeURIComponent(renameTarget.id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: nextName }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { bunch?: VideoBunch; error?: string };
+      if (!res.ok || !data.bunch) {
+        addToast(
+          winnerVideoLocalToast(
+            `ws-rename-err-${Date.now()}`,
+            "Rename failed",
+            data.error || "Error",
+            "high",
+          ),
+        );
+        return;
+      }
+      const renamedId = renameTarget.id;
+      const oldName = renameTarget.name;
+      setBunches((prev) => prev.map((b) => (b.id === renamedId ? { ...b, ...data.bunch! } : b)));
+      closeRenameModal();
+      addToast(
+        winnerVideoLocalToast(
+          `ws-rename-ok-${Date.now()}`,
+          "Bunch renamed",
+          `“${oldName}” → “${data.bunch.name}”`,
+          "normal",
+        ),
+      );
+    } finally {
+      setRenameLoading(false);
     }
   }
 
@@ -1375,6 +1442,18 @@ export function AdminBunchesClient({
                           </span>
                           <button
                             type="button"
+                            aria-label={`Rename bunch ${b.name}`}
+                            title="Rename bunch"
+                            className="rounded-lg border border-white/10 bg-white/5 p-1.5 text-[#B8B4B8]/70 transition hover:bg-white/10 hover:text-[#D4AF8C]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRenameModal(b);
+                            }}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
                             aria-label={`Delete bunch ${b.name}`}
                             title="Delete bunch"
                             className="rounded-lg border border-red-500/20 bg-red-500/10 p-1.5 text-red-300/80 transition hover:bg-red-500/20 hover:text-red-200"
@@ -1543,6 +1622,18 @@ export function AdminBunchesClient({
                       {selectedBunch.assigned_editor_id ? "Re-assign editor" : "Assign editor"}
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className={cn(
+                      VA_BTN_SECONDARY,
+                      "inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-xs touch-manipulation",
+                    )}
+                    onClick={() => openRenameModal(selectedBunch)}
+                    disabled={renameLoading}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Rename
+                  </button>
                   <button
                     type="button"
                     className="rounded-xl px-3 py-1.5 text-[10px] font-medium uppercase tracking-wider text-[#B8B4B8]/50 hover:text-[#D4AF8C]"
@@ -2013,6 +2104,56 @@ export function AdminBunchesClient({
           slotDeleteTarget ? `#${slotDeleteTarget.sequence_number}` : slotDeleteImpact ? `#${slotDeleteImpact.sequence_number}` : ""
         }
       />
+
+      {renameTarget ? (
+        <GlassModal
+          onClose={closeRenameModal}
+          title="Rename bunch"
+          subtitle={`Current: “${renameTarget.name}”`}
+          className="md:max-w-md"
+        >
+          <form
+            className="space-y-4 p-5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void confirmRenameBunch();
+            }}
+          >
+            <label className="block space-y-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">
+                New name
+              </span>
+              <input
+                className={cn(VA_FILTER_INPUT, "w-full")}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                placeholder="e.g. Maya March Recreates"
+                autoFocus
+                required
+                disabled={renameLoading}
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-sm disabled:opacity-40")}
+                onClick={closeRenameModal}
+                disabled={renameLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-40")}
+                disabled={renameLoading || !renameValue.trim()}
+              >
+                {renameLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Save
+              </button>
+            </div>
+          </form>
+        </GlassModal>
+      ) : null}
     </div>
   );
 }

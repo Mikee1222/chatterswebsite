@@ -8,6 +8,7 @@ import {
   getVideoBunch,
   getVideoBunchDeleteImpact,
   listSlotsForBunch,
+  renameVideoBunch,
   submitResearcherBunchFind,
   updateVideoBunchStatus,
 } from "@/services/winner-sourcing";
@@ -131,6 +132,10 @@ export async function PATCH(
         actor_user_name: (session.fullName || session.email || "").trim(),
       });
       return NextResponse.json(result);
+    }
+    if (body.name !== undefined) {
+      const bunch = await renameVideoBunch(id, String(body.name ?? ""));
+      return NextResponse.json({ bunch });
     }
     if (body.status !== undefined) {
       const status = coerceBunchStatus(body.status);
