@@ -992,6 +992,19 @@ const sharedPermissionNavItems: NavItem[] = [
     requiresPermission: PERMISSIONS.MY_PROFILES_VIEW,
     excludeFromMobileMainTabs: true,
   },
+
+  // ── INFO ──
+  // Member SOP viewer (/sops). Custom roles (e.g. marketing-executive) only get this via
+  // shared nav — chatter/va base lists already include the same href without a permission gate.
+  {
+    href: ROUTES.sops,
+    label: "SOPs / Training",
+    iconKey: "BookOpen",
+    navSection: "INFO",
+    requiresPermission: PERMISSIONS.SOPS_VIEW,
+    hiddenIfPermission: PERMISSIONS.SOPS_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
 ];
 
 type SharedAdminPathEntry = {

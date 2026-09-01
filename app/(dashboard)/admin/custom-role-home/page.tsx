@@ -119,6 +119,13 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
     description: PERMISSION_DESCRIPTIONS["task_progress:view"],
   },
   {
+    permission: "sops:view",
+    title: "SOPs / Training",
+    href: ROUTES.sops,
+    icon: BookOpen,
+    description: PERMISSION_DESCRIPTIONS["sops:view"],
+  },
+  {
     permission: "sops:manage",
     title: "SOP Library",
     href: ROUTES.admin.sopLibrary,

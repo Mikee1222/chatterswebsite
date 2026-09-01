@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { isCustomNavRole } from "@/lib/nav-config";
+import { PERMISSIONS } from "@/lib/permissions";
+import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
@@ -17,7 +20,10 @@ export default async function SopsPage() {
   if (!user) redirect(ROUTES.login);
 
   const staffRole = getEffectiveStaffRole(user);
-  if (staffRole !== "chatter" && staffRole !== "virtual_assistant") {
+  const isStaffSopViewer = staffRole === "chatter" || staffRole === "virtual_assistant";
+  const isCustomSopViewer =
+    isCustomNavRole(user.role) && (await hasPermission(user, PERMISSIONS.SOPS_VIEW));
+  if (!isStaffSopViewer && !isCustomSopViewer) {
     redirect(ROUTES.dashboard);
   }
   if (staffRole === "virtual_assistant") {
