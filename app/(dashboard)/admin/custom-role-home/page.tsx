@@ -13,6 +13,7 @@ import {
   CreditCard,
   FileText,
   Gift,
+  ImageOff,
   Megaphone,
   MessageSquare,
   Radio,
@@ -21,6 +22,7 @@ import {
   TrendingUp,
   Trophy,
   UserCog,
+  UserCheck,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -133,6 +135,27 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
     description: PERMISSION_DESCRIPTIONS["sops:manage"],
   },
   {
+    permission: "winner_sourcing:submit",
+    title: "Fill Bunches",
+    href: ROUTES.winnerRecreates,
+    icon: Trophy,
+    description: PERMISSION_DESCRIPTIONS["winner_sourcing:submit"],
+  },
+  {
+    permission: "my_profiles:view",
+    title: "My Profiles",
+    href: ROUTES.myProfiles,
+    icon: UserCheck,
+    description: PERMISSION_DESCRIPTIONS["my_profiles:view"],
+  },
+  {
+    permission: "blur_tool:access",
+    title: "Blur tool",
+    href: ROUTES.va.blurTool,
+    icon: ImageOff,
+    description: PERMISSION_DESCRIPTIONS["blur_tool:access"],
+  },
+  {
     permission: "challenges:view",
     title: "Challenges",
     href: ROUTES.admin.challenges,
@@ -234,6 +257,12 @@ export default async function CustomRoleHomePage() {
     if (
       card.permission === PERMISSIONS.MARKETING_VIEW &&
       permissionSet.has(PERMISSIONS.MARKETING_MANAGE)
+    ) {
+      return false;
+    }
+    if (
+      card.permission === PERMISSIONS.WINNER_SOURCING_SUBMIT &&
+      permissionSet.has(PERMISSIONS.WINNER_SOURCING_MANAGE)
     ) {
       return false;
     }

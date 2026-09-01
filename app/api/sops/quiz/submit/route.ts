@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
-import { getMemberAccessibleSopRole, isSopMemberSession } from "@/lib/sop-member-access";
+import { getMemberAccessibleSopRole, canAccessMemberSopViewer } from "@/lib/sop-member-access";
 import { recordQuizAttempt } from "@/services/sop-quiz-attempts";
 import { validateQuizAnswers } from "@/services/sop-quiz";
 import { getFunctionsByRole } from "@/services/sops";
@@ -24,9 +23,8 @@ const bodySchema = z.object({
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "sops:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  if (!isSopMemberSession(session)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await canAccessMemberSopViewer(session))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   let body: unknown;
