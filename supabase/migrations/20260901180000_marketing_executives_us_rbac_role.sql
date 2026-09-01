@@ -16,12 +16,14 @@ SELECT
   'marketing-executives-us',
   'Marketing Executives US',
   'US-based marketing executive — social posting, account safety, winner sourcing, SOP Academy.',
-  permissions,
-  notification_defaults,
+  src.permissions,
+  src.notification_defaults,
   false,
   'green',
   now(),
   now()
-FROM public.roles
-WHERE role_id = 'marketing-executive'
-ON CONFLICT (role_id) DO NOTHING;
+FROM public.roles src
+WHERE src.role_id = 'marketing-executive'
+  AND NOT EXISTS (
+    SELECT 1 FROM public.roles dst WHERE dst.role_id = 'marketing-executives-us'
+  );
