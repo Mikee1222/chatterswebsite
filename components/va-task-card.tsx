@@ -263,18 +263,43 @@ export const VaTaskCard = React.memo(function VaTaskCard({
     return { done, total };
   }, [phases]);
 
+  const loadAttemptedRef = React.useRef(false);
+  const hadPhasesRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (phases.length > 0) {
+      hadPhasesRef.current = true;
+      loadAttemptedRef.current = true;
+      return;
+    }
+    // Parent wiped cached phases (date/filter change) while card stayed expanded.
+    if (hadPhasesRef.current && expanded) {
+      hadPhasesRef.current = false;
+      loadAttemptedRef.current = false;
+    }
+  }, [phases.length, expanded]);
+
   // Keep expand paint free of setState updaters — fetch runs after the open toggle commits.
   const toggleExpanded = React.useCallback(() => {
     const next = !expandedRef.current;
     setExpanded(next);
-    if (next) void onLoadPhases(task);
+    if (next) {
+      loadAttemptedRef.current = true;
+      void onLoadPhases(task);
+    } else {
+      loadAttemptedRef.current = false;
+      hadPhasesRef.current = false;
+    }
   }, [onLoadPhases, task]);
 
-  // Safety net: realtime invalidation must not leave an expanded card on empty phases.
+  // Safety net: realtime wipe / parent phase reset left an expanded card empty.
+  // Guard with loadAttemptedRef so legitimately empty tasks (or failed fetches) do not
+  // infinite-loop refetch → mobile freeze on large Warm-Up cards.
   React.useEffect(() => {
-    if (expanded && phases.length === 0 && !phasesLoading) {
-      void onLoadPhases(task);
-    }
+    if (!expanded || phases.length > 0 || phasesLoading) return;
+    if (loadAttemptedRef.current) return;
+    loadAttemptedRef.current = true;
+    void onLoadPhases(task);
   }, [expanded, phases.length, phasesLoading, onLoadPhases, task]);
 
   const renderPhaseExtra = React.useCallback(
@@ -384,8 +409,9 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         !isVirtual && enabledTimerCategories.includes(itemStepType);
       const timerInProgress = activeTimerEntry?.task_phase_item_id === item.id;
       const completedDuration = itemDurations[item.id];
-      const timerAlreadyCompleted =
-        item.status === "completed" || completedDuration != null;
+      // Only hide the timer once the checklist item is done. A duration from shift-pause
+      // auto-stop must NOT block Start/End or make the row feel "stuck".
+      const hideTimer = item.status === "completed";
       return (
         <div className="space-y-1">
           <div className="flex items-start gap-1">
@@ -440,7 +466,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                 </p>
               ) : null}
             </button>
-            {showItemTimer && onActiveTimerEntryChange && !timerAlreadyCompleted ? (
+            {showItemTimer && onActiveTimerEntryChange && !hideTimer ? (
               <CategoryTaskTimer
                 vaTaskId={task.id}
                 taskPhaseItemId={item.id}

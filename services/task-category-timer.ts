@@ -133,16 +133,30 @@ export async function startTimerEntry(input: {
 }): Promise<CategoryTimeEntry> {
   const sb = getSupabaseServiceClient();
 
-  const { data: priorCompleted, error: priorErr } = await sb
-    .from("task_category_time_entries")
-    .select("id")
-    .eq("task_phase_item_id", input.task_phase_item_id)
-    .eq("va_id", input.va_id)
-    .not("ended_at", "is", null)
-    .limit(1)
-    .maybeSingle();
-  if (priorErr) throw new Error(`startTimerEntry: ${priorErr.message}`);
-  if (priorCompleted) {
+  // Block restart only when the checklist item itself is already done.
+  // A prior ended timer from shift-pause must not permanently lock the item timer
+  // (that made rows look "stuck" and pushed VAs to fight the checkbox).
+  const itemId = input.task_phase_item_id.trim();
+  let itemStatus: string | null = null;
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(itemId)) {
+    const { data, error } = await sb
+      .from("va_task_phase_items")
+      .select("status")
+      .eq("id", itemId)
+      .maybeSingle();
+    if (error) throw new Error(`startTimerEntry: ${error.message}`);
+    itemStatus = data ? String(data.status ?? "") : null;
+  }
+  if (itemStatus == null) {
+    const { data, error } = await sb
+      .from("va_task_phase_items")
+      .select("status")
+      .eq("airtable_id", itemId)
+      .maybeSingle();
+    if (error) throw new Error(`startTimerEntry: ${error.message}`);
+    itemStatus = data ? String(data.status ?? "") : null;
+  }
+  if (itemStatus === "completed") {
     throw new Error("Timer already completed for this checklist item");
   }
 

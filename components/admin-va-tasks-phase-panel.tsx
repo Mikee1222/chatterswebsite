@@ -107,6 +107,36 @@ export function AdminVaTasksPhasePanel({
     setTaskPhases({});
   }, [phaseResetKey]);
 
+  const loadPhases = React.useCallback(async (taskId: string, sourceTaskId?: string | null) => {
+    if (phasesInflightRef.current.has(taskId)) return;
+    phasesInflightRef.current.add(taskId);
+    setPhasesLoadingIds((prev) => ({ ...prev, [taskId]: true }));
+    // Keep prior snapshot while refetching — clearing to [] froze expand on large checklists.
+    const params = new URLSearchParams({ task_id: taskId });
+    if (sourceTaskId?.trim()) params.set("source_task_id", sourceTaskId.trim());
+    try {
+      const res = await fetch(`/api/admin/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
+      const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
+      React.startTransition(() => {
+        setTaskPhases((prev) => ({
+          ...prev,
+          [taskId]: normalizeTaskPhasesForClient(data.phases ?? []),
+        }));
+      });
+    } finally {
+      phasesInflightRef.current.delete(taskId);
+      setPhasesLoadingIds((prev) => {
+        if (!prev[taskId]) return prev;
+        const next = { ...prev };
+        delete next[taskId];
+        return next;
+      });
+    }
+  }, []);
+
+  const loadPhasesRef = React.useRef(loadPhases);
+  loadPhasesRef.current = loadPhases;
+
   const loadProgressPhases = React.useCallback(async () => {
     const tasks = progressViewTasks;
     if (tasks.length === 0) {
@@ -117,27 +147,30 @@ export function AdminVaTasksPhasePanel({
     setProgressPhasesLoading(true);
     setProgressPhasesError(null);
     try {
-      const params = new URLSearchParams({
-        task_ids: tasks.map((task) => task.id).join(","),
-      });
-      const sourceTaskIds = tasks.map((task) => task.virtual_source_task_id?.trim() ?? "");
-      if (sourceTaskIds.some((id) => id.length > 0)) {
-        params.set("source_task_ids", sourceTaskIds.join(","));
-      }
-      const res = await fetch(`/api/admin/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
-      if (!res.ok) throw new Error("fetch failed");
-      const data = (await res.json().catch(() => ({}))) as {
-        phases_by_task?: Record<string, TaskPhase[]>;
-      };
-      const phasesByTask = data.phases_by_task ?? {};
-      React.startTransition(() => {
-        setTaskPhases((prev) => {
-          const next = { ...prev };
-          for (const task of tasks) {
-            next[task.id] = normalizeTaskPhasesForClient(phasesByTask[task.id] ?? []);
-          }
-          return next;
+      // Chunk so URL length stays sane and server pagination is exercised for large days.
+      const CHUNK = 25;
+      const merged: Record<string, TaskPhase[]> = {};
+      for (let i = 0; i < tasks.length; i += CHUNK) {
+        const slice = tasks.slice(i, i + CHUNK);
+        const params = new URLSearchParams({
+          task_ids: slice.map((task) => task.id).join(","),
         });
+        const sourceTaskIds = slice.map((task) => task.virtual_source_task_id?.trim() ?? "");
+        if (sourceTaskIds.some((id) => id.length > 0)) {
+          params.set("source_task_ids", sourceTaskIds.join(","));
+        }
+        const res = await fetch(`/api/admin/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
+        if (!res.ok) throw new Error("fetch failed");
+        const data = (await res.json().catch(() => ({}))) as {
+          phases_by_task?: Record<string, TaskPhase[]>;
+        };
+        const phasesByTask = data.phases_by_task ?? {};
+        for (const task of slice) {
+          merged[task.id] = normalizeTaskPhasesForClient(phasesByTask[task.id] ?? []);
+        }
+      }
+      React.startTransition(() => {
+        setTaskPhases((prev) => ({ ...prev, ...merged }));
       });
     } catch {
       setProgressPhasesError("Could not load phase data for progress overview.");
@@ -176,43 +209,30 @@ export function AdminVaTasksPhasePanel({
   useSupabaseRealtimeRefresh(
     ["va_tasks", "va_task_phases", "va_task_phase_items"],
     () => {
-      setTaskPhases({});
+      // Do NOT wipe taskPhases — clearing forced every expanded card through empty→refetch
+      // and raced checklist completion on large Warm-Up tasks (76 items).
       onServerRefresh();
       if (viewMode === "progress" && canViewProgress) {
         void loadProgressPhases();
+      } else {
+        const loaded = Object.keys(taskPhasesRef.current);
+        for (const taskId of loaded) {
+          const task =
+            visibleRegularTasks.find((t) => t.id === taskId) ??
+            regularTasks.find((t) => t.id === taskId) ??
+            progressViewTasks.find((t) => t.id === taskId) ??
+            dateFilteredTasks.find((t) => t.id === taskId);
+          if (task) {
+            void loadPhasesRef.current(
+              task.id,
+              task.is_virtual_occurrence ? task.virtual_source_task_id : null,
+            );
+          }
+        }
       }
     },
     { debounceMs: 700 },
   );
-
-  const loadPhases = React.useCallback(async (taskId: string, sourceTaskId?: string | null) => {
-    if (phasesInflightRef.current.has(taskId)) return;
-    phasesInflightRef.current.add(taskId);
-    setPhasesLoadingIds((prev) => ({ ...prev, [taskId]: true }));
-    React.startTransition(() => {
-      setTaskPhases((prev) => ({ ...prev, [taskId]: [] }));
-    });
-    const params = new URLSearchParams({ task_id: taskId });
-    if (sourceTaskId?.trim()) params.set("source_task_id", sourceTaskId.trim());
-    try {
-      const res = await fetch(`/api/admin/task-phases?${params}`, VA_TASK_PHASES_FETCH_INIT);
-      const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-      React.startTransition(() => {
-        setTaskPhases((prev) => ({
-          ...prev,
-          [taskId]: normalizeTaskPhasesForClient(data.phases ?? []),
-        }));
-      });
-    } finally {
-      phasesInflightRef.current.delete(taskId);
-      setPhasesLoadingIds((prev) => {
-        if (!prev[taskId]) return prev;
-        const next = { ...prev };
-        delete next[taskId];
-        return next;
-      });
-    }
-  }, []);
 
   const handleAddPhase = React.useCallback(async (taskId: string, taskTitle: string) => {
     if (taskId.startsWith("virt_")) return;

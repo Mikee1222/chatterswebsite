@@ -164,19 +164,50 @@ function mapPhase(row: PhaseRow, items: PhaseItem[] = []): TaskPhase {
   };
 }
 
+/** PostgREST silently caps uncapped selects at 1000 rows — always page large IN queries. */
+const PHASE_FETCH_PAGE = 1000;
+/** Keep `.in()` URL/body size safe when progress view batches many task ids. */
+const PHASE_FETCH_ID_CHUNK = 80;
+
+async function selectAllByTaskIds<T extends SbRow>(
+  table: string,
+  taskIds: string[],
+  orderCol: string,
+): Promise<T[]> {
+  if (!taskIds.length) return [];
+  const sb = getSupabaseServiceClient();
+  const out: T[] = [];
+
+  for (let i = 0; i < taskIds.length; i += PHASE_FETCH_ID_CHUNK) {
+    const chunk = taskIds.slice(i, i + PHASE_FETCH_ID_CHUNK);
+    let from = 0;
+    for (;;) {
+      const { data, error } = await sb
+        .from(table)
+        .select("*")
+        .in("task_id", chunk)
+        .order(orderCol, { ascending: true })
+        .range(from, from + PHASE_FETCH_PAGE - 1);
+      if (error) throw new Error(`fetchPhasesGroupedByTaskId ${table}: ${error.message}`);
+      if (!data?.length) break;
+      out.push(...(data as unknown as T[]));
+      if (data.length < PHASE_FETCH_PAGE) break;
+      from += PHASE_FETCH_PAGE;
+    }
+  }
+  return out;
+}
+
 export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Record<string, TaskPhase[]>> {
   const ids = [...new Set(taskIds.map((t) => t.trim()).filter(Boolean))];
   if (!ids.length) return {};
 
-  const sb = getSupabaseServiceClient();
-  const [{ data: phaseData, error: pe }, { data: itemData, error: ie }] = await Promise.all([
-    sb.from(T_PHASES).select("*").in("task_id", ids).order("phase_number", { ascending: true }),
-    sb.from(T_ITEMS).select("*").in("task_id", ids).order("sort_order", { ascending: true }),
+  const [phaseData, itemData] = await Promise.all([
+    selectAllByTaskIds<PhaseRow>(T_PHASES, ids, "phase_number"),
+    selectAllByTaskIds<ItemRow>(T_ITEMS, ids, "sort_order"),
   ]);
-  if (pe) throw new Error(`fetchPhasesGroupedByTaskId phases: ${pe.message}`);
-  if (ie) throw new Error(`fetchPhasesGroupedByTaskId items: ${ie.message}`);
 
-  const rawItems = (itemData as ItemRow[]) ?? [];
+  const rawItems = itemData;
   const allScreenshotUrls = rawItems.flatMap((row) =>
     Array.isArray(row.screenshot)
       ? row.screenshot.filter((u): u is string => typeof u === "string" && u.length > 0)
@@ -184,14 +215,36 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
   );
   const signedMap = await batchSignUrlMap(allScreenshotUrls);
   const items = rawItems.map((row) => mapItemFromSigned(row, signedMap));
+
+  // O(items) index — avoid O(phases × items) filter (Warm-Up ≈ 76 items/task; progress batches hundreds).
+  const itemsByPhaseKey = new Map<string, PhaseItem[]>();
+  for (const item of items) {
+    const key = (item.phase_id ?? "").trim();
+    if (!key) continue;
+    const list = itemsByPhaseKey.get(key);
+    if (list) list.push(item);
+    else itemsByPhaseKey.set(key, [item]);
+  }
+
   const byTaskId: Record<string, TaskPhase[]> = {};
 
-  for (const row of (phaseData as PhaseRow[]) ?? []) {
+  for (const row of phaseData) {
     const taskId = (row.task_id ?? "").trim();
     if (!taskId) continue;
-    const stablePhaseId = row.phase_id ?? publicId(row);
-    const phaseItems = items.filter((i) => i.phase_id === stablePhaseId || i.phase_id === publicId(row));
-    const phase = mapPhase(row, phaseItems);
+    const pub = publicId(row);
+    const stablePhaseId = (row.phase_id ?? pub).trim();
+    const phaseItems = [
+      ...(itemsByPhaseKey.get(stablePhaseId) ?? []),
+      ...(stablePhaseId !== pub ? (itemsByPhaseKey.get(pub) ?? []) : []),
+    ];
+    // Dedupe if phase_id === public id matched twice
+    const seen = new Set<string>();
+    const deduped = phaseItems.filter((it) => {
+      if (seen.has(it.id)) return false;
+      seen.add(it.id);
+      return true;
+    });
+    const phase = mapPhase(row, deduped);
     if (!byTaskId[taskId]) byTaskId[taskId] = [];
     byTaskId[taskId].push(phase);
   }

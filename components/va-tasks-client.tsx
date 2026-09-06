@@ -711,11 +711,15 @@ export function VaTasksClient({
 
   const refreshPhasesAndAccounts = React.useCallback(
     async (task: VaTaskRecord) => {
+      // Skip while a local optimistic completion is in-flight — realtime often fires
+      // mid-write and would briefly paint the pre-complete checklist (checkbox "undo").
+      if (phaseRollbackRef.current[task.id]) return;
       if (phasesInflightRef.current.has(task.id)) return;
       phasesInflightRef.current.add(task.id);
       setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
       try {
         const phases = await fetchPhasesForTask(task);
+        if (phaseRollbackRef.current[task.id]) return;
         React.startTransition(() => {
           setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
         });
@@ -735,14 +739,18 @@ export function VaTasksClient({
 
   const loadPhasesAndAccounts = React.useCallback(
     async (task: VaTaskRecord) => {
-      // Always re-fetch on expand — drop any stale snapshot first so we never paint
-      // checklist rows missing step_type while the fresh request is in-flight.
+      // Always re-fetch on expand, but keep any existing snapshot painted while loading.
+      // Clearing to [] caused empty-state flashes, safety-effect re-entry loops on large
+      // Warm-Up checklists, and raced optimistic checkbox completions on slow mobile.
       if (phasesInflightRef.current.has(task.id)) return;
       phasesInflightRef.current.add(task.id);
       setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
-      setTaskPhases((prev) => ({ ...prev, [task.id]: [] }));
       try {
         const phases = await fetchPhasesForTask(task);
+        // Don't clobber a newer optimistic completion that landed while we were fetching.
+        if (phaseRollbackRef.current[task.id]) {
+          return;
+        }
         React.startTransition(() => {
           setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
         });
@@ -783,6 +791,20 @@ export function VaTasksClient({
       if (taskId.startsWith("virt_")) return null;
       if (inflightItemIdsRef.current.has(item.id)) return null;
       inflightItemIdsRef.current.add(item.id);
+
+      // Checkbox complete while this item's timer is running — end timer without blocking complete.
+      if (activeTimerEntry?.task_phase_item_id === item.id) {
+        const entryId = activeTimerEntry.id;
+        setActiveTimerEntry(null);
+        void fetch("/api/va/task-timer", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "end", entry_id: entryId }),
+        }).catch(() => {
+          /* non-blocking */
+        });
+      }
 
       optimisticallyCompleteItem(taskId, item.id);
 
@@ -839,7 +861,16 @@ export function VaTasksClient({
         inflightItemIdsRef.current.delete(item.id);
       }
     },
-    [addToast, clearOptimisticRollback, isSupabase, optimisticallyCompleteItem, rollbackOptimisticItem, router],
+    [
+      activeTimerEntry,
+      addToast,
+      clearOptimisticRollback,
+      isSupabase,
+      optimisticallyCompleteItem,
+      rollbackOptimisticItem,
+      router,
+      setActiveTimerEntry,
+    ],
   );
 
   async function reloadModelAccounts(modelId: string) {
