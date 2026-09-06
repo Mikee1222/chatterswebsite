@@ -41,8 +41,8 @@ const MEDIA_FETCH_LIMIT = 80;
 const MEDIA_BACKFILL_LIMIT = 2000;
 /** Default historical lookback for per-post insights (media list has no 90-day cap). */
 export const MEDIA_INSIGHTS_BACKFILL_SINCE_YMD = "2026-01-01";
-/** Trailing days to refresh on each daily sync (late Meta updates). Views series is still ~2 weeks from Meta. */
-const DEFAULT_INSIGHTS_RANGE = 30;
+/** Trailing days to refresh on each incremental sync (late Meta updates). Views series is still ~2 weeks from Meta. */
+const DEFAULT_INSIGHTS_RANGE = 14;
 /** Re-use cached per-post insights when synced within this window (daily sync). */
 const MEDIA_INSIGHTS_FRESH_MS = 12 * 60 * 60 * 1000;
 /** Parallel ClarioSuite API work per account (global rate limiter still paces requests). */

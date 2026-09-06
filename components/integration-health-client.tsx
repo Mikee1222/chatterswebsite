@@ -7,6 +7,7 @@ import type {
   IntegrationHealthSnapshot,
   IntegrationId,
 } from "@/services/integration-health";
+import { formatBytes } from "@/services/supabase-usage";
 import { cn } from "@/lib/utils";
 
 const STATUS_STYLES: Record<
@@ -73,6 +74,8 @@ export function IntegrationHealthClient({
     }
   }
 
+  const usage = snap.supabaseUsage;
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -98,6 +101,63 @@ export function IntegrationHealthClient({
         <p className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/70">
           {toast}
         </p>
+      ) : null}
+
+      {usage ? (
+        <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-white">Supabase usage</h2>
+              <p className="mt-0.5 text-xs text-white/45">
+                Soft alerts vs Pro included quotas (100 GB files / 8 GB DB). Check egress in the
+                Supabase dashboard.
+              </p>
+            </div>
+            <span className="rounded-full border border-white/10 bg-black/20 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/60">
+              {STATUS_STYLES[usage.status].label}
+            </span>
+          </div>
+
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+            <div>
+              <dt className="text-[11px] uppercase tracking-wider text-white/40">Database</dt>
+              <dd className="mt-0.5 text-white/85">{formatBytes(usage.dbBytes)}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wider text-white/40">File storage</dt>
+              <dd className="mt-0.5 text-white/85">{formatBytes(usage.storageBytes)}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wider text-white/40">Top bucket</dt>
+              <dd className="mt-0.5 text-white/85">
+                {usage.buckets[0]
+                  ? `${usage.buckets[0].name} (${formatBytes(usage.buckets[0].bytes)})`
+                  : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] uppercase tracking-wider text-white/40">Largest table</dt>
+              <dd className="mt-0.5 text-white/85">
+                {usage.tables[0]
+                  ? `${usage.tables[0].name} (${formatBytes(usage.tables[0].total_bytes)})`
+                  : "—"}
+              </dd>
+            </div>
+          </dl>
+
+          {usage.buckets.length > 0 ? (
+            <ul className="mt-4 space-y-1.5 text-xs text-white/55">
+              {usage.buckets.slice(0, 5).map((b) => (
+                <li key={b.name} className="flex justify-between gap-3 border-b border-white/5 pb-1">
+                  <span>{b.name}</span>
+                  <span className="text-white/70">
+                    {formatBytes(b.bytes)} · {b.objects.toLocaleString()} files
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">

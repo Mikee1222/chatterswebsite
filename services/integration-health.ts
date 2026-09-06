@@ -1,7 +1,3 @@
-/**
- * Integration health dashboard — status for Infloww, ClarioSuite, Anthropic, Supabase.
- */
-
 import {
   NOTIFICATION_ENTITY,
   NOTIFICATION_EVENT,
@@ -16,6 +12,11 @@ import { isGetMySocialConfigured } from "@/lib/getmysocial-api";
 import { inflowwReportTodayYmd } from "@/lib/infloww-api";
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
+import {
+  formatBytes,
+  getSupabaseUsageSnapshot,
+  type SupabaseUsageSnapshot,
+} from "@/services/supabase-usage";
 
 export type IntegrationId =
   | "infloww"
@@ -42,6 +43,8 @@ export type IntegrationHealthCard = {
 export type IntegrationHealthSnapshot = {
   generatedAt: string;
   cards: IntegrationHealthCard[];
+  /** Present when the usage RPC is available. */
+  supabaseUsage: SupabaseUsageSnapshot | null;
 };
 
 function hoursSince(iso: string | null): number | null {
@@ -113,6 +116,7 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
     gmsLast,
     aiCacheCount,
     aiLast,
+    supabaseUsage,
   ] = await Promise.all([
     countTable("infloww_daily_stats"),
     countTable("infloww_creator_daily_earnings"),
@@ -122,8 +126,9 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
     latestSyncedAt("clariosuite_daily_insights"),
     countTable("getmysocial_daily_analytics"),
     latestSyncedAt("getmysocial_daily_analytics"),
-    countTable("ai_feature_cache"),
-    latestSyncedAt("ai_feature_cache", "generated_at"),
+    countTable("ai_feature_caches"),
+    latestSyncedAt("ai_feature_caches", "generated_at"),
+    getSupabaseUsageSnapshot(),
   ]);
 
   const inflowwLast =
@@ -202,6 +207,24 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
     }
   }
 
+  if (supabaseUsage) {
+    for (const a of supabaseUsage.alerts) supabaseAlerts.push(a);
+    if (supabaseUsage.status === "red") supabaseStatus = "red";
+    else if (supabaseUsage.status === "amber" && supabaseStatus === "green") {
+      supabaseStatus = "amber";
+    }
+  } else if (hasSupabase && backend === "supabase" && supabaseStatus !== "red") {
+    supabaseAlerts.push(
+      "Usage RPC unavailable — apply migration get_supabase_usage_stats to enable quota monitoring.",
+    );
+  }
+
+  const usageMessage = supabaseUsage
+    ? `DB ${formatBytes(supabaseUsage.dbBytes)} · Files ${formatBytes(supabaseUsage.storageBytes)} · DATA_BACKEND=${backend}`
+    : hasSupabase
+      ? `Connected · DATA_BACKEND=${backend}`
+      : "Not configured";
+
   const cards: IntegrationHealthCard[] = [
     {
       id: "infloww",
@@ -270,16 +293,16 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
       name: "Supabase",
       description: `Primary data store (backend: ${backend})`,
       status: supabaseStatus,
-      lastSyncedAt: null,
+      lastSyncedAt: supabaseUsage?.generatedAt ?? null,
       rowCount: null,
-      message: hasSupabase ? `Connected · DATA_BACKEND=${backend}` : "Not configured",
+      message: usageMessage,
       alerts: supabaseAlerts,
       canTest: true,
       canSync: false,
     },
   ];
 
-  return { generatedAt: new Date().toISOString(), cards };
+  return { generatedAt: new Date().toISOString(), cards, supabaseUsage };
 }
 
 export async function testIntegrationConnection(

@@ -32,16 +32,28 @@ Same-day window: route always syncs today+yesterday only (efficient).
 | Field | Value |
 | --- | --- |
 | `vercel.json` schedule | `30 4 * * *` (daily 04:30 UTC fallback) |
-| Intended product cadence | **Every 2 hours** |
-| 2-hourly runner | `.github/workflows/sync-clariosuite-2h.yml` |
-| 2-hourly runner (template) | `docs/github-workflows/sync-clariosuite-2h.yml` |
+| Intended product cadence | **Every 6 hours** |
+| 6-hourly runner | `.github/workflows/sync-clariosuite-2h.yml` |
+| 6-hourly runner (template) | `docs/github-workflows/sync-clariosuite-2h.yml` |
 | External trigger script | `scripts/trigger-clariosuite-cron.sh` |
 
 Incremental window: trailing **14 days** of daily insights per account (not a
-full historical resync). Audience snapshot + top-25 posts refreshed each run.
+full historical resync). Audience snapshot + top posts refreshed each run;
+per-post media insights skip rows synced within 12h.
 
 Same Hobby constraint as Infloww — sub-daily schedules belong in GHA, not
 `vercel.json`.
+
+## Data retention: `/api/cron/data-retention`
+
+| Field | Value |
+| --- | --- |
+| `vercel.json` schedule | `30 5 * * *` (daily 05:30 UTC) |
+| What it prunes | `getmysocial_visitor_events` (>90d), `credential_access_log` (>90d), `agent_action_log` (>90d), read `notifications` (>90d), all `notifications` (>180d) |
+| What it does **not** touch | Storage buckets (`attachments`, `feedback-screenshots`, etc.) |
+
+Storage growth is the main quota risk — monitor via Integration Health → Supabase
+usage card. Egress must still be checked in the Supabase dashboard (not exposed via SQL).
 
 ## Creator earnings (same Infloww cron)
 

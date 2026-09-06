@@ -27,8 +27,8 @@ export default async function AdminIntegrationsPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Integrations</h1>
         <p className="mt-1 text-sm text-white/55">
-          Health of Infloww, ClarioSuite, Anthropic, and Supabase — last sync, status, and
-          actionable alerts. Approximate AI call volume is listed below.
+          Health of Infloww, ClarioSuite, Anthropic, and Supabase — last sync, DB/file usage,
+          and actionable alerts. Approximate AI call volume is listed below.
         </p>
       </div>
       <IntegrationHealthClient initial={snapshot} canManage={canManage} />

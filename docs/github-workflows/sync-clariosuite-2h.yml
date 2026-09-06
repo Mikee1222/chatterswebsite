@@ -1,11 +1,12 @@
-# ClarioSuite sync every 2 hours via GitHub Actions.
-# Vercel Hobby only allows once-per-day crons in vercel.json — do not move this
-# schedule into vercel.json as `0 */2 * * *` or Production deploys will fail.
-name: ClarioSuite sync (every 2h)
+# ClarioSuite sync every 6 hours via GitHub Actions.
+# Media insights already skip rows fresh within 12h — 6h cadence cuts API/DB
+# churn without losing useful freshness. Vercel Hobby only allows once-per-day
+# crons in vercel.json — do not move this schedule into vercel.json.
+name: ClarioSuite sync (every 6h)
 
 on:
   schedule:
-    - cron: "0 */2 * * *"
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 jobs:
