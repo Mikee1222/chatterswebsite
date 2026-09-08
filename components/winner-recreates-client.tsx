@@ -641,14 +641,26 @@ export function WinnerRecreatesClient({
 
         {error ? <p className="text-sm text-red-300">{error}</p> : null}
 
-        <button
-          type="submit"
-          disabled={submitting || !submittable.length}
-          className={cn(VA_BTN_PRIMARY, "flex w-full items-center justify-center gap-2")}
-        >
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {submitting ? "Submitting…" : "Submit for review"}
-        </button>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="submit"
+            disabled={submitting || !submittable.length}
+            className={cn(VA_BTN_PRIMARY, "flex w-full items-center justify-center gap-2 sm:flex-1")}
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            {submitting ? "Submitting…" : "Submit for review"}
+          </button>
+          {error?.includes("Submit anyway") ? (
+            <button
+              type="button"
+              disabled={submitting || !bunchId || !videoType}
+              onClick={() => void handleSubmitAnyway()}
+              className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 text-sm font-semibold text-amber-100 transition hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:shrink-0"
+            >
+              Submit anyway
+            </button>
+          ) : null}
+        </div>
       </motion.form>
         </>
       )}

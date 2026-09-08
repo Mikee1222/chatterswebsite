@@ -32,8 +32,53 @@ export const WINNER_VIDEO_CONTENT_TYPE_STYLES: Record<
 };
 
 export function coerceWinnerVideoStatus(raw: unknown): WinnerVideoStatus {
-  const s = String(raw ?? "").trim() as WinnerVideoStatus;
-  return (WINNER_VIDEO_STATUSES as readonly string[]).includes(s) ? s : "Pending";
+  const s = String(raw ?? "").trim();
+  const match = WINNER_VIDEO_STATUSES.find((x) => x.toLowerCase() === s.toLowerCase());
+  return match ?? "Pending";
+}
+
+/**
+ * Statuses that still block resubmitting the same link for a model.
+ * Rejected is intentionally excluded so researchers can freely resubmit after rejection.
+ */
+export const DUPLICATE_LINK_BLOCKING_STATUSES: readonly WinnerVideoStatus[] = [
+  "Pending",
+  "Approved",
+  "Recreated",
+  "Published",
+];
+
+/**
+ * Duplicate-link gate: only known active statuses block.
+ * Case-insensitive; unknown/empty statuses do NOT block (unlike coerce → Pending).
+ * Explicit Rejected (any case) never blocks.
+ */
+export function isDuplicateLinkBlockingStatus(status: unknown): boolean {
+  const raw = String(status ?? "").trim();
+  if (!raw) return false;
+  const normalized = WINNER_VIDEO_STATUSES.find((x) => x.toLowerCase() === raw.toLowerCase());
+  if (!normalized) return false;
+  return (DUPLICATE_LINK_BLOCKING_STATUSES as readonly string[]).includes(normalized);
+}
+
+/** Strip tracking params / www / trailing slash so IG reel variants compare equal. */
+export function canonicalizeWinnerVideoLink(link: string): string {
+  const trimmed = link.trim();
+  try {
+    const u = new URL(trimmed);
+    const host = u.hostname.replace(/^www\./i, "").toLowerCase();
+    const path = u.pathname.replace(/\/+$/, "") || "";
+    const m = path.match(/^\/(reel|p|tv|video)\/([^/]+)/i);
+    if (m) return `${host}/${m[1].toLowerCase()}/${m[2]}`;
+    return `${host}${path}`.toLowerCase();
+  } catch {
+    return trimmed.replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+  }
+}
+
+export function winnerVideoLinksMatch(a: string, b: string): boolean {
+  if (a.trim() === b.trim()) return true;
+  return canonicalizeWinnerVideoLink(a) === canonicalizeWinnerVideoLink(b);
 }
 
 /** Optional quality rating set when admins approve a research find. */

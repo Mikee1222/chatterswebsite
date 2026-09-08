@@ -1476,10 +1476,11 @@ export async function submitResearcherBunchFind(input: {
     });
     if (dup) {
       const err = new Error(
-        "This exact link was already submitted for this model. Submit anyway to override.",
-      ) as Error & { code?: string; duplicate_id?: string };
+        `This exact link was already submitted for this model (${dup.status}). Submit anyway to override.`,
+      ) as Error & { code?: string; duplicate_id?: string; duplicate_status?: string };
       err.code = "DUPLICATE_LINK";
       err.duplicate_id = dup.id;
+      err.duplicate_status = dup.status;
       throw err;
     }
   }

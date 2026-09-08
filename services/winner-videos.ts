@@ -13,7 +13,9 @@ import {
   coerceWinnerVideoContentType,
   coerceWinnerVideoQualityRating,
   coerceWinnerVideoStatus,
+  isDuplicateLinkBlockingStatus,
   qualityRatingEmoji,
+  winnerVideoLinksMatch,
   type WinnerVideoContentType,
   type WinnerVideoQualityRating,
   type WinnerVideoStatus,
@@ -1113,14 +1115,7 @@ export async function updateWinnerVideoAdminInstructions(
   return updated;
 }
 
-/** Statuses that still block resubmitting the same link for a model. Rejected is excluded so researchers can freely resubmit after a rejection. */
-const DUPLICATE_LINK_ACTIVE_STATUSES: ReadonlySet<WinnerVideoStatus> = new Set([
-  "Pending",
-  "Approved",
-  "Recreated",
-  "Published",
-]);
-
+/** Statuses that still block resubmitting the same link for a model. Rejected is excluded. */
 export async function findDuplicateVideoLinkForModel(input: {
   model_id: string;
   video_link: string;
@@ -1136,15 +1131,15 @@ export async function findDuplicateVideoLinkForModel(input: {
       exclude_id: input.exclude_id,
     });
   }
+  const exclude = input.exclude_id?.trim() || "";
   const all = await getAllWinnerVideos();
   return (
-    all.find(
-      (v) =>
-        v.reference_model_id === modelId &&
-        v.video_link.trim() === link &&
-        DUPLICATE_LINK_ACTIVE_STATUSES.has(v.status) &&
-        (!input.exclude_id || v.id !== input.exclude_id),
-    ) ?? null
+    all.find((v) => {
+      if (exclude && v.id === exclude) return false;
+      if (v.reference_model_id !== modelId) return false;
+      if (!isDuplicateLinkBlockingStatus(v.status)) return false;
+      return winnerVideoLinksMatch(v.video_link, link);
+    }) ?? null
   );
 }
 
@@ -1176,10 +1171,11 @@ export async function updateOwnPendingWinnerVideo(
       });
       if (dup) {
         const err = new Error(
-          "This exact link was already submitted for this model. Submit anyway to override.",
-        ) as Error & { code?: string; duplicate_id?: string };
+          `This exact link was already submitted for this model (${dup.status}). Submit anyway to override.`,
+        ) as Error & { code?: string; duplicate_id?: string; duplicate_status?: string };
         err.code = "DUPLICATE_LINK";
         err.duplicate_id = dup.id;
+        err.duplicate_status = dup.status;
         throw err;
       }
     }

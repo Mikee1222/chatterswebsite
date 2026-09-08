@@ -188,10 +188,15 @@ export async function POST(
     });
     return NextResponse.json({ video });
   } catch (e) {
-    const err = e as Error & { code?: string; duplicate_id?: string };
+    const err = e as Error & { code?: string; duplicate_id?: string; duplicate_status?: string };
     if (err.code === "DUPLICATE_LINK") {
       return NextResponse.json(
-        { error: err.message, duplicate: true, duplicate_id: err.duplicate_id },
+        {
+          error: err.message,
+          duplicate: true,
+          duplicate_id: err.duplicate_id,
+          duplicate_status: err.duplicate_status,
+        },
         { status: 409 },
       );
     }

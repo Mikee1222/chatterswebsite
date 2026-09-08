@@ -22,6 +22,8 @@ import {
   coerceWinnerVideoContentType,
   coerceWinnerVideoQualityRating,
   coerceWinnerVideoStatus,
+  isDuplicateLinkBlockingStatus,
+  winnerVideoLinksMatch,
   type WinnerVideoContentType,
   type WinnerVideoQualityRating,
   type WinnerVideoStatus,
@@ -306,33 +308,65 @@ export async function listAllRaw(): Promise<WinnerVideoRecord[]> {
   return Promise.all(rows.map(mapRow));
 }
 
-/** Statuses that still block resubmitting the same link for a model. Rejected is excluded so researchers can freely resubmit after a rejection. */
-const DUPLICATE_LINK_ACTIVE_STATUSES: WinnerVideoStatus[] = [
-  "Pending",
-  "Approved",
-  "Recreated",
-  "Published",
-];
+function isExcludedDuplicateRow(row: Row, excludeId: string | undefined): boolean {
+  const ex = excludeId?.trim();
+  if (!ex) return false;
+  return publicId(row) === ex || row.id === ex || String(row.airtable_id ?? "") === ex;
+}
 
+/**
+ * Find a blocking prior submission of this link for the model.
+ * Rejected is never blocking (case-insensitive). Status is filtered in JS after
+ * fetch — do not rely solely on PostgREST `.in("status")`, which earlier left
+ * Rejected rows able to trip the warning depending on client/filter quirks.
+ */
 export async function findDuplicateVideoLinkForModel(input: {
   model_id: string;
   video_link: string;
   exclude_id?: string;
 }): Promise<WinnerVideoRecord | null> {
+  const modelId = input.model_id.trim();
+  const link = input.video_link.trim();
+  if (!modelId || !link) return null;
+
   const sb = getSupabaseServiceClient();
-  let q = sb
+  // Exact link first (cheap). No status filter here — Rejected must be skipped in JS.
+  const { data: exactData, error: exactErr } = await sb
     .from(TABLE)
     .select("*")
-    .eq("reference_model_id", input.model_id.trim())
-    .eq("video_link", input.video_link.trim())
-    .in("status", DUPLICATE_LINK_ACTIVE_STATUSES)
-    .limit(1);
-  if (input.exclude_id?.trim()) q = q.neq("id", input.exclude_id.trim());
-  const { data, error } = await q;
-  if (error) throw new Error(`findDuplicateVideoLinkForModel: ${error.message}`);
-  const row = Array.isArray(data) ? data[0] : data;
-  if (!row) return null;
-  return mapRow(row as Row);
+    .eq("reference_model_id", modelId)
+    .eq("video_link", link)
+    .limit(25);
+  if (exactErr) throw new Error(`findDuplicateVideoLinkForModel: ${exactErr.message}`);
+  const exactRows = (Array.isArray(exactData) ? exactData : exactData ? [exactData] : []) as Row[];
+
+  for (const row of exactRows) {
+    if (isExcludedDuplicateRow(row, input.exclude_id)) continue;
+    if (!isDuplicateLinkBlockingStatus(row.status)) continue;
+    return mapRow(row);
+  }
+
+  // Same reel/post with different tracking params (igsh, etc.)
+  const mediaMatch = link.match(/\/(?:reel|p|tv|video)\/([^/?#]+)/i);
+  const mediaId = mediaMatch?.[1]?.trim();
+  if (!mediaId) return null;
+
+  const { data: softData, error: softErr } = await sb
+    .from(TABLE)
+    .select("*")
+    .eq("reference_model_id", modelId)
+    .ilike("video_link", `%/${mediaId}%`)
+    .limit(50);
+  if (softErr) throw new Error(`findDuplicateVideoLinkForModel: ${softErr.message}`);
+  const softRows = (Array.isArray(softData) ? softData : softData ? [softData] : []) as Row[];
+
+  for (const row of softRows) {
+    if (isExcludedDuplicateRow(row, input.exclude_id)) continue;
+    if (!isDuplicateLinkBlockingStatus(row.status)) continue;
+    if (!winnerVideoLinksMatch(String(row.video_link ?? ""), link)) continue;
+    return mapRow(row);
+  }
+  return null;
 }
 
 export async function deleteWinnerVideoRow(id: string): Promise<void> {
