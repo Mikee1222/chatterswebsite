@@ -415,7 +415,14 @@ export function AdminWinnerVideosClient({
         return false;
       }
       setVideos((prev) => prev.map((v) => (v.id === id ? data.video! : v)));
-      if ((body.action === "approve" || body.action === "approve_and_move") && data.video.bunch_id?.trim()) {
+      // Approve creates a slot (provided_count↑); reject frees a pending review slot
+      // (pending_review_count↓). Refresh so bunch fulfillment headers stay accurate.
+      if (
+        (body.action === "approve" ||
+          body.action === "approve_and_move" ||
+          body.action === "reject") &&
+        data.video.bunch_id?.trim()
+      ) {
         const bunchesRes = await fetch("/api/winner-sourcing/bunches", { credentials: "include" });
         if (bunchesRes.ok) {
           const bunchesData = (await bunchesRes.json()) as { bunches?: VideoBunch[] };
@@ -894,7 +901,12 @@ export function AdminWinnerVideosClient({
             >
               {(
                 [
-                  { id: "all" as const, label: "All", count: videos.length },
+                  {
+                    id: "all" as const,
+                    label: "All",
+                    // Active contents exclude Rejected (History / Rejected tab only).
+                    count: videos.length - (statusCounts.Rejected?.length ?? 0),
+                  },
                   ...WINNER_VIDEO_STATUSES.map((s) => ({
                     id: s as StatusTab,
                     label: s,

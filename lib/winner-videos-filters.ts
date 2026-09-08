@@ -202,6 +202,12 @@ export type ResearchManageFilterOpts = {
   dateRange: WinnerVideoDateRange;
   dateFrom: string;
   dateTo: string;
+  /**
+   * Active Content Q/A / bunch contents: hide Rejected unless status is explicitly
+   * "Rejected". Rows stay in DB for History / the Rejected tab. Defaults true when
+   * status is empty ("All").
+   */
+  excludeRejectedFromActiveView?: boolean;
 };
 
 export function filterWinnerVideosClient(
@@ -212,6 +218,9 @@ export function filterWinnerVideosClient(
 
   if (opts.status) {
     result = result.filter((v) => v.status === opts.status);
+  } else if (opts.excludeRejectedFromActiveView !== false) {
+    // "All" active list — rejected finds belong in History / Rejected tab only.
+    result = result.filter((v) => v.status !== "Rejected");
   }
 
   if (opts.contentType) {
