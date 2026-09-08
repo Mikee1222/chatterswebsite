@@ -306,6 +306,14 @@ export async function listAllRaw(): Promise<WinnerVideoRecord[]> {
   return Promise.all(rows.map(mapRow));
 }
 
+/** Statuses that still block resubmitting the same link for a model. Rejected is excluded so researchers can freely resubmit after a rejection. */
+const DUPLICATE_LINK_ACTIVE_STATUSES: WinnerVideoStatus[] = [
+  "Pending",
+  "Approved",
+  "Recreated",
+  "Published",
+];
+
 export async function findDuplicateVideoLinkForModel(input: {
   model_id: string;
   video_link: string;
@@ -317,6 +325,7 @@ export async function findDuplicateVideoLinkForModel(input: {
     .select("*")
     .eq("reference_model_id", input.model_id.trim())
     .eq("video_link", input.video_link.trim())
+    .in("status", DUPLICATE_LINK_ACTIVE_STATUSES)
     .limit(1);
   if (input.exclude_id?.trim()) q = q.neq("id", input.exclude_id.trim());
   const { data, error } = await q;

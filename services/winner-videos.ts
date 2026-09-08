@@ -1113,6 +1113,14 @@ export async function updateWinnerVideoAdminInstructions(
   return updated;
 }
 
+/** Statuses that still block resubmitting the same link for a model. Rejected is excluded so researchers can freely resubmit after a rejection. */
+const DUPLICATE_LINK_ACTIVE_STATUSES: ReadonlySet<WinnerVideoStatus> = new Set([
+  "Pending",
+  "Approved",
+  "Recreated",
+  "Published",
+]);
+
 export async function findDuplicateVideoLinkForModel(input: {
   model_id: string;
   video_link: string;
@@ -1134,6 +1142,7 @@ export async function findDuplicateVideoLinkForModel(input: {
       (v) =>
         v.reference_model_id === modelId &&
         v.video_link.trim() === link &&
+        DUPLICATE_LINK_ACTIVE_STATUSES.has(v.status) &&
         (!input.exclude_id || v.id !== input.exclude_id),
     ) ?? null
   );
