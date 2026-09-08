@@ -184,9 +184,18 @@ function mapBunch(row: Record<string, unknown>): VideoBunch {
   };
 }
 
-/** Slots that pick up a new bunch creative on reassignment (not yet script-submitted). */
-export function slotInheritsBunchCreative(status: ScriptStatus): boolean {
-  return status === "Not Applicable" || status === "Needs Script";
+/**
+ * Slots that pick up a new bunch creative on reassignment (not yet script-submitted).
+ * Pending Review without a creative is the create-path default (DB + inserts) and still inherits;
+ * Pending Review with a creative means a script was submitted — keep historical attribution.
+ */
+export function slotInheritsBunchCreative(
+  status: ScriptStatus,
+  assignedCreativeId?: string | null,
+): boolean {
+  if (status === "Not Applicable" || status === "Needs Script") return true;
+  if (status === "Pending Review" && !String(assignedCreativeId ?? "").trim()) return true;
+  return false;
 }
 
 function mapThresholdSnapshot(row: Record<string, unknown>): {
@@ -849,7 +858,7 @@ export async function assignQueueItemToBunch(
     description: `Recreate from ${submission.tier === "super_winner" ? "Super Winner" : "Winner"}: ${submission.video_link}`,
     video_link: submission.video_link,
     video_type: "",
-    status: "Not Applicable",
+    status: "Pending Review",
     winner_submission_id: submission.id,
     // Inherit bunch creative (denormalized); scripts work items spawned below if present.
     assigned_creative_id: creativeId || null,
@@ -1528,7 +1537,10 @@ export async function createSlotFromApprovedWinnerVideo(input: {
   // Approve after assign (or re-approve): keep denormalized slot + Scripts queue in sync.
   if (existingSlot) {
     let slot = mapSlot(existingSlot as Record<string, unknown>);
-    if (hasCreative && slotInheritsBunchCreative(slot.status)) {
+    if (
+      hasCreative &&
+      slotInheritsBunchCreative(slot.status, slot.assigned_creative_id)
+    ) {
       const { data: synced, error: syncErr } = await sb
         .from("recreate_video_slots")
         .update({
@@ -1575,7 +1587,7 @@ export async function createSlotFromApprovedWinnerVideo(input: {
       video_link: wv.video_link || "",
       video_type,
       video_type_other,
-      status: hasCreative ? "Needs Script" : "Not Applicable",
+      status: hasCreative ? "Needs Script" : "Pending Review",
       assigned_creative_id: creativeId || null,
       assigned_creative_name: creativeName,
       winner_video_id: wv.id,
@@ -1786,7 +1798,8 @@ export async function assignCreativeToSlot(input: {
 /**
  * Assign (or re-assign) a creative to an entire video bunch.
  * Updates the bunch, then applies to current slots that have not yet submitted a script
- * (Not Applicable / Needs Script). Slots at Pending Review or later keep historical attribution.
+ * (Not Applicable / Needs Script / pre-creative Pending Review). Slots with a submitted
+ * script (Pending Review+creative / Approved / Rejected) keep historical attribution.
  * Future slots inherit via createSlotFromApprovedWinnerVideo / assignQueueItemToBunch.
  */
 export async function assignCreativeToBunch(input: {
@@ -1822,7 +1835,7 @@ export async function assignCreativeToBunch(input: {
   const slotErrors: string[] = [];
 
   for (const slot of slots) {
-    if (!slotInheritsBunchCreative(slot.status)) {
+    if (!slotInheritsBunchCreative(slot.status, slot.assigned_creative_id)) {
       skipped += 1;
       continue;
     }
