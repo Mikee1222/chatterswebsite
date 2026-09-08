@@ -43,7 +43,7 @@ import {
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
 import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
-import { bunchScriptsReadyForFilming, FILMING_STATUS_STYLES } from "@/lib/filming-helpers";
+import { FILMING_STATUS_STYLES } from "@/lib/filming-helpers";
 import { bunchReadyForEditing, EDITING_STATUS_STYLES } from "@/lib/editing-helpers";
 import {
   BUNCH_PIPELINE_STAGES,
@@ -928,7 +928,6 @@ export function AdminBunchesClient({
   const selectedBunch = bunches.find((b) => b.id === selectedBunchId) ?? null;
   const selectedFolders =
     selectedBunchId && foldersByBunch[selectedBunchId] ? foldersByBunch[selectedBunchId]! : [];
-  const scriptsReady = bunchScriptsReadyForFilming(slots);
   const selectedProgress = selectedBunchId
     ? filmingProgress[selectedBunchId] ?? {
         filmed_count: slots.filter((s) => s.status === "Approved" && s.filmed).length,
@@ -952,17 +951,6 @@ export function AdminBunchesClient({
           `ws-film-${Date.now()}`,
           "No filmers available",
           "Grant filming:view_assignments to a user in Roles first.",
-          "high",
-        ),
-      );
-      return;
-    }
-    if (!scriptsReady && !selectedBunch.assigned_filmer_id) {
-      addToast(
-        winnerVideoLocalToast(
-          `ws-film-${Date.now()}`,
-          "Scripts not ready",
-          "Every filled slot needs an approved script before assigning a filmer.",
           "high",
         ),
       );
@@ -1570,19 +1558,15 @@ export function AdminBunchesClient({
                       className={cn(
                         VA_BTN_SECONDARY,
                         "inline-flex min-h-[44px] items-center gap-1.5 px-3 py-2 text-xs touch-manipulation",
-                        (busyId === `filmer-${selectedBunch.id}` ||
-                          (!scriptsReady && !selectedBunch.assigned_filmer_id) ||
-                          filmers.length === 0) &&
+                        (busyId === `filmer-${selectedBunch.id}` || filmers.length === 0) &&
                           "opacity-50",
                       )}
                       onClick={handleAssignFilmerClick}
                       disabled={busyId === `filmer-${selectedBunch.id}`}
                       title={
-                        !scriptsReady && !selectedBunch.assigned_filmer_id
-                          ? "All scripts must be approved first"
-                          : filmers.length === 0
-                            ? "No filmers with filming:view_assignments"
-                            : undefined
+                        filmers.length === 0
+                          ? "No filmers with filming:view_assignments"
+                          : undefined
                       }
                     >
                       {busyId === `filmer-${selectedBunch.id}` ? (
@@ -1881,12 +1865,6 @@ export function AdminBunchesClient({
               {canManageEditing && editors.length === 0 ? (
                 <p className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
                   No Editors available — grant editing:view_assignments to a user first.
-                </p>
-              ) : null}
-
-              {canManageFilming && !scriptsReady && !selectedBunch.assigned_filmer_id && slots.length > 0 ? (
-                <p className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-[#B8B4B8]/65">
-                  Assign filmer unlocks when every filled slot has an approved script.
                 </p>
               ) : null}
 

@@ -35,8 +35,9 @@ export const FILMING_STATUS_STYLES: Record<FilmingStatus, { label: string; class
 };
 
 /**
- * True when every slot that has filming work (filled find or script progress) is Approved.
- * Empty Needs Script / Not Applicable placeholders do not block filmer assignment.
+ * Informational: true when every slot that has filming work (filled find or script progress)
+ * is Approved. Empty Needs Script / Not Applicable placeholders are ignored.
+ * Does NOT gate Assign Filmer — admins may assign a filmer at any fill/approval state.
  */
 export function bunchScriptsReadyForFilming(slots: {
   status: string;

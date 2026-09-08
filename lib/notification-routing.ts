@@ -430,7 +430,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   bunch_assigned_to_filmer: {
     rule: "assigned_party_only",
-    description: "The filmer assigned when a bunch with approved scripts is ready to shoot.",
+    description: "The filmer assigned when a bunch is assigned for filming.",
   },
   bunch_filming_uploaded: {
     rule: "admin_only",

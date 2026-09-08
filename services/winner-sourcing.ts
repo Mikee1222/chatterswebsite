@@ -57,7 +57,7 @@ export type VideoBunch = {
   /** Source of truth: creative who scripts all slots in this bunch. */
   assigned_creative_id: string;
   assigned_creative_name: string;
-  /** Filmer assigned after all scripts are approved. */
+  /** Filmer assigned to the bunch (any fill/approval state). */
   assigned_filmer_id: string;
   assigned_filmer_name: string;
   filming_status: import("@/lib/filming-helpers").FilmingStatus;

@@ -9,7 +9,6 @@ import {
   coerceFilmingStatus,
   type FilmingStatus,
 } from "@/lib/filming-helpers";
-import { slotFilled } from "@/lib/winner-sourcing-helpers";
 import {
   getVideoBunch,
   listSlotsForBunch,
@@ -195,7 +194,7 @@ export async function listShootAssignmentsForFilmer(filmerId: string): Promise<S
   return results;
 }
 
-/** Admin: bunches ready to assign (all filled slots Approved) or already in filming. */
+/** Admin: all bunches with optional scripts_ready metadata (assignment is always allowed). */
 export async function listBunchesForFilmingManage(): Promise<
   Array<VideoBunch & { slots: RecreateVideoSlot[]; scripts_ready: boolean }>
 > {
@@ -205,9 +204,6 @@ export async function listBunchesForFilmingManage(): Promise<
     const slots = await listSlotsForBunch(bunch.id);
     const scripts_ready = bunchScriptsReadyForFilming(slots);
     const progress = filmingProgress(slots);
-    if (!scripts_ready && !bunch.assigned_filmer_id && bunch.filming_status === "unassigned") {
-      continue;
-    }
     out.push({ ...bunch, ...progress, slots, scripts_ready });
   }
   return out;
@@ -229,30 +225,16 @@ export async function assignFilmerToBunch(input: {
   if (!bunch) throw new Error("Bunch not found");
 
   const slots = await listSlotsForBunch(bunch.id);
-  if (!bunchScriptsReadyForFilming(slots)) {
-    const hasAny = slots.some(
-      (s) =>
-        slotFilled(s) ||
-        Boolean((s.video_link ?? "").trim() || (s.description ?? "").trim()) ||
-        s.status === "Approved" ||
-        s.status === "Pending Review" ||
-        s.status === "Rejected",
-    );
-    if (!hasAny) throw new Error("Bunch has no slots to film");
-    throw new Error("All scripts in the bunch must be approved before assigning a filmer");
-  }
-  const filled = slots.filter((s) => s.status === "Approved");
+  const approvedCount = slots.filter((s) => s.status === "Approved").length;
 
   const sb = getSupabaseServiceClient();
-  const nextStatus: FilmingStatus =
-    coerceFilmingStatus(bunch.filming_status) === "uploaded" ? "uploaded" : "assigned";
 
   const { data, error } = await sb
     .from("video_bunches")
     .update({
       assigned_filmer_id: filmerId,
       assigned_filmer_name: filmerName,
-      filming_status: nextStatus === "uploaded" ? "assigned" : "assigned",
+      filming_status: "assigned",
       upload_folder_link: "",
       uploaded_at: null,
       updated_at: new Date().toISOString(),
@@ -273,7 +255,7 @@ export async function assignFilmerToBunch(input: {
     event_type: NOTIFICATION_EVENT.BUNCH_ASSIGNED_TO_FILMER,
     priority: NOTIFICATION_PRIORITY.HIGH,
     title: "🎬 Bunch assigned for filming",
-    body: `“${bunch.name}” (${bunch.model_name || "model"}) was assigned to you — ${filled.length} script${filled.length === 1 ? "" : "s"} ready to shoot.`,
+    body: `“${bunch.name}” (${bunch.model_name || "model"}) was assigned to you — ${approvedCount} script${approvedCount === 1 ? "" : "s"} ready to shoot.`,
     entity_type: NOTIFICATION_ENTITY.FILMING_ASSIGNMENT,
     entity_id: bunch.id,
     actor_user_id: input.actor_user_id,
