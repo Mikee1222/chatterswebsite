@@ -125,9 +125,9 @@ function toModelScheduleTimestamptz(dateYmd: string, timeHm?: string | null): st
 }
 
 async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<ShootSlotDetail[]> {
-  const approved = slots.filter((s) => s.status === "Approved" && Boolean(s.winner_video_id));
+  const withVideo = slots.filter((s) => Boolean(s.winner_video_id));
   const videos = await Promise.all(
-    approved.map(async (s) => {
+    withVideo.map(async (s) => {
       const v = s.winner_video_id ? await getWinnerVideoById(s.winner_video_id).catch(() => null) : null;
       return [s.id, v] as const;
     }),
@@ -135,7 +135,6 @@ async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<Shoot
   const bySlot = new Map<string, WinnerVideoRecord | null>(videos);
 
   return slots
-    .filter((s) => s.status === "Approved")
     .map((s) => {
       const v = bySlot.get(s.id) ?? null;
       return {
@@ -153,10 +152,9 @@ async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<Shoot
 }
 
 function filmingProgress(slots: RecreateVideoSlot[]): { filmed_count: number; filmable_count: number } {
-  const filmable = slots.filter((s) => s.status === "Approved");
   return {
-    filmable_count: filmable.length,
-    filmed_count: filmable.filter((s) => s.filmed).length,
+    filmable_count: slots.length,
+    filmed_count: slots.filter((s) => s.filmed).length,
   };
 }
 
@@ -286,9 +284,6 @@ export async function setSlotFilmed(input: {
   if (!input.allowManage && bunch.assigned_filmer_id !== input.actor_user_id) {
     throw new Error("Forbidden");
   }
-  if (String(slotRow.status) !== "Approved") {
-    throw new Error("Only approved script slots can be marked filmed");
-  }
   if (bunch.filming_status === "uploaded") {
     throw new Error("Bunch already uploaded — filming checklist is locked");
   }
@@ -364,7 +359,7 @@ export async function submitBunchUpload(input: {
 
   const slots = await listSlotsForBunch(bunch.id);
   const progress = filmingProgress(slots);
-  if (progress.filmable_count === 0) throw new Error("No approved slots to upload");
+  if (progress.filmable_count === 0) throw new Error("No slots to upload");
   if (progress.filmed_count < progress.filmable_count) {
     throw new Error(`Mark all slots filmed first (${progress.filmed_count} of ${progress.filmable_count})`);
   }
@@ -629,7 +624,6 @@ export async function getFilmingProgressForBunches(
   for (const row of data ?? []) {
     const bid = String(row.bunch_id);
     if (!out[bid]) out[bid] = { filmed_count: 0, filmable_count: 0 };
-    if (String(row.status) !== "Approved") continue;
     out[bid].filmable_count += 1;
     if (row.filmed) out[bid].filmed_count += 1;
   }

@@ -930,8 +930,8 @@ export function AdminBunchesClient({
     selectedBunchId && foldersByBunch[selectedBunchId] ? foldersByBunch[selectedBunchId]! : [];
   const selectedProgress = selectedBunchId
     ? filmingProgress[selectedBunchId] ?? {
-        filmed_count: slots.filter((s) => s.status === "Approved" && s.filmed).length,
-        filmable_count: slots.filter((s) => s.status === "Approved").length,
+        filmed_count: slots.filter((s) => s.filmed).length,
+        filmable_count: slots.length,
       }
     : null;
 

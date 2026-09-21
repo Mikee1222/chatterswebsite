@@ -36,6 +36,7 @@ import {
   VA_FILTER_INPUT,
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
+import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
 import { FILMING_STATUS_STYLES, type FilmingStatus } from "@/lib/filming-helpers";
 import type { ShootAssignment, ShootSlotDetail } from "@/services/filming";
 import { cn } from "@/lib/utils";
@@ -174,7 +175,7 @@ export function ShootAssignmentsClient({
       <ContentPipelineHero
         eyebrow="Filming"
         title="Shoot Assignments"
-        description="Bunches with approved scripts assigned to you. Film each slot, then submit the upload folder when complete."
+        description="Bunches assigned to you. Film each slot (scripts may still be in progress), then submit the upload folder when complete."
         orb="both"
         actions={
           <button
@@ -276,7 +277,7 @@ export function ShootAssignmentsClient({
         <ReviewEmptyState
           icon={PlayCircle}
           title="No shoot assignments yet"
-          description="When an admin assigns an approved bunch to you, it appears here."
+          description="When an admin assigns a bunch to you, it appears here."
         />
       ) : filtered.length === 0 ? (
         <ReviewEmptyState
@@ -330,8 +331,15 @@ export function ShootAssignmentsClient({
                       className="border-t border-white/[0.06]"
                     >
                       <ul className="space-y-3 px-4 py-4 sm:px-5">
+                        {a.slots.length === 0 ? (
+                          <li className="rounded-xl border border-dashed border-white/[0.08] bg-[#0A0A0A]/40 px-3 py-6 text-center text-sm text-[#B8B4B8]/55">
+                            No video slots in this bunch yet — they appear here as soon as finds are added.
+                          </li>
+                        ) : null}
                         {a.slots.map((slot) => {
                           const detailOpen = slotOpen[slot.id] ?? false;
+                          const scriptSt =
+                            SCRIPT_STATUS_STYLES[slot.status] ?? SCRIPT_STATUS_STYLES["Pending Review"];
                           return (
                             <li
                               key={slot.id}
@@ -340,6 +348,9 @@ export function ShootAssignmentsClient({
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="text-xs font-medium text-[#D4AF8C]">
                                   #{slot.sequence_number}
+                                </span>
+                                <span className={cn(VA_STATUS_BADGE, scriptSt.className)}>
+                                  {scriptSt.label}
                                 </span>
                                 {slot.script_video_type ? (
                                   <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">
