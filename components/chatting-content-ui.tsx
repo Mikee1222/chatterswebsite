@@ -14,7 +14,8 @@ export function chattingStatusKey(s: string): string {
 
 export function chattingStatusLabel(s: string): string {
   const k = chattingStatusKey(s);
-  if (k === "pending_approval") return "Pending approval";
+  if (k === "pending_approval") return "Available (legacy)";
+  if (k === "pending") return "Available";
   if (!k) return "—";
   return k.replace(/_/g, " ");
 }

@@ -62,7 +62,7 @@ export default async function ModelCustomRequestsPage() {
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-white/55 md:text-[15px]">
           {language === "es"
             ? "Revisa encargos aceptados por la agencia, programa fechas y marca cuando hayas subido el contenido."
-            : "Review agency-approved requests, set your shoot schedule, and mark when you have uploaded the content."}
+            : "Review accepted requests, schedule them, and mark delivered. Status matches the agency: Accepted → Scheduled → In progress → Delivered."}
         </p>
       </header>
 

@@ -56,12 +56,12 @@ function formatCreatedAt(req: CustomRequest): string {
 
 function modelStatusLabel(lang: CustomRequestDetailLanguage, s: CustomRequestModelStatus): string {
   const map: Record<CustomRequestModelStatus, [string, string]> = {
-    waiting_schedule: ["Pending schedule", "Pendiente de programar"],
+    waiting_schedule: ["Accepted", "Aceptado"],
     scheduled: ["Scheduled", "Programado"],
     in_progress: ["In progress", "En curso"],
     completed: ["Completed", "Completado"],
-    uploaded: ["Uploaded", "Subido"],
-    declined: ["Declined", "Rechazado"],
+    uploaded: ["Delivered", "Entregado"],
+    declined: ["Declined", "Rechazado por modelo"],
   };
   const pair = map[s] ?? ["—", "—"];
   return t(lang, pair[0], pair[1]);
@@ -69,7 +69,7 @@ function modelStatusLabel(lang: CustomRequestDetailLanguage, s: CustomRequestMod
 
 function adminStatusLabel(lang: CustomRequestDetailLanguage, s: CustomRequestAdminStatus): string {
   const map: Record<CustomRequestAdminStatus, [string, string]> = {
-    pending: ["Pending review", "Pendiente de revisión"],
+    pending: ["Pending", "Pendiente"],
     accepted: ["Accepted", "Aceptado"],
     rejected: ["Rejected", "Rechazado"],
   };
@@ -303,7 +303,7 @@ export function CustomRequestDetailModal({
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-pink-400/35 bg-pink-500/15 px-4 py-2.5 text-sm font-semibold text-pink-100"
           >
             <CheckCircle2 className="h-4 w-4" aria-hidden />
-            {t(language, "Mark as uploaded", "Marcar como subido")}
+            {t(language, "Mark delivered", "Marcar entregado")}
           </button>
         ) : null}
       </div>

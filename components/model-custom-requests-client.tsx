@@ -25,6 +25,20 @@ import {
   scheduleMyCustomRequestAction,
 } from "@/app/actions/model-custom-requests";
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import {
+  CustomRequestStatusBadge,
+  customRequestStatusLabel,
+  displayCustomRequestDeadline,
+  displayCustomRequestDescription,
+  displayCustomRequestTitle,
+  getCustomRequestDisplayStatus,
+  type CustomRequestDisplayStatus,
+} from "@/components/custom-request-ui";
+import { countCustomRequestsByDisplayStatus } from "@/lib/custom-request-status";
+import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { FilterBar, ReviewEmptyState } from "@/components/manager-review-ui";
+import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { MobileCard } from "@/components/mobile-card";
 import { FormInput } from "@/components/ui/form-input";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -67,17 +81,12 @@ function statusKey(s: string): string {
   return (s || "").trim().toLowerCase();
 }
 
-function displayTitle(req: CustomRequest): string {
-  return (req.request_title ?? req.custom_type ?? "").trim() || "—";
-}
-
-function displayDescription(req: CustomRequest): string {
-  return (req.request_details ?? req.description ?? "").trim();
-}
+const displayTitle = displayCustomRequestTitle;
+const displayDescription = displayCustomRequestDescription;
 
 function displayDeadline(req: CustomRequest): string {
-  const raw = (req.deadline_requested ?? "").trim();
-  if (raw) return formatDateEuropean(raw);
+  const labeled = displayCustomRequestDeadline(req);
+  if (labeled !== "—") return labeled;
   return formatDate((req.created_at ?? "").trim()) || "—";
 }
 
@@ -87,41 +96,8 @@ function displayScheduled(req: CustomRequest): string {
   return formatDateEuropean(raw);
 }
 
-function modelStatusLabel(lang: Lang, s: CustomRequestModelStatus): string {
-  const map: Record<CustomRequestModelStatus, [string, string]> = {
-    waiting_schedule: ["Waiting schedule", "Pendiente de programar"],
-    scheduled: ["Scheduled", "Programado"],
-    in_progress: ["In progress", "En curso"],
-    completed: ["Completed", "Completado"],
-    uploaded: ["Uploaded", "Subido"],
-    declined: ["Declined", "Rechazado"],
-  };
-  const pair = map[s] ?? ["—", "—"];
-  return t(lang, pair[0], pair[1]);
-}
-
-function StatusBadge({ status, lang }: { status: CustomRequestModelStatus; lang: Lang }) {
-  const k = statusKey(status);
-  const variant =
-    k === "waiting_schedule"
-      ? "border-amber-500/30 bg-amber-500/15 text-amber-300"
-      : k === "scheduled"
-        ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
-        : k === "in_progress"
-          ? "border-violet-500/30 bg-violet-500/15 text-violet-300"
-          : k === "uploaded"
-            ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-            : k === "completed"
-              ? "border-green-500/30 bg-green-500/15 text-green-300"
-              : k === "declined"
-                ? "border-rose-500/35 bg-rose-500/15 text-rose-300"
-                : "border-white/15 bg-white/[0.06] text-white/70";
-
-  return (
-    <span className={cn("inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium", variant)}>
-      {modelStatusLabel(lang, status)}
-    </span>
-  );
+function StatusBadge({ req, lang }: { req: CustomRequest; lang: Lang }) {
+  return <CustomRequestStatusBadge request={req} lang={lang} />;
 }
 
 function StatCard({
@@ -321,7 +297,13 @@ export function ModelCustomRequestsClient({ requests: initialRequests, language 
 
   const tabLabel = (key: StatusTab): string => {
     if (key === "all") return t(language, "All", "Todos");
-    return modelStatusLabel(language, key);
+    if (key === "waiting_schedule") return customRequestStatusLabel("accepted", language);
+    if (key === "uploaded") return customRequestStatusLabel("delivered", language);
+    if (key === "scheduled") return customRequestStatusLabel("scheduled", language);
+    if (key === "in_progress") return customRequestStatusLabel("in_progress", language);
+    if (key === "completed") return customRequestStatusLabel("completed", language);
+    if (key === "declined") return customRequestStatusLabel("declined", language);
+    return key;
   };
 
   const tabCount = (key: StatusTab): number => {
@@ -348,7 +330,7 @@ export function ModelCustomRequestsClient({ requests: initialRequests, language 
             accentClass="border-white/10 ring-white/[0.06]"
           />
           <StatCard
-            label={t(language, "Waiting schedule", "Pendiente")}
+            label={t(language, "Accepted", "Aceptado")}
             value={counts.waiting_schedule}
             icon={Clock}
             accentClass="border-amber-500/25 bg-amber-500/5 ring-amber-500/10"
@@ -366,7 +348,7 @@ export function ModelCustomRequestsClient({ requests: initialRequests, language 
             accentClass="border-violet-500/25 bg-violet-500/5 ring-violet-500/10"
           />
           <StatCard
-            label={t(language, "Uploaded", "Subido")}
+            label={t(language, "Delivered", "Entregado")}
             value={counts.uploaded}
             icon={Upload}
             accentClass="border-emerald-500/25 bg-emerald-500/5 ring-emerald-500/10"
@@ -489,7 +471,7 @@ export function ModelCustomRequestsClient({ requests: initialRequests, language 
                           <p className="mt-0.5 text-xs text-white/45">{r.assigned_model_name}</p>
                         ) : null}
                       </div>
-                      <StatusBadge status={r.model_status} lang={language} />
+                      <StatusBadge req={r} lang={language} />
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -543,7 +525,7 @@ export function ModelCustomRequestsClient({ requests: initialRequests, language 
                             className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/35 bg-emerald-500/15 py-2 text-xs font-medium text-emerald-200 hover:bg-emerald-500/25"
                           >
                             <Upload className="h-3.5 w-3.5" aria-hidden />
-                            {t(language, "Mark uploaded", "Marcar subido")}
+                            {t(language, "Mark delivered", "Marcar entregado")}
                           </button>
                         ) : null}
                       </div>
@@ -688,7 +670,7 @@ export function ModelCustomRequestsClient({ requests: initialRequests, language 
       {confirmUpload ? (
         <GlassModal
           onClose={() => !busy && setConfirmUpload(null)}
-          title={t(language, "Mark as uploaded?", "¿Marcar como subido?")}
+          title={t(language, "Mark as delivered?", "¿Marcar como entregado?")}
           subtitle={displayTitle(confirmUpload)}
           className="md:max-w-lg"
         >

@@ -7,6 +7,7 @@ import {
   agencyApproveCustomRequest,
   agencyDeclineCustomRequest,
   agencyEditCustomRequest,
+  agencyMarkCustomRequestDelivered,
 } from "@/services/custom-request-agency-queue";
 import { listCustomRequestsPaginated } from "@/services/custom-requests";
 import { hasPermission } from "@/lib/rbac";
@@ -95,6 +96,22 @@ export async function adminDeclineCustomRequest(input: z.infer<typeof declineSch
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === "Unauthorized") return { ok: false, error: msg };
     return { ok: false, error: msg || "Decline failed." };
+  }
+}
+
+export async function adminMarkCustomRequestDelivered(recordId: string): Promise<ActionResult> {
+  try {
+    await assertCustomRequestsManage();
+    const id = idSchema.safeParse(recordId);
+    if (!id.success) return { ok: false, error: "Invalid record id." };
+    const res = await agencyMarkCustomRequestDelivered(id.data);
+    if (!res.ok) return res;
+    revalidateCustomRequestSurfaces();
+    return { ok: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "Unauthorized") return { ok: false, error: msg };
+    return { ok: false, error: msg || "Mark delivered failed." };
   }
 }
 

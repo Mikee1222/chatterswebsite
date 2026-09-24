@@ -10,13 +10,20 @@ import { updateRecord } from "@/lib/airtable-server";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import { sbUpdateByPublicId } from "@/lib/supabase-data";
 import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
-import { notify, notifyByRoleConfig } from "@/services/notification-service";
+import { notify, notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import {
   NOTIFICATION_ENTITY,
   NOTIFICATION_EVENT,
   NOTIFICATION_PRIORITY,
 } from "@/lib/notification-types";
-import { getCustomRequestById, patchCustomRequestRecord } from "@/services/custom-requests";
+import {
+  getCustomRequestById,
+  patchCustomRequestRecord,
+  updateCustomRequestModelSchedule,
+} from "@/services/custom-requests";
+import { customRequestCanMarkDelivered } from "@/lib/custom-request-status";
+import { customUploadedChatter } from "@/lib/notification-copy";
+import { notifyAssignedVirtualAssistantCustomUploaded } from "@/services/custom-request-notify-vas";
 
 export type AgencyQueueResult = { ok: true } | { ok: false; error: string };
 
@@ -79,6 +86,62 @@ export async function agencyDeclineCustomRequest(
       context: { customTitle, fanUsername: before.fan_username },
     }).catch(() => {});
   }
+  return { ok: true };
+}
+
+/** Agency marks an accepted custom as delivered (`model_status` = uploaded). */
+export async function agencyMarkCustomRequestDelivered(recordId: string): Promise<AgencyQueueResult> {
+  const before = await getCustomRequestById(recordId);
+  if (!before) return { ok: false, error: "Request not found." };
+  if (!customRequestCanMarkDelivered(before)) {
+    return { ok: false, error: "Only accepted, scheduled, or in-progress requests can be marked delivered." };
+  }
+  const uploadedAt = new Date().toISOString();
+  await updateCustomRequestModelSchedule(recordId, {
+    model_status: "uploaded",
+    uploaded_at: uploadedAt,
+    uploaded_by_model: false,
+  });
+  const customTitle = (before.request_title || "Custom request").trim() || "Custom request";
+  const { title, body } = customUploadedChatter(customTitle);
+  if (before.requested_by_chatter_id) {
+    await notify({
+      user_id: before.requested_by_chatter_id,
+      event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title,
+      body,
+      entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+      entity_id: recordId,
+      _triggerSource: "agencyMarkCustomRequestDelivered_submitter",
+    }).catch(() => {});
+  }
+  await notifyAdmins({
+    event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
+    priority: NOTIFICATION_PRIORITY.NORMAL,
+    title,
+    body: `${body} Marked delivered by agency.`,
+    entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+    entity_id: recordId,
+  }).catch(() => {});
+  const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(before.assigned_model_id);
+  if (modelUserId) {
+    await notify({
+      user_id: modelUserId,
+      event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "✅ Marked delivered",
+      body: `"${customTitle}" was marked delivered.`,
+      entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+      entity_id: recordId,
+      _triggerSource: "agencyMarkCustomRequestDelivered_model",
+    }).catch(() => {});
+  }
+  await notifyAssignedVirtualAssistantCustomUploaded({
+    assigned_va_id: before.assigned_va_id ?? "",
+    request_title: customTitle,
+    custom_request_id: recordId,
+  }).catch(() => {});
   return { ok: true };
 }
 

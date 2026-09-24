@@ -73,11 +73,11 @@ const statusLabelForList = chattingStatusLabel;
 const priorityClass = chattingPriorityClass;
 
 const STATUS_TABS: StatusFilterValue[] = [
-  "pending_approval",
   "pending",
   "scheduled",
   "completed",
   "rejected",
+  "pending_approval",
 ];
 
 export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage = false }: AdminVaContentClientProps) {
@@ -207,8 +207,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
 
   const tabLabel = (key: StatusFilterValue): string => {
     if (key === "all") return "All";
-    if (key === "pending_approval") return "Pending approval";
-    if (key === "pending") return "Pending";
+    if (key === "pending_approval") return "Legacy review";
+    if (key === "pending") return "Available";
     if (key === "scheduled") return "Scheduled";
     if (key === "completed") return "Completed";
     if (key === "rejected") return "Rejected";
@@ -318,7 +318,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
       <ContentPipelineHero
         eyebrow="Administration"
         title="Chatting Content"
-        description="Review VA-submitted briefs, approve work for models, and manage reminders or cancellations."
+        description="VA briefs go straight to the model. Track what’s available, scheduled, or complete — leftover approval items stay here for history."
         orb="both"
         actions={
           canManage ? (
@@ -330,8 +330,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
         stats={
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <LuxuryStatCard label="Total" value={<CountUp value={counts.total} />} accent="champagne" tooltip="All chatting content across models" />
-            <LuxuryStatCard label="Pending approval" value={<CountUp value={counts.pending_approval} />} accent="pink" glow tooltip="Waiting for your review" />
-            <LuxuryStatCard label="Pending" value={<CountUp value={counts.pending} />} accent="amber" tooltip="Approved, awaiting model schedule" />
+            <LuxuryStatCard label="Available" value={<CountUp value={counts.pending} />} accent="pink" glow tooltip="Sent to the model — awaiting their schedule" />
+            <LuxuryStatCard label="Legacy review" value={<CountUp value={counts.pending_approval} />} accent="amber" tooltip="Older items still marked pending approval (already visible to the model)" />
             <LuxuryStatCard label="Scheduled" value={<CountUp value={counts.scheduled} />} accent="white" tooltip="Model has set a date" />
             <LuxuryStatCard label="Completed" value={<CountUp value={counts.completed} />} accent="emerald" tooltip="Marked complete" />
             <LuxuryStatCard label="Rejected" value={<CountUp value={counts.rejected} />} accent="white" tooltip="Sent back to VA" />
@@ -344,7 +344,10 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
           <div className="mb-3 flex items-center gap-2">
             <div className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-sky-400 motion-reduce:animate-none" aria-hidden />
             <p className="text-sm font-semibold text-sky-300">
-              {pendingApprovalItems.length} item{pendingApprovalItems.length > 1 ? "s" : ""} waiting for review
+              {pendingApprovalItems.length} older item{pendingApprovalItems.length > 1 ? "s" : ""} still tagged pending approval
+            </p>
+            <p className="mt-1 text-xs text-white/50">
+              These are already visible to the model. Review is optional history cleanup, not a required gate.
             </p>
           </div>
           <div className="space-y-2">
@@ -765,7 +768,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage 
           ) : selected && statusKey(selected.status) === "pending_approval" ? (
             <div className="space-y-3">
               <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
-                <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+                <p className="text-xs font-semibold text-sky-300">Already visible to the model</p>
+                <p className="mt-0.5 text-[11px] text-white/50">Optional review only — this is no longer a required approval gate.</p>
               </div>
               <AiContentQualityPreCheck fileUrl={selected.file_url} assignmentId={selected.id} />
             </div>

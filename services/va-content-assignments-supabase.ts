@@ -138,8 +138,7 @@ function statusNorm(status: string | undefined): string {
   return String(status ?? "").trim().toLowerCase();
 }
 function isHiddenFromModelStatus(status: string | undefined): boolean {
-  const k = statusNorm(status);
-  return k === "pending_approval" || k === "rejected";
+  return statusNorm(status) === "rejected";
 }
 function isVaEditableStatus(status: string | undefined): boolean {
   const k = statusNorm(status);
@@ -505,7 +504,7 @@ export async function createVaContentAssignmentAdmin(
     description: input.description.trim(),
     content_type: (input.content_type || "Other").trim(),
     priority: priorityNorm,
-    status: input.direct_assign ? "pending" : "pending_approval",
+    status: "pending",
     model_notes: "",
     va_notes: "",
   };

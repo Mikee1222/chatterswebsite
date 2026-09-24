@@ -9,6 +9,7 @@ import {
   Download,
   ListChecks,
   MessageSquare,
+  Package,
   Pencil,
   Search,
   Trash2,
@@ -17,6 +18,29 @@ import {
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import {
+  CustomRequestStatusBadge,
+  customRequestCanMarkDelivered,
+  customRequestIsPending,
+  customRequestStatusLabel,
+  customRequestTypeBadgeClass,
+  customRequestTypeLabel,
+  displayCustomRequestDeadline,
+  displayCustomRequestDescription,
+  displayCustomRequestPrice,
+  displayCustomRequestTitle,
+  getCustomRequestDisplayStatus,
+  resolveCustomRequestType,
+  type CustomRequestDisplayStatus,
+} from "@/components/custom-request-ui";
+import {
+  countCustomRequestsByDisplayStatus,
+  countCustomRequestsThisWeek,
+  CUSTOM_REQUEST_STATUS_ORDER,
+} from "@/lib/custom-request-status";
+import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { FilterBar, ReviewEmptyState } from "@/components/manager-review-ui";
 import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -26,13 +50,15 @@ import {
   adminDeclineCustomRequest,
   adminEditCustomRequest,
   adminLoadMoreCustomRequests,
+  adminMarkCustomRequestDelivered,
 } from "@/app/actions/admin-custom-requests";
-import { formatDateEuropean } from "@/lib/format";
 import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
+import { VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import type { AppNotification, CustomRequest, CustomRequestModelStatus, CustomRequestType } from "@/types";
+import type { AppNotification, CustomRequest } from "@/types";
 
-type StatusTab = "all" | "pending" | "accepted" | "rejected" | "completed" | "uploaded";
+type StatusTab = "all" | CustomRequestDisplayStatus;
+type SortOption = "date_desc" | "date_asc" | "status" | "price_desc" | "model";
 
 const cardClass = cn(
   "rounded-xl border border-white/[0.08] bg-zinc-950/80",
@@ -56,23 +82,9 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
   };
 }
 
-function statusKey(s: string): string {
-  return (s || "").trim().toLowerCase();
-}
-
-function displayTitle(req: CustomRequest): string {
-  return (req.request_title ?? req.custom_type ?? "").trim() || "—";
-}
-
-function displayDescription(req: CustomRequest): string {
-  return (req.request_details ?? req.description ?? "").trim();
-}
-
-function displayDeadline(req: CustomRequest): string {
-  const raw = (req.deadline_requested ?? "").trim();
-  if (raw) return formatDateEuropean(raw);
-  return "—";
-}
+const displayTitle = displayCustomRequestTitle;
+const displayDescription = displayCustomRequestDescription;
+const displayDeadline = displayCustomRequestDeadline;
 
 function formatCardDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
@@ -83,100 +95,18 @@ function formatCardDateTime(iso: string | null | undefined): string {
   return `${date} at ${time}`;
 }
 
-function formatPrice(price: string | null | undefined): string {
-  const raw = (price ?? "").trim();
-  if (!raw) return "—";
-  if (raw.startsWith("$")) return raw;
-  return `$${raw}`;
-}
+const formatPrice = (_price: string | null | undefined, req?: CustomRequest) =>
+  req ? displayCustomRequestPrice(req) : displayCustomRequestPrice({ price: _price ?? "" } as CustomRequest);
 
-function resolveType(req: CustomRequest): CustomRequestType | "other" {
-  const raw = (req.custom_type ?? req.request_title ?? "").toLowerCase();
-  if (raw.includes("video")) return "video";
-  if (raw.includes("photo")) return "photo_set";
-  if (
-    raw.includes("voice") ||
-    raw.includes("rating") ||
-    raw.includes("special") ||
-    req.custom_type === "voice_note" ||
-    req.custom_type === "rating" ||
-    req.custom_type === "special_request"
-  ) {
-    return req.custom_type ?? "special_request";
-  }
-  return req.custom_type ?? "other";
-}
-
-function typeLabel(type: ReturnType<typeof resolveType>): string {
-  if (type === "video") return "Video";
-  if (type === "photo_set") return "Photo";
-  if (type === "voice_note") return "Voice note";
-  if (type === "rating") return "Rating";
-  if (type === "special_request") return "Special";
-  return "Other";
-}
-
-function typeBadgeClass(type: ReturnType<typeof resolveType>): string {
-  if (type === "video") return "border-violet-500/30 bg-violet-500/15 text-violet-300";
-  if (type === "photo_set") return "border-blue-500/30 bg-blue-500/15 text-blue-300";
-  return "border-white/15 bg-white/5 text-white/60";
-}
-
-function modelStatusLabel(s: CustomRequestModelStatus): string {
-  const map: Record<CustomRequestModelStatus, string> = {
-    waiting_schedule: "Waiting schedule",
-    scheduled: "Scheduled",
-    in_progress: "In progress",
-    completed: "Completed",
-    uploaded: "Uploaded",
-    declined: "Declined",
-  };
-  return map[s] ?? s;
-}
+const resolveType = resolveCustomRequestType;
+const typeLabel = customRequestTypeLabel;
+const typeBadgeClass = customRequestTypeBadgeClass;
 
 function StatusBadge({ req }: { req: CustomRequest }) {
-  if (req.admin_status === "pending") {
-    return (
-      <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-300">
-        Pending
-      </span>
-    );
-  }
-  if (req.admin_status === "rejected") {
-    return (
-      <span className="inline-flex rounded-full border border-rose-500/35 bg-rose-500/15 px-2.5 py-0.5 text-[11px] font-medium text-rose-300">
-        Rejected
-      </span>
-    );
-  }
-  const k = statusKey(req.model_status);
-  const variant =
-    k === "waiting_schedule"
-      ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
-      : k === "scheduled"
-        ? "border-indigo-500/30 bg-indigo-500/15 text-indigo-300"
-        : k === "in_progress"
-          ? "border-violet-500/30 bg-violet-500/15 text-violet-300"
-          : k === "uploaded"
-            ? "border-purple-500/30 bg-purple-500/15 text-purple-300"
-            : k === "completed"
-              ? "border-green-500/30 bg-green-500/15 text-green-300"
-              : "border-blue-500/30 bg-blue-500/15 text-blue-300";
-
-  return (
-    <span className={cn("inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium", variant)}>
-      {k === "waiting_schedule" ||
-      k === "scheduled" ||
-      k === "in_progress" ||
-      k === "uploaded" ||
-      k === "completed"
-        ? modelStatusLabel(req.model_status)
-        : "Accepted"}
-    </span>
-  );
+  return <CustomRequestStatusBadge request={req} />;
 }
 
-const STATUS_TABS: StatusTab[] = ["all", "pending", "accepted", "rejected", "completed", "uploaded"];
+const STATUS_TABS: StatusTab[] = ["all", ...CUSTOM_REQUEST_STATUS_ORDER];
 
 const CSV_FIELDS: Array<keyof CustomRequest> = [
   "id",
@@ -204,27 +134,19 @@ function toCsvValue(v: unknown): string {
 
 function matchesStatusTab(req: CustomRequest, tab: StatusTab): boolean {
   if (tab === "all") return true;
-  if (tab === "pending") return req.admin_status === "pending";
-  if (tab === "rejected") return req.admin_status === "rejected";
-  if (tab === "uploaded") return req.admin_status === "accepted" && statusKey(req.model_status) === "uploaded";
-  if (tab === "completed") return req.admin_status === "accepted" && statusKey(req.model_status) === "completed";
-  if (tab === "accepted") {
-    return (
-      req.admin_status === "accepted" &&
-      statusKey(req.model_status) !== "uploaded" &&
-      statusKey(req.model_status) !== "completed"
-    );
-  }
-  return true;
+  return getCustomRequestDisplayStatus(req) === tab;
 }
 
 function emptyStateMessage(tab: StatusTab): { title: string; hint: string } {
-  if (tab === "pending") return { title: "No pending requests", hint: "New fan requests from chatters will appear here." };
-  if (tab === "accepted") return { title: "No accepted requests", hint: "Approved requests waiting on the model will show here." };
-  if (tab === "rejected") return { title: "No rejected requests", hint: "Declined requests are listed in this tab." };
-  if (tab === "completed") return { title: "No completed requests", hint: "Requests marked completed by the model appear here." };
-  if (tab === "uploaded") return { title: "No uploaded requests", hint: "Uploaded customs will appear in this tab." };
-  return { title: "No custom requests", hint: "Try a different status tab or clear your filters." };
+  if (tab === "pending") return { title: "No pending requests", hint: "New fan requests from chatters and VAs will appear here." };
+  if (tab === "accepted") return { title: "No accepted requests", hint: "Accepted requests waiting for the model to schedule will show here." };
+  if (tab === "scheduled") return { title: "No scheduled requests", hint: "Requests the model has booked will show here." };
+  if (tab === "in_progress") return { title: "No in-progress requests", hint: "Requests being filmed will show here." };
+  if (tab === "delivered") return { title: "No delivered requests", hint: "Uploaded customs appear here as Delivered." };
+  if (tab === "completed") return { title: "No completed requests", hint: "Fully completed requests appear here." };
+  if (tab === "rejected") return { title: "No rejected requests", hint: "Agency-rejected requests are listed here." };
+  if (tab === "declined") return { title: "No declined requests", hint: "Requests declined by the model appear here." };
+  return { title: "No custom requests", hint: "Try a different status filter or clear your filters." };
 }
 
 type Props = {
@@ -249,6 +171,7 @@ function RequestCard({
   onReject,
   onEdit,
   onDelete,
+  onMarkDelivered,
 }: {
   req: CustomRequest;
   selected: boolean;
@@ -263,6 +186,7 @@ function RequestCard({
   onReject: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onMarkDelivered: () => void;
 }) {
   const [expanded, setExpanded] = React.useState(false);
   const desc = displayDescription(req);
@@ -315,7 +239,7 @@ function RequestCard({
           {getModelName(req)}
         </span>
         <span className="text-xs text-white/45">{getChatterName(req)}</span>
-        <span className="text-sm font-medium tabular-nums text-white/90">{formatPrice(req.price)}</span>
+        <span className="text-sm font-medium tabular-nums text-white/90">{displayCustomRequestPrice(req)}</span>
       </div>
 
       {desc ? (
@@ -391,14 +315,27 @@ function RequestCard({
               </button>
             </>
           ) : req.admin_status === "accepted" ? (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
-            >
-              <Pencil className="h-3.5 w-3.5" aria-hidden />
-              Edit
-            </button>
+            <>
+              {customRequestCanMarkDelivered(req) ? (
+                <button
+                  type="button"
+                  disabled={busyId === req.id}
+                  onClick={onMarkDelivered}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-medium text-emerald-200 hover:bg-emerald-500/25 disabled:opacity-50"
+                >
+                  <Package className="h-3.5 w-3.5" aria-hidden />
+                  Mark delivered
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onEdit}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+              >
+                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                Edit
+              </button>
+            </>
           ) : null}
         </div>
       </div>
@@ -427,6 +364,7 @@ export function AdminCustomRequestsClient({
   const [chatterId, setChatterId] = React.useState("all");
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
+  const [sortBy, setSortBy] = React.useState<SortOption>("date_desc");
 
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = React.useState(false);
@@ -515,24 +453,8 @@ export function AdminCustomRequestsClient({
     [chatterById]
   );
 
-  const counts = React.useMemo(() => {
-    const c = {
-      total: requests.length,
-      pending: 0,
-      accepted: 0,
-      rejected: 0,
-      completed: 0,
-      uploaded: 0,
-    };
-    for (const r of requests) {
-      if (r.admin_status === "pending") c.pending += 1;
-      else if (r.admin_status === "rejected") c.rejected += 1;
-      else if (statusKey(r.model_status) === "uploaded") c.uploaded += 1;
-      else if (statusKey(r.model_status) === "completed") c.completed += 1;
-      else if (r.admin_status === "accepted") c.accepted += 1;
-    }
-    return c;
-  }, [requests]);
+  const counts = React.useMemo(() => countCustomRequestsByDisplayStatus(requests), [requests]);
+  const weekVolume = React.useMemo(() => countCustomRequestsThisWeek(requests), [requests]);
 
   const filtered = React.useMemo(() => {
     let list = requests.filter((r) => matchesStatusTab(r, filter));
@@ -548,8 +470,16 @@ export function AdminCustomRequestsClient({
       });
     }
     const createdMs = (r: CustomRequest) => Date.parse(r.created_at || "") || 0;
-    return [...list].sort((a, b) => createdMs(b) - createdMs(a));
-  }, [requests, filter, modelId, chatterId, dateFrom, dateTo, search, getChatterName, getModelName]);
+    const priceN = (r: CustomRequest) => Number.parseFloat(String(r.price ?? "").replace(/[^0-9.]/g, "")) || 0;
+    const statusW = (r: CustomRequest) => CUSTOM_REQUEST_STATUS_ORDER.indexOf(getCustomRequestDisplayStatus(r));
+    return [...list].sort((a, b) => {
+      if (sortBy === "date_asc") return createdMs(a) - createdMs(b);
+      if (sortBy === "price_desc") return priceN(b) - priceN(a);
+      if (sortBy === "status") return statusW(a) - statusW(b);
+      if (sortBy === "model") return getModelName(a).localeCompare(getModelName(b));
+      return createdMs(b) - createdMs(a);
+    });
+  }, [requests, filter, modelId, chatterId, dateFrom, dateTo, search, sortBy, getChatterName, getModelName]);
 
   React.useEffect(() => {
     setSelectedIds((prev) => {
@@ -577,11 +507,7 @@ export function AdminCustomRequestsClient({
 
   const tabLabel = (key: StatusTab): string => {
     if (key === "all") return "All";
-    if (key === "pending") return "Pending";
-    if (key === "accepted") return "Accepted";
-    if (key === "rejected") return "Rejected";
-    if (key === "completed") return "Completed";
-    return "Uploaded";
+    return customRequestStatusLabel(key);
   };
 
   const tabCount = (key: StatusTab): number => {
@@ -599,7 +525,24 @@ export function AdminCustomRequestsClient({
       }
       patchRow(id, { admin_status: "accepted" });
       await mutate(dashboardSwrKeys.notificationsUnreadCount);
-      toast("success", "Approved", "Request moved to approved.");
+      toast("success", "Accepted", "Request is now Accepted — the model can schedule it.");
+      router.refresh();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const onMarkDeliveredOne = async (id: string) => {
+    setBusyId(id);
+    try {
+      const res = await adminMarkCustomRequestDelivered(id);
+      if (!res.ok) {
+        toast("error", "Could not mark delivered", res.error);
+        return;
+      }
+      patchRow(id, { model_status: "uploaded", uploaded_at: new Date().toISOString() });
+      await mutate(dashboardSwrKeys.notificationsUnreadCount);
+      toast("success", "Delivered", "Request marked delivered.");
       router.refresh();
     } finally {
       setBusyId(null);
@@ -755,43 +698,30 @@ export function AdminCustomRequestsClient({
   const allFilteredSelected = filtered.length > 0 && filtered.every((r) => selectedIds.has(r.id));
   const emptyState = emptyStateMessage(filter);
 
-  const statPills = [
-    { label: "Pending", value: counts.pending, className: "border-amber-500/30 bg-amber-500/10 text-amber-300" },
-    { label: "Accepted", value: counts.accepted, className: "border-blue-500/30 bg-blue-500/10 text-blue-300" },
-    { label: "Completed", value: counts.completed, className: "border-green-500/30 bg-green-500/10 text-green-300" },
-    { label: "Uploaded", value: counts.uploaded, className: "border-purple-500/30 bg-purple-500/10 text-purple-300" },
-  ];
-
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-3">
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Custom requests</h1>
-          <div className="flex flex-wrap gap-2">
-            {statPills.map((pill) => (
-              <span
-                key={pill.label}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium tabular-nums",
-                  pill.className
-                )}
-              >
-                {pill.value} {pill.label.toLowerCase()}
-              </span>
-            ))}
+      <ContentPipelineHero
+        eyebrow="Requests"
+        title="Custom requests"
+        description="Same status language as chatter, VA, and model: Pending → Accepted → Scheduled → In progress → Delivered."
+        orb="both"
+        actions={
+          <button type="button" onClick={exportCsv} className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 px-4 py-2.5 text-sm")}>
+            <Download className="h-3.5 w-3.5" aria-hidden />
+            Export CSV
+          </button>
+        }
+        stats={
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <LuxuryStatCard label="Pending" value={<CountUp value={counts.pending} />} accent="amber" glow tooltip="Awaiting accept or reject" />
+            <LuxuryStatCard label="This week" value={<CountUp value={weekVolume} />} accent="champagne" tooltip="Requests submitted this Athens week (loaded pages)" />
+            <LuxuryStatCard label="Accepted" value={<CountUp value={counts.accepted} />} accent="pink" tooltip="Accepted, waiting for the model to schedule" />
+            <LuxuryStatCard label="Delivered" value={<CountUp value={counts.delivered} />} accent="emerald" tooltip="Marked delivered / uploaded" />
           </div>
-        </div>
-        <button
-          type="button"
-          onClick={exportCsv}
-          className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-medium text-white/70 transition hover:border-white/25 hover:bg-white/5 hover:text-white"
-        >
-          <Download className="h-3.5 w-3.5" aria-hidden />
-          Export CSV
-        </button>
-      </header>
+        }
+      />
 
-      <section className={cn(cardClass, "p-4")}>
+      <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "space-y-3 p-4")}>
         <div className="flex flex-wrap gap-2">
           {STATUS_TABS.map((key) => (
             <button
@@ -837,13 +767,13 @@ export function AdminCustomRequestsClient({
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-white/45">Chatter</label>
+            <label className="mb-1 block text-xs text-white/45">Submitter</label>
             <select
               value={chatterId}
               onChange={(e) => setChatterId(e.target.value)}
               className="h-10 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 text-sm text-white"
             >
-              <option value="all">All chatters</option>
+              <option value="all">All submitters</option>
               {chatterOptions.map(([id, name]) => (
                 <option key={id} value={id}>
                   {name}
@@ -874,6 +804,20 @@ export function AdminCustomRequestsClient({
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
+          <label className="inline-flex items-center gap-2 text-xs text-white/45">
+            Sort
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortOption)}
+              className="h-9 rounded-lg border border-white/10 bg-white/[0.03] px-2 text-xs text-white"
+            >
+              <option value="date_desc">Newest</option>
+              <option value="date_asc">Oldest</option>
+              <option value="status">Status</option>
+              <option value="model">Model</option>
+              <option value="price_desc">Price</option>
+            </select>
+          </label>
           <button
             type="button"
             onClick={clearFilters}
@@ -914,26 +858,21 @@ export function AdminCustomRequestsClient({
             </button>
           </div>
         ) : null}
-      </section>
+      </FilterBar>
 
       {filtered.length === 0 ? (
-        <div className={cn(cardClass, "flex flex-col items-center px-6 py-16 text-center")}>
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/35">
-            <ListChecks className="h-7 w-7" aria-hidden />
-          </div>
-          <p className="mt-4 text-sm font-medium text-white/75">{emptyState.title}</p>
-          <p className="mt-1 max-w-sm text-xs text-white/45">{emptyState.hint}</p>
-          {activeFilterCount > 0 ? (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-pink-500/35 bg-pink-500/15 px-4 py-2 text-xs font-medium text-pink-200 hover:bg-pink-500/25"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden />
-              Clear filters
-            </button>
-          ) : null}
-        </div>
+        <ReviewEmptyState
+          icon={ListChecks}
+          title={emptyState.title}
+          description={emptyState.hint}
+          action={
+            activeFilterCount > 0 ? (
+              <button type="button" onClick={clearFilters} className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-sm")}>
+                Clear filters
+              </button>
+            ) : undefined
+          }
+        />
       ) : (
         <>
           <label className="inline-flex items-center gap-2 text-xs text-white/55">
@@ -976,6 +915,7 @@ export function AdminCustomRequestsClient({
                 }}
                 onEdit={() => setEditFor(r)}
                 onDelete={() => setPendingDelete(r)}
+                onMarkDelivered={() => void onMarkDeliveredOne(r.id)}
               />
             ))}
           </div>

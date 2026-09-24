@@ -27,8 +27,8 @@ export default async function AdminCustomRequestsPage() {
 
   const chatterById: Record<string, string> = Object.fromEntries(
     users
-      .filter((u) => u.role === "chatter")
-      .map((u) => [u.id, (u.full_name ?? "").trim() || u.email || "Chatter"])
+      .filter((u) => u.role === "chatter" || u.role === "virtual_assistant")
+      .map((u) => [u.id, (u.full_name ?? "").trim() || u.email || "Submitter"])
   );
 
   return (

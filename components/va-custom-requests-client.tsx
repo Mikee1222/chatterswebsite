@@ -27,13 +27,32 @@ import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { RequestCustomForm } from "@/components/request-custom-form";
+import { ContentPipelineHero } from "@/components/content-pipeline-ui";
+import {
+  CustomRequestStatusBadge,
+  customRequestStatusLabel,
+  displayCustomRequestDeadline,
+  displayCustomRequestDescription,
+  displayCustomRequestTitle,
+  getCustomRequestDisplayStatus,
+  type CustomRequestDisplayStatus,
+} from "@/components/custom-request-ui";
+import {
+  countCustomRequestsByDisplayStatus,
+  countCustomRequestsThisWeek,
+  CUSTOM_REQUEST_STATUS_ORDER,
+} from "@/lib/custom-request-status";
+import { CountUp, LuxuryStatCard } from "@/components/infloww-performance-ui";
+import { FilterBar, ReviewEmptyState } from "@/components/manager-review-ui";
 import { formatDateEuropean } from "@/lib/format";
 import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
 import { usePagination } from "@/lib/use-pagination";
+import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import type { AppNotification, CustomRequest, CustomRequestModelStatus } from "@/types";
+import type { AppNotification, CustomRequest } from "@/types";
 
-type StatusTab = "all" | CustomRequestModelStatus | "pending_review";
+type StatusTab = "all" | CustomRequestDisplayStatus;
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -56,19 +75,9 @@ function statusKey(s: string): string {
   return (s || "").trim().toLowerCase();
 }
 
-function displayTitle(req: CustomRequest): string {
-  return (req.request_title ?? req.custom_type ?? "").trim() || "—";
-}
-
-function displayDescription(req: CustomRequest): string {
-  return (req.request_details ?? req.description ?? "").trim();
-}
-
-function displayDeadline(req: CustomRequest): string {
-  const raw = (req.deadline_requested ?? "").trim();
-  if (raw) return formatDateEuropean(raw);
-  return "—";
-}
+const displayTitle = displayCustomRequestTitle;
+const displayDescription = displayCustomRequestDescription;
+const displayDeadline = displayCustomRequestDeadline;
 
 function displayScheduled(req: CustomRequest): string {
   const raw = (req.model_scheduled_date ?? "").trim();
@@ -76,47 +85,8 @@ function displayScheduled(req: CustomRequest): string {
   return formatDateEuropean(raw);
 }
 
-function modelStatusLabel(s: CustomRequestModelStatus): string {
-  const map: Record<CustomRequestModelStatus, string> = {
-    waiting_schedule: "Waiting schedule",
-    scheduled: "Scheduled",
-    in_progress: "In progress",
-    completed: "Completed",
-    uploaded: "Uploaded",
-    declined: "Declined",
-  };
-  return map[s] ?? s;
-}
-
-function StatusBadge({ status, adminPending }: { status: CustomRequestModelStatus; adminPending?: boolean }) {
-  if (adminPending) {
-    return (
-      <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-300">
-        Pending review
-      </span>
-    );
-  }
-  const k = statusKey(status);
-  const variant =
-    k === "waiting_schedule"
-      ? "border-amber-500/30 bg-amber-500/15 text-amber-300"
-      : k === "scheduled"
-        ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
-        : k === "in_progress"
-          ? "border-violet-500/30 bg-violet-500/15 text-violet-300"
-          : k === "uploaded"
-            ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-            : k === "completed"
-              ? "border-green-500/30 bg-green-500/15 text-green-300"
-              : k === "declined"
-                ? "border-rose-500/35 bg-rose-500/15 text-rose-300"
-                : "border-white/15 bg-white/[0.06] text-white/70";
-
-  return (
-    <span className={cn("inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize", variant)}>
-      {modelStatusLabel(status)}
-    </span>
-  );
+function StatusBadge({ req }: { req: CustomRequest }) {
+  return <CustomRequestStatusBadge request={req} />;
 }
 
 function StatCard({
@@ -148,29 +118,30 @@ function StatCard({
   );
 }
 
-const STATUS_TABS: StatusTab[] = [
-  "pending_review",
-  "waiting_schedule",
-  "scheduled",
-  "in_progress",
-  "uploaded",
-  "completed",
-  "declined",
-];
+const STATUS_TABS: StatusTab[] = ["all", ...CUSTOM_REQUEST_STATUS_ORDER];
 
 type Props = {
   initialRows: CustomRequest[];
   pendingCount: number;
   assignedModelIds: string[];
   modelLabelById: Record<string, string>;
+  submitterRecordId: string;
+  submitterName: string;
 };
 
-export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCount }: Props) {
+export function VaCustomRequestsClient({
+  initialRows,
+  modelLabelById,
+  pendingCount,
+  submitterRecordId,
+  submitterName,
+}: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const { mutate } = useSWRConfig();
   const [rows, setRows] = React.useState(initialRows);
-  const [filter, setFilter] = React.useState<StatusTab>("pending_review");
+  const [filter, setFilter] = React.useState<StatusTab>("pending");
+  const [createOpen, setCreateOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [modelId, setModelId] = React.useState("all");
   const [detail, setDetail] = React.useState<CustomRequest | null>(null);
@@ -210,36 +181,13 @@ export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCou
     return [...byId.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [rows, modelLabelById]);
 
-  const counts = React.useMemo(() => {
-    const c = {
-      total: rows.length,
-      pending_review: 0,
-      waiting_schedule: 0,
-      scheduled: 0,
-      in_progress: 0,
-      uploaded: 0,
-      completed: 0,
-      declined: 0,
-    };
-    for (const r of rows) {
-      if (r.admin_status === "pending") c.pending_review += 1;
-      else if (r.admin_status === "rejected") c.declined += 1;
-      else {
-        const k = statusKey(r.model_status);
-        if (k in c) (c as Record<string, number>)[k] += 1;
-      }
-    }
-    return c;
-  }, [rows]);
+  const counts = React.useMemo(() => countCustomRequestsByDisplayStatus(rows), [rows]);
+  const weekVolume = React.useMemo(() => countCustomRequestsThisWeek(rows), [rows]);
 
   const filtered = React.useMemo(() => {
     let list = [...rows];
-    if (filter === "pending_review") {
-      list = list.filter((r) => r.admin_status === "pending");
-    } else if (filter === "declined") {
-      list = list.filter((r) => r.admin_status === "rejected");
-    } else if (filter !== "all") {
-      list = list.filter((r) => r.admin_status === "accepted" && statusKey(r.model_status) === filter);
+    if (filter !== "all") {
+      list = list.filter((r) => getCustomRequestDisplayStatus(r) === filter);
     }
     if (modelId !== "all") list = list.filter((r) => r.assigned_model_id === modelId);
     const q = search.trim().toLowerCase();
@@ -262,10 +210,10 @@ export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCou
   const clearFilters = () => {
     setSearch("");
     setModelId("all");
-    setFilter("pending_review");
+    setFilter("pending");
   };
 
-  const activeFilterCount = (search.trim() ? 1 : 0) + (modelId !== "all" ? 1 : 0) + (filter !== "pending_review" ? 1 : 0);
+  const activeFilterCount = (search.trim() ? 1 : 0) + (modelId !== "all" ? 1 : 0) + (filter !== "pending" ? 1 : 0);
 
   const toast = (kind: "success" | "error", title: string, body: string) => {
     addToast(localToast(`vcr-${kind}-${Date.now()}`, title, body, kind === "error" ? "high" : "normal"));
@@ -403,8 +351,7 @@ export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCou
 
   const tabLabel = (key: StatusTab): string => {
     if (key === "all") return "All";
-    if (key === "pending_review") return "Pending review";
-    return modelStatusLabel(key);
+    return customRequestStatusLabel(key);
   };
 
   const tabCount = (key: StatusTab): number => {
@@ -417,63 +364,34 @@ export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCou
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Virtual assistant</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Custom requests</h1>
-          <p className="mt-2 max-w-2xl text-sm text-white/60">
-            Review pending items, edit details, and track model progress across your agency queue.
-          </p>
-        </div>
-        {pendingCount > 0 ? (
-          <div className="shrink-0 rounded-2xl border border-sky-400/30 bg-sky-500/10 px-4 py-3 text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-white/45">Agency pending queue</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{pendingCount}</p>
-            <p className="text-[11px] text-white/50">awaiting first review</p>
+      <ContentPipelineHero
+        eyebrow="Virtual assistant"
+        title="Custom requests"
+        description="Submit a fan custom or review the agency queue. Status is the same everywhere: Pending → Accepted → Scheduled → In progress → Delivered."
+        orb="both"
+        actions={
+          <button type="button" onClick={() => setCreateOpen(true)} className={cn(VA_BTN_PRIMARY, "px-4 py-2.5 text-sm")}>
+            + New request
+          </button>
+        }
+        stats={
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <LuxuryStatCard label="Pending" value={<CountUp value={counts.pending} />} accent="amber" glow tooltip="Awaiting accept or reject" />
+            <LuxuryStatCard label="This week" value={<CountUp value={weekVolume} />} accent="champagne" tooltip="Submitted this Athens week" />
+            <LuxuryStatCard
+              label="Accepted"
+              value={<CountUp value={pendingCount || counts.accepted} />}
+              accent="pink"
+              tooltip="Accepted and waiting for the model, plus agency pending count when loaded"
+            />
+            <LuxuryStatCard label="Delivered" value={<CountUp value={counts.delivered} />} accent="emerald" tooltip="Marked delivered / uploaded" />
           </div>
-        ) : null}
-      </header>
+        }
+      />
 
-      <div className="-mx-1 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
-        <div className="flex min-w-min gap-3">
-          <StatCard label="Total" value={counts.total} icon={ListChecks} accentClass="border-white/10 ring-white/[0.06]" />
-          <StatCard
-            label="Waiting schedule"
-            value={counts.waiting_schedule}
-            icon={Clock}
-            accentClass="border-amber-500/25 bg-amber-500/5 ring-amber-500/10"
-          />
-          <StatCard
-            label="Scheduled"
-            value={counts.scheduled}
-            icon={CalendarClock}
-            accentClass="border-sky-500/25 bg-sky-500/5 ring-sky-500/10"
-          />
-          <StatCard
-            label="In progress"
-            value={counts.in_progress}
-            icon={Calendar}
-            accentClass="border-violet-500/25 bg-violet-500/5 ring-violet-500/10"
-          />
-          <StatCard
-            label="Uploaded"
-            value={counts.uploaded}
-            icon={Upload}
-            accentClass="border-emerald-500/25 bg-emerald-500/5 ring-emerald-500/10"
-          />
-          <StatCard
-            label="Completed"
-            value={counts.completed}
-            icon={CheckCircle2}
-            accentClass="border-green-500/25 bg-green-500/5 ring-green-500/10"
-          />
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-white/45">Status</span>
-          {(["all", ...STATUS_TABS] as StatusTab[]).map((key) => (
+      <FilterBar className={cn(VA_CARD, VA_CARD_GLOW, "space-y-3 p-4")}>
+        <div className="flex flex-wrap items-center gap-2">
+          {STATUS_TABS.map((key) => (
             <button
               key={key}
               type="button"
@@ -535,7 +453,7 @@ export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCou
           </button>
           <span className="ml-auto text-xs text-white/45">{filtered.length} shown</span>
         </div>
-      </div>
+      </FilterBar>
 
       {filtered.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-12 text-center">
@@ -582,7 +500,7 @@ export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCou
                         </p>
                         <p className="mt-0.5 text-xs text-white/45">{modelName(r)}</p>
                       </div>
-                      <StatusBadge status={r.model_status} adminPending={isPending} />
+                      <StatusBadge req={r} />
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -788,6 +706,27 @@ export function VaCustomRequestsClient({ initialRows, modelLabelById, pendingCou
               </button>
             </div>
           </form>
+        </GlassModal>
+      ) : null}
+
+      {createOpen ? (
+        <GlassModal
+          onClose={() => setCreateOpen(false)}
+          title="New custom request"
+          subtitle="Required fields are marked with *"
+          className="md:max-w-lg"
+        >
+          <div className="p-5">
+            <RequestCustomForm
+              chatterRecordId={submitterRecordId}
+              chatterName={submitterName}
+              modelOptions={Object.entries(modelLabelById).map(([id, name]) => ({ id, name }))}
+              onCreated={() => {
+                setCreateOpen(false);
+                router.refresh();
+              }}
+            />
+          </div>
         </GlassModal>
       ) : null}
     </div>

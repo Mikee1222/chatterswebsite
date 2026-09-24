@@ -140,7 +140,8 @@ function AssignmentCard({
 
         {k === "pending_approval" ? (
           <div className="mt-3 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
-            <p className="text-[11px] font-semibold text-sky-300">Waiting for admin approval</p>
+            <p className="text-[11px] font-semibold text-sky-300">Visible to the model</p>
+            <p className="mt-0.5 text-[11px] text-white/50">Older item still tagged pending approval — no manager gate.</p>
           </div>
         ) : null}
 
@@ -335,7 +336,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
       <ContentPipelineHero
         eyebrow="Content"
         title="Chatting Content"
-        description="Create chatting briefs for models and track approval, scheduling, and completion."
+        description="Create chatting briefs for models. They see your content as soon as you submit — then they schedule and complete it."
         orb="both"
         actions={
           <button type="button" onClick={() => setCreateOpen(true)} className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 px-4 py-2.5 text-sm")}>
@@ -346,7 +347,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
         stats={
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <LuxuryStatCard label="Total" value={<CountUp value={counts.total} />} accent="champagne" tooltip="All of your chatting content items" />
-            <LuxuryStatCard label="Pending" value={<CountUp value={counts.pendingAction} />} accent="amber" glow tooltip="Awaiting approval or model action" />
+            <LuxuryStatCard label="Available" value={<CountUp value={counts.pendingAction} />} accent="amber" glow tooltip="Sent to the model — awaiting their schedule" />
             <LuxuryStatCard label="Scheduled" value={<CountUp value={counts.scheduled} />} accent="pink" tooltip="Model has scheduled a date" />
             <LuxuryStatCard label="Completed" value={<CountUp value={counts.completed} />} accent="emerald" tooltip="Marked complete by the model" />
             <LuxuryStatCard
@@ -364,7 +365,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
         <div className="flex flex-wrap items-center gap-2">
           {(
             [
-              ["pending", "Pending", counts.pendingAction],
+              ["pending", "Available", counts.pendingAction],
               ["scheduled", "Scheduled", counts.scheduled],
               ["completed", "Completed", counts.completed],
               ["rejected", "Rejected", counts.rejected],
@@ -668,7 +669,8 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
           ) : selected && chattingStatusKey(selected.status) === "pending_approval" ? (
             <div className="space-y-3">
               <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
-                <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+                <p className="text-xs font-semibold text-sky-300">Visible to the model</p>
+                <p className="mt-0.5 text-[11px] text-white/50">Older item still tagged pending approval — no manager gate.</p>
               </div>
               <AiContentQualityPreCheck fileUrl={selected.file_url} assignmentId={selected.id} />
             </div>

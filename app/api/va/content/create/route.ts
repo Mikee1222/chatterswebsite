@@ -12,9 +12,9 @@ import {
   createVaContentAssignmentAdmin,
   uploadVAContentAssignmentAttachments,
 } from "@/services/va-content-assignments";
-import { getUserByAirtableId } from "@/services/users";
+import { getActiveModelUserAirtableIdByLinkedModelRecordId, getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
-import { notifyAdmins } from "@/services/notification-service";
+import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 const formSchema = z.object({
@@ -129,25 +129,42 @@ export async function POST(req: Request) {
       }
     }
 
-    const [modelRec, vaProfile] = await Promise.all([
+    const [modelRec, vaProfile, modelUserId] = await Promise.all([
       getModelById(parsed.data.model_record_id).catch(() => null),
       getUserByAirtableId(vaUserRecordId).catch(() => null),
+      getActiveModelUserAirtableIdByLinkedModelRecordId(parsed.data.model_record_id).catch(() => null),
     ]);
     const modelName = (modelRec?.model_name ?? "").trim() || "the model";
     const vaName =
       (vaProfile?.full_name ?? "").trim() ||
       (vaProfile?.email ?? "").trim() ||
       "A VA";
+    const displayTitle = parsed.data.title.trim() || "Chatting content assignment";
 
     await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📋 New Chatting Content needs review",
-      body: `${vaName} created an assignment for ${modelName}: "${parsed.data.title.trim()}". Needs your approval.`,
+      title: "📋 Chatting Content sent to model",
+      body: `${vaName} sent "${displayTitle}" to ${modelName}. No approval needed.`,
       entity_type: "va_content_assignment",
       entity_id: row.id,
-      _triggerSource: "va_content_create_admin_queue",
+      _triggerSource: "va_content_create_admin_fyi",
     }).catch(() => {});
+
+    if (modelUserId) {
+      await notify({
+        user_id: modelUserId,
+        event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "📋 New Chatting Content",
+        body: `${displayTitle} is ready for you. Open Chatting Assignments to schedule it.`,
+        entity_type: "va_content_assignment",
+        entity_id: row.id,
+        actor_user_id: vaUserRecordId,
+        actor_name: vaName,
+        _triggerSource: "va_content_create_model",
+      }).catch(() => {});
+    }
 
     revalidatePath(ROUTES.va.contentAssignments);
     revalidatePath(ROUTES.admin.vaContentAssignments);

@@ -43,6 +43,8 @@ export default async function VaCustomRequestsPage() {
         pendingCount={pendingCount}
         assignedModelIds={assignedModelIds}
         modelLabelById={modelLabelById}
+        submitterRecordId={vaId}
+        submitterName={(session.fullName ?? session.email ?? "VA").trim() || "VA"}
       />
     </div>
   );

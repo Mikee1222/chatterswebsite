@@ -211,10 +211,9 @@ function statusNorm(status: string | undefined): string {
   return String(status ?? "").trim().toLowerCase();
 }
 
-/** Rows the model must not see until approved (or at all if rejected). */
+/** Rows the model must not see. Rejected stays hidden; leftover `pending_approval` is no longer blocked. */
 function isHiddenFromModelStatus(status: string | undefined): boolean {
-  const k = statusNorm(status);
-  return k === "pending_approval" || k === "rejected";
+  return statusNorm(status) === "rejected";
 }
 
 function isVaEditableStatus(status: string | undefined): boolean {
@@ -783,7 +782,7 @@ export type CreateVaContentAssignmentAdminInput = {
   deadline: string | null;
   /** Public HTTPS URL — Airtable will pull into `file_attachment` when set. */
   file_url?: string | null;
-  /** Admin direct assign: row starts as `pending` (model-visible) instead of `pending_approval`. */
+  /** @deprecated VA and admin creates both start as `pending` (model-visible). Kept for callers. */
   direct_assign?: boolean;
 };
 
@@ -877,7 +876,7 @@ export async function createVaContentAssignmentAdmin(
     description: input.description.trim(),
     content_type: (input.content_type || "Other").trim(),
     priority: priorityNorm,
-    status: input.direct_assign ? "pending" : "pending_approval",
+    status: "pending",
     model_notes: "",
     va_notes: "",
   };
