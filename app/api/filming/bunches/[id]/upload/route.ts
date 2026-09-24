@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { folderNamesFromRequestBody } from "@/lib/upload-folder-names";
 import { submitBunchUpload } from "@/services/filming";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -18,7 +19,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const bunch = await submitBunchUpload({
       bunch_id: id,
-      upload_folder_link: String(body.upload_folder_link ?? ""),
+      upload_folder_names: folderNamesFromRequestBody(
+        body,
+        "upload_folder_names",
+        "upload_folder_link",
+      ),
       actor_user_id: session.airtableUserId ?? session.id,
       actor_user_name: (session.fullName || session.email || "").trim(),
       allowManage: canManage,

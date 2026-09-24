@@ -9,6 +9,7 @@ import {
   coerceFilmingStatus,
   type FilmingStatus,
 } from "@/lib/filming-helpers";
+import { parseUploadFolderNames, serializeUploadFolderNames } from "@/lib/upload-folder-names";
 import {
   getVideoBunch,
   listSlotsForBunch,
@@ -343,13 +344,15 @@ export async function setSlotFilmed(input: {
 
 export async function submitBunchUpload(input: {
   bunch_id: string;
-  upload_folder_link: string;
+  upload_folder_names?: string[];
+  upload_folder_link?: string;
   actor_user_id: string;
   actor_user_name?: string;
   allowManage: boolean;
 }): Promise<VideoBunch> {
-  const link = input.upload_folder_link.trim();
-  if (!link) throw new Error("Upload folder link is required");
+  const names = parseUploadFolderNames(input.upload_folder_names ?? input.upload_folder_link);
+  if (names.length === 0) throw new Error("At least one upload folder name is required");
+  const stored = serializeUploadFolderNames(names);
 
   const bunch = await getVideoBunch(input.bunch_id);
   if (!bunch) throw new Error("Bunch not found");
@@ -370,7 +373,7 @@ export async function submitBunchUpload(input: {
     .from("video_bunches")
     .update({
       filming_status: "uploaded",
-      upload_folder_link: link,
+      upload_folder_link: stored,
       uploaded_at: now,
       updated_at: now,
     })

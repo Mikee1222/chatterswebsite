@@ -67,6 +67,8 @@ import type {
 } from "@/services/winner-sourcing";
 import { formatRecreateVideoSlotDeleteDescription } from "@/services/winner-sourcing";
 import type { IcloudFolderEntry, ModelMaterialRunway } from "@/services/icloud";
+import { UploadFolderNamesList } from "@/components/upload-folder-names";
+import { parseUploadFolderNames } from "@/lib/upload-folder-names";
 import { cn } from "@/lib/utils";
 
 export type BunchStaffOption = {
@@ -893,6 +895,8 @@ export function AdminBunchesClient({
         b.filming_status,
         b.editing_status,
         b.icloud_status,
+        b.upload_folder_link,
+        b.edited_upload_folder_link,
       ]
         .join(" ")
         .toLowerCase();
@@ -1679,20 +1683,6 @@ export function AdminBunchesClient({
                     {selectedProgress && selectedProgress.filmable_count > 0 ? (
                       <p className="text-[11px] text-[#D4AF8C]/75">
                         Filming {selectedProgress.filmed_count} of {selectedProgress.filmable_count}
-                        {selectedBunch.filming_status === "uploaded" &&
-                        selectedBunch.upload_folder_link ? (
-                          <>
-                            {" · "}
-                            <a
-                              href={selectedBunch.upload_folder_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[#FF1493] hover:underline"
-                            >
-                              Upload folder
-                            </a>
-                          </>
-                        ) : null}
                       </p>
                     ) : null}
                     {canManageEditing &&
@@ -1701,21 +1691,19 @@ export function AdminBunchesClient({
                       <p className="text-[11px] text-[#D4AF8C]/75">
                         Editing {editingProgress[selectedBunch.id]!.edited_count} of{" "}
                         {editingProgress[selectedBunch.id]!.editable_count}
-                        {selectedBunch.editing_status === "uploaded" &&
-                        selectedBunch.edited_upload_folder_link ? (
-                          <>
-                            {" · "}
-                            <a
-                              href={selectedBunch.edited_upload_folder_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-[#FF1493] hover:underline"
-                            >
-                              Edited folder
-                            </a>
-                          </>
-                        ) : null}
                       </p>
+                    ) : null}
+                    <UploadFolderNamesList
+                      className="mt-2"
+                      label="Filmed folder name(s)"
+                      names={parseUploadFolderNames(selectedBunch.upload_folder_link)}
+                    />
+                    {canManageEditing ? (
+                      <UploadFolderNamesList
+                        className="mt-2"
+                        label="Edited folder name(s)"
+                        names={parseUploadFolderNames(selectedBunch.edited_upload_folder_link)}
+                      />
                     ) : null}
                   </div>
                 );

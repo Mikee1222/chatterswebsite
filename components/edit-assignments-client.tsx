@@ -17,6 +17,7 @@ import {
   ContentPipelineHero,
   SlotChecklistSection,
 } from "@/components/content-pipeline-ui";
+import { UploadFolderNamesFields, UploadFolderNamesList } from "@/components/upload-folder-names";
 import {
   AttachmentLinks,
   FilterBar,
@@ -38,6 +39,7 @@ import {
 } from "@/lib/va-tasks-tokens";
 import { EDITING_STATUS_STYLES, type EditingStatus } from "@/lib/editing-helpers";
 import type { EditAssignment, EditSlotDetail } from "@/services/editing";
+import { parseUploadFolderNames } from "@/lib/upload-folder-names";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS: Array<{ value: "all" | EditingStatus; label: string }> = [
@@ -59,7 +61,7 @@ export function EditAssignmentsClient({
   const [expandedId, setExpandedId] = React.useState<string | null>(
     initialAssignments[0]?.bunch.id ?? null,
   );
-  const [uploadLinks, setUploadLinks] = React.useState<Record<string, string>>({});
+  const [uploadFolders, setUploadFolders] = React.useState<Record<string, string[]>>({});
   const [slotOpen, setSlotOpen] = React.useState<Record<string, boolean>>({});
   const [uploadModalBunchId, setUploadModalBunchId] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
@@ -110,10 +112,15 @@ export function EditAssignmentsClient({
   }
 
   async function submitUpload(bunchId: string) {
-    const link = (uploadLinks[bunchId] ?? "").trim();
-    if (!link) {
+    const names = (uploadFolders[bunchId] ?? []).map((name) => name.trim()).filter(Boolean);
+    if (names.length === 0) {
       addToast(
-        winnerVideoLocalToast(`edit-val-${Date.now()}`, "Link required", "Paste the edited upload folder link.", "high"),
+        winnerVideoLocalToast(
+          `edit-val-${Date.now()}`,
+          "Folder name required",
+          "Enter at least one iCloud folder name.",
+          "high",
+        ),
       );
       return;
     }
@@ -123,7 +130,7 @@ export function EditAssignmentsClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ edited_upload_folder_link: link }),
+        body: JSON.stringify({ edited_upload_folder_names: names }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -136,7 +143,7 @@ export function EditAssignmentsClient({
         winnerVideoLocalToast(
           `edit-up-ok-${Date.now()}`,
           "Edited & Uploaded",
-          "Folder link submitted — admins notified. iCloud stage unlocked.",
+          "Folder name(s) submitted — admins notified. iCloud stage unlocked.",
           "normal",
         ),
       );
@@ -161,7 +168,13 @@ export function EditAssignmentsClient({
       if (statusFilter !== "all" && a.bunch.editing_status !== statusFilter) return false;
       if (modelFilter !== "all" && a.bunch.model_id !== modelFilter) return false;
       if (!q) return true;
-      return [a.bunch.name, a.bunch.model_name, a.bunch.editing_status]
+      return [
+        a.bunch.name,
+        a.bunch.model_name,
+        a.bunch.editing_status,
+        a.bunch.upload_folder_link,
+        a.bunch.edited_upload_folder_link,
+      ]
         .join(" ")
         .toLowerCase()
         .includes(q);
@@ -179,7 +192,7 @@ export function EditAssignmentsClient({
       <ContentPipelineHero
         eyebrow="Editing"
         title="Edit Assignments"
-        description="Bunches with filmed footage assigned to you. Edit each slot, then submit the edited folder when complete."
+        description="Bunches with filmed footage assigned to you. Edit each slot, then confirm the iCloud folder name(s) when complete."
         orb="both"
         actions={
           <button
@@ -204,7 +217,7 @@ export function EditAssignmentsClient({
               label="Edited & Uploaded"
               value={<CountUp value={done.length} />}
               accent="emerald"
-              tooltip="Bunches with edited folder submitted"
+              tooltip="Bunches with edited folder name(s) submitted"
             />
             <LuxuryStatCard
               label="Total"
@@ -316,17 +329,11 @@ export function EditAssignmentsClient({
                     <p className="mt-1 text-xs tabular-nums text-[#B8B4B8]/50">
                       {a.edited_count}/{a.editable_count} edited
                     </p>
-                    {a.bunch.upload_folder_link ? (
-                      <a
-                        href={a.bunch.upload_folder_link}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#FF1493]/90 hover:underline"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        Raw footage <ExternalLink className="h-3 w-3" />
-                      </a>
-                    ) : null}
+                    <UploadFolderNamesList
+                      className="mt-2"
+                      label="Raw footage folder(s)"
+                      names={parseUploadFolderNames(a.bunch.upload_folder_link)}
+                    />
                     <AssignmentProgressBar done={a.edited_count} total={a.editable_count} />
                   </div>
                   <ChevronDown
@@ -466,16 +473,11 @@ export function EditAssignmentsClient({
                           <p className="flex items-center gap-2 text-sm text-emerald-300">
                             <FolderOpen className="h-4 w-4" /> Edited & Uploaded
                           </p>
-                          {a.bunch.edited_upload_folder_link ? (
-                            <a
-                              href={a.bunch.edited_upload_folder_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-2 inline-flex text-sm text-[#FF1493] hover:underline"
-                            >
-                              Open edited folder link
-                            </a>
-                          ) : null}
+                          <UploadFolderNamesList
+                            className="mt-2"
+                            label="Edited folder name(s)"
+                            names={parseUploadFolderNames(a.bunch.edited_upload_folder_link)}
+                          />
                         </div>
                       ) : allEdited ? (
                         <div className="space-y-3 border-t border-white/[0.06] px-4 py-4 sm:px-5">
@@ -486,10 +488,11 @@ export function EditAssignmentsClient({
                             type="button"
                             className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-1.5")}
                             onClick={() => {
-                              setUploadLinks((p) => ({
+                              setUploadFolders((p) => ({
                                 ...p,
                                 [a.bunch.id]:
-                                  p[a.bunch.id] ?? a.bunch.edited_upload_folder_link ?? "",
+                                  p[a.bunch.id] ??
+                                  parseUploadFolderNames(a.bunch.edited_upload_folder_link),
                               }));
                               setUploadModalBunchId(a.bunch.id);
                             }}
@@ -514,32 +517,25 @@ export function EditAssignmentsClient({
           saving={busyId === uploadModalAssignment.bunch.id}
         >
           <p className="text-sm text-[#B8B4B8]/70">
-            Paste the folder link with edited files for{" "}
+            Enter the iCloud folder name(s) with edited files for{" "}
             <span className="font-medium text-white">{uploadModalAssignment.bunch.name}</span>.
             Admins with editing:manage are notified and iCloud unlocks.
           </p>
-          {uploadModalAssignment.bunch.upload_folder_link ? (
-            <a
-              href={uploadModalAssignment.bunch.upload_folder_link}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-3 inline-flex items-center gap-1 text-sm text-[#FF1493] hover:underline"
-            >
-              Open raw footage <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          ) : null}
-          <input
-            className={cn(VA_FILTER_INPUT, "mt-4 w-full")}
-            placeholder="https://…"
-            value={
-              uploadLinks[uploadModalAssignment.bunch.id] ??
-              uploadModalAssignment.bunch.edited_upload_folder_link ??
-              ""
+          <UploadFolderNamesList
+            className="mt-3"
+            label="Raw footage folder(s)"
+            names={parseUploadFolderNames(uploadModalAssignment.bunch.upload_folder_link)}
+          />
+          <UploadFolderNamesFields
+            values={
+              uploadFolders[uploadModalAssignment.bunch.id] ??
+              parseUploadFolderNames(uploadModalAssignment.bunch.edited_upload_folder_link)
             }
-            onChange={(e) =>
-              setUploadLinks((p) => ({
+            disabled={busyId === uploadModalAssignment.bunch.id}
+            onChange={(next) =>
+              setUploadFolders((p) => ({
                 ...p,
-                [uploadModalAssignment.bunch.id]: e.target.value,
+                [uploadModalAssignment.bunch.id]: next,
               }))
             }
           />

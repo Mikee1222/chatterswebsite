@@ -9,6 +9,7 @@ import {
   coerceEditingStatus,
   type EditingStatus,
 } from "@/lib/editing-helpers";
+import { parseUploadFolderNames, serializeUploadFolderNames } from "@/lib/upload-folder-names";
 import {
   getVideoBunch,
   listSlotsForBunch,
@@ -280,13 +281,17 @@ export async function setSlotEdited(input: {
 
 export async function submitBunchEditedUpload(input: {
   bunch_id: string;
-  edited_upload_folder_link: string;
+  edited_upload_folder_names?: string[];
+  edited_upload_folder_link?: string;
   actor_user_id: string;
   actor_user_name?: string;
   allowManage: boolean;
 }): Promise<VideoBunch> {
-  const link = input.edited_upload_folder_link.trim();
-  if (!link) throw new Error("Edited upload folder link is required");
+  const names = parseUploadFolderNames(
+    input.edited_upload_folder_names ?? input.edited_upload_folder_link,
+  );
+  if (names.length === 0) throw new Error("At least one edited upload folder name is required");
+  const stored = serializeUploadFolderNames(names);
 
   const bunch = await getVideoBunch(input.bunch_id);
   if (!bunch) throw new Error("Bunch not found");
@@ -307,7 +312,7 @@ export async function submitBunchEditedUpload(input: {
     .from("video_bunches")
     .update({
       editing_status: "uploaded",
-      edited_upload_folder_link: link,
+      edited_upload_folder_link: stored,
       edited_uploaded_at: now,
       icloud_status: "pending",
       updated_at: now,

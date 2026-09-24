@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { folderNamesFromRequestBody } from "@/lib/upload-folder-names";
 import { submitBunchEditedUpload } from "@/services/editing";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -18,7 +19,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const bunch = await submitBunchEditedUpload({
       bunch_id: id,
-      edited_upload_folder_link: String(body.edited_upload_folder_link ?? ""),
+      edited_upload_folder_names: folderNamesFromRequestBody(
+        body,
+        "edited_upload_folder_names",
+        "edited_upload_folder_link",
+      ),
       actor_user_id: session.airtableUserId ?? session.id,
       actor_user_name: (session.fullName || session.email || "").trim(),
       allowManage: canManage,

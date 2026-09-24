@@ -434,7 +434,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   bunch_filming_uploaded: {
     rule: "admin_only",
-    description: "filming:manage holders when a filmer submits the upload folder link for a bunch.",
+    description: "filming:manage holders when a filmer confirms uploaded iCloud folder name(s) for a bunch.",
   },
   filming_schedule_created: {
     rule: "assigned_party_only",
@@ -446,7 +446,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   bunch_editing_uploaded: {
     rule: "admin_only",
-    description: "editing:manage holders when an editor submits Edited & Uploaded with folder link.",
+    description: "editing:manage holders when an editor confirms Edited & Uploaded with folder name(s).",
   },
   bunch_icloud_organized: {
     rule: "admin_only",

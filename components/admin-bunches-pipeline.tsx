@@ -34,6 +34,8 @@ import {
 } from "@/lib/icloud-helpers";
 import type { ModelMaterialRunway } from "@/services/icloud";
 import type { VideoBunch } from "@/services/winner-sourcing";
+import { UploadFolderNamesList } from "@/components/upload-folder-names";
+import { parseUploadFolderNames } from "@/lib/upload-folder-names";
 import { FolderKanban } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -133,6 +135,8 @@ export function AdminBunchesPipeline({
         b.filming_status,
         b.editing_status,
         b.icloud_status,
+        b.upload_folder_link,
+        b.edited_upload_folder_link,
       ]
         .join(" ")
         .toLowerCase();
@@ -463,6 +467,16 @@ export function AdminBunchesPipeline({
                     Creative: {b.assigned_creative_name || "—"} · Filmer:{" "}
                     {b.assigned_filmer_name || "—"} · Editor: {b.assigned_editor_name || "—"}
                   </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <UploadFolderNamesList
+                      label="Filmed folder name(s)"
+                      names={parseUploadFolderNames(b.upload_folder_link)}
+                    />
+                    <UploadFolderNamesList
+                      label="Edited folder name(s)"
+                      names={parseUploadFolderNames(b.edited_upload_folder_link)}
+                    />
+                  </div>
                 </li>
               );
             })}

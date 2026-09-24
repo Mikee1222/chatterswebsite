@@ -17,6 +17,7 @@ import {
   ContentPipelineHero,
   SlotChecklistSection,
 } from "@/components/content-pipeline-ui";
+import { UploadFolderNamesFields, UploadFolderNamesList } from "@/components/upload-folder-names";
 import {
   AttachmentLinks,
   FilterBar,
@@ -39,6 +40,7 @@ import {
 import { SCRIPT_STATUS_STYLES } from "@/lib/creative-scripts-helpers";
 import { FILMING_STATUS_STYLES, type FilmingStatus } from "@/lib/filming-helpers";
 import type { ShootAssignment, ShootSlotDetail } from "@/services/filming";
+import { parseUploadFolderNames } from "@/lib/upload-folder-names";
 import { cn } from "@/lib/utils";
 
 const STATUS_FILTERS: Array<{ value: "all" | FilmingStatus; label: string }> = [
@@ -60,7 +62,7 @@ export function ShootAssignmentsClient({
   const [expandedId, setExpandedId] = React.useState<string | null>(
     initialAssignments[0]?.bunch.id ?? null,
   );
-  const [uploadLinks, setUploadLinks] = React.useState<Record<string, string>>({});
+  const [uploadFolders, setUploadFolders] = React.useState<Record<string, string[]>>({});
   const [slotOpen, setSlotOpen] = React.useState<Record<string, boolean>>({});
   const [uploadModalBunchId, setUploadModalBunchId] = React.useState<string | null>(null);
   const [search, setSearch] = React.useState("");
@@ -111,10 +113,15 @@ export function ShootAssignmentsClient({
   }
 
   async function submitUpload(bunchId: string) {
-    const link = (uploadLinks[bunchId] ?? "").trim();
-    if (!link) {
+    const names = (uploadFolders[bunchId] ?? []).map((name) => name.trim()).filter(Boolean);
+    if (names.length === 0) {
       addToast(
-        winnerVideoLocalToast(`film-val-${Date.now()}`, "Link required", "Paste the upload folder link.", "high"),
+        winnerVideoLocalToast(
+          `film-val-${Date.now()}`,
+          "Folder name required",
+          "Enter at least one iCloud folder name.",
+          "high",
+        ),
       );
       return;
     }
@@ -124,7 +131,7 @@ export function ShootAssignmentsClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ upload_folder_link: link }),
+        body: JSON.stringify({ upload_folder_names: names }),
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) {
@@ -134,7 +141,12 @@ export function ShootAssignmentsClient({
         return;
       }
       addToast(
-        winnerVideoLocalToast(`film-up-ok-${Date.now()}`, "Uploaded", "Folder link submitted — admins notified.", "normal"),
+        winnerVideoLocalToast(
+          `film-up-ok-${Date.now()}`,
+          "Uploaded",
+          "Folder name(s) submitted — admins notified.",
+          "normal",
+        ),
       );
       setUploadModalBunchId(null);
       await reload();
@@ -157,7 +169,7 @@ export function ShootAssignmentsClient({
       if (statusFilter !== "all" && a.bunch.filming_status !== statusFilter) return false;
       if (modelFilter !== "all" && a.bunch.model_id !== modelFilter) return false;
       if (!q) return true;
-      return [a.bunch.name, a.bunch.model_name, a.bunch.filming_status]
+      return [a.bunch.name, a.bunch.model_name, a.bunch.filming_status, a.bunch.upload_folder_link]
         .join(" ")
         .toLowerCase()
         .includes(q);
@@ -175,7 +187,7 @@ export function ShootAssignmentsClient({
       <ContentPipelineHero
         eyebrow="Filming"
         title="Shoot Assignments"
-        description="Bunches assigned to you. Film each slot (scripts may still be in progress), then submit the upload folder when complete."
+        description="Bunches assigned to you. Film each slot (scripts may still be in progress), then confirm the iCloud folder name(s) when complete."
         orb="both"
         actions={
           <button
@@ -200,7 +212,7 @@ export function ShootAssignmentsClient({
               label="Uploaded"
               value={<CountUp value={done.length} />}
               accent="emerald"
-              tooltip="Bunches with upload folder submitted"
+              tooltip="Bunches with upload folder name(s) submitted"
             />
             <LuxuryStatCard
               label="Total"
@@ -461,16 +473,11 @@ export function ShootAssignmentsClient({
                           <p className="flex items-center gap-2 text-sm text-emerald-300">
                             <FolderOpen className="h-4 w-4" /> Uploaded
                           </p>
-                          {a.bunch.upload_folder_link ? (
-                            <a
-                              href={a.bunch.upload_folder_link}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="mt-2 inline-flex text-sm text-[#FF1493] hover:underline"
-                            >
-                              Open folder link
-                            </a>
-                          ) : null}
+                          <UploadFolderNamesList
+                            className="mt-2"
+                            label="Uploaded folder name(s)"
+                            names={parseUploadFolderNames(a.bunch.upload_folder_link)}
+                          />
                         </div>
                       ) : allFilmed ? (
                         <div className="space-y-3 border-t border-white/[0.06] px-4 py-4 sm:px-5">
@@ -481,10 +488,10 @@ export function ShootAssignmentsClient({
                             type="button"
                             className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-1.5")}
                             onClick={() => {
-                              setUploadLinks((p) => ({
+                              setUploadFolders((p) => ({
                                 ...p,
                                 [a.bunch.id]:
-                                  p[a.bunch.id] ?? a.bunch.upload_folder_link ?? "",
+                                  p[a.bunch.id] ?? parseUploadFolderNames(a.bunch.upload_folder_link),
                               }));
                               setUploadModalBunchId(a.bunch.id);
                             }}
@@ -509,22 +516,20 @@ export function ShootAssignmentsClient({
           saving={busyId === uploadModalAssignment.bunch.id}
         >
           <p className="text-sm text-[#B8B4B8]/70">
-            Paste the cloud folder link with the filmed files for{" "}
+            Enter the iCloud folder name(s) with the filmed files for{" "}
             <span className="font-medium text-white">{uploadModalAssignment.bunch.name}</span>.
             Admins with filming:manage are notified.
           </p>
-          <input
-            className={cn(VA_FILTER_INPUT, "mt-4 w-full")}
-            placeholder="https://…"
-            value={
-              uploadLinks[uploadModalAssignment.bunch.id] ??
-              uploadModalAssignment.bunch.upload_folder_link ??
-              ""
+          <UploadFolderNamesFields
+            values={
+              uploadFolders[uploadModalAssignment.bunch.id] ??
+              parseUploadFolderNames(uploadModalAssignment.bunch.upload_folder_link)
             }
-            onChange={(e) =>
-              setUploadLinks((p) => ({
+            disabled={busyId === uploadModalAssignment.bunch.id}
+            onChange={(next) =>
+              setUploadFolders((p) => ({
                 ...p,
-                [uploadModalAssignment.bunch.id]: e.target.value,
+                [uploadModalAssignment.bunch.id]: next,
               }))
             }
           />

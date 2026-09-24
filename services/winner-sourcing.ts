@@ -61,12 +61,14 @@ export type VideoBunch = {
   assigned_filmer_id: string;
   assigned_filmer_name: string;
   filming_status: import("@/lib/filming-helpers").FilmingStatus;
+  /** Stored text: JSON array of iCloud folder names, or a legacy single URL/name. */
   upload_folder_link: string;
   uploaded_at: string | null;
   /** Editor assigned after filming upload. */
   assigned_editor_id: string;
   assigned_editor_name: string;
   editing_status: import("@/lib/editing-helpers").EditingStatus;
+  /** Stored text: JSON array of iCloud folder names, or a legacy single URL/name. */
   edited_upload_folder_link: string;
   edited_uploaded_at: string | null;
   /** iCloud org after editing upload (no per-bunch assignee). */

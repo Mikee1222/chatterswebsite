@@ -58,6 +58,8 @@ import type {
   IcloudFolderWithBunch,
   IcloudModelCoverage,
 } from "@/services/icloud";
+import { UploadFolderNamesList } from "@/components/upload-folder-names";
+import { parseUploadFolderNames } from "@/lib/upload-folder-names";
 import { cn } from "@/lib/utils";
 
 type ViewMode = "model" | "bunch";
@@ -891,17 +893,16 @@ export function IcloudOrganizationClient({
                           ? ` · edited ${formatMaterialDate(ymdFromIso(w.bunch.edited_uploaded_at))}`
                           : ""}
                       </p>
-                      {w.bunch.edited_upload_folder_link ? (
-                        <a
-                          href={w.bunch.edited_upload_folder_link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#FF1493]/90 hover:underline"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          Edited folder <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : null}
+                      <div className="mt-2 space-y-2">
+                        <UploadFolderNamesList
+                          label="Filmed folder name(s)"
+                          names={parseUploadFolderNames(w.bunch.upload_folder_link)}
+                        />
+                        <UploadFolderNamesList
+                          label="Edited folder name(s)"
+                          names={parseUploadFolderNames(w.bunch.edited_upload_folder_link)}
+                        />
+                      </div>
                     </div>
                     <ChevronDown
                       className={cn(
