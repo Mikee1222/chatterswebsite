@@ -11,6 +11,7 @@ import {
   sbSelectAll,
   sbSelectByPublicId,
   sbSelectEq,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   type SbRow,
@@ -234,6 +235,34 @@ export async function getUserByAirtableId(recordId: string): Promise<UserRecord 
   const row = await sbSelectByPublicId<Row>(TABLE, recordId);
   if (!row) return null;
   return mapRow(row);
+}
+
+export async function getUsersByAirtableIds(recordIds: string[]): Promise<Map<string, UserRecord>> {
+  const unique = [...new Set(recordIds.map((id) => id.trim()).filter(Boolean))];
+  const out = new Map<string, UserRecord>();
+  if (!unique.length) return out;
+  const recs = unique.filter((id) => id.startsWith("rec"));
+  const others = unique.filter((id) => !id.startsWith("rec"));
+  const [byAt, byId] = await Promise.all([
+    recs.length ? sbSelectWhere<Row>(TABLE, (q) => q.in("airtable_id", recs)) : Promise.resolve([] as Row[]),
+    others.length ? sbSelectWhere<Row>(TABLE, (q) => q.in("id", others)) : Promise.resolve([] as Row[]),
+  ]);
+  const seen = new Set<string>();
+  const rows: Row[] = [];
+  for (const row of [...byAt, ...byId]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    rows.push(row);
+  }
+  const mapped = await mapRows(rows);
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+    const user = mapped[i]!;
+    out.set(publicId(row), user);
+    out.set(row.id, user);
+    if (row.airtable_id) out.set(row.airtable_id, user);
+  }
+  return out;
 }
 
 export async function getUserByUserId(userId: string): Promise<UserRecord | null> {

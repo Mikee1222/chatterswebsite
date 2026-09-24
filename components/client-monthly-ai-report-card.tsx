@@ -60,10 +60,8 @@ export function ClientMonthlyAiReportCard() {
         if (data.text) {
           setText(data.text);
           setGeneratedAt(data.generated_at ?? null);
-          setLoading(false);
-        } else {
-          await generate(false, yearMonth);
         }
+        setLoading(false);
       } catch {
         if (!cancelled) setLoading(false);
       }
@@ -109,13 +107,24 @@ export function ClientMonthlyAiReportCard() {
         </div>
       </div>
       {loading && !text ? (
-        <p className="mt-3 text-sm text-white/50">Writing your report…</p>
+        <p className="mt-3 text-sm text-white/50">Checking for a saved report…</p>
       ) : error && !text ? (
         <p className="mt-3 text-sm text-rose-300">{error}</p>
       ) : text ? (
         <p className="mt-3 text-sm leading-relaxed text-white/80 whitespace-pre-wrap">{text}</p>
       ) : (
-        <p className="mt-3 text-sm text-white/45">No report yet.</p>
+        <div className="mt-3 space-y-3">
+          <p className="text-sm text-white/45">No report yet — generate one when you want a narrative summary.</p>
+          <button
+            type="button"
+            className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 text-xs")}
+            disabled={loading}
+            onClick={() => void generate(false)}
+          >
+            {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            Generate report
+          </button>
+        </div>
       )}
       {generatedAt ? (
         <p className="mt-2 text-[11px] text-white/30">

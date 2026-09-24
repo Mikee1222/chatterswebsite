@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getClientAirtableId } from "@/lib/client-session";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { ROUTES } from "@/lib/routes";
+import { sbResolveUuidToAirtableMap } from "@/lib/supabase-data";
 import { ClientContentHub } from "@/components/client-portal/client-content-hub";
 import { getClientModels } from "@/services/client-portal";
-import { listApprovedCustomRequestsByModel } from "@/services/custom-requests";
-import { getModelById } from "@/services/modelss";
-import { listVAContentAssignmentsForModel } from "@/services/va-content-assignments";
-import { getUserByAirtableId } from "@/services/users";
+import { listApprovedCustomRequestsByModels } from "@/services/custom-requests";
+import { getUsersByAirtableIds } from "@/services/users";
+import { listVAContentAssignmentsForModels } from "@/services/va-content-assignments";
 import type { CustomRequest, ModelContentAssignmentCardDTO } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -26,34 +27,32 @@ export default async function ClientContentPage() {
 
   const clientId = getClientAirtableId(user);
   const clientModels = await getClientModels(clientId);
+  const modelRecordIds = [
+    ...new Set(clientModels.map((assignment) => assignment.model[0]?.trim()).filter(Boolean) as string[]),
+  ];
 
-  const models: ClientContentModelData[] = [];
+  const [assignmentRows, customRequests, modelAt] = await Promise.all([
+    listVAContentAssignmentsForModels(modelRecordIds).catch(() => []),
+    listApprovedCustomRequestsByModels(modelRecordIds).catch(() => []),
+    isSupabaseBackend()
+      ? sbResolveUuidToAirtableMap(
+          "modelss",
+          clientModels.map((assignment) => assignment.model)
+        ).catch(() => new Map<string, string>())
+      : Promise.resolve(new Map<string, string>()),
+  ]);
 
-  for (const assignment of clientModels) {
-    const modelRecordId = assignment.model[0]?.trim();
-    if (!modelRecordId) continue;
+  const vaIds = [...new Set(assignmentRows.map((r) => r.va_id).filter(Boolean))] as string[];
+  const vaUsers = await getUsersByAirtableIds(vaIds).catch(() => new Map());
+  const vaNames = new Map<string, string>();
+  for (const [id, vaUser] of vaUsers) {
+    const label = vaUser.full_name?.trim() || vaUser.email || "";
+    if (label) vaNames.set(id, label);
+  }
 
-    const modelRecord = await getModelById(modelRecordId).catch(() => null);
-    const stableModelId = modelRecord?.model_id?.trim() ?? "";
-    const modelName =
-      assignment.model_name?.trim() || modelRecord?.model_name?.trim() || "Unnamed model";
-
-    const [assignmentRows, customRequests] = await Promise.all([
-      listVAContentAssignmentsForModel(modelRecordId, stableModelId).catch(() => []),
-      listApprovedCustomRequestsByModel(modelRecordId).catch(() => []),
-    ]);
-
-    const vaIds = [...new Set(assignmentRows.map((r) => r.va_id).filter(Boolean))] as string[];
-    const vaNames = new Map<string, string>();
-    await Promise.all(
-      vaIds.map(async (id) => {
-        const vaUser = await getUserByAirtableId(id).catch(() => null);
-        if (vaUser?.full_name?.trim()) vaNames.set(id, vaUser.full_name.trim());
-        else if (vaUser?.email) vaNames.set(id, vaUser.email);
-      }),
-    );
-
-    const assignments: ModelContentAssignmentCardDTO[] = assignmentRows.map((r) => ({
+  const assignmentsByModel = new Map<string, ModelContentAssignmentCardDTO[]>();
+  for (const r of assignmentRows) {
+    const dto: ModelContentAssignmentCardDTO = {
       id: r.id,
       title: r.title,
       description: r.description,
@@ -66,14 +65,43 @@ export default async function ClientContentPage() {
       status: r.status,
       va_name: r.va_id ? (vaNames.get(r.va_id) ?? null) : null,
       content_type: r.content_type,
-    }));
+    };
+    const keys = [r.model_id].filter(Boolean);
+    for (const key of keys) {
+      const list = assignmentsByModel.get(key) ?? [];
+      list.push(dto);
+      assignmentsByModel.set(key, list);
+    }
+  }
+
+  const customsByModel = new Map<string, CustomRequest[]>();
+  for (const req of customRequests) {
+    const keys = [req.assigned_model_id, req.model_id].filter(Boolean) as string[];
+    for (const key of keys) {
+      const list = customsByModel.get(key) ?? [];
+      if (!list.some((existing) => existing.id === req.id)) list.push(req);
+      customsByModel.set(key, list);
+    }
+  }
+
+  const models: ClientContentModelData[] = [];
+  const seenModels = new Set<string>();
+
+  for (const assignment of clientModels) {
+    const modelRecordId = assignment.model[0]?.trim();
+    if (!modelRecordId || seenModels.has(modelRecordId)) continue;
+    seenModels.add(modelRecordId);
+
+    const lookupKeys = [modelRecordId, modelAt.get(modelRecordId)].filter(Boolean) as string[];
+    const assignments = dedupeById(lookupKeys.flatMap((key) => assignmentsByModel.get(key) ?? []));
+    const modelCustoms = dedupeById(lookupKeys.flatMap((key) => customsByModel.get(key) ?? []));
 
     models.push({
       modelRecordId,
-      modelName,
-      stableModelId,
+      modelName: assignment.model_name?.trim() || "Unnamed model",
+      stableModelId: "",
       assignments,
-      customRequests,
+      customRequests: modelCustoms,
     });
   }
 
@@ -89,4 +117,15 @@ export default async function ClientContentPage() {
       <ClientContentHub clientId={clientId} models={models} />
     </div>
   );
+}
+
+function dedupeById<T extends { id: string }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push(row);
+  }
+  return out;
 }

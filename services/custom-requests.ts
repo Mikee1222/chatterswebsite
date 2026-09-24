@@ -137,6 +137,27 @@ export async function listApprovedCustomRequestsByModel(assignedModelRecordId: s
   return rows.filter((r) => r.admin_status === "accepted");
 }
 
+export async function listApprovedCustomRequestsByModels(
+  assignedModelRecordIds: string[]
+): Promise<CustomRequest[]> {
+  const unique = [...new Set(assignedModelRecordIds.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) return [];
+  if (isSupabaseBackend()) {
+    return (await import("./custom-requests-supabase")).listApprovedCustomRequestsByModels(unique);
+  }
+  const chunks = await Promise.all(unique.map((id) => listApprovedCustomRequestsByModel(id)));
+  const seen = new Set<string>();
+  const out: CustomRequest[] = [];
+  for (const rows of chunks) {
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
 function customPrimaryDateKey(r: CustomRequest): string | null {
   const sched = r.model_scheduled_date?.trim().slice(0, 10);
   if (sched && /^\d{4}-\d{2}-\d{2}$/.test(sched)) return sched;

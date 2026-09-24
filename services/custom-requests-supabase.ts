@@ -192,6 +192,25 @@ export async function listApprovedCustomRequestsByModel(assignedModelRecordId: s
   return rows.filter((r) => r.admin_status === "accepted");
 }
 
+export async function listApprovedCustomRequestsByModels(
+  assignedModelRecordIds: string[]
+): Promise<CustomRequest[]> {
+  const unique = [...new Set(assignedModelRecordIds.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) return [];
+  const uuids = await sbUuidsForAirtableIds("modelss", unique);
+  const modelUuids = [...new Set(uuids.filter(Boolean))];
+  if (!modelUuids.length) return [];
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from(TABLE)
+    .select("*")
+    .overlaps("assigned_model", modelUuids)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(`custom_requests: ${error.message}`);
+  const mapped = await mapRows(((data ?? []) as unknown as Row[]) ?? []);
+  return mapped.filter((r) => r.admin_status === "accepted");
+}
+
 function customPrimaryDateKey(r: CustomRequest): string | null {
   const sched = r.model_scheduled_date?.trim().slice(0, 10);
   if (sched && /^\d{4}-\d{2}-\d{2}$/.test(sched)) return sched;

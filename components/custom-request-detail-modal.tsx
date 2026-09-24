@@ -17,7 +17,7 @@ import { formatDate, formatDateTime } from "@/lib/format-date";
 import type { CustomRequest, CustomRequestAdminStatus, CustomRequestModelStatus } from "@/types";
 
 export type CustomRequestDetailLanguage = "en" | "es";
-export type CustomRequestDetailVariant = "model" | "agency";
+export type CustomRequestDetailVariant = "model" | "agency" | "client";
 
 type Props = {
   open: boolean;
@@ -114,13 +114,14 @@ function buildTimeline(
 ): BeautifulDetailTimelineItem[] {
   const submittedVal = formatCreatedAt(req);
   const adminLabel =
-    variant === "model"
-      ? t(lang, "Agency decision", "Decisión de agencia")
-      : t(lang, "Agency review", "Revisión de agencia");
+    variant === "agency"
+      ? t(lang, "Agency review", "Revisión de agencia")
+      : t(lang, "Agency decision", "Decisión de agencia");
   const adminDetail = adminStatusLabel(lang, req.admin_status);
-  const modelLabel = variant === "model" ? t(lang, "Model pipeline", "Flujo del modelo") : "Model pipeline";
+  const modelLabel =
+    variant === "agency" ? "Model pipeline" : t(lang, "Model pipeline", "Flujo del modelo");
   const modelDetail =
-    variant === "model" ? modelStatusLabel(lang, req.model_status) : modelStatusLabelEn(req.model_status);
+    variant === "agency" ? modelStatusLabelEn(req.model_status) : modelStatusLabel(lang, req.model_status);
 
   let adminStatus: BeautifulDetailTimelineItem["status"] = "done";
   if (req.admin_status === "pending") adminStatus = "active";
@@ -181,14 +182,26 @@ export function CustomRequestDetailModal({
       "—"
     : "—";
 
+  const clientAssignmentLabel = request
+    ? request.model_status === "scheduled" || request.model_status === "in_progress"
+      ? t(language, "Assigned — in progress", "Asignado — en curso")
+      : request.model_status === "waiting_schedule"
+        ? t(language, "Assigned — pending schedule", "Asignado — pendiente de programar")
+        : null
+    : null;
+
   const subtitle = request
-    ? variant === "model"
-      ? `${request.fan_username?.trim() || "—"} · ${displayType(request)} · ${resolvedChatterName}`
-      : `${request.fan_username?.trim() || "—"} · ${resolvedModelName} · ${resolvedChatterName}`
+    ? variant === "client"
+      ? [request.fan_username?.trim() || "—", displayType(request), clientAssignmentLabel]
+          .filter(Boolean)
+          .join(" · ")
+      : variant === "model"
+        ? `${request.fan_username?.trim() || "—"} · ${displayType(request)} · ${resolvedChatterName}`
+        : `${request.fan_username?.trim() || "—"} · ${resolvedModelName} · ${resolvedChatterName}`
     : "";
 
   const stats =
-    request && variant === "model"
+    request && (variant === "model" || variant === "client")
       ? [
           {
             label: t(language, "Price", "Precio"),
@@ -273,7 +286,7 @@ export function CustomRequestDetailModal({
   const badge = t(language, "Custom request", "Encargo");
 
   const footer =
-    request && variant === "model" ? (
+    request && (variant === "model" || variant === "client") ? (
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
         <button
           type="button"

@@ -258,6 +258,19 @@ export async function getUserByAirtableId(recordId: string): Promise<UserRecord 
   }
 }
 
+export async function getUsersByAirtableIds(recordIds: string[]): Promise<Map<string, UserRecord>> {
+  const unique = [...new Set(recordIds.map((id) => id.trim()).filter(Boolean))];
+  const out = new Map<string, UserRecord>();
+  if (!unique.length) return out;
+  if (isSupabaseBackend()) return (await import("./users-supabase")).getUsersByAirtableIds(unique);
+  const rows = await Promise.all(unique.map((id) => getUserByAirtableId(id)));
+  for (let i = 0; i < unique.length; i++) {
+    const user = rows[i];
+    if (user) out.set(unique[i]!, user);
+  }
+  return out;
+}
+
 /** Lookup by stable `user_id` primary field (e.g. `user_1772905978251_vz1u16hc`). */
 export async function getUserByUserId(userId: string): Promise<UserRecord | null> {
   if (isSupabaseBackend()) return (await import("./users-supabase")).getUserByUserId(userId);

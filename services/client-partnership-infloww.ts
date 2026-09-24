@@ -203,62 +203,42 @@ async function fetchScopedRows(
   range: { startYmd: string; endYmd: string },
   prev: { startYmd: string; endYmd: string }
 ) {
-  const dailyChunks = await Promise.all(
-    modelRecordIds.map((id) =>
-      listCreatorDailyStats({
-        startYmd: range.startYmd,
-        endYmd: range.endYmd,
-        modelRecordId: id,
-      })
-    )
-  );
-  const txChunks = await Promise.all(
-    modelRecordIds.map((id) =>
-      listCreatorTransactions({
-        startYmd: range.startYmd,
-        endYmd: range.endYmd,
-        modelRecordId: id,
-        fetchAll: true,
-        revenueOnly: true,
-      })
-    )
-  );
-  const refundChunks = await Promise.all(
-    modelRecordIds.map((id) =>
-      listCreatorRefunds({
-        startYmd: range.startYmd,
-        endYmd: range.endYmd,
-        modelRecordId: id,
-        limit: 300,
-      })
-    )
-  );
-  const prevTxChunks = await Promise.all(
-    modelRecordIds.map((id) =>
-      listCreatorTransactions({
-        startYmd: prev.startYmd,
-        endYmd: prev.endYmd,
-        modelRecordId: id,
-        fetchAll: true,
-        revenueOnly: true,
-      })
-    )
-  );
-  const marketingChunks = await Promise.all(
-    modelRecordIds.map((id) =>
-      listMarketingLinks({
-        modelRecordId: id,
-        excludeLinkTypes: ["CAMPAIGN"],
-      })
-    )
-  );
+  const [dailyRows, transactions, refunds, prevTx, marketingRows] = await Promise.all([
+    listCreatorDailyStats({
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+      modelRecordIds,
+    }),
+    listCreatorTransactions({
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+      modelRecordIds,
+      fetchAll: true,
+      revenueOnly: true,
+    }),
+    listCreatorRefunds({
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+      modelRecordIds,
+      limit: 300,
+    }),
+    listCreatorTransactions({
+      startYmd: prev.startYmd,
+      endYmd: prev.endYmd,
+      modelRecordIds,
+      fetchAll: true,
+      revenueOnly: true,
+    }),
+    listMarketingLinks({
+      modelRecordIds,
+      excludeLinkTypes: ["CAMPAIGN"],
+    }),
+  ]);
 
-  const daily = mergeDailyStats(dailyChunks.flat());
-  const transactions = txChunks.flat();
-  const refunds = refundChunks.flat();
-  const prevGross = prevTxChunks.flat().reduce((s, t) => s + creatorTxGrossAmount(t), 0);
+  const daily = mergeDailyStats(dailyRows);
+  const prevGross = prevTx.reduce((s, t) => s + creatorTxGrossAmount(t), 0);
 
-  const marketing = computeAcquisitionEfficiency(marketingChunks.flat())
+  const marketing = computeAcquisitionEfficiency(marketingRows)
     .sort((a, b) => b.earnings_gross - a.earnings_gross)
     .slice(0, 8)
     .map((l) => ({

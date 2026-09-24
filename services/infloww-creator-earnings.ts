@@ -935,8 +935,15 @@ export async function listCreatorDailyStats(params: {
   startYmd: string;
   endYmd: string;
   modelRecordId?: string;
+  modelRecordIds?: string[];
   creatorInflowwId?: string;
 }): Promise<CreatorDailyStatsRow[]> {
+  const modelIds = [
+    ...new Set(
+      [...(params.modelRecordIds ?? []), params.modelRecordId].filter((id): id is string => Boolean(id))
+    ),
+  ];
+  if ((params.modelRecordIds || params.modelRecordId) && modelIds.length === 0) return [];
   const sb = getSupabaseServiceClient();
   const selectCols =
     "creator_infloww_id, model_record_id, model_stable_id, model_name, date, performance_rank, profile_visitors, guest_visitors, logged_in_visitors, active_fans, expired_fans, new_subscribers, renewals, messages_sent, ppvs_sent, fans_chatted, reply_time_ms, fans_with_renew_on";
@@ -951,7 +958,8 @@ export async function listCreatorDailyStats(params: {
       .lte("date", params.endYmd)
       .order("date", { ascending: true })
       .range(offset, offset + SUPABASE_PAGE_SIZE - 1);
-    if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+    if (modelIds.length === 1) q = q.eq("model_record_id", modelIds[0]!);
+    else if (modelIds.length > 1) q = q.in("model_record_id", modelIds);
     if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
     const { data, error } = await q;
     if (error) throw new Error(`listCreatorDailyStats: ${error.message}`);
@@ -1029,6 +1037,7 @@ export async function listCreatorTransactions(params: {
   startYmd: string;
   endYmd: string;
   modelRecordId?: string;
+  modelRecordIds?: string[];
   creatorInflowwId?: string;
   type?: string;
   status?: string;
@@ -1061,7 +1070,13 @@ export async function listCreatorTransactions(params: {
       .lte("created_time", endIso)
       .order("created_time", { ascending: false })
       .range(offset, offset + pageSize - 1);
-    if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+    const modelIds = [
+      ...new Set(
+        [...(params.modelRecordIds ?? []), params.modelRecordId].filter((id): id is string => Boolean(id))
+      ),
+    ];
+    if (modelIds.length === 1) q = q.eq("model_record_id", modelIds[0]!);
+    else if (modelIds.length > 1) q = q.in("model_record_id", modelIds);
     if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
     if (params.type) q = q.eq("type", params.type);
     if (params.status) q = q.eq("status", params.status);
@@ -1294,6 +1309,7 @@ export type MarketingLinkRow = {
 
 export async function listMarketingLinks(params: {
   modelRecordId?: string;
+  modelRecordIds?: string[];
   creatorInflowwId?: string;
   linkType?: string;
   /** Exclude these link types (e.g. model view hides CAMPAIGN). */
@@ -1307,7 +1323,13 @@ export async function listMarketingLinks(params: {
     )
     .order("earnings_gross", { ascending: false })
     .limit(500);
-  if (params.modelRecordId) q = q.eq("model_id", params.modelRecordId);
+  const modelIds = [
+    ...new Set(
+      [...(params.modelRecordIds ?? []), params.modelRecordId].filter((id): id is string => Boolean(id))
+    ),
+  ];
+  if (modelIds.length === 1) q = q.eq("model_id", modelIds[0]!);
+  else if (modelIds.length > 1) q = q.in("model_id", modelIds);
   if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
   if (params.linkType) q = q.eq("link_type", params.linkType);
   if (params.excludeLinkTypes?.length) {
@@ -1443,6 +1465,7 @@ export async function listCreatorRefunds(params: {
   startYmd: string;
   endYmd: string;
   modelRecordId?: string;
+  modelRecordIds?: string[];
   creatorInflowwId?: string;
   limit?: number;
 }): Promise<CreatorRefundRow[]> {
@@ -1457,7 +1480,13 @@ export async function listCreatorRefunds(params: {
     .lte("refund_time", endIso)
     .order("refund_time", { ascending: false })
     .limit(params.limit ?? 500);
-  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+  const modelIds = [
+    ...new Set(
+      [...(params.modelRecordIds ?? []), params.modelRecordId].filter((id): id is string => Boolean(id))
+    ),
+  ];
+  if (modelIds.length === 1) q = q.eq("model_record_id", modelIds[0]!);
+  else if (modelIds.length > 1) q = q.in("model_record_id", modelIds);
   if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
   const { data, error } = await q;
   if (error) throw new Error(`listCreatorRefunds: ${error.message}`);

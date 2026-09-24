@@ -13,6 +13,7 @@ import {
   sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   requireSbUuids,
@@ -22,7 +23,6 @@ import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { formatDateEuropean } from "@/lib/format";
 import { getCycleAmountDue, isBillingOverdue } from "@/lib/client-portal-utils";
 import {
-  getAllBillingCycles,
   getBillingCycleById as getBillingCycleByIdFromBilling,
   getBillingCycleRevenues,
   getBillingCycleRevenuesForCycles,
@@ -423,6 +423,58 @@ async function resolveClientLinkedIds(clientId: string): Promise<string[]> {
   return Array.from(new Set([row.id, ...(row.airtable_id ? [row.airtable_id] : []), trimmed]));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function uuidIdsOf(ids: string[]): string[] {
+  return [...new Set(ids.filter((id) => UUID_RE.test(id)))];
+}
+
+async function selectByClientOverlap<T extends SbRow>(
+  table: string,
+  clientUuids: string[]
+): Promise<T[]> {
+  if (!clientUuids.length) return [];
+  return sbSelectWhere<T>(table, (q) => q.overlaps("client", clientUuids));
+}
+
+async function fetchCyclesByIds(ids: string[]): Promise<CycleRow[]> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return [];
+  const recs = unique.filter((id) => id.startsWith("rec"));
+  const uuids = unique.filter((id) => !id.startsWith("rec"));
+  const [byAt, byId] = await Promise.all([
+    recs.length ? sbSelectWhere<CycleRow>(CYCLES, (q) => q.in("airtable_id", recs)) : Promise.resolve([]),
+    uuids.length ? sbSelectWhere<CycleRow>(CYCLES, (q) => q.in("id", uuids)) : Promise.resolve([]),
+  ]);
+  const seen = new Set<string>();
+  const out: CycleRow[] = [];
+  for (const row of [...byAt, ...byId]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push(row);
+  }
+  return out;
+}
+
+async function fetchModelsByIds(ids: string[]): Promise<ModelRow[]> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return [];
+  const recs = unique.filter((id) => id.startsWith("rec"));
+  const uuids = unique.filter((id) => !id.startsWith("rec"));
+  const [byAt, byId] = await Promise.all([
+    recs.length ? sbSelectWhere<ModelRow>(BILLING_MODELS, (q) => q.in("airtable_id", recs)) : Promise.resolve([]),
+    uuids.length ? sbSelectWhere<ModelRow>(BILLING_MODELS, (q) => q.in("id", uuids)) : Promise.resolve([]),
+  ]);
+  const seen = new Set<string>();
+  const out: ModelRow[] = [];
+  for (const row of [...byAt, ...byId]) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push(row);
+  }
+  return out;
+}
+
 
 /** Login-only: includes password hash. Never expose to client UI. */
 export type ClientAuthRecord = ClientRecord & { passwordHash: string };
@@ -628,23 +680,26 @@ export async function updateBillingCycleStatus(
 
 export async function getClientBillingCycles(clientId: string): Promise<BillingCycleRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
+  const clientUuids = uuidIdsOf(linked);
   const [cycleRows, revenueRows] = await Promise.all([
-    sbSelectAll<CycleRow>(CYCLES),
-    sbSelectAll<RevenueRow>(REVENUES),
+    selectByClientOverlap<CycleRow>(CYCLES, clientUuids),
+    selectByClientOverlap<RevenueRow>(REVENUES, clientUuids),
   ]);
   const cycleUuidsFromRevenues = new Set<string>();
   for (const r of revenueRows) {
     if (!(r.client ?? []).some((c) => linked.includes(c))) continue;
     for (const cycleUuid of r.billing_cycle ?? []) cycleUuidsFromRevenues.add(cycleUuid);
   }
+  const knownCycleIds = new Set(cycleRows.map((c) => c.id));
+  const missingCycleUuids = [...cycleUuidsFromRevenues].filter((id) => !knownCycleIds.has(id));
+  const extraCycleRows = missingCycleUuids.length ? await fetchCyclesByIds(missingCycleUuids) : [];
+  const allCycleRows = [...cycleRows, ...extraCycleRows];
   const cycleAirtableFromRevenues = new Set<string>();
-  if (cycleUuidsFromRevenues.size > 0) {
-    for (const c of cycleRows) {
-      if (cycleUuidsFromRevenues.has(c.id) && c.airtable_id) cycleAirtableFromRevenues.add(c.airtable_id);
-    }
+  for (const c of allCycleRows) {
+    if (cycleUuidsFromRevenues.has(c.id) && c.airtable_id) cycleAirtableFromRevenues.add(c.airtable_id);
   }
-  const cycles = cycleRows.map(mapBillingCycle);
-  return cycles
+  return allCycleRows
+    .map(mapBillingCycle)
     .filter(
       (cycle) =>
         cycle.client.some((c) => linked.includes(c)) ||
@@ -656,7 +711,20 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
 
 export async function getClientPaymentMethods(clientId: string): Promise<PaymentMethodRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
-  const rows = await sbSelectAll<MethodRow>(METHODS);
+  const clientUuids = uuidIdsOf(linked);
+  const [globalRows, clientRows] = await Promise.all([
+    sbSelectWhere<MethodRow>(METHODS, (q) => q.eq("is_available", true).eq("scope", "global")),
+    clientUuids.length
+      ? sbSelectWhere<MethodRow>(METHODS, (q) => q.eq("is_available", true).overlaps("client", clientUuids))
+      : Promise.resolve([] as MethodRow[]),
+  ]);
+  const seen = new Set<string>();
+  const rows: MethodRow[] = [];
+  for (const r of [...globalRows, ...clientRows]) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    rows.push(r);
+  }
   return rows
     .filter(
       (r) =>
@@ -668,7 +736,7 @@ export async function getClientPaymentMethods(clientId: string): Promise<Payment
 
 export async function getClientInvoices(clientId: string): Promise<InvoiceRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
-  const rows = await sbSelectAll<InvoiceRow>(INVOICES);
+  const rows = await selectByClientOverlap<InvoiceRow>(INVOICES, uuidIdsOf(linked));
   return rows
     .map(mapInvoice)
     .filter((invoice) => invoice.client.some((c) => linked.includes(c)))
@@ -680,9 +748,11 @@ export async function getClientInvoicesEnriched(clientId: string): Promise<Enric
   const cycleIds = [...new Set(invoices.map((i) => i.billing_cycle[0]).filter(Boolean) as string[])];
   const cycleMap = new Map<string, BillingCycleRecord>();
   if (cycleIds.length) {
-    const allCycles = await getAllBillingCycles();
-    for (const cycle of allCycles) {
-      if (cycleIds.includes(cycle.id)) cycleMap.set(cycle.id, cycle);
+    const cycleRows = await fetchCyclesByIds(cycleIds);
+    for (const row of cycleRows) {
+      const cycle = mapBillingCycle(row);
+      cycleMap.set(cycle.id, cycle);
+      if (row.airtable_id) cycleMap.set(row.airtable_id, cycle);
     }
   }
   return invoices.map((invoice) => {
@@ -736,27 +806,21 @@ export async function listAllClientModelAssignments(): Promise<ClientModelRecord
 
 export async function getClientModels(clientId: string): Promise<ClientModelRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
-  const [assignments, models] = await Promise.all([
-    sbSelectAll<ClientModelRow>(CLIENT_MODELS),
-    sbSelectAll<ModelRow>(BILLING_MODELS),
-  ]);
+  const assignments = await selectByClientOverlap<ClientModelRow>(CLIENT_MODELS, uuidIdsOf(linked));
+  const scoped = assignments.filter((rec) => (rec.client ?? []).some((c) => linked.includes(c)));
+  const modelUuids = [...new Set(scoped.flatMap((rec) => rec.model ?? []).filter(Boolean))];
+  const models = await fetchModelsByIds(modelUuids);
   const modelNameById = new Map(models.map((m) => [m.id, m.model_name ?? ""]));
-  const airtableToUuid = new Map<string, string>();
-  for (const m of models) {
-    if (m.airtable_id) airtableToUuid.set(m.airtable_id, m.id);
-  }
-  return assignments
-    .filter((rec) => (rec.client ?? []).some((c) => linked.includes(c)))
-    .map((rec) => {
-      const modelUuids = rec.model ?? [];
-      const modelId = modelUuids[0];
-      return {
-        id: publicId(rec),
-        client: (rec.client ?? []) as string[],
-        model: modelUuids,
-        model_name: modelId ? modelNameById.get(modelId) : undefined,
-      };
-    });
+  return scoped.map((rec) => {
+    const modelIds = rec.model ?? [];
+    const modelId = modelIds[0];
+    return {
+      id: publicId(rec),
+      client: (rec.client ?? []) as string[],
+      model: modelIds,
+      model_name: modelId ? modelNameById.get(modelId) : undefined,
+    };
+  });
 }
 
 export async function getLatestSubmissionForCycle(
@@ -767,7 +831,15 @@ export async function getLatestSubmissionForCycle(
     clientId ? resolveClientLinkedIds(clientId) : Promise.resolve([] as string[]),
     resolveCycleLinkedIds(cycleId),
   ]);
-  const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
+  const cycleUuids = uuidIdsOf(cycleLinked);
+  const clientUuids = uuidIdsOf(linked);
+  const rows = cycleUuids.length
+    ? await sbSelectWhere<SubmissionRow>(SUBMISSIONS, (q) => {
+        let next = q.overlaps("billing_cycle", cycleUuids);
+        if (clientUuids.length) next = next.overlaps("client", clientUuids);
+        return next;
+      })
+    : [];
   const filtered = rows
     .filter((r) => (r.billing_cycle ?? []).some((c) => cycleLinked.includes(c)))
     .filter((r) => !clientId || (r.client ?? []).some((c) => linked.includes(c)))
@@ -779,7 +851,7 @@ export async function getPaymentSubmissionsForClient(
   clientId: string
 ): Promise<PaymentSubmissionRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
-  const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
+  const rows = await selectByClientOverlap<SubmissionRow>(SUBMISSIONS, uuidIdsOf(linked));
   const mapped = await mapSubmissions(rows);
   return mapped
     .filter((sub) => sub.client.some((c) => linked.includes(c)))
@@ -822,7 +894,18 @@ export async function createPaymentSubmission(
 
 export async function getCalendarEvents(clientId: string): Promise<CalendarEventRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
-  const rows = await sbSelectAll<CalendarRow>(CALENDAR);
+  const clientUuids = uuidIdsOf(linked);
+  const [globalRows, clientRows] = await Promise.all([
+    sbSelectWhere<CalendarRow>(CALENDAR, (q) => q.eq("scope", "global")),
+    selectByClientOverlap<CalendarRow>(CALENDAR, clientUuids),
+  ]);
+  const seen = new Set<string>();
+  const rows: CalendarRow[] = [];
+  for (const r of [...globalRows, ...clientRows]) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    rows.push(r);
+  }
   return rows
     .filter((r) => (r.scope ?? "") === "global" || (r.client ?? []).some((c) => linked.includes(c)))
     .map(mapCalendar)
@@ -910,7 +993,12 @@ async function listBillingCycleRevenuesForClientAndCycle(
 
 async function listPayableRevenuesForClient(clientId: string): Promise<BillingCycleRevenueRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
-  const rows = await sbSelectAll<RevenueRow>(REVENUES);
+  const clientUuids = uuidIdsOf(linked);
+  const rows = clientUuids.length
+    ? await sbSelectWhere<RevenueRow>(REVENUES, (q) =>
+        q.overlaps("client", clientUuids).in("status", ["announced", "overdue", "pending_review"])
+      )
+    : [];
   const filtered = rows.filter(
     (r) =>
       (r.client ?? []).some((c) => linked.includes(c)) &&
@@ -956,8 +1044,13 @@ export async function getClientCurrentChattingCycleFromRevenues(
     cycleIdToRevenues.set(cid, list);
   }
   const cycleIds = Array.from(cycleIdToRevenues.keys());
-  const allCycles = await getAllBillingCycles();
-  const cycleById = new Map(allCycles.map((c) => [c.id, c]));
+  const cycleRows = await fetchCyclesByIds(cycleIds);
+  const cycleById = new Map<string, BillingCycleRecord>();
+  for (const row of cycleRows) {
+    const cycle = mapBillingCycle(row);
+    cycleById.set(cycle.id, cycle);
+    if (row.airtable_id) cycleById.set(row.airtable_id, cycle);
+  }
   const validCycles = cycleIds
     .map((id) => cycleById.get(id))
     .filter((c): c is BillingCycleRecord => c != null && c.kind === "chatting_weekly");
@@ -975,6 +1068,11 @@ export async function getClientCurrentChattingCycleFromRevenues(
 
 export async function getAllClientBillingModels(): Promise<ModelRecord[]> {
   return listAllBillingModels();
+}
+
+export async function getBillingModelsByIds(ids: string[]): Promise<ModelRecord[]> {
+  const rows = await fetchModelsByIds(ids);
+  return rows.map(mapModelRow);
 }
 
 export async function getClientAttentionItems(clientId: string): Promise<ClientAttentionItem[]> {

@@ -530,6 +530,27 @@ export async function listAllVAContentAssignmentsInRange(fromDate: string, toDat
 }
 
 /** VA → model content rows where `model` stores stable text id (`modelss.model_id`, e.g. `model_1772908052608_mk2psv`). */
+export async function listVAContentAssignmentsForModels(
+  modelRecordIds: string[],
+): Promise<VaContentAssignmentRecord[]> {
+  const unique = [...new Set(modelRecordIds.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) return [];
+  if (isSupabaseBackend()) {
+    return (await import("./va-content-assignments-supabase")).listVAContentAssignmentsForModels(unique);
+  }
+  const chunks = await Promise.all(unique.map((id) => listVAContentAssignmentsForModel(id)));
+  const seen = new Set<string>();
+  const out: VaContentAssignmentRecord[] = [];
+  for (const rows of chunks) {
+    for (const row of rows) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
 export async function listVAContentAssignmentsForModel(
   modelRecordId: string,
   stableModelId?: string | null,

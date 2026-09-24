@@ -5,7 +5,7 @@ import { ROUTES } from "@/lib/routes";
 import { PaymentForm } from "@/components/client-portal/payment-form";
 import { RefreshButton } from "@/components/client-portal/refresh-button";
 import {
-  getAllClientBillingModels,
+  getBillingModelsByIds,
   getClientCurrentChattingCycleFromRevenues,
   getClientPaymentMethods,
   getLatestSubmissionForCycle,
@@ -29,16 +29,17 @@ export default async function ClientPayChattingPage({
   const cycle = result?.cycle ?? null;
   const cycleRevenues = result?.payableRevenues ?? [];
 
-  const [methods, allModels] = await Promise.all([
+  const modelIds = [...new Set(cycleRevenues.flatMap((r) => r.model).filter(Boolean))];
+  const [methods, scopedModels] = await Promise.all([
     getClientPaymentMethods(clientId),
-    getAllClientBillingModels(),
+    getBillingModelsByIds(modelIds),
   ]);
 
   const latestSubmission = cycle?.id
     ? await getLatestSubmissionForCycle(cycle.id, clientId)
     : null;
 
-  const modelIdToName = Object.fromEntries(allModels.map((m) => [m.id, m.model_name]));
+  const modelIdToName = Object.fromEntries(scopedModels.map((m) => [m.id, m.model_name]));
   const now = new Date();
   const serverDateStrings = {
     today: now.toISOString().slice(0, 10),

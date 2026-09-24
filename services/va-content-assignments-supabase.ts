@@ -68,44 +68,58 @@ async function attachmentsFromUrls(v: string[] | null | undefined): Promise<VaAt
   return signed.map((a) => ({ url: a.url, filename: a.filename }));
 }
 
-async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
-  const modelUuids = row.model ?? [];
-  const vaUuids = row.va ?? [];
-  const [modelAtIds, vaAtIds, file_attachment] = await Promise.all([
-    sbAirtableIdsForUuids("modelss", modelUuids),
-    sbAirtableIdsForUuids("users", vaUuids),
-    attachmentsFromUrls(row.file_attachment),
+async function mapRows(rows: Row[]): Promise<VaContentAssignmentRecord[]> {
+  if (!rows.length) return [];
+  const allModelUuids = [...new Set(rows.flatMap((r) => r.model ?? []).filter(Boolean))];
+  const allVaUuids = [...new Set(rows.flatMap((r) => r.va ?? []).filter(Boolean))];
+  const [modelAtIds, vaAtIds] = await Promise.all([
+    sbAirtableIdsForUuids("modelss", allModelUuids),
+    sbAirtableIdsForUuids("users", allVaUuids),
   ]);
-  const rawFileUrl = (row.file_url ?? "").trim();
-  let file_url: string | null = rawFileUrl || null;
-  if (file_url) {
-    const { resolveStorageUrl } = await import("@/lib/supabase-signed-url");
-    file_url = await resolveStorageUrl(file_url);
-  }
-  return {
-    id: publicId(row),
-    assignment_id: row.assignment_id ?? "",
-    model_id: modelAtIds[0] ?? "",
-    va_id: vaAtIds[0] ?? null,
-    title: row.title ?? "",
-    description: row.description ?? "",
-    content_type: row.content_type ?? "",
-    file_url,
-    file_attachment,
-    deadline: row.deadline ?? null,
-    scheduled_date: row.scheduled_date ?? null,
-    status: row.status ?? "",
-    priority: row.priority ?? "",
-    model_notes: row.model_notes ?? "",
-    va_notes: row.va_notes ?? "",
-    completed_at: row.completed_at ?? null,
-    created_at: row.created_time ?? "",
-    updated_at: row.updated_at ?? "",
-    rejection_reason: typeof row.rejection_reason === "string" ? row.rejection_reason : "",
-    admin_edit_notes: typeof row.admin_edit_notes === "string" ? row.admin_edit_notes : "",
-    reviewed_by: typeof row.reviewed_by === "string" ? row.reviewed_by : "",
-    reviewed_at: typeof row.reviewed_at === "string" ? row.reviewed_at : null,
-  };
+  const modelAt = new Map(allModelUuids.map((id, i) => [id, modelAtIds[i] ?? id]));
+  const vaAt = new Map(allVaUuids.map((id, i) => [id, vaAtIds[i] ?? id]));
+  return Promise.all(
+    rows.map(async (row) => {
+      const modelUuid = (row.model ?? []).find(Boolean);
+      const vaUuid = (row.va ?? []).find(Boolean);
+      const file_attachment = await attachmentsFromUrls(row.file_attachment);
+      const rawFileUrl = (row.file_url ?? "").trim();
+      let file_url: string | null = rawFileUrl || null;
+      if (file_url) {
+        const { resolveStorageUrl } = await import("@/lib/supabase-signed-url");
+        file_url = await resolveStorageUrl(file_url);
+      }
+      return {
+        id: publicId(row),
+        assignment_id: row.assignment_id ?? "",
+        model_id: modelUuid ? modelAt.get(modelUuid) ?? modelUuid : "",
+        va_id: vaUuid ? vaAt.get(vaUuid) ?? vaUuid : null,
+        title: row.title ?? "",
+        description: row.description ?? "",
+        content_type: row.content_type ?? "",
+        file_url,
+        file_attachment,
+        deadline: row.deadline ?? null,
+        scheduled_date: row.scheduled_date ?? null,
+        status: row.status ?? "",
+        priority: row.priority ?? "",
+        model_notes: row.model_notes ?? "",
+        va_notes: row.va_notes ?? "",
+        completed_at: row.completed_at ?? null,
+        created_at: row.created_time ?? "",
+        updated_at: row.updated_at ?? "",
+        rejection_reason: typeof row.rejection_reason === "string" ? row.rejection_reason : "",
+        admin_edit_notes: typeof row.admin_edit_notes === "string" ? row.admin_edit_notes : "",
+        reviewed_by: typeof row.reviewed_by === "string" ? row.reviewed_by : "",
+        reviewed_at: typeof row.reviewed_at === "string" ? row.reviewed_at : null,
+      };
+    })
+  );
+}
+
+async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 /** Resolve VA public id (Airtable `rec…` or Postgres uuid) → users.id uuid(s). */
@@ -271,13 +285,21 @@ export async function listVAContentAssignmentsForModel(
   _stableModelId?: string | null
 ): Promise<VaContentAssignmentRecord[]> {
   if (!modelRecordId) return [];
-  // Schema has `model uuid[]` only — no `model_id` text column on this table.
-  const modelUuid = await modelUuidForKey(modelRecordId);
-  if (!modelUuid) return [];
+  const rows = await listVAContentAssignmentsForModels([modelRecordId]);
+  return rows.filter((row) => !isHiddenFromModelStatus(row.status));
+}
+
+export async function listVAContentAssignmentsForModels(
+  modelRecordIds: string[]
+): Promise<VaContentAssignmentRecord[]> {
+  const unique = [...new Set(modelRecordIds.map((id) => id.trim()).filter(Boolean))];
+  if (!unique.length) return [];
+  const modelUuids = [...new Set((await sbUuidsForAirtableIds("modelss", unique)).filter(Boolean))];
+  if (!modelUuids.length) return [];
   const sb = getSupabaseServiceClient();
-  const { data, error } = await sb.from(TABLE).select("*").contains("model", [modelUuid]);
+  const { data, error } = await sb.from(TABLE).select("*").overlaps("model", modelUuids);
   if (error) throw new Error(`va_content_assignments: ${error.message}`);
-  const mapped = await Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
+  const mapped = await mapRows((data ?? []) as unknown as Row[]);
   return sortAssignmentsForModel(mapped.filter((row) => !isHiddenFromModelStatus(row.status)));
 }
 

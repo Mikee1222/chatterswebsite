@@ -849,6 +849,15 @@ export async function getAllClientBillingModels(): Promise<ModelRecord[]> {
   return listAllBillingModels();
 }
 
+export async function getBillingModelsByIds(ids: string[]): Promise<ModelRecord[]> {
+  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getBillingModelsByIds(ids);
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (!unique.length) return [];
+  const all = await listAllBillingModels();
+  const wanted = new Set(unique);
+  return all.filter((m) => wanted.has(m.id));
+}
+
 export async function getClientAttentionItems(clientId: string): Promise<ClientAttentionItem[]> {
   if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientAttentionItems(clientId);
   const [invoices, billingCycles, submissions] = await Promise.all([

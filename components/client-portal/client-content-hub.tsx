@@ -1032,7 +1032,7 @@ export function ClientContentHub({ models }: Props) {
         }}
         request={detailCustom}
         language="en"
-        variant="model"
+        variant="client"
         onSchedule={() => {
           if (!detailCustom) return;
           setScheduleCustom(detailCustom);
@@ -1279,7 +1279,7 @@ export function ClientContentHub({ models }: Props) {
                 </p>
               ) : null}
               <p className="text-sm leading-relaxed text-white/65">
-                This tells the chatter and admins the custom content is uploaded.
+                This tells the agency the custom content is uploaded.
               </p>
               <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
                 <button
