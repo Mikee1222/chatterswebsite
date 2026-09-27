@@ -96,13 +96,13 @@ export const MARKETING_EXECUTIVE_FUNCTIONS: MarketingExecutiveFunctionSeed[] = [
 - iCloud folders per creator:
   - **Social Media Posts:** Model → Content to Upload → Social Media Posts → Year → Month → Carousel 1, 2…
   - **Stories:** Model → Content to Upload → Stories To Upload → CTA or Daily → Year → Month → Week → Day (weeks 1–7, 8–15, κ.λπ.)
-  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account ή Secondary Account → Trial ή Grid
+  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account ή Secondary Account → Trial
 - Telegram → Templates & Assets channel
 - Discord → today's brief / caption drop from Marketing Manager
 
 **Steps**
 1. Open Discord/Telegram → check σημερινό brief: captions, hooks, posting concepts.
-2. Open iCloud → \`Model → Content to Upload → Video To Upload → … → Trial ή Grid\` → identify videos στο Video To Upload path (Main/Secondary → Trial ή Grid).
+2. Open iCloud → \`Model → Content to Upload → Video To Upload → … → Trial\` → identify videos στο Video To Upload path (Main/Secondary → Trial).
 3. Open \`Model → Content to Upload → Video To Upload → … → Trial\` — αν δεν είναι ready, ping iCloud Manager.
 4. Open Templates & Assets channel — pull ready stories/captions πριν φτιάξεις από scratch.
 5. Pre-check: όλα τα videos είναι 9:16 vertical.
@@ -176,7 +176,7 @@ Main: **12:00** και **20:00**. Alt: +1 repurposed copy μέσα στη μέρ
 
 **Steps**
 1. Account status check + warm-up done.
-2. Download video από iCloud → Video To Upload → assigned day folder → Trial ή Grid.
+2. Download video από iCloud → Video To Upload → assigned day folder → Trial.
 3. IG → + → Reel → select.
 4. Pick strong cover frame — όχι random.
 5. Paste caption από Content Director **as-is** — μην το ξαναγράφεις.
@@ -184,7 +184,7 @@ Main: **12:00** και **20:00**. Alt: +1 repurposed copy μέσα στη μέρ
 7. Audio: trending sound only αν ταιριάζει, αλλιώς original.
 8. Verify Trial toggle: OFF για normal Reel, ON για trial (ξεχωριστή SOP).
 9. Share → confirm live → screenshot.
-10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Grid (posted).
+10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Trial (posted).
 11. Stay in app 1-2 minutes (active-user signal).
 12. Log post στο daily sheet: account / time / post ID / first 30min views.
 
@@ -211,13 +211,13 @@ Main: **12:00** και **20:00**. Alt: +1 repurposed copy μέσα στη μέρ
     cadence_type: `daily`,
     cadence_note: `Ανά assigned Task schedule — 2 posts/account/day`,
     sop_content: `**Σκοπός**
-Daily TikTok posting — video από assigned iCloud Video To Upload folder (Trial ή Grid path). Δεν επιλέγεις source· ακολουθείς το assigned Task.
+Daily TikTok posting — video από assigned iCloud Video To Upload folder (Trial folder). Δεν επιλέγεις source· ακολουθείς το assigned Task.
 
 **Πότε**
 Ανά assigned Task schedule (2 posts/account/day). Order: **Scroll → Like → Post → F4F**.
 
 **Tools**
-- iCloud → Video To Upload (assigned day/account/Trial ή Grid)
+- iCloud → Video To Upload (assigned day/account/Trial)
 - TikTok app
 - Trending sounds library (TT)
 
@@ -1213,7 +1213,7 @@ Per available variant from Cloud Manager. Daily cadence depends on account tier:
 7. Wait 60s → verify: reel appears στο "Trials" section, NOT στο grid.
 8. Screenshot to posting log.
 9. Monitor first-hour views για anomalies.
-10. Move variant στο \`Grid (posted) subfolder\` per Winners Vault SOP.
+10. Move variant στο \`Trial (posted) subfolder\` per Winners Vault SOP.
 
 **Common issues & fixes**
 - Reel appeared στο grid → toggle was OFF → delete + repost με toggle ON.

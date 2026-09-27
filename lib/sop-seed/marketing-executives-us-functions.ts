@@ -97,13 +97,13 @@ Daily morning, after Account Status check, before you start posting.
 - iCloud folders per creator:
   - **Social Media Posts:** Model → Content to Upload → Social Media Posts → Year → Month → Carousel 1, 2…
   - **Stories:** Model → Content to Upload → Stories To Upload → CTA or Daily → Year → Month → Week → Day (weeks 1–7, 8–15, etc.)
-  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account or Secondary Account → Trial or Grid
+  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account or Secondary Account → Trial
 - Telegram → Templates & Assets channel
 - Discord → today's brief / caption drop from Marketing Manager
 
 **Steps**
 1. Open Discord/Telegram → check today's brief: captions, hooks, posting concepts.
-2. Open iCloud → \`Model → Content to Upload → Video To Upload → … → Trial or Grid\` → identify videos in Video To Upload path (Main/Secondary → Trial or Grid).
+2. Open iCloud → \`Model → Content to Upload → Video To Upload → … → Trial\` → identify videos in Video To Upload path (Main/Secondary → Trial).
 3. Open \`Model → Content to Upload → Video To Upload → … → Trial\` — if not ready, ping iCloud Manager.
 4. Open Templates & Assets channel — pull ready stories/captions before building from scratch.
 5. Pre-check: all videos are 9:16 vertical.
@@ -115,7 +115,7 @@ Daily morning, after Account Status check, before you start posting.
 **Common mistakes**
 - Building from scratch when a template exists — duplicate effort + inconsistent voice.
 - Not checking iCloud before posting → discover missing brief at noon.
-- Re-using a file already marked posted in Grid/Trial folder → duplicate detection penalty.
+- Re-using a file already marked posted in Trial folder → duplicate detection penalty.
 
 **Escalation**
 - Missing brief for the day after 10:00 AM local → ping Marketing Manager + Content Director.
@@ -176,7 +176,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator's local US time zone. Alt: +1 
 
 **Steps**
 1. Account status check + warm-up done.
-2. Download video from iCloud → Video To Upload → assigned day folder → Trial or Grid.
+2. Download video from iCloud → Video To Upload → assigned day folder → Trial.
 3. IG → + → Reel → select.
 4. Pick a strong cover frame — not random.
 5. Paste caption from Content Director **as-is** — do not rewrite.
@@ -184,7 +184,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator's local US time zone. Alt: +1 
 7. Audio: trending sound only if it fits; otherwise original.
 8. Verify Trial toggle: OFF for normal Reel, ON for trial (separate SOP).
 9. Share → confirm live → screenshot.
-10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Grid (posted).
+10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Trial (posted).
 11. Stay in app 1–2 minutes (active-user signal).
 12. Log post in daily sheet: account / time / post ID / first 30min views.
 
@@ -211,13 +211,13 @@ Main: **12:00 PM** and **8:00 PM** in the creator's local US time zone. Alt: +1 
     cadence_type: `daily`,
     cadence_note: `Per assigned Task schedule — 2 posts/account/day`,
     sop_content: `**Purpose**
-Daily TikTok posting — video from assigned iCloud Video To Upload folder (Trial or Grid path). You do not pick the source; follow the assigned Task.
+Daily TikTok posting — video from assigned iCloud Video To Upload folder (Trial folder). You do not pick the source; follow the assigned Task.
 
 **When**
 Per assigned Task schedule (2 posts/account/day). Order: **Scroll → Like → Post → F4F**.
 
 **Tools**
-- iCloud → Video To Upload (assigned day/account/Trial or Grid)
+- iCloud → Video To Upload (assigned day/account/Trial)
 - TikTok app
 - Trending sounds library (TT)
 
@@ -893,7 +893,7 @@ Post a Trial Reel — IG feature showing reel only to non-followers, never on gr
 New (<30d): 1–3/day. Aged (30+d): 5–20/day. Warmed (90+d): 20–50/day. Power Pages (200+d): 50–100+/day.
 
 **Steps**
-Enable Trial Reels in Professional Dashboard (one-time). Pull variant → New Reel → caption from Templates → cover → **Toggle Trial ON** → post → wait 60s verify in Trials section NOT grid → screenshot log → move to Grid (posted) subfolder.
+Enable Trial Reels in Professional Dashboard (one-time). Pull variant → New Reel → caption from Templates → cover → **Toggle Trial ON** → post → wait 60s verify in Trials section NOT grid → screenshot log → move to Trial (posted) subfolder.
 
 **Time**
 5–8 min per Trial post.

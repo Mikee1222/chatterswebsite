@@ -14,12 +14,12 @@ GREEK_JSON = Path("/tmp/greek-source.json")
 ICLOUD_TOOLS_GR = """- iCloud folders per creator:
   - **Social Media Posts:** Model → Content to Upload → Social Media Posts → Year → Month → Carousel 1, 2…
   - **Stories:** Model → Content to Upload → Stories To Upload → CTA or Daily → Year → Month → Week → Day (weeks 1–7, 8–15, κ.λπ.)
-  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account ή Secondary Account → Trial ή Grid"""
+  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account ή Secondary Account → Trial"""
 
 ICLOUD_TOOLS_EN = """- iCloud folders per creator:
   - **Social Media Posts:** Model → Content to Upload → Social Media Posts → Year → Month → Carousel 1, 2…
   - **Stories:** Model → Content to Upload → Stories To Upload → CTA or Daily → Year → Month → Week → Day (weeks 1–7, 8–15, etc.)
-  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account or Secondary Account → Trial or Grid"""
+  - **Videos:** Model → Content to Upload → Video To Upload → Year → Month → Week → Day → Main Account or Secondary Account → Trial"""
 
 CTA_SCHEDULE_GR = (
     "weekly Link A/B schedule (model_story_link_config): Δευτέρα Link A, Τετάρτη Link B, "
@@ -109,7 +109,7 @@ def strip_watermark_lines(text: str) -> str:
 
 def replace_icloud(text: str, lang: str) -> str:
     tools = ICLOUD_TOOLS_GR if lang == "gr" else ICLOUD_TOOLS_EN
-    trial = "Trial ή Grid" if lang == "gr" else "Trial or Grid"
+    trial = "Trial"
     pairs = [
         (r"iCloud folder per creator \(`[^`]+`\)", tools),
         (r"- iCloud folder per creator \([^)]+\)", tools),
@@ -118,7 +118,7 @@ def replace_icloud(text: str, lang: str) -> str:
         (r"/Month_Day/Trials/", "Video To Upload → … → Trial"),
         (
             r"Not Used → Used → IG → \[Date\] → Main",
-            "Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Grid (posted)",
+            "Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Trial (posted)",
         ),
         (r"Not Used → Used", "Video To Upload → posted subfolder"),
         (
@@ -211,13 +211,13 @@ def build_greek(source: list[dict]) -> list[dict]:
             row["kpi"] = "2 TT posts/account/day· vertical 9:16 100%"
             row["cadence_note"] = "Ανά assigned Task schedule — 2 posts/account/day"
             row["sop_content"] = f"""**Σκοπός**
-Daily TikTok posting — video από assigned iCloud Video To Upload folder (Trial ή Grid path). Δεν επιλέγεις source· ακολουθείς το assigned Task.
+Daily TikTok posting — video από assigned iCloud Video To Upload folder (Trial folder). Δεν επιλέγεις source· ακολουθείς το assigned Task.
 
 **Πότε**
 Ανά assigned Task schedule (2 posts/account/day). Order: **Scroll → Like → Post → F4F**.
 
 **Tools**
-- iCloud → Video To Upload (assigned day/account/Trial ή Grid)
+- iCloud → Video To Upload (assigned day/account/Trial)
 - TikTok app
 - Trending sounds library (TT)
 
@@ -418,7 +418,7 @@ Main: **12:00** και **20:00**. Alt: +1 repurposed copy μέσα στη μέρ
 
 **Steps**
 1. Account status check + warm-up done.
-2. Download video από iCloud → Video To Upload → assigned day folder → Trial ή Grid.
+2. Download video από iCloud → Video To Upload → assigned day folder → Trial.
 3. IG → + → Reel → select.
 4. Pick strong cover frame — όχι random.
 5. Paste caption από Content Director **as-is** — μην το ξαναγράφεις.
@@ -426,7 +426,7 @@ Main: **12:00** και **20:00**. Alt: +1 repurposed copy μέσα στη μέρ
 7. Audio: trending sound only αν ταιριάζει, αλλιώς original.
 8. Verify Trial toggle: OFF για normal Reel, ON για trial (ξεχωριστή SOP).
 9. Share → confirm live → screenshot.
-10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Grid (posted).
+10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Trial (posted).
 11. Stay in app 1-2 minutes (active-user signal).
 12. Log post στο daily sheet: account / time / post ID / first 30min views.
 
@@ -469,7 +469,7 @@ Main: **12:00** και **20:00**. Alt: +1 repurposed copy μέσα στη μέρ
                     content = content.replace("keep IP rotation; log pause date", "log pause date")
                 if so == 26:
                     content = replace_icloud(content, "gr")
-                    content = content.replace("/AlreadyPosted/", "Grid (posted) subfolder")
+                    content = content.replace("/AlreadyPosted/", "Trial (posted) subfolder")
                 if so == 15:
                     content = content.replace("10-min warm-up", "15-min warm-up")
                     content = content.replace(
@@ -574,7 +574,7 @@ First task of every session, and again each time you switch accounts on the same
         content = content.replace("after IP/status check", "after Account Status check")
         content = content.replace(
             '- Using a file already marked "Used" → duplicate detection penalty.',
-            "- Re-using a file already marked posted in Grid/Trial folder → duplicate detection penalty.",
+            "- Re-using a file already marked posted in Trial folder → duplicate detection penalty.",
         )
         row["sop_content"] = content
 
@@ -601,7 +601,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator's local US time zone. Alt: +1 
 
 **Steps**
 1. Account status check + warm-up done.
-2. Download video from iCloud → Video To Upload → assigned day folder → Trial or Grid.
+2. Download video from iCloud → Video To Upload → assigned day folder → Trial.
 3. IG → + → Reel → select.
 4. Pick a strong cover frame — not random.
 5. Paste caption from Content Director **as-is** — do not rewrite.
@@ -609,7 +609,7 @@ Main: **12:00 PM** and **8:00 PM** in the creator's local US time zone. Alt: +1 
 7. Audio: trending sound only if it fits; otherwise original.
 8. Verify Trial toggle: OFF for normal Reel, ON for trial (separate SOP).
 9. Share → confirm live → screenshot.
-10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Grid (posted).
+10. Move file: Video To Upload → [Year] → [Month] → [Week] → [Day] → [Account] → Trial (posted).
 11. Stay in app 1–2 minutes (active-user signal).
 12. Log post in daily sheet: account / time / post ID / first 30min views.
 
@@ -634,13 +634,13 @@ Main: **12:00 PM** and **8:00 PM** in the creator's local US time zone. Alt: +1 
         row["kpi"] = "2 TT posts/account/day; vertical 9:16 100%"
         row["cadence_note"] = "Per assigned Task schedule — 2 posts/account/day"
         row["sop_content"] = """**Purpose**
-Daily TikTok posting — video from assigned iCloud Video To Upload folder (Trial or Grid path). You do not pick the source; follow the assigned Task.
+Daily TikTok posting — video from assigned iCloud Video To Upload folder (Trial folder). You do not pick the source; follow the assigned Task.
 
 **When**
 Per assigned Task schedule (2 posts/account/day). Order: **Scroll → Like → Post → F4F**.
 
 **Tools**
-- iCloud → Video To Upload (assigned day/account/Trial or Grid)
+- iCloud → Video To Upload (assigned day/account/Trial)
 - TikTok app
 - Trending sounds library (TT)
 
@@ -875,7 +875,7 @@ Unauthorized Meta connection → Marketing Manager + Head of Account Defense. Un
 
     elif so == 26:
         content = replace_icloud(content, "en")
-        content = content.replace("move to AlreadyPosted", "move to Grid (posted) subfolder")
+        content = content.replace("move to AlreadyPosted", "move to Trial (posted) subfolder")
         row["sop_content"] = content
 
     elif so == 28:

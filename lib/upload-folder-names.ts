@@ -1,7 +1,7 @@
 /** Stored iCloud upload folder name(s) — JSON array, newline list, or a single legacy URL/name. */
 
 export const UPLOAD_FOLDER_NAME_HINT =
-  "Enter the iCloud folder name — not a URL. Path: Video To Upload → Year → Month → Week → Day → Main or Secondary → Trial or Grid.";
+  "Enter the iCloud folder name — not a URL. Path: Video To Upload → Year → Month → Week → Day → Main or Secondary → Trial.";
 
 export const UPLOAD_FOLDER_NAME_PLACEHOLDER =
   "e.g. 2026 · September · Week 4 · 24 · Main Account · Trial";
