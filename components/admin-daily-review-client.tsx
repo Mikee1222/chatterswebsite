@@ -103,7 +103,12 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
   const selectedDateRef = React.useRef(selectedDate);
   selectedDateRef.current = selectedDate;
 
+  const skipInitialDateLoad = React.useRef(true);
   React.useEffect(() => {
+    if (skipInitialDateLoad.current) {
+      skipInitialDateLoad.current = false;
+      return;
+    }
     void loadChecklist(selectedDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);

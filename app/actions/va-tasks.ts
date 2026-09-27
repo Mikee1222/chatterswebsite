@@ -237,7 +237,14 @@ export async function deleteVaTaskAction(id: string): Promise<VaTaskActionResult
     };
   }
   try {
-    await deleteVaTask(id);
+    const existing = await getVaTaskById(id);
+    if (existing?.is_recurring) {
+      // Unscoped delete of a recurring row must skip that Athens day so the
+      // series cannot immediately re-project a virtual occurrence.
+      await applyRecurringDeleteScope({ task: existing, scope: "this_only" });
+    } else {
+      await deleteVaTask(id);
+    }
     revalidateVaTaskPaths();
     return { success: true };
   } catch (e) {

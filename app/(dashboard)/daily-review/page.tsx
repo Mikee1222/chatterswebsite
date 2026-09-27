@@ -26,29 +26,37 @@ export default async function DailyReviewSubmitPage() {
   const managerName = spotCheckManagerName(user);
   const managerId = spotCheckManagerId(user);
   const today = todayReviewIso();
-  const [allReviews, todayRow, checklist] = await Promise.all([
+  const emptyChecklist = {
+    date: today,
+    vas: [],
+    summary: {
+      total_items: 0,
+      va_completed: 0,
+      verified: 0,
+      flagged: 0,
+      unverified: 0,
+      vas_reviewed: 0,
+      tasks: 0,
+    },
+    review_id: null as string | null,
+  };
+
+  const [allReviews, todayBundle] = await Promise.all([
     getDailyReviews({ manager_id: managerId }).catch(() => []),
-    getDailyReviewByDate(today, managerName, managerId).catch(() => null),
-    getDailyReviewChecklistForDate({ date: today }).catch(() => ({
-      date: today,
-      vas: [],
-      summary: {
-        total_items: 0,
-        va_completed: 0,
-        verified: 0,
-        flagged: 0,
-        unverified: 0,
-        vas_reviewed: 0,
-        tasks: 0,
-      },
-      review_id: null,
-    })),
+    getDailyReviewByDate(today, managerName, managerId)
+      .catch(() => null)
+      .then(async (todayRow) => {
+        const checklist = await getDailyReviewChecklistForDate({
+          date: today,
+          reviewId: todayRow?.id ?? null,
+        }).catch(() => emptyChecklist);
+        return { todayRow, checklist };
+      }),
   ]);
 
   const mySubmissions = filterDailyReviewsByManager(allReviews, managerName, managerId);
-  const initialChecklist = todayRow
-    ? await getDailyReviewChecklistForDate({ date: today, reviewId: todayRow.id }).catch(() => checklist)
-    : checklist;
+  const todayRow = todayBundle.todayRow;
+  const initialChecklist = todayBundle.checklist;
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">

@@ -4,7 +4,7 @@
  */
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { toReviewDateKey } from "@/lib/marketing-reviews-helpers";
-import { filterTasksByAthensYmd } from "@/lib/va-task-date-filter";
+import { taskMatchesAthensYmd } from "@/lib/va-task-date-filter";
 import {
   listVerificationsForReview,
   listVerificationsForReviews,
@@ -15,7 +15,7 @@ import {
   getDailyReviews,
   type MarketingDailyReview,
 } from "@/services/marketing-reviews";
-import { batchSignUrlMap } from "@/lib/supabase-signed-url";
+import { batchSignUrlMap, isSbStorageToken } from "@/lib/supabase-signed-url";
 import {
   getPhasesForTasksDisplay,
   type PhaseItem,
@@ -23,7 +23,6 @@ import {
   type TaskPhase,
 } from "@/services/task-phases";
 import { getAllVaTasks } from "@/services/va-tasks";
-import { listActiveUsers } from "@/services/users";
 import type { VaTaskRecord } from "@/types";
 
 export type ChecklistItemVaStatus = "pending" | "completed";
@@ -180,19 +179,37 @@ function userDisplayName(u: { full_name?: string | null; email?: string | null; 
   return (u.full_name || u.email || u.id).trim();
 }
 
+/**
+ * Live checklist is current `va_tasks` rows only.
+ * Recurring virtual projections are excluded — a deleted occurrence must not
+ * reappear from a remaining series template.
+ */
 async function loadDayTasks(ymd: string): Promise<VaTaskRecord[]> {
   const target = toReviewDateKey(ymd) || getTodayYmdAthens();
-  // Pad ±1 day for due_date edge cases; include recurring anchors for virtual projection.
+  // Pad ±1 day for due_date timezone edge cases; do not pull the full recurring table.
   const start = addDaysAthensYmd(target, -1);
   const end = addDaysAthensYmd(target, 1);
   const tasks = await getAllVaTasks({
     athensStartYmd: start,
     athensEndYmd: end,
-    includeRecurring: true,
+    includeRecurring: false,
   });
-  return filterTasksByAthensYmd(tasks, target).filter(
-    (t) => t.status !== "skipped",
+  return tasks.filter(
+    (t) =>
+      !t.is_virtual_occurrence &&
+      t.status !== "skipped" &&
+      taskMatchesAthensYmd(t, target),
   );
+}
+
+function itemBelongsToLiveTask(item: PhaseItem, task: VaTaskRecord, phase: TaskPhase): boolean {
+  const itemTask = (item.task_id ?? "").trim();
+  if (!itemTask) return true;
+  if (itemTask === task.id) return true;
+  const phaseTask = (phase.task_id ?? "").trim();
+  if (phaseTask && itemTask === phaseTask) return true;
+  const source = task.virtual_source_task_id?.trim();
+  return Boolean(source && itemTask === source);
 }
 
 function buildNameMap(
@@ -272,7 +289,7 @@ async function ensureChecklistScreenshotsSigned(
     for (const task of va.tasks) {
       for (const item of task.items) {
         for (const s of item.screenshots) {
-          if (s.url) urls.push(s.url);
+          if (s.url && isSbStorageToken(s.url)) urls.push(s.url);
         }
       }
     }
@@ -303,6 +320,7 @@ function groupByVa(
   const byVa = new Map<string, DailyReviewChecklistVa>();
 
   for (const task of tasks) {
+    if (task.is_virtual_occurrence) continue;
     const phases = [...(phasesByTask[task.id] ?? [])].sort(
       (a, b) => (a.phase_number || 0) - (b.phase_number || 0),
     );
@@ -312,6 +330,7 @@ function groupByVa(
         (a, b) => (a.sort_order || 0) - (b.sort_order || 0),
       );
       for (const item of sortedItems) {
+        if (!itemBelongsToLiveTask(item, task, phase)) continue;
         items.push(mapItem(item, phase, task, verificationByItem));
       }
     }
@@ -359,22 +378,19 @@ export async function getDailyReviewChecklistForDate(params: {
   reviewId?: string | null;
 }): Promise<DailyReviewChecklistPayload> {
   const date = toReviewDateKey(params.date) || getTodayYmdAthens();
-  const [tasks, users] = await Promise.all([
-    loadDayTasks(date),
-    listActiveUsers().catch(() => []),
+  const tasks = await loadDayTasks(date);
+  const phaseSpecs = tasks.map((t) => ({
+    taskId: t.id,
+    sourceTaskId: t.virtual_source_task_id ?? null,
+  }));
+  const [phasesByTask, verifications] = await Promise.all([
+    getPhasesForTasksDisplay(phaseSpecs),
+    params.reviewId
+      ? listVerificationsForReview(params.reviewId).catch(() => [])
+      : Promise.resolve([] as DailyReviewItemVerification[]),
   ]);
 
-  const phasesByTask = await getPhasesForTasksDisplay(
-    tasks.map((t) => ({
-      taskId: t.id,
-      sourceTaskId: t.virtual_source_task_id ?? null,
-    })),
-  );
-
-  const nameMap = buildNameMap(users, tasks, phasesByTask);
-  const verifications = params.reviewId
-    ? await listVerificationsForReview(params.reviewId).catch(() => [])
-    : [];
+  const nameMap = buildNameMap([], tasks, phasesByTask);
   const verificationByItem = new Map(verifications.map((v) => [v.task_phase_item_id, v]));
 
   const vas = await ensureChecklistScreenshotsSigned(

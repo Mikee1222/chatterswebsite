@@ -17,6 +17,7 @@ import {
   sbInsert,
   sbSelectAll,
   sbSelectByPublicId,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   requireSbUuids,
@@ -237,6 +238,12 @@ export async function getVaTasksForUser(userRecordId: string): Promise<VaTaskRec
   return mapRows((data as Row[]) ?? []);
 }
 
+function addUtcYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days));
+  return dt.toISOString().slice(0, 10);
+}
+
 export async function getAllVaTasks(options?: VaTasksFetchRangeOptions): Promise<VaTaskRecord[]> {
   if (!options) {
     const rows = await sbSelectAll<Row>(TABLE);
@@ -248,8 +255,26 @@ export async function getAllVaTasks(options?: VaTasksFetchRangeOptions): Promise
   const includeBucketDates = options.includeBucketDates === true;
   const includeRecurring = options.includeRecurring !== false && !includeBucketDates;
 
-  // Paginate via sbSelectAll — bare select("*") silently caps at PostgREST max-rows.
-  const data = await sbSelectAll<Row>(TABLE);
+  // Pad UTC bounds so Athens-day bucketing on the edge of UTC±3 is not clipped,
+  // then re-filter with Athens YMD below (same as the previous full-table scan).
+  const lo = `${addUtcYmd(start, -1)}T00:00:00.000Z`;
+  const hi = `${addUtcYmd(end, 2)}T00:00:00.000Z`;
+
+  let data: Row[];
+  if (includeBucketDates) {
+    // completed_at / created_at OR — keep the full scan; rare admin bucket path.
+    data = await sbSelectAll<Row>(TABLE);
+  } else if (includeRecurring) {
+    const [ranged, recurring] = await Promise.all([
+      sbSelectWhere<Row>(TABLE, (q) => q.gte("due_date", lo).lt("due_date", hi)),
+      sbSelectWhere<Row>(TABLE, (q) => q.eq("is_recurring", true)),
+    ]);
+    const byId = new Map<string, Row>();
+    for (const row of [...ranged, ...recurring]) byId.set(row.id, row);
+    data = [...byId.values()];
+  } else {
+    data = await sbSelectWhere<Row>(TABLE, (q) => q.gte("due_date", lo).lt("due_date", hi));
+  }
 
   const athensYmd = (iso: string | null | undefined): string | null => {
     if (!iso) return null;
@@ -470,6 +495,14 @@ export async function deleteVaTask(id: string): Promise<void> {
     throw new Error(
       "Cannot delete a projected recurring day — it has no record yet. Delete a real occurrence of the series instead."
     );
+  }
+  const row = await sbSelectByPublicId<Row>(TABLE, id);
+  const taskIds = row
+    ? [...new Set([row.id, row.airtable_id, publicId(row)].map((v) => String(v ?? "").trim()).filter(Boolean))]
+    : [id.trim()].filter(Boolean);
+  if (taskIds.length) {
+    const { deletePhasesAndItemsForTaskIds } = await import("./task-phases-supabase");
+    await deletePhasesAndItemsForTaskIds(taskIds);
   }
   await sbDeleteByPublicId(TABLE, id);
 }

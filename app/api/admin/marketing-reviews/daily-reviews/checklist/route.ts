@@ -15,5 +15,7 @@ export async function GET(req: Request) {
   const dateParam = new URL(req.url).searchParams.get("date");
   const date = toReviewDateKey(dateParam) || todayReviewIso();
   const checklist = await getAdminDailyReviewChecklistForDate({ date });
+  // Screenshots (signed URLs) ride on the shared live checklist. Gated by
+  // DAILY_REVIEW_MANAGE — not a broader storage grant.
   return NextResponse.json({ checklist });
 }

@@ -301,6 +301,17 @@ export async function deletePhaseItem(id: string): Promise<void> {
   await sbDeleteByPublicId(T_ITEMS, id);
 }
 
+/** Cascade cleanup when a va_tasks row is deleted (task_id is text, not a FK). */
+export async function deletePhasesAndItemsForTaskIds(taskIds: string[]): Promise<void> {
+  const ids = [...new Set(taskIds.map((t) => t.trim()).filter(Boolean))];
+  if (!ids.length) return;
+  const sb = getSupabaseServiceClient();
+  const { error: itemsError } = await sb.from(T_ITEMS).delete().in("task_id", ids);
+  if (itemsError) throw new Error(`deletePhasesAndItemsForTaskIds items: ${itemsError.message}`);
+  const { error: phasesError } = await sb.from(T_PHASES).delete().in("task_id", ids);
+  if (phasesError) throw new Error(`deletePhasesAndItemsForTaskIds phases: ${phasesError.message}`);
+}
+
 export async function getPhaseRow(id: string): Promise<PhaseRow | null> {
   return sbSelectByPublicId<PhaseRow>(T_PHASES, id);
 }

@@ -149,9 +149,10 @@ function ItemScreenshotGallery({
                 <img
                   src={shot.url}
                   alt={shot.filename || `Screenshot ${index + 1}`}
-                  className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                  className="h-full w-full scale-110 object-cover blur-[3px] transition-[filter,transform] duration-200 group-hover:scale-125 group-hover:blur-0"
                   loading="lazy"
                 />
+                <span className="pointer-events-none absolute inset-0 bg-black/25 group-hover:bg-black/10" aria-hidden />
               </button>
             ))}
           </div>

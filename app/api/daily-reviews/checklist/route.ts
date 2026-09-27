@@ -30,6 +30,8 @@ export async function GET(req: Request) {
     date,
     reviewId: review?.id ?? null,
   });
+  // Screenshots (signed URLs) are part of the live checklist — same payload for
+  // manager/supervisor submit as admin manage. Gated by DAILY_REVIEW_SUBMIT.
   return NextResponse.json({ checklist, review });
 }
 
