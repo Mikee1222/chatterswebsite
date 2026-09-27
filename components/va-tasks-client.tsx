@@ -52,10 +52,32 @@ type Props = {
   initialActiveShift?: ActiveShift | null;
   canManage?: boolean;
   enabledTimerCategories?: import("@/lib/task-step-types").TaskStepType[];
+  /** SSR checklist status for today's real tasks — full reload must not paint all-unchecked. */
+  initialTaskPhases?: Record<string, TaskPhase[]>;
 };
 
 const DATE_VIEW_GROUP_OPTS = { forDateView: true as const };
 const TASK_LIST_INITIAL_CAP = 40;
+
+function mergeFetchedPhasesPreservingLocalComplete(
+  prev: TaskPhase[] | undefined,
+  fetched: TaskPhase[],
+  keepItemIds: Set<string>,
+): TaskPhase[] {
+  if (!keepItemIds.size || !prev?.length) return fetched;
+  const localById = new Map<string, PhaseItem>();
+  for (const phase of prev) {
+    for (const item of phase.items ?? []) localById.set(item.id, item);
+  }
+  return fetched.map((phase) => ({
+    ...phase,
+    items: (phase.items ?? []).map((item) => {
+      if (!keepItemIds.has(item.id) || item.status === "completed") return item;
+      const local = localById.get(item.id);
+      return local?.status === "completed" ? local : item;
+    }),
+  }));
+}
 
 function isPastDue(isoLike: string | null | undefined): boolean {
   if (!isoLike?.trim()) return false;
@@ -477,6 +499,7 @@ export function VaTasksClient({
   initialActiveShift = null,
   canManage = false,
   enabledTimerCategories = [],
+  initialTaskPhases = {},
 }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
@@ -527,7 +550,10 @@ export function VaTasksClient({
     useVaActiveTaskTimer(timerTrackingEnabled);
   useShiftTimerAutoStop(onShift, activeTimerEntry, setActiveTimerEntry);
 
-  const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
+  const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>(
+    () => initialTaskPhases,
+  );
+  const [savingItemIds, setSavingItemIds] = React.useState<Record<string, true>>({});
   const [phasesLoadingIds, setPhasesLoadingIds] = React.useState<Record<string, true>>({});
   const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});
   const modelAccountsRef = React.useRef(modelAccounts);
@@ -550,8 +576,9 @@ export function VaTasksClient({
   const [proofError, setProofError] = React.useState<string | null>(null);
   const [screenshotUploading, setScreenshotUploading] = React.useState(false);
   const [observationsSavingId, setObservationsSavingId] = React.useState<string | null>(null);
-  const phaseRollbackRef = React.useRef<Record<string, TaskPhase[]>>({});
   const inflightItemIdsRef = React.useRef(new Set<string>());
+  const confirmedCompleteItemIdsRef = React.useRef(new Set<string>());
+  const inflightByTaskRef = React.useRef(new Map<string, Set<string>>());
 
   const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
 
@@ -644,26 +671,15 @@ export function VaTasksClient({
   const taskPhasesRef = React.useRef(taskPhases);
   taskPhasesRef.current = taskPhases;
 
-  const optimisticallyCompleteItem = React.useCallback((taskId: string, itemId: string) => {
+  const applyConfirmedItemCompletion = React.useCallback((taskId: string, itemId: string) => {
+    confirmedCompleteItemIdsRef.current.add(itemId);
+    window.setTimeout(() => confirmedCompleteItemIdsRef.current.delete(itemId), 12_000);
     setTaskPhases((prev) => {
       const phases = prev[taskId];
       if (!phases) return prev;
-      phaseRollbackRef.current[taskId] = phases;
       return { ...prev, [taskId]: applyOptimisticItemCompletion(phases, itemId, userName) };
     });
   }, [userName]);
-
-  const rollbackOptimisticItem = React.useCallback((taskId: string) => {
-    const saved = phaseRollbackRef.current[taskId];
-    if (saved) {
-      setTaskPhases((prev) => ({ ...prev, [taskId]: saved }));
-      delete phaseRollbackRef.current[taskId];
-    }
-  }, []);
-
-  const clearOptimisticRollback = React.useCallback((taskId: string) => {
-    delete phaseRollbackRef.current[taskId];
-  }, []);
 
   const fetchPhasesForTask = React.useCallback(async (task: VaTaskRecord): Promise<TaskPhase[]> => {
     const params = new URLSearchParams({ task_id: task.id });
@@ -709,20 +725,30 @@ export function VaTasksClient({
     });
   }, []);
 
+  const applyFetchedPhases = React.useCallback((taskId: string, fetched: TaskPhase[]) => {
+    const keep = new Set<string>([
+      ...confirmedCompleteItemIdsRef.current,
+      ...(inflightByTaskRef.current.get(taskId) ?? []),
+    ]);
+    React.startTransition(() => {
+      setTaskPhases((prev) => ({
+        ...prev,
+        [taskId]: mergeFetchedPhasesPreservingLocalComplete(prev[taskId], fetched, keep),
+      }));
+    });
+  }, []);
+
   const refreshPhasesAndAccounts = React.useCallback(
     async (task: VaTaskRecord) => {
-      // Skip while a local optimistic completion is in-flight — realtime often fires
-      // mid-write and would briefly paint the pre-complete checklist (checkbox "undo").
-      if (phaseRollbackRef.current[task.id]) return;
+      // Skip while a complete write is in-flight — realtime often fires mid-write.
+      if ((inflightByTaskRef.current.get(task.id)?.size ?? 0) > 0) return;
       if (phasesInflightRef.current.has(task.id)) return;
       phasesInflightRef.current.add(task.id);
       setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
       try {
         const phases = await fetchPhasesForTask(task);
-        if (phaseRollbackRef.current[task.id]) return;
-        React.startTransition(() => {
-          setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
-        });
+        if ((inflightByTaskRef.current.get(task.id)?.size ?? 0) > 0) return;
+        applyFetchedPhases(task.id, phases);
         await loadModelAccountsForPhases(phases);
       } finally {
         phasesInflightRef.current.delete(task.id);
@@ -734,26 +760,22 @@ export function VaTasksClient({
         });
       }
     },
-    [fetchPhasesForTask, loadModelAccountsForPhases],
+    [applyFetchedPhases, fetchPhasesForTask, loadModelAccountsForPhases],
   );
 
   const loadPhasesAndAccounts = React.useCallback(
     async (task: VaTaskRecord) => {
       // Always re-fetch on expand, but keep any existing snapshot painted while loading.
-      // Clearing to [] caused empty-state flashes, safety-effect re-entry loops on large
-      // Warm-Up checklists, and raced optimistic checkbox completions on slow mobile.
       if (phasesInflightRef.current.has(task.id)) return;
       phasesInflightRef.current.add(task.id);
       setPhasesLoadingIds((prev) => ({ ...prev, [task.id]: true }));
       try {
         const phases = await fetchPhasesForTask(task);
-        // Don't clobber a newer optimistic completion that landed while we were fetching.
-        if (phaseRollbackRef.current[task.id]) {
+        if ((inflightByTaskRef.current.get(task.id)?.size ?? 0) > 0) {
+          applyFetchedPhases(task.id, phases);
           return;
         }
-        React.startTransition(() => {
-          setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
-        });
+        applyFetchedPhases(task.id, phases);
         await loadModelAccountsForPhases(phases);
       } finally {
         phasesInflightRef.current.delete(task.id);
@@ -765,7 +787,7 @@ export function VaTasksClient({
         });
       }
     },
-    [fetchPhasesForTask, loadModelAccountsForPhases],
+    [applyFetchedPhases, fetchPhasesForTask, loadModelAccountsForPhases],
   );
 
   const refreshPhasesAndAccountsRef = React.useRef(refreshPhasesAndAccounts);
@@ -791,6 +813,10 @@ export function VaTasksClient({
       if (taskId.startsWith("virt_")) return null;
       if (inflightItemIdsRef.current.has(item.id)) return null;
       inflightItemIdsRef.current.add(item.id);
+      const taskInflight = inflightByTaskRef.current.get(taskId) ?? new Set<string>();
+      taskInflight.add(item.id);
+      inflightByTaskRef.current.set(taskId, taskInflight);
+      setSavingItemIds((prev) => ({ ...prev, [item.id]: true }));
 
       // Checkbox complete while this item's timer is running — end timer without blocking complete.
       if (activeTimerEntry?.task_phase_item_id === item.id) {
@@ -799,6 +825,7 @@ export function VaTasksClient({
         void fetch("/api/va/task-timer", {
           method: "POST",
           credentials: "include",
+          keepalive: true,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "end", entry_id: entryId }),
         }).catch(() => {
@@ -806,33 +833,40 @@ export function VaTasksClient({
         });
       }
 
-      optimisticallyCompleteItem(taskId, item.id);
+      const completeUrl = `/api/va/phase-items/${encodeURIComponent(item.id)}/complete`;
 
       try {
-        const fd = new FormData();
-        if (isSupabase && screenshots.length > 0) {
-          for (const file of screenshots) {
-            const { sbUrl } = await uploadScreenshotToSupabaseStorage(file, "va-phase-item", {
-              itemId: item.id,
-            });
-            fd.append("screenshot_url", sbUrl);
-          }
+        let res: Response;
+        if (screenshots.length === 0) {
+          res = await fetch(completeUrl, {
+            method: "POST",
+            credentials: "include",
+            keepalive: true,
+            cache: "no-store",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
         } else {
-          for (const file of screenshots) {
-            fd.append("screenshots", file);
+          const fd = new FormData();
+          if (isSupabase) {
+            for (const file of screenshots) {
+              const { sbUrl } = await uploadScreenshotToSupabaseStorage(file, "va-phase-item", {
+                itemId: item.id,
+              });
+              fd.append("screenshot_url", sbUrl);
+            }
+          } else {
+            for (const file of screenshots) {
+              fd.append("screenshots", file);
+            }
           }
+          res = await postFormData(completeUrl, fd, { credentials: "include" });
         }
-        const res = await postFormData(
-          `/api/va/phase-items/${encodeURIComponent(item.id)}/complete`,
-          fd,
-          { credentials: "include" },
-        );
         const payload = (await res.json().catch(() => ({}))) as {
           allPhasesCompleted?: boolean;
           error?: string;
         };
         if (!res.ok) {
-          rollbackOptimisticItem(taskId);
           addToast(
             winnerVideoLocalToast(
               `va-item-err-${item.id}-${Date.now()}`,
@@ -843,11 +877,10 @@ export function VaTasksClient({
           );
           return null;
         }
-        clearOptimisticRollback(taskId);
+        applyConfirmedItemCompletion(taskId, item.id);
         if (payload.allPhasesCompleted) router.refresh();
         return payload;
       } catch (err) {
-        rollbackOptimisticItem(taskId);
         addToast(
           winnerVideoLocalToast(
             `va-item-err-${item.id}-${Date.now()}`,
@@ -859,15 +892,22 @@ export function VaTasksClient({
         return null;
       } finally {
         inflightItemIdsRef.current.delete(item.id);
+        const remaining = inflightByTaskRef.current.get(taskId);
+        remaining?.delete(item.id);
+        if (remaining && remaining.size === 0) inflightByTaskRef.current.delete(taskId);
+        setSavingItemIds((prev) => {
+          if (!prev[item.id]) return prev;
+          const next = { ...prev };
+          delete next[item.id];
+          return next;
+        });
       }
     },
     [
       activeTimerEntry,
       addToast,
-      clearOptimisticRollback,
+      applyConfirmedItemCompletion,
       isSupabase,
-      optimisticallyCompleteItem,
-      rollbackOptimisticItem,
       router,
       setActiveTimerEntry,
     ],
@@ -1304,6 +1344,7 @@ export function VaTasksClient({
                   onMarkComplete={handleMarkComplete}
                   onOpenTask={handleOpenTask}
                   onCompleteItem={handleCompleteItemClick}
+                  savingItemIds={savingItemIds}
                   onShadowbanReport={handleShadowbanReport}
                   onSaveObservations={handleSaveObservations}
                   observationsSaving={observationsSavingId === task.id}
@@ -1341,6 +1382,7 @@ export function VaTasksClient({
                       onMarkComplete={handleMarkComplete}
                       onOpenTask={handleOpenTask}
                       onCompleteItem={handleCompleteItemClick}
+                      savingItemIds={savingItemIds}
                       onShadowbanReport={handleShadowbanReport}
                       onSaveObservations={handleSaveObservations}
                       observationsSaving={observationsSavingId === group.currentTask.id}

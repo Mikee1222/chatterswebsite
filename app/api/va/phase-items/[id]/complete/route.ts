@@ -75,21 +75,45 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return jsonNoStore({ error: "Item not found" }, { status: 404 });
   }
 
-  const formDataOrErr = await readRequestFormData(req);
-  if (formDataOrErr instanceof NextResponse) {
-    // Ensure auth JSON is never publicly cacheable (same class as shift-active GETs).
-    const status = formDataOrErr.status;
-    const body = await formDataOrErr.json().catch(() => ({ error: "Invalid upload body" }));
-    return jsonNoStore(body, { status });
-  }
-  const formData = formDataOrErr;
+  const contentType = req.headers.get("content-type") ?? "";
+  let screenshotUrlEntries: string[] = [];
+  let screenshotFileEntries: File[] = [];
 
-  const screenshotUrlEntries = [
-    ...formData.getAll("screenshot_url"),
-    ...formData.getAll("screenshot_urls"),
-  ]
-    .map((v) => String(v ?? "").trim())
-    .filter(Boolean);
+  if (contentType.includes("application/json")) {
+    // JSON + keepalive survives a full page reload (FormData POSTs are aborted on refresh).
+    const json = (await req.json().catch(() => ({}))) as {
+      screenshot_url?: unknown;
+      screenshot_urls?: unknown;
+    };
+    const rawUrls = [
+      ...(Array.isArray(json.screenshot_urls) ? json.screenshot_urls : []),
+      ...(Array.isArray(json.screenshot_url) ? json.screenshot_url : []),
+      json.screenshot_url,
+    ];
+    screenshotUrlEntries = rawUrls
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.trim())
+      .filter(Boolean);
+  } else {
+    const formDataOrErr = await readRequestFormData(req);
+    if (formDataOrErr instanceof NextResponse) {
+      // Ensure auth JSON is never publicly cacheable (same class as shift-active GETs).
+      const status = formDataOrErr.status;
+      const body = await formDataOrErr.json().catch(() => ({ error: "Invalid upload body" }));
+      return jsonNoStore(body, { status });
+    }
+    const formData = formDataOrErr;
+    screenshotUrlEntries = [
+      ...formData.getAll("screenshot_url"),
+      ...formData.getAll("screenshot_urls"),
+    ]
+      .map((v) => String(v ?? "").trim())
+      .filter(Boolean);
+    screenshotFileEntries = [
+      ...formData.getAll("screenshot"),
+      ...formData.getAll("screenshots"),
+    ].filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  }
 
   const screenshotAttachments: { url: string }[] = [];
   for (const token of screenshotUrlEntries) {
@@ -103,12 +127,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     screenshotAttachments.push(attachmentFromSbToken(token));
   }
 
-  const screenshotEntries = [
-    ...formData.getAll("screenshot"),
-    ...formData.getAll("screenshots"),
-  ].filter((entry): entry is File => entry instanceof File && entry.size > 0);
-
-  for (const screenshotFile of screenshotEntries) {
+  for (const screenshotFile of screenshotFileEntries) {
     try {
       screenshotAttachments.push(await uploadPhaseScreenshot(itemRowId, screenshotFile));
     } catch (e) {

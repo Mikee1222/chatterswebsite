@@ -168,6 +168,90 @@ function mapPhase(row: PhaseRow, items: PhaseItem[] = []): TaskPhase {
 const PHASE_FETCH_PAGE = 1000;
 /** Keep `.in()` URL/body size safe when progress view batches many task ids. */
 const PHASE_FETCH_ID_CHUNK = 80;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function selectAllEq<T extends SbRow>(table: string, column: string, value: string): Promise<T[]> {
+  const sb = getSupabaseServiceClient();
+  const out: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb
+      .from(table)
+      .select("*")
+      .eq(column, value)
+      .range(from, from + PHASE_FETCH_PAGE - 1);
+    if (error) throw new Error(`selectAllEq ${table}.${column}: ${error.message}`);
+    if (!data?.length) break;
+    out.push(...(data as unknown as T[]));
+    if (data.length < PHASE_FETCH_PAGE) break;
+    from += PHASE_FETCH_PAGE;
+  }
+  return out;
+}
+
+/**
+ * `va_tasks.id` (uuid) and `airtable_id` are both stored on phases/items as text `task_id`.
+ * Fetching with only the public id can miss the other key (hydration looks empty after a
+ * successful complete write). Expand to both identities and index results under every alias.
+ */
+async function expandTaskIdAliases(taskIds: string[]): Promise<{
+  queryIds: string[];
+  aliasesFor: (storedTaskId: string) => string[];
+}> {
+  const requested = [...new Set(taskIds.map((t) => t.trim()).filter(Boolean))];
+  if (!requested.length) return { queryIds: [], aliasesFor: (id) => [id] };
+
+  const sb = getSupabaseServiceClient();
+  const rows: Array<{ id: string; airtable_id?: string | null }> = [];
+  const uuids = requested.filter((id) => UUID_RE.test(id));
+  const others = requested.filter((id) => !UUID_RE.test(id));
+
+  for (let i = 0; i < uuids.length; i += PHASE_FETCH_ID_CHUNK) {
+    const chunk = uuids.slice(i, i + PHASE_FETCH_ID_CHUNK);
+    const { data, error } = await sb.from("va_tasks").select("id, airtable_id").in("id", chunk);
+    if (error) throw new Error(`expandTaskIdAliases by id: ${error.message}`);
+    if (data?.length) rows.push(...(data as Array<{ id: string; airtable_id?: string | null }>));
+  }
+  for (let i = 0; i < others.length; i += PHASE_FETCH_ID_CHUNK) {
+    const chunk = others.slice(i, i + PHASE_FETCH_ID_CHUNK);
+    const { data, error } = await sb.from("va_tasks").select("id, airtable_id").in("airtable_id", chunk);
+    if (error) throw new Error(`expandTaskIdAliases by airtable_id: ${error.message}`);
+    if (data?.length) rows.push(...(data as Array<{ id: string; airtable_id?: string | null }>));
+  }
+
+  const storedToAliases = new Map<string, Set<string>>();
+  const addAlias = (stored: string, alias: string) => {
+    if (!stored || !alias) return;
+    let set = storedToAliases.get(stored);
+    if (!set) {
+      set = new Set();
+      storedToAliases.set(stored, set);
+    }
+    set.add(alias);
+  };
+
+  for (const row of rows) {
+    const uuid = String(row.id ?? "").trim();
+    const airtable = String(row.airtable_id ?? "").trim();
+    const aliases = [uuid, airtable, publicId(row), ...requested.filter((r) => r === uuid || r === airtable)].filter(
+      Boolean,
+    );
+    const uniq = [...new Set(aliases)];
+    for (const stored of uniq) {
+      for (const alias of uniq) addAlias(stored, alias);
+    }
+  }
+
+  const queryIds = [...new Set([...requested, ...storedToAliases.keys()])];
+  return {
+    queryIds,
+    aliasesFor: (storedTaskId: string) => {
+      const aliases = storedToAliases.get(storedTaskId.trim());
+      if (aliases?.size) return [...aliases];
+      return [storedTaskId.trim()].filter(Boolean);
+    },
+  };
+}
 
 async function selectAllByTaskIds<T extends SbRow>(
   table: string,
@@ -202,9 +286,11 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
   const ids = [...new Set(taskIds.map((t) => t.trim()).filter(Boolean))];
   if (!ids.length) return {};
 
+  const { queryIds, aliasesFor } = await expandTaskIdAliases(ids);
+
   const [phaseData, itemData] = await Promise.all([
-    selectAllByTaskIds<PhaseRow>(T_PHASES, ids, "phase_number"),
-    selectAllByTaskIds<ItemRow>(T_ITEMS, ids, "sort_order"),
+    selectAllByTaskIds<PhaseRow>(T_PHASES, queryIds, "phase_number"),
+    selectAllByTaskIds<ItemRow>(T_ITEMS, queryIds, "sort_order"),
   ]);
 
   const rawItems = itemData;
@@ -227,6 +313,14 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
   }
 
   const byTaskId: Record<string, TaskPhase[]> = {};
+  const attachedItemIds = new Set<string>();
+
+  const pushPhase = (alias: string, phase: TaskPhase) => {
+    if (!alias) return;
+    if (!byTaskId[alias]) byTaskId[alias] = [];
+    if (byTaskId[alias].some((p) => p.id === phase.id)) return;
+    byTaskId[alias].push(phase);
+  };
 
   for (const row of phaseData) {
     const taskId = (row.task_id ?? "").trim();
@@ -242,12 +336,37 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
     const deduped = phaseItems.filter((it) => {
       if (seen.has(it.id)) return false;
       seen.add(it.id);
+      attachedItemIds.add(it.id);
       return true;
     });
     const phase = mapPhase(row, deduped);
-    if (!byTaskId[taskId]) byTaskId[taskId] = [];
-    byTaskId[taskId].push(phase);
+    for (const alias of aliasesFor(taskId)) {
+      pushPhase(alias, phase);
+    }
   }
+
+  // Checklist rows whose phase_id does not match a live phase still belong to the task.
+  // Dropping them made completed items vanish on reload while pending clones stayed visible.
+  const orphanByTask = new Map<string, PhaseItem[]>();
+  for (const item of items) {
+    if (attachedItemIds.has(item.id)) continue;
+    const taskId = (item.task_id ?? "").trim();
+    if (!taskId) continue;
+    const list = orphanByTask.get(taskId);
+    if (list) list.push(item);
+    else orphanByTask.set(taskId, [item]);
+  }
+  for (const [storedTaskId, orphans] of orphanByTask) {
+    const aliases = aliasesFor(storedTaskId);
+    const targetAlias = aliases.find((a) => (byTaskId[a]?.length ?? 0) > 0) ?? aliases[0];
+    if (!targetAlias) continue;
+    const phases = byTaskId[targetAlias];
+    if (phases?.length) {
+      const last = phases[phases.length - 1]!;
+      last.items = [...last.items, ...orphans];
+    }
+  }
+
   return byTaskId;
 }
 
@@ -356,9 +475,7 @@ export async function completePhaseItem(
     ...(merged.length > 0 ? { screenshot: merged.map((url) => ({ url })) } : {}),
   });
 
-  const allItems = phaseStableId
-    ? await sbSelectEq<ItemRow>(T_ITEMS, "phase_id", phaseStableId)
-    : [];
+  const allItems = phaseStableId ? await selectAllEq<ItemRow>(T_ITEMS, "phase_id", phaseStableId) : [];
   // Count this item as completed even if the eq read is momentarily stale.
   const completedCount = allItems.filter(
     (r) => r.status === "completed" || publicId(r) === publicId(row),
@@ -369,7 +486,7 @@ export async function completePhaseItem(
   let allPhasesCompleted = false;
   let phaseAirtableId = "";
 
-  const phaseRows = taskId ? await sbSelectEq<PhaseRow>(T_PHASES, "task_id", taskId) : [];
+  const phaseRows = taskId ? await selectAllEq<PhaseRow>(T_PHASES, "task_id", taskId) : [];
   const phaseRow = phaseRows.find(
     (p) => publicId(p) === phaseStableId || String(p.phase_id ?? "").trim() === phaseStableId,
   );
@@ -391,7 +508,7 @@ export async function completePhaseItem(
         end_time: now,
       });
     }
-    const allPhasesRefetched = await sbSelectEq<PhaseRow>(T_PHASES, "task_id", taskId);
+    const allPhasesRefetched = await selectAllEq<PhaseRow>(T_PHASES, "task_id", taskId);
     allPhasesCompleted =
       allPhasesRefetched.length > 0 &&
       allPhasesRefetched.every(

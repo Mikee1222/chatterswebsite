@@ -43,6 +43,7 @@ import { ManagerReviewTextarea, ReviewSectionHeader } from "@/components/manager
 
 /** Stable empty array so React.memo is not busted by `?? []` on every parent render. */
 export const EMPTY_TASK_PHASES: TaskPhase[] = [];
+const EMPTY_SAVING_ITEM_IDS: Record<string, true> = {};
 
 function isPastDue(isoLike: string | null | undefined): boolean {
   if (!isoLike?.trim()) return false;
@@ -151,6 +152,8 @@ export type VaTaskCardProps = {
   onMarkComplete: (task: VaTaskRecord, e?: React.MouseEvent) => void;
   onOpenTask: (task: VaTaskRecord) => void;
   onCompleteItem: (item: PhaseItem, taskId: string) => void;
+  /** Item ids whose complete write has not been confirmed yet. */
+  savingItemIds?: Record<string, true>;
   onShadowbanReport: (acc: SocialAccount) => void;
   onSaveObservations?: (taskId: string, notes: string) => Promise<boolean>;
   observationsSaving?: boolean;
@@ -188,6 +191,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   onMarkComplete,
   onOpenTask,
   onCompleteItem,
+  savingItemIds = EMPTY_SAVING_ITEM_IDS,
   onShadowbanReport,
   onSaveObservations,
   observationsSaving = false,
@@ -396,18 +400,19 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         : !onShift
           ? "Start or resume your shift to complete items"
           : undefined;
+      const itemStepType = item.step_type ?? DEFAULT_TASK_STEP_TYPE;
+      const showItemTimer =
+        !isVirtual && enabledTimerCategories.includes(itemStepType);
+      const timerInProgress = activeTimerEntry?.task_phase_item_id === item.id;
+      const itemSaving = Boolean(savingItemIds[item.id]);
       const complete = () => {
-        if (itemDisabled) return;
+        if (itemDisabled || itemSaving) return;
         // Use the ribbon row directly — never re-lookup in a closed-over `phases` array.
         // A stale memo/compiler closure made find() miss and silently no-op (no network call
         // on desktop or mobile) while the checkbox still looked clickable.
         onCompleteItem(item as PhaseItem, task.id);
       };
       const hasProofLinks = Boolean(item.screenshot?.some((s) => s.url));
-      const itemStepType = item.step_type ?? DEFAULT_TASK_STEP_TYPE;
-      const showItemTimer =
-        !isVirtual && enabledTimerCategories.includes(itemStepType);
-      const timerInProgress = activeTimerEntry?.task_phase_item_id === item.id;
       const completedDuration = itemDurations[item.id];
       // Only hide the timer once the checklist item is done. A duration from shift-pause
       // auto-stop must NOT block Start/End or make the row feel "stuck".
@@ -417,8 +422,8 @@ export const VaTaskCard = React.memo(function VaTaskCard({
           <div className="flex items-start gap-1">
             <ChampagneCheckbox
               checked={item.status === "completed"}
-              inProgress={timerInProgress}
-              disabled={itemDisabled}
+              inProgress={timerInProgress || itemSaving}
+              disabled={itemDisabled || itemSaving}
               title={hintTitle}
               aria-label={item.title ? `Complete: ${item.title}` : undefined}
               onClick={complete}
@@ -426,13 +431,13 @@ export const VaTaskCard = React.memo(function VaTaskCard({
             {/* Whole label row toggles — tapping the title (not only the box) completes the item. */}
             <button
               type="button"
-              disabled={itemDisabled}
+              disabled={itemDisabled || itemSaving}
               title={hintTitle}
               onClick={complete}
               className={cn(
                 "min-w-0 flex-1 rounded-md px-1 py-2 text-left touch-manipulation",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/35",
-                itemDisabled ? "cursor-not-allowed" : "cursor-pointer",
+                itemDisabled || itemSaving ? "cursor-not-allowed" : "cursor-pointer",
               )}
             >
               <div className="flex items-start gap-2">
@@ -503,6 +508,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
     [
       onShift,
       onCompleteItem,
+      savingItemIds,
       task.id,
       task.is_virtual_occurrence,
       enabledTimerCategories,
@@ -732,6 +738,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.onMarkComplete === next.onMarkComplete &&
   prev.onOpenTask === next.onOpenTask &&
   prev.onCompleteItem === next.onCompleteItem &&
+  prev.savingItemIds === next.savingItemIds &&
   prev.onShadowbanReport === next.onShadowbanReport &&
   prev.onSaveObservations === next.onSaveObservations &&
   prev.observationsSaving === next.observationsSaving &&

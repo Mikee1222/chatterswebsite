@@ -228,14 +228,11 @@ export async function getVaTasksForUser(userRecordId: string): Promise<VaTaskRec
     return [];
   }
 
-  const sb = getSupabaseServiceClient();
-  // Unassigned (null/empty) OR contains this user uuid
-  const { data, error } = await sb
-    .from(TABLE)
-    .select("*")
-    .or(`assigned_to.is.null,assigned_to.eq.{},assigned_to.cs.{${userUuid}}`);
-  if (error) throw new Error(`getVaTasksForUser: ${error.message}`);
-  return mapRows((data as Row[]) ?? []);
+  // Unassigned (null/empty) OR contains this user uuid. Page past PostgREST's 1000-row cap.
+  const data = await sbSelectWhere<Row>(TABLE, (q) =>
+    q.or(`assigned_to.is.null,assigned_to.eq.{},assigned_to.cs.{${userUuid}}`),
+  );
+  return mapRows(data);
 }
 
 function addUtcYmd(ymd: string, days: number): string {

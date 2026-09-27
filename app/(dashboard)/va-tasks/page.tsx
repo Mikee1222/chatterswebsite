@@ -46,6 +46,22 @@ export default async function VaTasksPage() {
     getActiveVaTaskShift(vaId).catch(() => null),
     getEnabledTimerCategories().catch(() => []),
   ]);
+
+  const { getVaTasksViewTodayYmd, filterTasksByAthensYmd } = await import("@/lib/va-task-date-filter");
+  const { getPhasesForTasksDisplay } = await import("@/services/task-phases");
+  const { normalizeTaskPhasesForClient } = await import("@/lib/va-task-phases-fetch");
+  const todayTasks = filterTasksByAthensYmd(tasks, getVaTasksViewTodayYmd());
+  const phaseSpecs = todayTasks
+    .filter((t) => !t.is_virtual_occurrence && !t.id.startsWith("virt_"))
+    .map((t) => ({ taskId: t.id, sourceTaskId: t.virtual_source_task_id ?? null }));
+  const rawInitialPhases = await getPhasesForTasksDisplay(phaseSpecs).catch((err) => {
+    console.error("[va-tasks] initial phases hydration failed", err);
+    return {} as Record<string, import("@/services/task-phases").TaskPhase[]>;
+  });
+  const initialTaskPhases = Object.fromEntries(
+    Object.entries(rawInitialPhases).map(([id, phases]) => [id, normalizeTaskPhasesForClient(phases)]),
+  );
+
   const userName = (user.fullName || user.email || "").trim();
 
   const initialActiveShift = activeShift
@@ -66,6 +82,7 @@ export default async function VaTasksPage() {
       initialActiveShift={initialActiveShift}
       canManage={canManage}
       enabledTimerCategories={enabledTimerCategories}
+      initialTaskPhases={initialTaskPhases}
     />
   );
 }
