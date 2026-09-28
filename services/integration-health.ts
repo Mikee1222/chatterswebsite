@@ -7,7 +7,11 @@ import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { notifyAdminsOnce } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { getDataBackend } from "@/lib/data-backend";
-import { isClarioSuiteConfigured } from "@/lib/clariosuite-api";
+import {
+  formatClarioSuiteUserMessage,
+  isClarioSuiteConfigured,
+  isClarioSuiteUpstreamGenericMessage,
+} from "@/lib/clariosuite-api";
 import { isGetMySocialConfigured } from "@/lib/getmysocial-api";
 import { inflowwReportTodayYmd } from "@/lib/infloww-api";
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
@@ -329,7 +333,7 @@ export async function testIntegrationConnection(
       const me = await getClarioSuiteMe();
       return { ok: true, message: `OK — ClarioSuite key ${me?.name ?? me?.keyId ?? "reachable"}` };
     } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : "ClarioSuite test failed" };
+      return { ok: false, message: formatClarioSuiteUserMessage(e) };
     }
   }
   if (id === "getmysocial") {
@@ -408,9 +412,37 @@ export async function triggerIntegrationSync(
         await notifyIntegrationFailure("clariosuite", msg, "sync");
         return { ok: false, message: msg };
       }
-      return { ok: true, message: "ClarioSuite insights sync completed" };
+      const wroteAnything =
+        result.dailyRowsUpserted > 0 ||
+        result.audienceUpserted > 0 ||
+        result.topPostsUpserted > 0;
+      if (result.errors.length > 0) {
+        const allUpstream = result.errors.every(
+          (e) =>
+            isClarioSuiteUpstreamGenericMessage(e.message) ||
+            /temporarily unavailable/i.test(e.message),
+        );
+        const sample = result.errors[0]!;
+        const detail = allUpstream
+          ? `ClarioSuite temporarily unavailable${sample.status ? ` (HTTP ${sample.status})` : ""}${
+              sample.requestId ? ` · request ${sample.requestId}` : ""
+            }${sample.path ? ` · ${sample.path}` : ""}. ${result.errors.length} endpoint error(s) across linked accounts.`
+          : `ClarioSuite sync had ${result.errors.length} error(s): ${sample.message}`;
+        if (!wroteAnything) {
+          await notifyIntegrationFailure("clariosuite", detail, "sync");
+          return { ok: false, message: detail };
+        }
+        return {
+          ok: true,
+          message: `Partial ClarioSuite sync (${result.dailyRowsUpserted} daily / ${result.audienceUpserted} audience / ${result.topPostsUpserted} posts). ${detail}`,
+        };
+      }
+      return {
+        ok: true,
+        message: `ClarioSuite sync completed (${result.modelsTargeted} accounts, ${result.dailyRowsUpserted} daily rows)`,
+      };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "ClarioSuite sync failed";
+      const msg = formatClarioSuiteUserMessage(e);
       await notifyIntegrationFailure("clariosuite", msg, "sync");
       return { ok: false, message: msg };
     }

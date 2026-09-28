@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
-  ClarioSuiteApiError,
+  formatClarioSuiteUserMessage,
   getClarioSuiteMe,
   isClarioSuiteConfigured,
   listClarioSuiteAccounts,
@@ -34,23 +34,13 @@ export async function GET() {
     try {
       me = await getClarioSuiteMe();
     } catch (err) {
-      meError =
-        err instanceof ClarioSuiteApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to verify API key";
+      meError = formatClarioSuiteUserMessage(err);
     }
     try {
       const accounts = await listClarioSuiteAccounts();
       accountsCount = accounts.length;
     } catch (err) {
-      accountsError =
-        err instanceof ClarioSuiteApiError
-          ? err.message
-          : err instanceof Error
-            ? err.message
-            : "Failed to list ClarioSuite accounts";
+      accountsError = formatClarioSuiteUserMessage(err);
     }
   }
 

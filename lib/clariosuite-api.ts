@@ -103,6 +103,44 @@ export function logClarioSuiteFailure(
   });
 }
 
+/** Upstream ClarioSuite often returns only this opaque message on 5xx. */
+export function isClarioSuiteUpstreamGenericMessage(message: string): boolean {
+  return /an unexpected error occurred\.?/i.test(message.trim());
+}
+
+/** True for timeouts / 5xx (and similar) that are worth a short retry. */
+export function isClarioSuiteTransientHttpStatus(status: number): boolean {
+  return status === 408 || status === 425 || status === 502 || status === 503 || status === 504 || status >= 500;
+}
+
+/**
+ * Operator-facing message for Integration Health / Sync Now.
+ * Maps opaque upstream "An unexpected error occurred" to a clear temporary-outage line.
+ */
+export function formatClarioSuiteUserMessage(err: unknown): string {
+  if (err instanceof ClarioSuiteApiError) {
+    if (isClarioSuiteUpstreamGenericMessage(err.message) || (err.status >= 500 && !err.code)) {
+      const parts = ["ClarioSuite temporarily unavailable"];
+      if (err.status) parts.push(`(HTTP ${err.status})`);
+      if (err.requestId) parts.push(`· request ${err.requestId}`);
+      if (err.path) parts.push(`· ${err.path}`);
+      return `${parts.join(" ")}. Try again shortly.`;
+    }
+    if (err.status === 429) {
+      return "ClarioSuite rate limit hit — sync will retry automatically. Try again in a minute.";
+    }
+    if (err.status === 401 || err.status === 403 || err.code === "missing_api_key") {
+      return "ClarioSuite API key is missing or invalid.";
+    }
+    return err.message.slice(0, 400);
+  }
+  const raw = err instanceof Error ? err.message : String(err);
+  if (isClarioSuiteUpstreamGenericMessage(raw)) {
+    return "ClarioSuite temporarily unavailable. Try again shortly.";
+  }
+  return raw.slice(0, 400);
+}
+
 /** True when CLARIOSUITE_API_KEY is set (sync can run). */
 export function isClarioSuiteConfigured(): boolean {
   return Boolean(process.env["CLARIOSUITE_API_KEY"]?.trim());
@@ -171,7 +209,10 @@ async function clariosuiteFetchJson<T>(path: string, searchParams?: URLSearchPar
   let last429Body = "";
   let last429Code = "rate_limited";
   let last429RequestId = "";
-  for (let attempt = 0; attempt < 5; attempt++) {
+  /** Max attempts for 429; transient 5xx uses the first 3 of these. */
+  const maxAttempts = 5;
+  const maxTransientAttempts = 3;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const res = await rateLimitedFetch(url, init);
     const remaining = res.headers.get("X-RateLimit-Remaining");
     if (remaining != null) {
@@ -193,7 +234,7 @@ async function clariosuiteFetchJson<T>(path: string, searchParams?: URLSearchPar
         retryAfter: res.headers.get("Retry-After"),
         body: last429Body.slice(0, 200),
       });
-      if (attempt < 4) {
+      if (attempt < maxAttempts - 1) {
         await sleep(retryAfterMs(res, attempt));
         continue;
       }
@@ -204,13 +245,28 @@ async function clariosuiteFetchJson<T>(path: string, searchParams?: URLSearchPar
       const body = await res.text();
       const parsed = parseErrorPayload(body);
       const truncated = body.slice(0, 300);
+      const transient = isClarioSuiteTransientHttpStatus(res.status);
       console.error("[clariosuite] API error", {
         status: res.status,
         path,
         code: parsed.code || undefined,
         requestId: parsed.requestId || undefined,
         body: truncated,
+        attempt,
+        willRetry: transient && attempt < maxTransientAttempts - 1,
       });
+      if (transient && attempt < maxTransientAttempts - 1) {
+        const backoff = Math.min(8_000, 1_000 * 2 ** attempt);
+        clariosuiteDebug("clariosuite transient 5xx — retry", {
+          path,
+          status: res.status,
+          attempt,
+          backoffMs: backoff,
+          requestId: parsed.requestId || undefined,
+        });
+        await sleep(backoff);
+        continue;
+      }
       throw new ClarioSuiteApiError(
         parsed.message || `ClarioSuite API ${res.status}`,
         res.status,

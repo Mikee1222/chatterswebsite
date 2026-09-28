@@ -354,7 +354,13 @@ export function AdminInstagramInsightsClient() {
         skipReason?: string;
         modelsTargeted?: number;
         dailyRowsUpserted?: number;
-        errors?: Array<{ modelName?: string; message: string }>;
+        errors?: Array<{
+          modelName?: string;
+          message: string;
+          status?: number;
+          path?: string;
+          requestId?: string;
+        }>;
       };
       if (!res.ok) throw new Error(json.error || "Sync failed");
       if (json.skipped) {
@@ -363,13 +369,24 @@ export function AdminInstagramInsightsClient() {
       if (json.modelsTargeted === 0 && !json.dailyRowsUpserted) {
         setError("Sync finished but no linked Instagram accounts were targeted. Link models first.");
       } else if (json.errors?.length) {
-        const names = json.errors
-          .map((e) => e.modelName || "model")
-          .slice(0, 3)
-          .join(", ");
-        setError(
-          `Sync finished with errors for ${names}${json.errors.length > 3 ? "…" : ""}. Check logs.`
+        const sample = json.errors[0]!;
+        const upstream = json.errors.every((e) =>
+          /temporarily unavailable|unexpected error occurred/i.test(e.message)
         );
+        if (upstream) {
+          setError(
+            sample.message ||
+              "ClarioSuite temporarily unavailable. Try again shortly."
+          );
+        } else {
+          const names = json.errors
+            .map((e) => e.modelName || "model")
+            .slice(0, 3)
+            .join(", ");
+          setError(
+            `Sync finished with errors for ${names}${json.errors.length > 3 ? "…" : ""}. ${sample.message}`
+          );
+        }
       }
       await Promise.all([load(), loadHealth()]);
     } catch (e) {

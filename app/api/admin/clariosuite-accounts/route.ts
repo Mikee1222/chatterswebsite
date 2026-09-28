@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   ClarioSuiteApiError,
+  formatClarioSuiteUserMessage,
   isClarioSuiteConfigured,
   listClarioSuiteAccounts,
 } from "@/lib/clariosuite-api";
@@ -52,30 +53,35 @@ export async function GET() {
     });
   } catch (err) {
     console.error("[admin/clariosuite-accounts]", err);
+    const message = formatClarioSuiteUserMessage(err);
     if (err instanceof ClarioSuiteApiError) {
       const status = err.status >= 400 && err.status < 600 ? err.status : 502;
       return NextResponse.json(
         {
-          error: err.message,
+          error: message,
           code: err.code,
+          status: err.status,
+          requestId: err.requestId || undefined,
+          path: err.path || undefined,
           accounts: [],
           count: 0,
           configured: true,
           emptyReason: "api_error" as const,
-          message: err.message,
+          message,
         },
         { status }
       );
     }
     return NextResponse.json(
       {
-        error: err instanceof Error ? err.message : "Failed to fetch ClarioSuite accounts",
+        error: message,
         accounts: [],
         count: 0,
         configured: true,
         emptyReason: "api_error" as const,
+        message,
       },
-      { status: 500 }
+      { status: 502 }
     );
   }
 }

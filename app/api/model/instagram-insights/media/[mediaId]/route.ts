@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getModelContext } from "@/lib/model-context-server";
-import { isClarioSuiteConfigured, logClarioSuiteFailure } from "@/lib/clariosuite-api";
+import { isClarioSuiteConfigured, logClarioSuiteFailure, formatClarioSuiteUserMessage } from "@/lib/clariosuite-api";
 import { getClarioSuiteMediaDetail } from "@/services/clariosuite-media-detail";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +43,7 @@ export async function GET(
     return NextResponse.json(detail);
   } catch (err) {
     logClarioSuiteFailure("model media detail", err, { mediaId, igUserId });
-    const message = err instanceof Error ? err.message : "Failed to load media insights";
+    const message = formatClarioSuiteUserMessage(err);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

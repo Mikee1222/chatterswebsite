@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { isClarioSuiteConfigured, logClarioSuiteFailure } from "@/lib/clariosuite-api";
+import { isClarioSuiteConfigured, logClarioSuiteFailure, formatClarioSuiteUserMessage } from "@/lib/clariosuite-api";
 import { listLinkedClarioSuiteModels } from "@/services/clariosuite-sync";
 import { getClarioSuiteMediaDetail } from "@/services/clariosuite-media-detail";
 
@@ -51,7 +51,7 @@ export async function GET(
       mediaId,
       modelId: selected.modelRecordId,
     });
-    const message = err instanceof Error ? err.message : "Failed to load media insights";
+    const message = formatClarioSuiteUserMessage(err);
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

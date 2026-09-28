@@ -7,6 +7,7 @@ import {
   computeEngagementRate,
   computePostEngagementScore,
   fetchMediaInsights,
+  formatClarioSuiteUserMessage,
   isClarioSuiteConfigured,
   isMediaInsightUnavailable,
   listClarioSuiteMedia,
@@ -66,6 +67,16 @@ export type LinkedClarioSuiteModel = {
   accounts: LinkedClarioSuiteAccount[];
 };
 
+export type ClarioSuiteSyncError = {
+  igUserId: string;
+  modelName?: string;
+  message: string;
+  code?: string;
+  status?: number;
+  path?: string;
+  requestId?: string;
+};
+
 export type ClarioSuiteSyncResult = {
   skipped: boolean;
   skipReason?: string;
@@ -75,12 +86,33 @@ export type ClarioSuiteSyncResult = {
   topPostsUpserted: number;
   winnersAutoDetected: number;
   winnerAutoDetectErrors: number;
-  errors: Array<{ igUserId: string; modelName?: string; message: string; code?: string }>;
+  errors: ClarioSuiteSyncError[];
 };
 
 function n(v: unknown): number {
   const x = typeof v === "number" ? v : Number(v);
   return Number.isFinite(x) ? x : 0;
+}
+
+function syncErrorFromCaught(
+  link: SyncLink,
+  err: unknown
+): ClarioSuiteSyncError {
+  const base: ClarioSuiteSyncError = {
+    igUserId: link.igUserId,
+    modelName: link.modelName,
+    message: formatClarioSuiteUserMessage(err),
+  };
+  if (err instanceof ClarioSuiteApiError) {
+    return {
+      ...base,
+      code: err.code || undefined,
+      status: err.status || undefined,
+      path: err.path || undefined,
+      requestId: err.requestId || undefined,
+    };
+  }
+  return base;
 }
 
 async function mapWithConcurrency<T, R>(
@@ -817,36 +849,21 @@ export async function syncClarioSuiteInsights(opts?: {
       partial.dailyRowsUpserted = await upsertDailyInsights(link, rangeDays);
     } catch (err) {
       logClarioSuiteFailure("sync daily insights", err, { igUserId: link.igUserId });
-      partial.errors.push({
-        igUserId: link.igUserId,
-        modelName: link.modelName,
-        message: err instanceof Error ? err.message : String(err),
-        code: err instanceof ClarioSuiteApiError ? err.code : undefined,
-      });
+      partial.errors.push(syncErrorFromCaught(link, err));
     }
 
     try {
       partial.audienceUpserted = await upsertAudienceSnapshot(link);
     } catch (err) {
       logClarioSuiteFailure("sync audience", err, { igUserId: link.igUserId });
-      partial.errors.push({
-        igUserId: link.igUserId,
-        modelName: link.modelName,
-        message: err instanceof Error ? err.message : String(err),
-        code: err instanceof ClarioSuiteApiError ? err.code : undefined,
-      });
+      partial.errors.push(syncErrorFromCaught(link, err));
     }
 
     try {
       partial.topPostsUpserted = await upsertTopPosts(link);
     } catch (err) {
       logClarioSuiteFailure("sync top posts", err, { igUserId: link.igUserId });
-      partial.errors.push({
-        igUserId: link.igUserId,
-        modelName: link.modelName,
-        message: err instanceof Error ? err.message : String(err),
-        code: err instanceof ClarioSuiteApiError ? err.code : undefined,
-      });
+      partial.errors.push(syncErrorFromCaught(link, err));
     }
 
     return partial;

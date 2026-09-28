@@ -1,4 +1,4 @@
-import { listClarioSuiteStories } from "@/lib/clariosuite-api";
+import { listClarioSuiteStories, formatClarioSuiteUserMessage } from "@/lib/clariosuite-api";
 import type { IgStoriesPayload, IgStory } from "@/components/instagram-stories-ui";
 
 type StoryRow = Awaited<ReturnType<typeof listClarioSuiteStories>>["data"][number];
@@ -53,7 +53,7 @@ export async function fetchClarioSuiteStoriesPayload(igUserId: string): Promise<
     return {
       active: [],
       has_metrics: false,
-      error: err instanceof Error ? err.message : "Stories unavailable",
+      error: formatClarioSuiteUserMessage(err),
     };
   }
 }
