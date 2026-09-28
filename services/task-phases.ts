@@ -274,7 +274,10 @@ export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
   return grouped[taskId] ?? [];
 }
 
-/** Cheap phases-exist check — spawn path must not hydrate full Warm-Up checklists. */
+/**
+ * Cheap checklist-structure check — spawn path must not hydrate full Warm-Up checklists.
+ * True when live phases OR leftover phase-items exist (items alone block re-clone).
+ */
 export async function taskHasAnyPhases(taskId: string): Promise<boolean> {
   if (isVirtualVaTaskId(taskId)) return false;
   if (isSupabaseBackend()) {
@@ -542,8 +545,8 @@ export async function clonePhasesToTask(
   sourceTaskId: string,
   targetTask: { id: string; title: string },
 ): Promise<number> {
-  const existing = await getPhasesByTask(targetTask.id);
-  if (existing.length > 0) return 0;
+  // Phases OR leftover checklist items — never invent a second Warm-Up set.
+  if (await taskHasAnyPhases(targetTask.id)) return 0;
 
   const phases = dedupePhasesForClone(await getPhasesByTask(sourceTaskId));
   let cloned = 0;

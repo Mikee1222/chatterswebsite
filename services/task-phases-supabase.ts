@@ -346,8 +346,10 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
     }
   }
 
-  // Checklist rows whose phase_id does not match a live phase still belong to the task.
-  // Dropping them made completed items vanish on reload while pending clones stayed visible.
+  // Orphans: items whose phase_id no longer matches a live phase (phase deleted without
+  // cascading items, then spawn re-cloned a fresh checklist). Pending orphans duplicate the
+  // live card — never attach them. Completed orphans: merge onto a matching live item for
+  // display, or append to the last phase if no match exists.
   const orphanByTask = new Map<string, PhaseItem[]>();
   for (const item of items) {
     if (attachedItemIds.has(item.id)) continue;
@@ -362,9 +364,36 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
     const targetAlias = aliases.find((a) => (byTaskId[a]?.length ?? 0) > 0) ?? aliases[0];
     if (!targetAlias) continue;
     const phases = byTaskId[targetAlias];
-    if (phases?.length) {
+    if (!phases?.length) continue;
+
+    const liveByKey = new Map<string, PhaseItem>();
+    for (const phase of phases) {
+      for (const it of phase.items) {
+        liveByKey.set(`${(it.title ?? "").trim()}\0${it.sort_order ?? 0}`, it);
+      }
+    }
+
+    const leftoverCompleted: PhaseItem[] = [];
+    for (const orphan of orphans) {
+      const completed = (orphan.status ?? "").toLowerCase() === "completed";
+      if (!completed) continue;
+      const key = `${(orphan.title ?? "").trim()}\0${orphan.sort_order ?? 0}`;
+      const live = liveByKey.get(key);
+      if (live && (live.status ?? "").toLowerCase() !== "completed") {
+        live.status = orphan.status;
+        live.completed_at = orphan.completed_at;
+        live.completed_by_va_id = orphan.completed_by_va_id;
+        live.completed_by_va_name = orphan.completed_by_va_name;
+        if (orphan.screenshot?.length && !(live.screenshot?.length)) {
+          live.screenshot = orphan.screenshot;
+        }
+      } else if (!live) {
+        leftoverCompleted.push(orphan);
+      }
+    }
+    if (leftoverCompleted.length) {
       const last = phases[phases.length - 1]!;
-      last.items = [...last.items, ...orphans];
+      last.items = [...last.items, ...leftoverCompleted];
     }
   }
 
@@ -379,6 +408,9 @@ export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
 /**
  * Cheap existence check used by recurring spawn on every /va-tasks load.
  * Avoids fetchPhasesGroupedByTaskId (Warm-Up ≈ 76 items) just to test phases.length > 0.
+ *
+ * Also treats leftover checklist items (no live phase row) as "has structure" so spawn
+ * does not re-clone a second Warm-Up set after phases were deleted without cascading items.
  */
 export async function taskHasAnyPhases(taskId: string): Promise<boolean> {
   const id = taskId.trim();
@@ -390,6 +422,12 @@ export async function taskHasAnyPhases(taskId: string): Promise<boolean> {
     const chunk = queryIds.slice(i, i + PHASE_FETCH_ID_CHUNK);
     const { data, error } = await sb.from(T_PHASES).select("id").in("task_id", chunk).limit(1);
     if (error) throw new Error(`taskHasAnyPhases: ${error.message}`);
+    if (data?.length) return true;
+  }
+  for (let i = 0; i < queryIds.length; i += PHASE_FETCH_ID_CHUNK) {
+    const chunk = queryIds.slice(i, i + PHASE_FETCH_ID_CHUNK);
+    const { data, error } = await sb.from(T_ITEMS).select("id").in("task_id", chunk).limit(1);
+    if (error) throw new Error(`taskHasAnyPhases items: ${error.message}`);
     if (data?.length) return true;
   }
   return false;
@@ -477,6 +515,14 @@ export async function updatePhase(id: string, patch: Record<string, unknown>): P
 }
 
 export async function deletePhase(id: string): Promise<void> {
+  const row = await sbSelectByPublicId<PhaseRow>(T_PHASES, id);
+  if (!row) return;
+  const stablePhaseId = String(row.phase_id ?? publicId(row)).trim();
+  const sb = getSupabaseServiceClient();
+  if (stablePhaseId) {
+    const { error: itemsError } = await sb.from(T_ITEMS).delete().eq("phase_id", stablePhaseId);
+    if (itemsError) throw new Error(`deletePhase items: ${itemsError.message}`);
+  }
   await sbDeleteByPublicId(T_PHASES, id);
 }
 

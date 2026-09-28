@@ -388,6 +388,27 @@ export async function applyTemplateToTask(
   const primaryModelName = modelNames[0] ?? "";
   const region = input.region ?? "Global";
 
+  // Recurring template applies must set spawn key — otherwise the unique partial index
+  // cannot block same-day re-applies / spawn races (NULL keys bypass the constraint).
+  let recurringSpawnKey: string | undefined;
+  if (input.is_recurring && input.dueDate?.trim()) {
+    const { vaTaskSeriesKey, buildRecurringSpawnKey } = await import("@/lib/recurrence");
+    const { ymdInAthens } = await import("@/lib/airtable-datetime");
+    const dueYmd =
+      ymdInAthens(input.dueDate) ||
+      (/^\d{4}-\d{2}-\d{2}/.test(input.dueDate.trim()) ? input.dueDate.trim().slice(0, 10) : "");
+    if (dueYmd) {
+      recurringSpawnKey = buildRecurringSpawnKey(
+        vaTaskSeriesKey({
+          title: template.name,
+          assigned_to_ids: vaIds,
+          assigned_model_ids: modelIds,
+        }),
+        dueYmd,
+      );
+    }
+  }
+
   const task = await createVaTask({
     title: template.name,
     description: template.description,
@@ -404,6 +425,7 @@ export async function applyTemplateToTask(
     recurrence_days: input.is_recurring ? input.recurrence_days : undefined,
     recurrence_interval: input.is_recurring ? input.recurrence_interval ?? undefined : undefined,
     recurrence_end_date: input.is_recurring ? input.recurrence_end_date ?? undefined : undefined,
+    recurring_spawn_key: recurringSpawnKey,
   });
 
   for (const phaseTpl of template.phases) {
