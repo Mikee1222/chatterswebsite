@@ -8,6 +8,7 @@ import {
   isClarioSuiteConfigured,
   listClarioSuiteAccounts,
 } from "@/lib/clariosuite-api";
+import { isClarioSuiteUpstreamOutageError } from "@/services/clariosuite-outage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -53,7 +54,36 @@ export async function GET() {
     });
   } catch (err) {
     console.error("[admin/clariosuite-accounts]", err);
-    const message = formatClarioSuiteUserMessage(err);
+    const outage =
+      isClarioSuiteUpstreamOutageError(err) ||
+      (err instanceof ClarioSuiteApiError && err.status >= 500);
+    const message = outage
+      ? "ClarioSuite temporarily unavailable, try again shortly"
+      : formatClarioSuiteUserMessage(err);
+    if (outage) {
+      return NextResponse.json(
+        {
+          error: message,
+          code:
+            err instanceof ClarioSuiteApiError
+              ? err.code || "upstream_unavailable"
+              : "upstream_unavailable",
+          status: err instanceof ClarioSuiteApiError ? err.status : undefined,
+          requestId:
+            err instanceof ClarioSuiteApiError && err.requestId
+              ? err.requestId
+              : undefined,
+          path:
+            err instanceof ClarioSuiteApiError && err.path ? err.path : undefined,
+          accounts: [],
+          count: 0,
+          configured: true,
+          emptyReason: "api_error" as const,
+          message,
+        },
+        { status: 503 }
+      );
+    }
     if (err instanceof ClarioSuiteApiError) {
       const status = err.status >= 400 && err.status < 600 ? err.status : 502;
       return NextResponse.json(

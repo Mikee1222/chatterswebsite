@@ -45,13 +45,15 @@ export function AdminClarioSuiteAccountsLookup({
         accounts?: ClarioSuiteIgProfile[];
       };
       if (!res.ok) {
+        const errText = `${body.message || ""} ${body.error || ""}`.toLowerCase();
         const reason =
-          body.emptyReason ??
-          (res.status === 503 ||
-          (body.error || "").toLowerCase().includes("not configured") ||
-          (body.error || "").toLowerCase().includes("api key")
-            ? "missing_api_key"
-            : "api_error");
+          body.emptyReason === "missing_api_key" ||
+          errText.includes("not configured") ||
+          errText.includes("api key")
+            ? ("missing_api_key" as const)
+            : body.emptyReason === "api_error" || res.status >= 500
+              ? ("api_error" as const)
+              : body.emptyReason ?? ("api_error" as const);
         setEmptyReason(reason);
         setAccounts([]);
         throw new Error(
@@ -59,7 +61,9 @@ export function AdminClarioSuiteAccountsLookup({
             body.error ||
             (reason === "missing_api_key"
               ? "API key not configured"
-              : `Failed to load accounts (${res.status})`)
+              : res.status === 503
+                ? "ClarioSuite temporarily unavailable, try again shortly"
+                : `Failed to load accounts (${res.status})`)
         );
       }
       const rows = Array.isArray(body.accounts) ? body.accounts : [];

@@ -12,6 +12,13 @@ export async function GET() {
   if (userId == null) {
     return NextResponse.json({ count: 0 });
   }
-  const count = await getUnreadCount(userId);
-  return NextResponse.json({ count });
+  try {
+    const count = await getUnreadCount(userId);
+    return NextResponse.json({ count });
+  } catch (err) {
+    // Fail soft: never 500 the notification bell — transient Supabase/network
+    // errors (empty PostgREST fields under load) must not break the page shell.
+    console.error("[api/notifications/unread-count] degraded to 0", err);
+    return NextResponse.json({ count: 0, degraded: true });
+  }
 }

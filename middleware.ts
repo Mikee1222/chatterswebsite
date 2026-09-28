@@ -114,7 +114,17 @@ export async function middleware(request: NextRequest) {
   }
 
   const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
-  const user = await verifySessionToken(token ?? undefined);
+  let user: Awaited<ReturnType<typeof verifySessionToken>>;
+  try {
+    user = await verifySessionToken(token ?? undefined);
+  } catch (err) {
+    // Config/runtime failure ≠ logged out. Never 307 to /login on backend errors.
+    console.error("[middleware] session verify infrastructure error", err);
+    return new NextResponse("Service temporarily unavailable. Please retry shortly.", {
+      status: 503,
+      headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+    });
+  }
   const sessionValid = !!user;
 
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
@@ -124,7 +134,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!sessionValid) {
+  if (!sessionValid || !user) {
     const loginUrl = new URL(ROUTES.login, request.url);
     loginUrl.searchParams.set("from", pathname);
     return NextResponse.redirect(loginUrl);

@@ -195,26 +195,76 @@ export async function listNotificationsForUser(
   return { notifications, offset: nextOffset };
 }
 
+/** Serialize PostgREST / fetch failures even when message/code/details/hint are empty. */
+function formatSupabaseError(error: unknown): string {
+  if (error == null) return "null error";
+  if (typeof error !== "object") return String(error);
+  const e = error as {
+    message?: unknown;
+    code?: unknown;
+    details?: unknown;
+    hint?: unknown;
+    name?: unknown;
+    status?: unknown;
+    statusCode?: unknown;
+    cause?: unknown;
+  };
+  const parts = [
+    typeof e.message === "string" && e.message.trim() ? `message=${e.message}` : "",
+    typeof e.code === "string" && e.code.trim() ? `code=${e.code}` : "",
+    typeof e.details === "string" && e.details.trim() ? `details=${e.details}` : "",
+    typeof e.hint === "string" && e.hint.trim() ? `hint=${e.hint}` : "",
+    typeof e.name === "string" && e.name.trim() ? `name=${e.name}` : "",
+    e.status != null ? `status=${String(e.status)}` : "",
+    e.statusCode != null ? `statusCode=${String(e.statusCode)}` : "",
+  ].filter(Boolean);
+  if (parts.length > 0) {
+    if (e.cause != null) {
+      try {
+        parts.push(`cause=${JSON.stringify(e.cause)}`);
+      } catch {
+        parts.push(`cause=${String(e.cause)}`);
+      }
+    }
+    return parts.join(" | ");
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return "unserializable Supabase error";
+  }
+}
+
 export async function getUnreadCount(userId: string): Promise<number> {
   const sb = getSupabaseServiceClient();
   // read_at is `date` — do NOT use `read_at.eq.` / empty string (PostgREST 22007).
-  const { count, error } = await sb
-    .from(TABLE)
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .is("read_at", null);
-  if (error) {
-    const detail = [error.message, error.code, error.details, error.hint]
-      .filter(Boolean)
-      .join(" | ");
-    console.error("[notifications-supabase] getUnreadCount failed", {
+  // Uses idx_notifications_user_unread_read_at (user_id) WHERE read_at IS NULL.
+  try {
+    const { count, error } = await sb
+      .from(TABLE)
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("read_at", null);
+    if (error) {
+      const detail = formatSupabaseError(error);
+      console.error("[notifications-supabase] getUnreadCount failed", {
+        userId,
+        detail,
+        error,
+      });
+      throw new Error(`getUnreadCount: ${detail || "unknown Supabase error"}`);
+    }
+    return count ?? 0;
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith("getUnreadCount:")) throw err;
+    const detail = formatSupabaseError(err);
+    console.error("[notifications-supabase] getUnreadCount threw", {
       userId,
       detail,
-      error,
+      err,
     });
-    throw new Error(`getUnreadCount: ${detail || "unknown Supabase error"}`);
+    throw new Error(`getUnreadCount: ${detail || (err instanceof Error ? err.message : "unknown throw")}`);
   }
-  return count ?? 0;
 }
 
 export async function markAsRead(recordId: string, userId: string) {

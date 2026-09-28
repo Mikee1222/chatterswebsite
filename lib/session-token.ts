@@ -6,6 +6,14 @@
 
 import { SignJWT } from "jose/jwt/sign";
 import { jwtVerify } from "jose/jwt/verify";
+import {
+  JOSEError,
+  JWTClaimValidationFailed,
+  JWTExpired,
+  JWTInvalid,
+  JWSInvalid,
+  JWSSignatureVerificationFailed,
+} from "jose/errors";
 import { AUTH_COOKIE_NAME, getSessionJwtSecret, type AuthUser } from "./auth-config";
 
 export { AUTH_COOKIE_NAME, getSessionJwtSecret };
@@ -23,6 +31,19 @@ type SessionPayload = {
 
 function encodeSecret(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
+}
+
+/** True when the token itself is missing/invalid/expired — safe to treat as logged out. */
+function isUnauthenticatedJwtError(err: unknown): boolean {
+  return (
+    err instanceof JWTExpired ||
+    err instanceof JWTClaimValidationFailed ||
+    err instanceof JWTInvalid ||
+    err instanceof JWSInvalid ||
+    err instanceof JWSSignatureVerificationFailed ||
+    // Other JOSE crypto/format failures on the token are also "not a valid session"
+    err instanceof JOSEError
+  );
 }
 
 export async function signSessionToken(user: AuthUser, maxAgeSeconds: number): Promise<string> {
@@ -51,12 +72,17 @@ export async function signSessionToken(user: AuthUser, maxAgeSeconds: number): P
 /**
  * Verify session token and return user. Use in middleware and getSessionFromCookies.
  * Returns null if token missing, invalid, or expired.
+ * Throws on infrastructure/config failures (e.g. missing SESSION_JWT_SECRET) so callers
+ * do not treat backend errors as "logged out" and 307 to /login.
  */
 export async function verifySessionToken(token: string | undefined): Promise<AuthUser | null> {
   if (!token || !token.trim()) return null;
+
+  // Config/runtime errors must NOT look like an expired session.
+  const secret = getSessionJwtSecret();
+  const key = encodeSecret(secret);
+
   try {
-    const secret = getSessionJwtSecret();
-    const key = encodeSecret(secret);
     const { payload } = await jwtVerify(token, key);
     const p = payload as unknown as SessionPayload;
     if (!p.id || !p.email || !p.role) return null;
@@ -83,7 +109,9 @@ export async function verifySessionToken(token: string | undefined): Promise<Aut
       out.va_type = null;
     }
     return out;
-  } catch {
-    return null;
+  } catch (err) {
+    if (isUnauthenticatedJwtError(err)) return null;
+    console.error("[session-token] unexpected verify failure (not treating as logged out)", err);
+    throw err;
   }
 }

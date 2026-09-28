@@ -27,6 +27,9 @@ export async function deleteSession(_sessionId: string): Promise<void> {
 /**
  * Read session cookie and validate JWT. Same validation as middleware.
  * Use this in server components, actions, and API routes.
+ * Returns null only for missing/invalid/expired tokens.
+ * Infrastructure/config failures from verifySessionToken propagate (do not
+ * treat as logged out — callers must not redirect to /login on those).
  */
 export async function getSessionFromCookies(): Promise<AuthUser | null> {
   const cookieStore = await cookies();
