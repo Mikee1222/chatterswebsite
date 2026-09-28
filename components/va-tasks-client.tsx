@@ -790,6 +790,29 @@ export function VaTasksClient({
     [applyFetchedPhases, fetchPhasesForTask, loadModelAccountsForPhases],
   );
 
+  // Progressive phase hydrate after shell paint — replaces blocking SSR initialTaskPhases
+  // (Warm-Up templates × many tasks were serializing 100KB+ into the document before TTFB).
+  const todayPrefetchKey = React.useMemo(() => {
+    if (!isViewingToday) return "";
+    return filterTasksByAthensYmd(tasks, todayYmd)
+      .filter((t) => !t.is_virtual_occurrence && !t.id.startsWith("virt_"))
+      .map((t) => t.id)
+      .sort()
+      .join(",");
+  }, [isViewingToday, tasks, todayYmd]);
+
+  React.useEffect(() => {
+    if (!todayPrefetchKey) return;
+    const todayList = filterTasksByAthensYmd(tasksRef.current, todayYmd).filter(
+      (t) => !t.is_virtual_occurrence && !t.id.startsWith("virt_"),
+    );
+    // Cap concurrency — typical day is 1–5 real tasks including Warm-Up.
+    for (const task of todayList.slice(0, 12)) {
+      if (taskPhasesRef.current[task.id]?.length) continue;
+      void loadPhasesAndAccounts(task);
+    }
+  }, [todayPrefetchKey, todayYmd, loadPhasesAndAccounts]);
+
   const refreshPhasesAndAccountsRef = React.useRef(refreshPhasesAndAccounts);
   refreshPhasesAndAccountsRef.current = refreshPhasesAndAccounts;
 

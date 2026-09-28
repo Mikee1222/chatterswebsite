@@ -274,6 +274,34 @@ export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
   return grouped[taskId] ?? [];
 }
 
+/** Cheap phases-exist check — spawn path must not hydrate full Warm-Up checklists. */
+export async function taskHasAnyPhases(taskId: string): Promise<boolean> {
+  if (isVirtualVaTaskId(taskId)) return false;
+  if (isSupabaseBackend()) {
+    return (await import("./task-phases-supabase")).taskHasAnyPhases(taskId);
+  }
+  const phases = await getPhasesByTask(taskId);
+  return phases.length > 0;
+}
+
+export async function scorePhaseCloneSources(
+  taskIds: string[],
+): Promise<Array<{ taskId: string; itemCount: number; withModel: boolean }>> {
+  if (isSupabaseBackend()) {
+    return (await import("./task-phases-supabase")).scorePhaseCloneSources(taskIds);
+  }
+  const out: Array<{ taskId: string; itemCount: number; withModel: boolean }> = [];
+  for (const id of taskIds) {
+    const phases = await getPhasesByTask(id);
+    out.push({
+      taskId: id,
+      itemCount: phases.reduce((n, p) => n + p.items.length, 0),
+      withModel: phases.some((p) => Boolean(p.assigned_model_id?.trim())),
+    });
+  }
+  return out;
+}
+
 /** Lightweight phase lookup (record id → phase_id) for ownership / create-item routing. */
 export async function getPhaseById(
   id: string
@@ -555,20 +583,23 @@ export async function clonePhasesToTask(
     }
 
     const stablePhaseId = created.phase_id || created.id;
-    for (const item of phase.items) {
-      await createPhaseItem({
-        phase_id: stablePhaseId,
-        task_id: targetTask.id,
-        title: item.title,
-        description: item.description,
-        requires_screenshot: item.requires_screenshot,
-        sort_order: item.sort_order,
-        step_type:
-          item.step_type && item.step_type !== DEFAULT_TASK_STEP_TYPE
-            ? item.step_type
-            : inferTaskStepTypeFromTitle(item.title) ?? item.step_type ?? DEFAULT_TASK_STEP_TYPE,
-      });
-    }
+    // Parallel item inserts — Warm-Up clones ~76 rows; sequential was multi-second on spawn.
+    await Promise.all(
+      phase.items.map((item) =>
+        createPhaseItem({
+          phase_id: stablePhaseId,
+          task_id: targetTask.id,
+          title: item.title,
+          description: item.description,
+          requires_screenshot: item.requires_screenshot,
+          sort_order: item.sort_order,
+          step_type:
+            item.step_type && item.step_type !== DEFAULT_TASK_STEP_TYPE
+              ? item.step_type
+              : inferTaskStepTypeFromTitle(item.title) ?? item.step_type ?? DEFAULT_TASK_STEP_TYPE,
+        }),
+      ),
+    );
     cloned += 1;
   }
   return cloned;

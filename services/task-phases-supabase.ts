@@ -257,6 +257,7 @@ async function selectAllByTaskIds<T extends SbRow>(
   table: string,
   taskIds: string[],
   orderCol: string,
+  columns = "*",
 ): Promise<T[]> {
   if (!taskIds.length) return [];
   const sb = getSupabaseServiceClient();
@@ -268,7 +269,7 @@ async function selectAllByTaskIds<T extends SbRow>(
     for (;;) {
       const { data, error } = await sb
         .from(table)
-        .select("*")
+        .select(columns)
         .in("task_id", chunk)
         .order(orderCol, { ascending: true })
         .range(from, from + PHASE_FETCH_PAGE - 1);
@@ -373,6 +374,85 @@ export async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Rec
 export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
   const grouped = await fetchPhasesGroupedByTaskId([taskId]);
   return grouped[taskId] ?? [];
+}
+
+/**
+ * Cheap existence check used by recurring spawn on every /va-tasks load.
+ * Avoids fetchPhasesGroupedByTaskId (Warm-Up ≈ 76 items) just to test phases.length > 0.
+ */
+export async function taskHasAnyPhases(taskId: string): Promise<boolean> {
+  const id = taskId.trim();
+  if (!id) return false;
+  const { queryIds } = await expandTaskIdAliases([id]);
+  if (!queryIds.length) return false;
+  const sb = getSupabaseServiceClient();
+  for (let i = 0; i < queryIds.length; i += PHASE_FETCH_ID_CHUNK) {
+    const chunk = queryIds.slice(i, i + PHASE_FETCH_ID_CHUNK);
+    const { data, error } = await sb.from(T_PHASES).select("id").in("task_id", chunk).limit(1);
+    if (error) throw new Error(`taskHasAnyPhases: ${error.message}`);
+    if (data?.length) return true;
+  }
+  return false;
+}
+
+export type PhaseCloneSourceScore = {
+  taskId: string;
+  itemCount: number;
+  withModel: boolean;
+};
+
+/**
+ * One batched score pass for pickPhaseCloneSourceId — replaces N× getPhasesByTask
+ * (Daily Marketing history alone was 50+ full checklist fetches per spawn).
+ */
+export async function scorePhaseCloneSources(taskIds: string[]): Promise<PhaseCloneSourceScore[]> {
+  const ids = [...new Set(taskIds.map((t) => t.trim()).filter(Boolean))];
+  if (!ids.length) return [];
+
+  const { queryIds, aliasesFor } = await expandTaskIdAliases(ids);
+  if (!queryIds.length) return ids.map((taskId) => ({ taskId, itemCount: 0, withModel: false }));
+
+  const [phaseData, itemData] = await Promise.all([
+    selectAllByTaskIds<{ id: string; task_id?: string | null; assigned_model_id?: string | null } & SbRow>(
+      T_PHASES,
+      queryIds,
+      "phase_number",
+      "id, task_id, assigned_model_id",
+    ),
+    selectAllByTaskIds<{ id: string; task_id?: string | null } & SbRow>(
+      T_ITEMS,
+      queryIds,
+      "sort_order",
+      "id, task_id",
+    ),
+  ]);
+
+  const itemCountByStored = new Map<string, number>();
+  for (const row of itemData) {
+    const tid = String(row.task_id ?? "").trim();
+    if (!tid) continue;
+    itemCountByStored.set(tid, (itemCountByStored.get(tid) ?? 0) + 1);
+  }
+  const modelByStored = new Map<string, boolean>();
+  for (const row of phaseData) {
+    const tid = String(row.task_id ?? "").trim();
+    if (!tid) continue;
+    if (String(row.assigned_model_id ?? "").trim()) modelByStored.set(tid, true);
+  }
+
+  return ids.map((taskId) => {
+    let itemCount = 0;
+    let withModel = false;
+    for (const [stored, count] of itemCountByStored) {
+      if (stored === taskId || aliasesFor(stored).includes(taskId)) itemCount += count;
+    }
+    for (const [stored, has] of modelByStored) {
+      if (has && (stored === taskId || aliasesFor(stored).includes(taskId))) withModel = true;
+    }
+    if (itemCount === 0) itemCount = itemCountByStored.get(taskId) ?? 0;
+    if (!withModel) withModel = modelByStored.get(taskId) === true;
+    return { taskId, itemCount, withModel };
+  });
 }
 
 export async function resolvePhaseItemRowId(paramId: string): Promise<string | null> {

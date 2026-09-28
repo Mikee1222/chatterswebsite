@@ -89,22 +89,21 @@ async function pickPhaseCloneSourceId(
   seriesKey: string,
   fallbackId: string,
 ): Promise<string> {
-  const { getPhasesByTask } = await import("@/services/task-phases");
+  const { scorePhaseCloneSources } = await import("@/services/task-phases");
   const inSeries = allTasks.filter(
     (t) => !t.is_virtual_occurrence && t.is_recurring && vaTaskSeriesKey(t) === seriesKey,
   );
+  if (!inSeries.length) return fallbackId;
+  // One batched score — never N× full getPhasesByTask over series history (Daily Marketing
+  // alone grew to 50+ rows; each Warm-Up fetch is ~76 checklist items).
+  const scores = await scorePhaseCloneSources(inSeries.map((t) => t.id));
   let bestId = fallbackId;
   let bestScore = Number.NEGATIVE_INFINITY;
-  for (const t of inSeries) {
-    const phases = await getPhasesByTask(t.id);
-    const itemCount = phases.reduce((n, p) => n + p.items.length, 0);
-    const withModel = phases.some((p) => Boolean(p.assigned_model_id?.trim()));
-    // Prefer sources that still carry assigned_model_* — item count alone can pick a
-    // duplicate-bloated row that lost model ids after a bad prior clone.
-    const score = (withModel ? 1_000_000 : 0) + itemCount;
+  for (const row of scores) {
+    const score = (row.withModel ? 1_000_000 : 0) + row.itemCount;
     if (score > bestScore) {
       bestScore = score;
-      bestId = t.id;
+      bestId = row.taskId;
     }
   }
   return bestId;
@@ -216,22 +215,20 @@ async function spawnRecurringOccurrenceIfMissingLocked(
   if (recurrenceSkipsAthensYmd(anchor, targetYmd)) return null;
 
   const spawnKey = buildRecurringSpawnKey(series, targetYmd);
-  const { clonePhasesToTask, getPhasesByTask } = await import("@/services/task-phases");
+  const { clonePhasesToTask, taskHasAnyPhases } = await import("@/services/task-phases");
   const { updateVaTask } = await import("@/services/va-tasks");
 
+  // Prefer spawn-key + in-memory — never full-table getAllVaTasks on the common path
+  // (was amplifying /va-tasks and /admin/va-tasks TTFB under concurrent VA loads).
   const resolveExisting = async (): Promise<VaTaskRecord | undefined> => {
     const byKey = await resolveExistingBySpawnKey(spawnKey);
     if (byKey) return byKey;
-    const fromMemory = findExistingRowForDueIso(allTasks, series, dueIso);
-    if (fromMemory) return fromMemory;
-    const fresh = await getAllVaTasks();
-    return findExistingRowForDueIso(fresh, series, dueIso);
+    return findExistingRowForDueIso(allTasks, series, dueIso);
   };
 
   const existing = await resolveExisting();
   if (existing) {
-    const phases = await getPhasesByTask(existing.id);
-    if (phases.length > 0) return null;
+    if (await taskHasAnyPhases(existing.id)) return null;
     const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
     const models = await resolveSpawnModelFields(anchor, sourceId);
     if (models.assigned_model_ids.length && !(existing.assigned_model_ids ?? []).length) {
@@ -243,8 +240,7 @@ async function spawnRecurringOccurrenceIfMissingLocked(
       );
     }
     // Re-check after model patch — concurrent backfill may have finished first.
-    const phasesAfter = await getPhasesByTask(existing.id);
-    if (phasesAfter.length > 0) return null;
+    if (await taskHasAnyPhases(existing.id)) return null;
     await clonePhasesToTask(sourceId, existing).catch((err) =>
       console.error("[va-task-recurring-spawn] backfill phases failed", err),
     );
@@ -315,7 +311,7 @@ export async function spawnTodayRecurringOccurrencesForVa(vaId: string): Promise
 /** Option B: day-boundary safety net — spawn today's occurrence for every active recurring series. */
 export async function spawnTodayRecurringOccurrencesAll(): Promise<SpawnRecurringResult> {
   const todayYmd = getVaTasksViewTodayYmd();
-  let allTasks = await getAllVaTasks();
+  const allTasks = await getAllVaTasks();
   const anchors = pickSeriesAnchors(allTasks);
 
   let spawned = 0;
@@ -334,7 +330,9 @@ export async function spawnTodayRecurringOccurrencesAll(): Promise<SpawnRecurrin
     const result = await spawnRecurringOccurrenceIfMissing(anchor, dueIso, allTasks);
     if (result) {
       spawned += 1;
-      allTasks = await getAllVaTasks();
+      // spawnRecurringOccurrenceIfMissing already pushes into allTasks — do NOT
+      // re-scan the full va_tasks table after every series (admin /va-tasks was
+      // doing getAllVaTasks × N series on morning spawn).
     } else {
       skipped += 1;
     }

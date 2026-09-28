@@ -11,6 +11,9 @@ import { getActiveVaTaskShift } from "@/services/shifts";
 import { getEnabledTimerCategories } from "@/services/task-category-timer";
 import { VaTasksClient } from "@/components/va-tasks-client";
 
+/** Cap spawn work so a stuck/slow clone cannot hang the whole Tasks document forever. */
+const SPAWN_BUDGET_MS = 6_000;
+
 export default async function VaTasksPage() {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.dashboard);
@@ -37,9 +40,14 @@ export default async function VaTasksPage() {
   // Materialize today's real recurring rows before render — marketing-exec / VA may open
   // /va-tasks without a shift-start, and day-boundary cron alone has left today as a locked
   // virtual "Upcoming day" preview when the real row was never created.
-  await import("@/services/va-task-recurring-spawn")
-    .then(({ spawnTodayRecurringOccurrencesForVa }) => spawnTodayRecurringOccurrencesForVa(vaId))
-    .catch((err) => console.error("[va-tasks] spawn today recurring failed", err));
+  // Soft time budget: spawn is now cheap when rows already exist; cloning Warm-Up (~76 items)
+  // can still be heavy the first time — don't block HTML forever if Supabase stalls.
+  await Promise.race([
+    import("@/services/va-task-recurring-spawn")
+      .then(({ spawnTodayRecurringOccurrencesForVa }) => spawnTodayRecurringOccurrencesForVa(vaId))
+      .catch((err) => console.error("[va-tasks] spawn today recurring failed", err)),
+    new Promise<void>((resolve) => setTimeout(resolve, SPAWN_BUDGET_MS)),
+  ]);
 
   const [tasks, activeShift, enabledTimerCategories] = await Promise.all([
     getVaTasksForUser(vaId).catch(() => []),
@@ -47,20 +55,11 @@ export default async function VaTasksPage() {
     getEnabledTimerCategories().catch(() => []),
   ]);
 
-  const { getVaTasksViewTodayYmd, filterTasksByAthensYmd } = await import("@/lib/va-task-date-filter");
-  const { getPhasesForTasksDisplay } = await import("@/services/task-phases");
-  const { normalizeTaskPhasesForClient } = await import("@/lib/va-task-phases-fetch");
-  const todayTasks = filterTasksByAthensYmd(tasks, getVaTasksViewTodayYmd());
-  const phaseSpecs = todayTasks
-    .filter((t) => !t.is_virtual_occurrence && !t.id.startsWith("virt_"))
-    .map((t) => ({ taskId: t.id, sourceTaskId: t.virtual_source_task_id ?? null }));
-  const rawInitialPhases = await getPhasesForTasksDisplay(phaseSpecs).catch((err) => {
-    console.error("[va-tasks] initial phases hydration failed", err);
-    return {} as Record<string, import("@/services/task-phases").TaskPhase[]>;
-  });
-  const initialTaskPhases = Object.fromEntries(
-    Object.entries(rawInitialPhases).map(([id, phases]) => [id, normalizeTaskPhasesForClient(phases)]),
-  );
+  // Intentionally do NOT SSR-hydrate full phase/item trees here.
+  // Evidence (2026-09-29): a typical marketing VA with Warm-Up + Daily Marketing had
+  // 202 checklist items (~115KB items JSON) + 137 historical tasks (~141KB) blocking
+  // first paint; combined with spawn getPhasesByTask checks this made /va-tasks hang.
+  // Client progressive prefetch after shell paint restores checked state without TTFB cost.
 
   const userName = (user.fullName || user.email || "").trim();
 
@@ -82,7 +81,6 @@ export default async function VaTasksPage() {
       initialActiveShift={initialActiveShift}
       canManage={canManage}
       enabledTimerCategories={enabledTimerCategories}
-      initialTaskPhases={initialTaskPhases}
     />
   );
 }
