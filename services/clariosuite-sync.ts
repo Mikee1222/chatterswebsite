@@ -8,7 +8,9 @@ import {
   computePostEngagementScore,
   fetchMediaInsights,
   formatClarioSuiteUserMessage,
+  getClarioSuiteMe,
   isClarioSuiteConfigured,
+  isClarioSuiteUpstreamGenericMessage,
   isMediaInsightUnavailable,
   listClarioSuiteMedia,
   logClarioSuiteFailure,
@@ -18,6 +20,13 @@ import {
 } from "@/lib/clariosuite-api";
 import { publicId, sbSelectWhere, type SbRow } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
+import {
+  buildClarioSuiteOutageMessage,
+  clearClarioSuiteOutage,
+  isClarioSuiteUpstreamOutageError,
+  maybeNotifyClarioSuiteOutage,
+  recordClarioSuiteOutage,
+} from "@/services/clariosuite-outage";
 import {
   listAllClarioSuiteModelAccounts,
   resolvePrimaryIgUserId,
@@ -795,6 +804,7 @@ export async function resyncClarioSuiteMediaInsights(opts?: {
 /**
  * Sync all models with `clariosuite_ig_user_id` set.
  * No-ops gracefully when CLARIOSUITE_API_KEY is missing.
+ * Probes GET /me first — if upstream is down, skips cleanly and leaves cached data untouched.
  */
 export async function syncClarioSuiteInsights(opts?: {
   rangeDays?: number;
@@ -811,6 +821,62 @@ export async function syncClarioSuiteInsights(opts?: {
       winnersAutoDetected: 0,
       winnerAutoDetectErrors: 0,
       errors: [],
+    };
+  }
+
+  // Probe /me before touching any account endpoints. On outage: skip, keep DB rows, record failure.
+  try {
+    await getClarioSuiteMe();
+  } catch (err) {
+    logClarioSuiteFailure("sync probe /me", err, {});
+    if (
+      isClarioSuiteUpstreamOutageError(err) ||
+      (err instanceof ClarioSuiteApiError &&
+        (err.status === 401 || err.status === 403 || err.code === "missing_api_key"))
+    ) {
+      const state = await recordClarioSuiteOutage(err);
+      await maybeNotifyClarioSuiteOutage(state);
+      const skipReason = await buildClarioSuiteOutageMessage(state);
+      return {
+        skipped: true,
+        skipReason,
+        modelsTargeted: 0,
+        dailyRowsUpserted: 0,
+        audienceUpserted: 0,
+        topPostsUpserted: 0,
+        winnersAutoDetected: 0,
+        winnerAutoDetectErrors: 0,
+        errors: [
+          {
+            igUserId: "me",
+            message: formatClarioSuiteUserMessage(err),
+            code: err instanceof ClarioSuiteApiError ? err.code || undefined : undefined,
+            status: err instanceof ClarioSuiteApiError ? err.status || undefined : undefined,
+            path: "/me",
+            requestId: err instanceof ClarioSuiteApiError ? err.requestId || undefined : undefined,
+          },
+        ],
+      };
+    }
+    // Unexpected probe failure — still skip rather than aborting mid-account.
+    const state = await recordClarioSuiteOutage(err);
+    await maybeNotifyClarioSuiteOutage(state);
+    return {
+      skipped: true,
+      skipReason: await buildClarioSuiteOutageMessage(state),
+      modelsTargeted: 0,
+      dailyRowsUpserted: 0,
+      audienceUpserted: 0,
+      topPostsUpserted: 0,
+      winnersAutoDetected: 0,
+      winnerAutoDetectErrors: 0,
+      errors: [
+        {
+          igUserId: "me",
+          message: formatClarioSuiteUserMessage(err),
+          path: "/me",
+        },
+      ],
     };
   }
 
@@ -902,6 +968,40 @@ export async function syncClarioSuiteInsights(opts?: {
       igUserId: "auto-detect",
       message: err instanceof Error ? err.message : String(err),
     });
+  }
+
+  const wroteAnything =
+    result.dailyRowsUpserted > 0 ||
+    result.audienceUpserted > 0 ||
+    result.topPostsUpserted > 0;
+  const allUpstream =
+    result.errors.length > 0 &&
+    result.errors.every(
+      (e) =>
+        isClarioSuiteUpstreamGenericMessage(e.message) ||
+        /temporarily unavailable/i.test(e.message) ||
+        (e.status != null && e.status >= 500)
+    );
+
+  if (wroteAnything && result.errors.length === 0) {
+    await clearClarioSuiteOutage().catch((err) =>
+      console.error("[clariosuite] clear outage failed", err)
+    );
+  } else if (!wroteAnything && allUpstream) {
+    const sample = result.errors[0]!;
+    const state = await recordClarioSuiteOutage(
+      new ClarioSuiteApiError(sample.message, sample.status ?? 500, {
+        code: sample.code,
+        path: sample.path,
+        requestId: sample.requestId,
+      })
+    );
+    await maybeNotifyClarioSuiteOutage(state);
+  } else if (wroteAnything) {
+    // Partial success still means API is at least partly up — clear prolonged-outage window.
+    await clearClarioSuiteOutage().catch((err) =>
+      console.error("[clariosuite] clear outage failed", err)
+    );
   }
 
   return result;

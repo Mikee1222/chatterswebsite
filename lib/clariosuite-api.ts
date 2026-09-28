@@ -113,13 +113,57 @@ export function isClarioSuiteTransientHttpStatus(status: number): boolean {
   return status === 408 || status === 425 || status === 502 || status === 503 || status === 504 || status >= 500;
 }
 
+/** Format an ISO timestamp for operator-facing outage banners. */
+export function formatClarioSuiteOperatorTime(iso: string): string {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso;
+  return new Date(t).toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
+/**
+ * Banner for Integration Health / Instagram Insights during an outage.
+ * Prefer this over empty stats or raw upstream error text.
+ */
+export function formatClarioSuiteOutageStatus(opts: {
+  sinceIso?: string | null;
+  dataAsOfIso?: string | null;
+}): string {
+  const since = opts.sinceIso?.trim()
+    ? ` since ${formatClarioSuiteOperatorTime(opts.sinceIso)}`
+    : "";
+  let msg = `ClarioSuite temporarily unavailable${since}`;
+  if (opts.dataAsOfIso?.trim()) {
+    msg += `. Data as of ${formatClarioSuiteOperatorTime(opts.dataAsOfIso)}`;
+  } else {
+    msg += ". Existing cached data left untouched";
+  }
+  return msg;
+}
+
+/** True for fetch/DNS/socket failures worth retrying (not HTTP 4xx). */
+export function isClarioSuiteNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (err instanceof ClarioSuiteApiError && err.code === "network_error") return true;
+  const name = err.name || "";
+  const msg = err.message || "";
+  return (
+    name === "TypeError" ||
+    name === "AbortError" ||
+    /fetch failed|network|ECONNRESET|ECONNREFUSED|ETIMEDOUT|ENOTFOUND|socket|undici/i.test(msg)
+  );
+}
+
 /**
  * Operator-facing message for Integration Health / Sync Now.
  * Maps opaque upstream "An unexpected error occurred" to a clear temporary-outage line.
  */
 export function formatClarioSuiteUserMessage(err: unknown): string {
   if (err instanceof ClarioSuiteApiError) {
-    if (isClarioSuiteUpstreamGenericMessage(err.message) || (err.status >= 500 && !err.code)) {
+    if (
+      err.code === "network_error" ||
+      isClarioSuiteUpstreamGenericMessage(err.message) ||
+      (err.status >= 500 && !err.code)
+    ) {
       const parts = ["ClarioSuite temporarily unavailable"];
       if (err.status) parts.push(`(HTTP ${err.status})`);
       if (err.requestId) parts.push(`· request ${err.requestId}`);
@@ -135,7 +179,7 @@ export function formatClarioSuiteUserMessage(err: unknown): string {
     return err.message.slice(0, 400);
   }
   const raw = err instanceof Error ? err.message : String(err);
-  if (isClarioSuiteUpstreamGenericMessage(raw)) {
+  if (isClarioSuiteUpstreamGenericMessage(raw) || isClarioSuiteNetworkError(err)) {
     return "ClarioSuite temporarily unavailable. Try again shortly.";
   }
   return raw.slice(0, 400);
@@ -209,11 +253,42 @@ async function clariosuiteFetchJson<T>(path: string, searchParams?: URLSearchPar
   let last429Body = "";
   let last429Code = "rate_limited";
   let last429RequestId = "";
-  /** Max attempts for 429; transient 5xx uses the first 3 of these. */
+  /** Max attempts for 429; transient 5xx + network uses the first 3 of these. */
   const maxAttempts = 5;
   const maxTransientAttempts = 3;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await rateLimitedFetch(url, init);
+    let res: Response;
+    try {
+      res = await rateLimitedFetch(url, init);
+    } catch (networkErr) {
+      const canRetry =
+        isClarioSuiteNetworkError(networkErr) && attempt < maxTransientAttempts - 1;
+      console.error("[clariosuite] network error", {
+        path,
+        attempt,
+        willRetry: canRetry,
+        message:
+          networkErr instanceof Error
+            ? networkErr.message.slice(0, 300)
+            : String(networkErr).slice(0, 300),
+      });
+      if (canRetry) {
+        const backoff = Math.min(8_000, 1_000 * 2 ** attempt);
+        clariosuiteDebug("clariosuite network — retry", {
+          path,
+          attempt,
+          backoffMs: backoff,
+        });
+        await sleep(backoff);
+        continue;
+      }
+      throw new ClarioSuiteApiError(
+        networkErr instanceof Error ? networkErr.message : "ClarioSuite network error",
+        503,
+        { code: "network_error", path }
+      );
+    }
+
     const remaining = res.headers.get("X-RateLimit-Remaining");
     if (remaining != null) {
       const rem = Number.parseInt(remaining, 10);
@@ -245,6 +320,7 @@ async function clariosuiteFetchJson<T>(path: string, searchParams?: URLSearchPar
       const body = await res.text();
       const parsed = parseErrorPayload(body);
       const truncated = body.slice(0, 300);
+      // Retry transient 5xx only — never retry other 4xx (except 429 above).
       const transient = isClarioSuiteTransientHttpStatus(res.status);
       console.error("[clariosuite] API error", {
         status: res.status,

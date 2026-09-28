@@ -252,6 +252,9 @@ type HealthPayload = {
   meError: string | null;
   accountsCount?: number | null;
   accountsError?: string | null;
+  outageSince?: string | null;
+  dataAsOf?: string | null;
+  outageMessage?: string | null;
   emptyReason?: "missing_api_key" | "no_ig_accounts" | "api_error" | null;
   message?: string | null;
   modelsTotal: number;
@@ -376,6 +379,7 @@ export function AdminInstagramInsightsClient() {
         if (upstream) {
           setError(
             sample.message ||
+              health?.outageMessage ||
               "ClarioSuite temporarily unavailable. Try again shortly."
           );
         } else {
@@ -496,14 +500,32 @@ export function AdminInstagramInsightsClient() {
               )}
               {health?.healthy
                 ? `API connected${health.me?.name ? ` · ${health.me.name}` : ""}`
-                : health?.meError || "API not connected"}
+                : health?.outageMessage ||
+                  health?.meError ||
+                  health?.message ||
+                  "API not connected"}
             </div>
-            {syncLabel ? (
-              <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
-                <Clock3 className="h-3.5 w-3.5" />
-                Synced {syncLabel}
-              </div>
-            ) : null}
+            {(() => {
+              const asOfIso = health?.dataAsOf ?? data?.lastSyncedAt ?? data?.audience?.synced_at ?? null;
+              const asOfLabel = formatRelativeSync(asOfIso);
+              if (health && !health.healthy && asOfLabel) {
+                return (
+                  <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Data as of {asOfLabel}
+                  </div>
+                );
+              }
+              if (syncLabel) {
+                return (
+                  <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs text-white/55">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Synced {syncLabel}
+                  </div>
+                );
+              }
+              return null;
+            })()}
             {tab === "by_model" ? (
               <button
                 type="button"

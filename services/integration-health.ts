@@ -8,6 +8,7 @@ import { notifyAdminsOnce } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { getDataBackend } from "@/lib/data-backend";
 import {
+  formatClarioSuiteOutageStatus,
   formatClarioSuiteUserMessage,
   isClarioSuiteConfigured,
   isClarioSuiteUpstreamGenericMessage,
@@ -16,6 +17,12 @@ import { isGetMySocialConfigured } from "@/lib/getmysocial-api";
 import { inflowwReportTodayYmd } from "@/lib/infloww-api";
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
+import {
+  buildClarioSuiteOutageMessage,
+  getClarioSuiteOutageState,
+  maybeNotifyClarioSuiteOutage,
+  recordClarioSuiteOutage,
+} from "@/services/clariosuite-outage";
 import {
   formatBytes,
   getSupabaseUsageSnapshot,
@@ -154,9 +161,17 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
   else inflowwStatus = statusFromAge(inflowwHours, { amberAfter: 18, redAfter: 48, missingIsRed: true });
 
   const clarioHours = hoursSince(clarioLast);
+  const clarioOutage = hasClario ? await getClarioSuiteOutageState() : null;
   const clarioAlerts: string[] = [];
   if (!hasClario) clarioAlerts.push("CLARIOSUITE_API_KEY is missing.");
-  if (hasClario && clarioHours != null && clarioHours > 48) {
+  if (clarioOutage) {
+    clarioAlerts.push(
+      formatClarioSuiteOutageStatus({
+        sinceIso: clarioOutage.startedAt,
+        dataAsOfIso: clarioLast,
+      })
+    );
+  } else if (hasClario && clarioHours != null && clarioHours > 48) {
     clarioAlerts.push("ClarioSuite insights look stale (>48h since last sync).");
   }
   if (hasClario && (clarioDailyCount ?? 0) === 0) {
@@ -164,7 +179,26 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
   }
   let clarioStatus: IntegrationHealthStatus = "green";
   if (!hasClario) clarioStatus = "red";
-  else clarioStatus = statusFromAge(clarioHours, { amberAfter: 30, redAfter: 72, missingIsRed: false });
+  else if (clarioOutage) {
+    const outageHours = hoursSince(clarioOutage.startedAt);
+    clarioStatus =
+      outageHours != null && outageHours >= 3
+        ? "red"
+        : "amber";
+  } else {
+    clarioStatus = statusFromAge(clarioHours, { amberAfter: 30, redAfter: 72, missingIsRed: false });
+  }
+
+  const clarioMessage = !hasClario
+    ? "API key missing"
+    : clarioOutage
+      ? formatClarioSuiteOutageStatus({
+          sinceIso: clarioOutage.startedAt,
+          dataAsOfIso: clarioLast,
+        })
+      : clarioLast
+        ? `Last sync ${clarioLast}`
+        : "Configured — awaiting first sync";
 
   const gmsHours = hoursSince(gmsLast);
   const gmsAlerts: string[] = [];
@@ -253,11 +287,7 @@ export async function getIntegrationHealthSnapshot(): Promise<IntegrationHealthS
       status: clarioStatus,
       lastSyncedAt: clarioLast,
       rowCount: clarioDailyCount,
-      message: hasClario
-        ? clarioLast
-          ? `Last sync ${clarioLast}`
-          : "Configured — awaiting first sync"
-        : "API key missing",
+      message: clarioMessage,
       alerts: clarioAlerts,
       canTest: true,
       canSync: true,
@@ -408,8 +438,11 @@ export async function triggerIntegrationSync(
       const { syncClarioSuiteInsights } = await import("@/services/clariosuite-sync");
       const result = await syncClarioSuiteInsights({});
       if (result.skipped) {
-        const msg = result.skipReason ?? "ClarioSuite sync skipped";
-        await notifyIntegrationFailure("clariosuite", msg, "sync");
+        const msg =
+          result.skipReason ??
+          (await buildClarioSuiteOutageMessage()) ??
+          "ClarioSuite sync skipped";
+        // Outage notify ( >3h, once ) is handled inside syncClarioSuiteInsights.
         return { ok: false, message: msg };
       }
       const wroteAnything =
@@ -422,14 +455,12 @@ export async function triggerIntegrationSync(
             isClarioSuiteUpstreamGenericMessage(e.message) ||
             /temporarily unavailable/i.test(e.message),
         );
-        const sample = result.errors[0]!;
+        const outage = await getClarioSuiteOutageState();
         const detail = allUpstream
-          ? `ClarioSuite temporarily unavailable${sample.status ? ` (HTTP ${sample.status})` : ""}${
-              sample.requestId ? ` · request ${sample.requestId}` : ""
-            }${sample.path ? ` · ${sample.path}` : ""}. ${result.errors.length} endpoint error(s) across linked accounts.`
-          : `ClarioSuite sync had ${result.errors.length} error(s): ${sample.message}`;
+          ? await buildClarioSuiteOutageMessage(outage)
+          : `ClarioSuite sync had ${result.errors.length} error(s): ${result.errors[0]!.message}`;
         if (!wroteAnything) {
-          await notifyIntegrationFailure("clariosuite", detail, "sync");
+          // Do not spam admins on every failed run — sync already gates >3h once.
           return { ok: false, message: detail };
         }
         return {
@@ -443,8 +474,9 @@ export async function triggerIntegrationSync(
       };
     } catch (e) {
       const msg = formatClarioSuiteUserMessage(e);
-      await notifyIntegrationFailure("clariosuite", msg, "sync");
-      return { ok: false, message: msg };
+      const state = await recordClarioSuiteOutage(e);
+      await maybeNotifyClarioSuiteOutage(state);
+      return { ok: false, message: await buildClarioSuiteOutageMessage(state).catch(() => msg) };
     }
   }
   if (id === "getmysocial") {
@@ -510,6 +542,12 @@ export async function emitIntegrationHealthAlerts(
   const snap = snapshot ?? (await getIntegrationHealthSnapshot());
   for (const card of snap.cards) {
     if (card.status !== "red") continue;
+    // ClarioSuite uses a dedicated >3h / once outage notifier — never daily spam here.
+    if (card.id === "clariosuite") {
+      const state = await getClarioSuiteOutageState();
+      if (state) await maybeNotifyClarioSuiteOutage(state);
+      continue;
+    }
     const apiKeyIssue = card.alerts.some((a) =>
       /missing|API key|credentials/i.test(a),
     );

@@ -8,6 +8,13 @@ import {
   isClarioSuiteConfigured,
   listClarioSuiteAccounts,
 } from "@/lib/clariosuite-api";
+import {
+  buildClarioSuiteOutageMessage,
+  clearClarioSuiteOutage,
+  getClarioSuiteDataAsOfIso,
+  getClarioSuiteOutageState,
+  recordClarioSuiteOutage,
+} from "@/services/clariosuite-outage";
 import { listLinkedClarioSuiteModels } from "@/services/clariosuite-sync";
 import { listAllModelss } from "@/services/modelss";
 
@@ -30,17 +37,36 @@ export async function GET() {
   let meError: string | null = null;
   let accountsCount: number | null = null;
   let accountsError: string | null = null;
+  let outageSince: string | null = null;
+  let dataAsOf: string | null = null;
+  let outageMessage: string | null = null;
+
   if (configured) {
+    dataAsOf = await getClarioSuiteDataAsOfIso();
     try {
       me = await getClarioSuiteMe();
     } catch (err) {
       meError = formatClarioSuiteUserMessage(err);
+      const state = await recordClarioSuiteOutage(err);
+      outageSince = state.startedAt;
+      outageMessage = await buildClarioSuiteOutageMessage(state);
     }
-    try {
-      const accounts = await listClarioSuiteAccounts();
-      accountsCount = accounts.length;
-    } catch (err) {
-      accountsError = formatClarioSuiteUserMessage(err);
+    // Only list accounts when /me succeeded — avoid hammering during outages.
+    if (me) {
+      try {
+        const accounts = await listClarioSuiteAccounts();
+        accountsCount = accounts.length;
+        await clearClarioSuiteOutage().catch(() => undefined);
+      } catch (err) {
+        accountsError = formatClarioSuiteUserMessage(err);
+        const state = await recordClarioSuiteOutage(err);
+        outageSince = state.startedAt;
+        outageMessage = await buildClarioSuiteOutageMessage(state);
+      }
+    } else {
+      const existing = await getClarioSuiteOutageState();
+      outageSince = existing?.startedAt ?? outageSince;
+      if (!outageMessage) outageMessage = await buildClarioSuiteOutageMessage(existing);
     }
   }
 
@@ -49,27 +75,36 @@ export async function GET() {
     listLinkedClarioSuiteModels().catch(() => []),
   ]);
 
+  const unavailable = Boolean(meError || accountsError || outageSince);
+
   return NextResponse.json({
     configured,
-    healthy: Boolean(me),
+    healthy: Boolean(me) && !accountsError,
     me,
     meError: configured ? meError : "CLARIOSUITE_API_KEY not set",
     accountsCount,
     accountsError,
+    outageSince,
+    dataAsOf,
+    outageMessage,
     emptyReason: !configured
       ? ("missing_api_key" as const)
-      : meError
+      : unavailable
         ? ("api_error" as const)
         : accountsCount === 0
           ? ("no_ig_accounts" as const)
           : null,
     message: !configured
       ? "API key not configured. Set CLARIOSUITE_API_KEY in Vercel Production."
-      : meError
-        ? meError
-        : accountsCount === 0
-          ? "No IG accounts — connect Instagram accounts in the ClarioSuite dashboard first."
-          : null,
+      : outageMessage
+        ? outageMessage
+        : meError
+          ? meError
+          : accountsError
+            ? accountsError
+            : accountsCount === 0
+              ? "No IG accounts — connect Instagram accounts in the ClarioSuite dashboard first."
+              : null,
     modelsTotal: allModels.length,
     modelsLinked: linked.length,
     linked: linked.map((l) => ({
