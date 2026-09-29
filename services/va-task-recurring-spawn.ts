@@ -97,10 +97,15 @@ async function pickPhaseCloneSourceId(
   // One batched score — never N× full getPhasesByTask over series history (Daily Marketing
   // alone grew to 50+ rows; each Warm-Up fetch is ~76 checklist items).
   const scores = await scorePhaseCloneSources(inSeries.map((t) => t.id));
+  // Prefer modeled + non-empty sources, but NEVER reward bloated checklists —
+  // max(itemCount) previously selected poisoned Warm-Up rows (92 vs healthy 44)
+  // and re-cloned the double into the next day.
   let bestId = fallbackId;
   let bestScore = Number.NEGATIVE_INFINITY;
   for (const row of scores) {
-    const score = (row.withModel ? 1_000_000 : 0) + row.itemCount;
+    if (row.itemCount <= 0) continue;
+    const score =
+      (row.withModel ? 1_000_000 : 0) + 100_000 - Math.min(row.itemCount, 99_999);
     if (score > bestScore) {
       bestScore = score;
       bestId = row.taskId;

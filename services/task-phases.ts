@@ -515,7 +515,8 @@ export async function deletePhaseItem(id: string): Promise<void> {
 
 /**
  * Prefer one row per phase_number when a source task has duplicate phase rows
- * (historical over-clone). Prefer the copy that still has an assigned model.
+ * (historical over-clone). Prefer the copy that still has an assigned model,
+ * then the smaller checklist (bloated sources must not win).
  */
 function dedupePhasesForClone(phases: TaskPhase[]): TaskPhase[] {
   const byNumber = new Map<number, TaskPhase>();
@@ -528,9 +529,32 @@ function dedupePhasesForClone(phases: TaskPhase[]): TaskPhase[] {
     }
     const prevHasModel = Boolean(prev.assigned_model_id?.trim());
     const nextHasModel = Boolean(phase.assigned_model_id?.trim());
-    if (!prevHasModel && nextHasModel) byNumber.set(n, phase);
+    if (!prevHasModel && nextHasModel) {
+      byNumber.set(n, phase);
+      continue;
+    }
+    if (prevHasModel === nextHasModel && (phase.items?.length ?? 0) < (prev.items?.length ?? 0)) {
+      byNumber.set(n, phase);
+    }
   }
   return [...byNumber.values()].sort((a, b) => a.phase_number - b.phase_number);
+}
+
+/** One item per sort_order within a phase — poisoned sources often carry 2–4× dumps. */
+function dedupePhaseItemsForClone(items: PhaseItem[]): PhaseItem[] {
+  const bySort = new Map<number, PhaseItem>();
+  for (const item of items) {
+    const sort = Number(item.sort_order ?? 0);
+    if (!bySort.has(sort)) bySort.set(sort, item);
+  }
+  return [...bySort.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, item]) => item);
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("duplicate key") || msg.includes("unique constraint") || msg.includes("23505");
 }
 
 /**
@@ -540,11 +564,35 @@ function dedupePhasesForClone(phases: TaskPhase[]): TaskPhase[] {
  *
  * Copies structural + assignee fields from the source phase (model id/name, VA id/name,
  * scheduled_time, region). Intentionally resets status/start/end/completed to a fresh pending row.
+ *
+ * Cross-instance safe: Postgres advisory lock + unique indexes on (task_id, phase_number) and
+ * (phase_id, sort_order). Concurrent cloners serialize; losers no-op after re-check.
  */
 export async function clonePhasesToTask(
   sourceTaskId: string,
   targetTask: { id: string; title: string },
 ): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./task-phases-supabase")).clonePhasesToTaskLocked(
+      sourceTaskId,
+      targetTask,
+      {
+        dedupePhases: dedupePhasesForClone,
+        dedupeItems: dedupePhaseItemsForClone,
+        getPhasesByTask,
+        createPhase,
+        createPhaseItem,
+        updatePhase,
+        taskHasAnyPhases,
+        inferStepType: (title, stepType) =>
+          (stepType && stepType !== DEFAULT_TASK_STEP_TYPE
+            ? stepType
+            : inferTaskStepTypeFromTitle(title) ?? stepType ?? DEFAULT_TASK_STEP_TYPE) as PhaseItem["step_type"],
+        isUniqueViolation,
+      },
+    );
+  }
+
   // Phases OR leftover checklist items — never invent a second Warm-Up set.
   if (await taskHasAnyPhases(targetTask.id)) return 0;
 
@@ -565,8 +613,6 @@ export async function clonePhasesToTask(
       assigned_model_name: phase.assigned_model_name,
     });
 
-    // Guaranteed model/VA copy — createPhase may fall back to the target task, which often
-    // has empty assigned_model_* for series that only store models on phases.
     const sourceModelId = phase.assigned_model_id?.trim() ?? "";
     const sourceModelName = phase.assigned_model_name?.trim() ?? "";
     const sourceVaId = phase.assigned_va_id?.trim() ?? "";
@@ -586,9 +632,9 @@ export async function clonePhasesToTask(
     }
 
     const stablePhaseId = created.phase_id || created.id;
-    // Parallel item inserts — Warm-Up clones ~76 rows; sequential was multi-second on spawn.
+    const items = dedupePhaseItemsForClone(phase.items ?? []);
     await Promise.all(
-      phase.items.map((item) =>
+      items.map((item) =>
         createPhaseItem({
           phase_id: stablePhaseId,
           task_id: targetTask.id,

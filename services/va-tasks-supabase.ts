@@ -397,15 +397,30 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
   if (data.recurrence_skipped_dates !== undefined) {
     payload.recurrence_skipped_dates = parseSkippedDates(data.recurrence_skipped_dates);
   }
-  if (data.recurring_spawn_key?.trim()) {
-    payload.recurring_spawn_key = data.recurring_spawn_key.trim();
+
+  // Trigger + unique index require a spawn key for every recurring row. Derive if caller omitted it.
+  let spawnKey = data.recurring_spawn_key?.trim() || "";
+  if (Boolean(data.is_recurring) && !spawnKey && due) {
+    const { vaTaskSeriesKey, buildRecurringSpawnKey } = await import("@/lib/recurrence");
+    const { ymdInAthens } = await import("@/lib/airtable-datetime");
+    const dueYmd = ymdInAthens(due);
+    if (dueYmd) {
+      spawnKey = buildRecurringSpawnKey(
+        vaTaskSeriesKey({
+          title: data.title,
+          assigned_to_ids: data.assigned_to_ids,
+          assigned_model_ids: data.assigned_model_ids ?? [],
+        }),
+        dueYmd,
+      );
+    }
   }
+  if (spawnKey) payload.recurring_spawn_key = spawnKey;
 
   let row: Row;
   try {
     row = await sbInsert<Row>(TABLE, payload);
   } catch (err) {
-    const spawnKey = data.recurring_spawn_key?.trim();
     if (spawnKey && isUniqueViolationError(err)) {
       const existing = await getVaTaskByRecurringSpawnKey(spawnKey);
       if (existing) return existing;

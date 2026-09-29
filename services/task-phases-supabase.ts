@@ -509,6 +509,130 @@ export async function createPhase(fields: Record<string, unknown>): Promise<Task
   return mapPhase(row);
 }
 
+type ClonePhaseDeps = {
+  dedupePhases: (phases: TaskPhase[]) => TaskPhase[];
+  dedupeItems: (items: PhaseItem[]) => PhaseItem[];
+  getPhasesByTask: (taskId: string) => Promise<TaskPhase[]>;
+  createPhase: (data: Partial<TaskPhase>) => Promise<TaskPhase>;
+  createPhaseItem: (data: Partial<PhaseItem>) => Promise<PhaseItem>;
+  updatePhase: (id: string, data: Partial<TaskPhase>) => Promise<void>;
+  taskHasAnyPhases: (taskId: string) => Promise<boolean>;
+  inferStepType: (title: string, stepType?: string | null) => PhaseItem["step_type"];
+  isUniqueViolation: (err: unknown) => boolean;
+};
+
+/**
+ * Cross-instance clone with claim-row mutex + unique indexes.
+ * Session advisory locks are unsafe under PgBouncer/pooler (lock held on a
+ * different connection than the inserts). Instead we INSERT a PK claim row —
+ * only one cloner wins; losers wait for structure then return 0.
+ * Unique indexes on (task_id, phase_number) and (phase_id, sort_order) remain
+ * the hard DB guarantee if two racers both somehow proceed.
+ */
+export async function clonePhasesToTaskLocked(
+  sourceTaskId: string,
+  targetTask: { id: string; title: string },
+  deps: ClonePhaseDeps,
+): Promise<number> {
+  const targetId = targetTask.id.trim();
+  if (!targetId) return 0;
+
+  const sb = getSupabaseServiceClient();
+
+  if (await deps.taskHasAnyPhases(targetId)) return 0;
+
+  const { error: claimErr } = await sb.from("va_task_clone_claims").insert({ task_id: targetId });
+  if (claimErr) {
+    const msg = claimErr.message ?? "";
+    const isConflict =
+      claimErr.code === "23505" || msg.includes("duplicate key") || msg.includes("unique");
+    if (!isConflict) throw new Error(`va_task_clone_claims: ${msg}`);
+    // Another instance is cloning — wait for phases/items to appear.
+    for (let i = 0; i < 40; i++) {
+      if (await deps.taskHasAnyPhases(targetId)) return 0;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    return 0;
+  }
+
+  try {
+    // Re-check under claim — winner of the race may have finished between first check and claim.
+    if (await deps.taskHasAnyPhases(targetId)) return 0;
+
+    const phases = deps.dedupePhases(await deps.getPhasesByTask(sourceTaskId));
+    let cloned = 0;
+    for (const phase of phases) {
+      let created: TaskPhase;
+      try {
+        created = await deps.createPhase({
+          task_id: targetId,
+          task_title: targetTask.title,
+          phase_number: phase.phase_number,
+          title: phase.title,
+          description: phase.description,
+          region: phase.region,
+          scheduled_time: phase.scheduled_time,
+          assigned_va_id: phase.assigned_va_id,
+          assigned_va_name: phase.assigned_va_name,
+          assigned_model_id: phase.assigned_model_id,
+          assigned_model_name: phase.assigned_model_name,
+        });
+      } catch (err) {
+        if (deps.isUniqueViolation(err)) {
+          // Partial concurrent structure — stop; unique indexes already protect items.
+          return cloned;
+        }
+        throw err;
+      }
+
+      const sourceModelId = phase.assigned_model_id?.trim() ?? "";
+      const sourceModelName = phase.assigned_model_name?.trim() ?? "";
+      const sourceVaId = phase.assigned_va_id?.trim() ?? "";
+      const sourceVaName = phase.assigned_va_name?.trim() ?? "";
+      const needsModelPatch =
+        Boolean(sourceModelId) && (created.assigned_model_id?.trim() ?? "") !== sourceModelId;
+      const needsVaPatch =
+        Boolean(sourceVaId) && (created.assigned_va_id?.trim() ?? "") !== sourceVaId;
+      if (needsModelPatch || needsVaPatch) {
+        await deps.updatePhase(created.id, {
+          task_id: targetId,
+          ...(needsModelPatch
+            ? { assigned_model_id: sourceModelId, assigned_model_name: sourceModelName }
+            : {}),
+          ...(needsVaPatch ? { assigned_va_id: sourceVaId, assigned_va_name: sourceVaName } : {}),
+        });
+      }
+
+      const stablePhaseId = created.phase_id || created.id;
+      const items = deps.dedupeItems(phase.items ?? []);
+      await Promise.all(
+        items.map(async (item) => {
+          try {
+            await deps.createPhaseItem({
+              phase_id: stablePhaseId,
+              task_id: targetId,
+              title: item.title,
+              description: item.description,
+              requires_screenshot: item.requires_screenshot,
+              sort_order: item.sort_order,
+              step_type: deps.inferStepType(item.title, item.step_type),
+            });
+          } catch (err) {
+            if (!deps.isUniqueViolation(err)) throw err;
+          }
+        }),
+      );
+      cloned += 1;
+    }
+    return cloned;
+  } finally {
+    const { error: releaseErr } = await sb.from("va_task_clone_claims").delete().eq("task_id", targetId);
+    if (releaseErr) {
+      console.error("[clonePhasesToTaskLocked] claim release failed", releaseErr.message);
+    }
+  }
+}
+
 export async function updatePhase(id: string, patch: Record<string, unknown>): Promise<void> {
   if (Object.keys(patch).length === 0) return;
   await sbUpdateByPublicId(T_PHASES, id, patch);
