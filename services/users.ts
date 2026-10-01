@@ -9,7 +9,7 @@ import {
   type AirtableRecord,
   type ListParams,
 } from "@/lib/airtable-server";
-import { firstLinkedId } from "@/lib/airtable-linked";
+import { firstLinkedId, linkedRecordIds } from "@/lib/airtable-linked";
 import { filterActiveUsersForAssignment, isUserActiveForAssignment } from "@/lib/assignment-filters";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import type { UserRecord, UserRole, VaType, CompensationType, UserContractAttachment } from "@/types";
@@ -109,8 +109,17 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
     updated_at: f.updated_at ?? "",
   };
   if (includePasswordHash && f.password_hash) out.password_hash = f.password_hash;
-  const linkedModelId = firstLinkedId(f.linked_model) ?? firstLinkedId(f.linked_model_id);
-  if (linkedModelId) out.linked_model_id = linkedModelId;
+  const linkedIds = linkedRecordIds(f.linked_model);
+  if (linkedIds.length) {
+    out.linked_model_ids = linkedIds;
+    out.linked_model_id = linkedIds[0];
+  } else {
+    const linkedModelId = firstLinkedId(f.linked_model_id);
+    if (linkedModelId) {
+      out.linked_model_id = linkedModelId;
+      out.linked_model_ids = [linkedModelId];
+    }
+  }
   if (typeof f.language_preference === "string" && f.language_preference.trim()) {
     out.language_preference = f.language_preference.trim();
   }
@@ -221,8 +230,9 @@ export async function getActiveModelUserAirtableIdByLinkedModelRecordId(
   const found = users.find(
     (x) =>
       x.role === "model" &&
-      x.linked_model_id === id &&
-      (x.status ?? "").toLowerCase() === "active");
+      (x.status ?? "").toLowerCase() === "active" &&
+      (x.linked_model_id === id || (x.linked_model_ids ?? []).includes(id))
+  );
   return found?.id ?? null;
 }
 
@@ -296,6 +306,7 @@ export type CreateUserInput = {
   notes?: string;
   password_hash?: string;
   linked_model_id?: string;
+  linked_model_ids?: string[];
   language_preference?: string;
   telegram_username?: string;
   infloww_employee_id?: number | null;
@@ -319,7 +330,10 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     notes: input.notes?.trim() ?? "",
   };
   if (input.password_hash) fields.password_hash = input.password_hash;
-  if (input.linked_model_id) fields.linked_model = [input.linked_model_id];
+  const links =
+    input.linked_model_ids?.filter(Boolean) ??
+    (input.linked_model_id ? [input.linked_model_id] : []);
+  if (links.length) fields.linked_model = links;
   if (input.language_preference) fields.language_preference = input.language_preference;
   if (input.telegram_username?.trim()) fields.telegram_username = input.telegram_username.trim();
   if (input.infloww_employee_id != null && Number.isFinite(input.infloww_employee_id)) {
@@ -339,6 +353,7 @@ export type UpdateUserInput = Partial<{
   can_login: boolean;
   notes: string;
   linked_model_id: string | null;
+  linked_model_ids: string[] | null;
   language_preference: string | null;
   /** Persists Airtable values `chatter` or `va` (null clears). */
   secondary_role: "chatter" | "virtual_assistant" | null;
@@ -422,7 +437,9 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   if (input.status !== undefined) fields.status = input.status;
   if (input.can_login !== undefined) fields.can_login = input.can_login;
   if (input.notes !== undefined) fields.notes = input.notes;
-  if (input.linked_model_id !== undefined) {
+  if (input.linked_model_ids !== undefined) {
+    fields.linked_model = input.linked_model_ids ?? [];
+  } else if (input.linked_model_id !== undefined) {
     fields.linked_model = input.linked_model_id ? [input.linked_model_id] : [];
   }
   if (input.language_preference !== undefined) {
@@ -475,9 +492,7 @@ export async function updateLastLoginUserAgent(recordId: string, userAgent: stri
 
 /**
  * Re-link which model user account owns a specific modelss profile.
- * - Clears previous user linked to this model (if different)
- * - Sets selected model user's linked_model_id to this model
- * - If selectedUserId is null, only clears the existing link
+ * Preserves the selected user's other linked profiles.
  */
 export async function relinkModelUserForModelProfile(
   modelRecordId: string,
@@ -495,15 +510,28 @@ export async function relinkModelUserForModelProfile(
 
   const users = await listAllUsers();
   const modelUsers = users.filter((u) => u.role === "model");
-  const currentlyLinked = modelUsers.find((u) => u.linked_model_id === modelId) ?? null;
 
-  if (currentlyLinked && currentlyLinked.id !== selectedId) {
-    await updateUser(currentlyLinked.id, { linked_model_id: null });
+  for (const u of modelUsers) {
+    const ids = u.linked_model_ids?.length
+      ? [...u.linked_model_ids]
+      : u.linked_model_id
+        ? [u.linked_model_id]
+        : [];
+    if (!ids.includes(modelId)) continue;
+    if (u.id === selectedId) continue;
+    const next = ids.filter((id) => id !== modelId);
+    await updateUser(u.id, { linked_model_ids: next.length ? next : null });
   }
 
   if (!selectedId) return;
 
   const selected = modelUsers.find((u) => u.id === selectedId);
   if (!selected) throw new Error("Selected model user account not found.");
-  await updateUser(selectedId, { linked_model_id: modelId });
+  const existing = selected.linked_model_ids?.length
+    ? [...selected.linked_model_ids]
+    : selected.linked_model_id
+      ? [selected.linked_model_id]
+      : [];
+  if (!existing.includes(modelId)) existing.push(modelId);
+  await updateUser(selectedId, { linked_model_ids: existing });
 }

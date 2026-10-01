@@ -145,8 +145,13 @@ export async function listOperationalModelsWithAccounts(): Promise<ModelRecord[]
   ]);
   const operationalModelIds = new Set<string>();
   for (const u of users) {
-    if (u.role === "model" && (u.status ?? "").toLowerCase() === "active" && u.linked_model_id) {
-      operationalModelIds.add(u.linked_model_id);
+    if (u.role === "model" && (u.status ?? "").toLowerCase() === "active") {
+      const ids = u.linked_model_ids?.length
+        ? u.linked_model_ids
+        : u.linked_model_id
+          ? [u.linked_model_id]
+          : [];
+      for (const id of ids) operationalModelIds.add(id);
     }
   }
   return allModelss.filter((m) => operationalModelIds.has(m.id));

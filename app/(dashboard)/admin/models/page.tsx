@@ -30,7 +30,13 @@ export default async function AdminModelsPage() {
   const linkedModelIds = new Set(
     allUsers
       .filter((u) => u.role === "model")
-      .map((u) => u.linked_model_id)
+      .flatMap((u) =>
+        u.linked_model_ids?.length
+          ? u.linked_model_ids
+          : u.linked_model_id
+            ? [u.linked_model_id]
+            : []
+      )
       .filter((id): id is string => Boolean(id?.trim()))
   );
   const modelsWithAccountStatus = modelss.map((m) => ({

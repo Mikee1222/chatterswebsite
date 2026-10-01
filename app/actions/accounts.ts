@@ -186,7 +186,12 @@ export async function createAccount(formData: FormData) {
   const password = (formData.get("password") as string)?.trim() ?? "";
   const can_login = formData.get("can_login") === "on" || formData.get("can_login") === "true";
   const notes = (formData.get("notes") as string)?.trim() ?? "";
-  const linked_model_id = (formData.get("linked_model_id") as string)?.trim() || undefined;
+  const linked_model_ids = formData
+    .getAll("linked_model_ids")
+    .map((v) => String(v).trim())
+    .filter(Boolean);
+  const linked_model_id =
+    linked_model_ids[0] || (formData.get("linked_model_id") as string)?.trim() || undefined;
   const language_preference = (formData.get("language_preference") as string)?.trim() || undefined;
   const telegram_username = (formData.get("telegram_username") as string)?.trim() || undefined;
   const va_type_raw = (formData.get("va_type") as string)?.trim() ?? "";
@@ -209,7 +214,8 @@ export async function createAccount(formData: FormData) {
   if (password) {
     input.password_hash = await hashPassword(password);
   }
-  if (role === "model" && linked_model_id) input.linked_model_id = linked_model_id;
+  if (role === "model" && linked_model_ids.length) input.linked_model_ids = linked_model_ids;
+  else if (role === "model" && linked_model_id) input.linked_model_id = linked_model_id;
   if (role === "model" && language_preference) input.language_preference = language_preference;
   if (telegram_username) input.telegram_username = telegram_username;
   if (role === "virtual_assistant") {
@@ -298,7 +304,12 @@ export async function updateAccount(formData: FormData) {
   const status = (formData.get("status") as string)?.trim();
   const can_login = formData.get("can_login") === "on" || formData.get("can_login") === "true";
   const notes = (formData.get("notes") as string)?.trim();
-  const linked_model_id = (formData.get("linked_model_id") as string)?.trim() || null;
+  const linked_model_ids = formData
+    .getAll("linked_model_ids")
+    .map((v) => String(v).trim())
+    .filter(Boolean);
+  const legacy_linked =
+    (formData.get("linked_model_id") as string)?.trim() || null;
   const language_preference = (formData.get("language_preference") as string)?.trim() || undefined;
   const telegram_username_raw = formData.get("telegram_username");
   const telegram_username =
@@ -333,9 +344,15 @@ export async function updateAccount(formData: FormData) {
   input.can_login = can_login;
   if (notes !== undefined) input.notes = notes;
   if (role === "model") {
-    input.linked_model_id = linked_model_id;
+    input.linked_model_ids =
+      linked_model_ids.length > 0
+        ? linked_model_ids
+        : legacy_linked
+          ? [legacy_linked]
+          : [];
     input.language_preference = language_preference ?? undefined;
   } else {
+    input.linked_model_ids = [];
     input.linked_model_id = null;
   }
   if (role === "chatter" || role === "virtual_assistant") {

@@ -82,6 +82,10 @@ import { useRealtime } from "@/contexts/realtime-context";
 import { useNotificationPrompt } from "@/contexts/notification-prompt-context";
 import { usePwa } from "@/components/pwa-provider";
 import {
+  ModelProfileSwitcher,
+  type ModelProfileOption,
+} from "@/components/model-profile-switcher";
+import {
   PINNED_NAV_SECTION_KEY,
   type UserNavPreferences,
 } from "@/lib/nav-preferences";
@@ -235,6 +239,10 @@ type MobileAppShellProps = {
   navBadgeCounts?: Record<string, number>;
   /** Model UI language from cookie / Airtable — translates bottom tabs + More menu labels. */
   modelUiLanguage?: ModelLang;
+  modelProfileSwitcher?: {
+    profiles: ModelProfileOption[];
+    activeProfileId: string | null;
+  } | null;
   userPermissions?: Permission[];
   initialNavPreferences: UserNavPreferences;
 };
@@ -254,6 +262,7 @@ export function MobileAppShell({
   hiddenNavConfig,
   navBadgeCounts,
   modelUiLanguage,
+  modelProfileSwitcher = null,
   userPermissions = [],
   initialNavPreferences,
 }: MobileAppShellProps) {
@@ -366,6 +375,14 @@ export function MobileAppShell({
           <div className="flex h-[56px] min-h-[56px] max-h-[56px] w-full min-w-0 items-center justify-between gap-2 px-4 overflow-hidden border-b border-white/10 bg-zinc-900/80 backdrop-blur-xl">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight text-white">{title}</h1>
+              {modelProfileSwitcher && modelProfileSwitcher.profiles.length > 1 ? (
+                <ModelProfileSwitcher
+                  profiles={modelProfileSwitcher.profiles}
+                  activeProfileId={modelProfileSwitcher.activeProfileId}
+                  compact
+                  className="shrink-0 max-w-[40%]"
+                />
+              ) : null}
               {activeBadge ? (
                 <span
                   className="shrink-0 rounded-full border border-pink-500/25 bg-pink-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-pink-400"

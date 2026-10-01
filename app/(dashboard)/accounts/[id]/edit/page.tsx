@@ -30,12 +30,25 @@ export default async function EditAccountPage({
   ]);
   const linkedModelIds = new Set(
     allUsers
-      .filter((u) => u.role === "model")
-      .map((u) => u.linked_model_id)
+      .filter((u) => u.role === "model" && u.id !== record.id)
+      .flatMap((u) =>
+        u.linked_model_ids?.length
+          ? u.linked_model_ids
+          : u.linked_model_id
+            ? [u.linked_model_id]
+            : []
+      )
       .filter((mid): mid is string => Boolean(mid?.trim()))
   );
+  const ownLinked = new Set(
+    record.linked_model_ids?.length
+      ? record.linked_model_ids
+      : record.linked_model_id
+        ? [record.linked_model_id]
+        : []
+  );
   const modelOptions = allModels
-    .filter((m) => isModelActiveForAssignment(m) || m.id === record.linked_model_id)
+    .filter((m) => isModelActiveForAssignment(m) || ownLinked.has(m.id))
     .map((m) => ({
       id: m.id,
       model_name: m.model_name,

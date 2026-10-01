@@ -914,8 +914,13 @@ export interface UserRecord {
   notes: string;
   created_at: string;
   updated_at: string;
-  /** When role=model: Airtable record id of linked modelss row. */
+  /**
+   * When role=model: active/primary linked modelss row id (public id).
+   * Prefer `linked_model_ids` when a user has multiple profiles; this stays the primary.
+   */
   linked_model_id?: string;
+  /** When role=model: all linked modelss profile ids (primary first). */
+  linked_model_ids?: string[];
   /** When role=model: preferred language (e.g. "en", "es") for model-facing UI. */
   language_preference?: string;
   /** Only present when loading from DB; never expose to client. */

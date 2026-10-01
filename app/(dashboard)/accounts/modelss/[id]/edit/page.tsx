@@ -26,16 +26,25 @@ export default async function EditModelPage({
   ]);
   if (!model) notFound();
   const modelUsers = allUsers.filter((u) => u.role === "model");
-  const currentLinkedUser = modelUsers.find((u) => u.linked_model_id === model.id) ?? null;
+  const currentLinkedUser =
+    modelUsers.find((u) => (u.linked_model_ids ?? []).includes(model.id) || u.linked_model_id === model.id) ??
+    null;
   const userOptions = modelUsers
     .filter((u) => isUserActiveForAssignment(u) || u.id === currentLinkedUser?.id)
-    .map((u) => ({
-      id: u.id,
-      name: u.full_name?.trim() || u.email,
-      email: u.email,
-      alreadyLinked: Boolean(u.linked_model_id?.trim()),
-      linkedToThisModel: u.linked_model_id === model.id,
-    }))
+    .map((u) => {
+      const ids = u.linked_model_ids?.length
+        ? u.linked_model_ids
+        : u.linked_model_id
+          ? [u.linked_model_id]
+          : [];
+      return {
+        id: u.id,
+        name: u.full_name?.trim() || u.email,
+        email: u.email,
+        alreadyLinked: ids.length > 0,
+        linkedToThisModel: ids.includes(model.id),
+      };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (

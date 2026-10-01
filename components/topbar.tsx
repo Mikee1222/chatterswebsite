@@ -4,16 +4,36 @@ import { logout } from "@/app/actions/auth";
 import { LogOut } from "lucide-react";
 import { NotificationBell } from "@/components/notification-bell";
 import { GlobalSearch } from "@/components/global-search";
+import {
+  ModelProfileSwitcher,
+  type ModelProfileOption,
+} from "@/components/model-profile-switcher";
 import type { SessionUser } from "@/types";
 import { getNavRoleForSession, hasDualStaffRole } from "@/lib/staff-session-role";
 
-export function Topbar({ user }: { user: SessionUser }) {
+export function Topbar({
+  user,
+  modelProfileSwitcher = null,
+}: {
+  user: SessionUser;
+  modelProfileSwitcher?: {
+    profiles: ModelProfileOption[];
+    activeProfileId: string | null;
+  } | null;
+}) {
   const showSearch = user.role === "admin" || user.role === "manager";
   const navRole = getNavRoleForSession(user);
   const dual = hasDualStaffRole(user);
   const activeLabel = navRole === "virtual_assistant" ? "VA" : navRole === "chatter" ? "CHATTER" : "";
   return (
     <header className="sticky top-0 z-30 hidden h-12 items-center justify-end gap-2 border-b border-white/10 bg-black/40 px-4 backdrop-blur-xl md:flex md:h-14 md:px-6">
+      {modelProfileSwitcher && modelProfileSwitcher.profiles.length > 1 ? (
+        <ModelProfileSwitcher
+          profiles={modelProfileSwitcher.profiles}
+          activeProfileId={modelProfileSwitcher.activeProfileId}
+          className="mr-auto"
+        />
+      ) : null}
       {showSearch ? <GlobalSearch /> : null}
       {dual && activeLabel ? (
         <div

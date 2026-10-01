@@ -89,10 +89,11 @@ export async function GET(req: Request) {
   const chatterRecordId = (session.airtableUserId ?? session.id)?.trim() || "";
 
   let modelLinkedRecordId: string | null = null;
-  if (session.role === "model" && session.airtableUserId) {
+  if (session.role === "model") {
     try {
-      const prof = await getUserByAirtableId(session.airtableUserId);
-      modelLinkedRecordId = prof?.linked_model_id?.trim() || null;
+      const { loadModelContextForUser } = await import("@/lib/model-context-server");
+      const ctx = await loadModelContextForUser(session);
+      modelLinkedRecordId = ctx.linkedModelId;
     } catch {
       modelLinkedRecordId = null;
     }

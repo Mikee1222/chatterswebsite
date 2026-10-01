@@ -27,11 +27,9 @@ export type ModelCustomRequestActionResult = { success: true } | { success: fals
 async function linkedModelIdForModelSession(): Promise<string | null> {
   const session = await getSessionFromCookies();
   if (!session || session.role !== "model") return null;
-  const recordId = (session.airtableUserId ?? session.id)?.trim();
-  if (!recordId) return null;
-  const user = await getUserByAirtableId(recordId);
-  if (!user?.linked_model_id) return null;
-  return user.linked_model_id;
+  const { loadModelContextForUser } = await import("@/lib/model-context-server");
+  const ctx = await loadModelContextForUser(session);
+  return ctx.linkedModelId;
 }
 
 function localDateTimeIso(dateYmd: string, timeHhMm: string): string {

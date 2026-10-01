@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
-import { getUserByAirtableId } from "@/services/users";
 import {
   getCustomRequestById,
   updateCustomRequestModelSchedule,
@@ -25,11 +24,9 @@ function isModelStatus(v: string): v is CustomRequestModelStatus {
 async function linkedModelIdForModelSession(): Promise<string | null> {
   const session = await getSessionFromCookies();
   if (!session || session.role !== "model") return null;
-  const recordId = (session.airtableUserId ?? session.id)?.trim();
-  if (!recordId) return null;
-  const user = await getUserByAirtableId(recordId);
-  if (!user?.linked_model_id) return null;
-  return user.linked_model_id;
+  const { loadModelContextForUser } = await import("@/lib/model-context-server");
+  const ctx = await loadModelContextForUser(session);
+  return ctx.linkedModelId;
 }
 
 /**

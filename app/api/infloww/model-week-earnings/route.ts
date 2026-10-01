@@ -5,7 +5,6 @@ import { addDaysAthensYmd, getWeekStartYmdInAthens } from "@/lib/airtable-dateti
 import { getInflowwEarningsSnapshot, InflowwApiError } from "@/lib/infloww-api";
 import { listEarningsAgencyCutConfig } from "@/services/earnings-config";
 import { getModelById } from "@/services/modelss";
-import { getUserByAirtableId } from "@/services/users";
 
 /**
  * Current calendar week (Mon–Sun, Athens +3 convention) gross/net/agency totals
@@ -21,8 +20,9 @@ export async function GET() {
   const userRecordId = user.airtableUserId ?? user.id;
   let linkedModelId: string | null = null;
   try {
-    const rec = await getUserByAirtableId(userRecordId);
-    linkedModelId = rec?.linked_model_id?.trim() || null;
+    const { loadModelContextForUser } = await import("@/lib/model-context-server");
+    const ctx = await loadModelContextForUser(user);
+    linkedModelId = ctx.linkedModelId;
   } catch {
     linkedModelId = null;
   }

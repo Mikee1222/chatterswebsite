@@ -55,7 +55,12 @@ export async function deleteCustomRequestAction(
       return { success: false, error: "Unauthorized" };
     }
     const modelUser = await getUserByAirtableId(sessionRecordId);
-    if (!modelUser?.linked_model_id || modelUser.linked_model_id !== existing.assigned_model_id) {
+    const linkedIds = modelUser?.linked_model_ids?.length
+      ? modelUser.linked_model_ids
+      : modelUser?.linked_model_id
+        ? [modelUser.linked_model_id]
+        : [];
+    if (!linkedIds.includes(existing.assigned_model_id)) {
       return { success: false, error: "This request is not assigned to you." };
     }
   } else if (staffRole === "chatter" || role === "chatter") {

@@ -2,15 +2,25 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
+import {
+  pickActiveModelProfileId,
+  readActiveModelProfileCookie,
+} from "@/lib/model-active-profile";
 import type { ModelRecord } from "@/types";
 
 export type ModelApiContext =
-  | { ok: true; userRecordId: string; linkedModelId: string; modelRecord: ModelRecord }
+  | {
+      ok: true;
+      userRecordId: string;
+      linkedModelId: string;
+      linkedModelIds: string[];
+      modelRecord: ModelRecord;
+    }
   | { ok: false; response: NextResponse };
 
 /**
- * Session cookie → user exists in Airtable, role is model, linked modelss row resolved.
- * Same resolution pattern as `app/api/infloww/model-week-earnings/route.ts` and model server actions.
+ * Session cookie → user exists, role is model, active linked modelss row resolved
+ * (cookie / primary / first among linked_model_ids).
  */
 export async function requireModelApiContext(): Promise<ModelApiContext> {
   const session = await getSessionFromCookies();
@@ -28,7 +38,21 @@ export async function requireModelApiContext(): Promise<ModelApiContext> {
   if (!user) {
     return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
-  const linkedModelId = user.linked_model_id?.trim() ?? null;
+  const linkedModelIds = (
+    user.linked_model_ids?.length
+      ? user.linked_model_ids
+      : user.linked_model_id
+        ? [user.linked_model_id]
+        : []
+  )
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const cookieId = await readActiveModelProfileCookie();
+  const linkedModelId = pickActiveModelProfileId(
+    linkedModelIds,
+    user.linked_model_id ?? null,
+    cookieId
+  );
   if (!linkedModelId) {
     return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
@@ -36,5 +60,5 @@ export async function requireModelApiContext(): Promise<ModelApiContext> {
   if (!modelRecord) {
     return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
-  return { ok: true, userRecordId, linkedModelId, modelRecord };
+  return { ok: true, userRecordId, linkedModelId, linkedModelIds, modelRecord };
 }

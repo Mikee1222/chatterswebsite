@@ -5,6 +5,7 @@
 
 import {
   firstMappedLinkedId,
+  mapLinkedIds,
   publicId,
   sbInsert,
   sbResolveUuidToAirtableMap,
@@ -17,6 +18,12 @@ import {
   type SbRow,
   requireSbUuids,
 } from "@/lib/supabase-data";
+import {
+  mapLinkedModelIdsByUserIds,
+  setLinkedModelsForUser,
+  relinkSingleModelProfile,
+  getLinkedUserIdForModel,
+} from "@/services/model-user-profiles";
 import { filterActiveUsersForAssignment, isUserActiveForAssignment } from "@/lib/assignment-filters";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
 import { getRolePermissions } from "@/services/roles";
@@ -91,8 +98,17 @@ function mapRowSync(row: Row, modelAt: Map<string, string>, includePasswordHash 
     updated_at: row.updated_at ?? "",
   };
   if (includePasswordHash && row.password_hash) out.password_hash = row.password_hash;
-  const linkedModelId = firstMappedLinkedId(row.linked_model, modelAt);
-  if (linkedModelId) out.linked_model_id = linkedModelId;
+  const linkedFromArray = mapLinkedIds(row.linked_model, modelAt);
+  if (linkedFromArray.length) {
+    out.linked_model_ids = linkedFromArray;
+    out.linked_model_id = linkedFromArray[0];
+  } else {
+    const linkedModelId = firstMappedLinkedId(row.linked_model, modelAt);
+    if (linkedModelId) {
+      out.linked_model_id = linkedModelId;
+      out.linked_model_ids = [linkedModelId];
+    }
+  }
   if (typeof row.language_preference === "string" && row.language_preference.trim()) {
     out.language_preference = row.language_preference.trim();
   }
@@ -143,6 +159,19 @@ async function mapRows(rows: Row[], includePasswordHash = false): Promise<UserRe
     rows.map((r) => r.linked_model)
   );
   const mapped = rows.map((r) => mapRowSync(r, modelAt, includePasswordHash));
+
+  // Prefer join-table links when present (authoritative for multi-profile).
+  const joinMap = await mapLinkedModelIdsByUserIds(mapped.map((u) => u.id)).catch(
+    () => new Map<string, { modelIds: string[]; primaryModelId: string | null }>()
+  );
+  for (const out of mapped) {
+    const fromJoin = joinMap.get(out.id);
+    if (fromJoin?.modelIds.length) {
+      out.linked_model_ids = fromJoin.modelIds;
+      out.linked_model_id = fromJoin.primaryModelId ?? fromJoin.modelIds[0];
+    }
+  }
+
   await Promise.all(
     mapped.map(async (out, i) => {
       const row = rows[i]!;
@@ -207,12 +236,19 @@ export async function getActiveModelUserAirtableIdByLinkedModelRecordId(
 ): Promise<string | null> {
   const id = modelssRecordId?.trim();
   if (!id) return null;
+
+  const fromJoin = await getLinkedUserIdForModel(id).catch(() => null);
+  if (fromJoin) {
+    const user = await getUserByAirtableId(fromJoin);
+    if (user && (user.status ?? "").toLowerCase() === "active") return user.id;
+  }
+
   const users = await listAllUsers();
   const found = users.find(
     (x) =>
       x.role === "model" &&
-      x.linked_model_id === id &&
-      (x.status ?? "").toLowerCase() === "active"
+      (x.status ?? "").toLowerCase() === "active" &&
+      (x.linked_model_id === id || (x.linked_model_ids ?? []).includes(id))
   );
   return found?.id ?? null;
 }
@@ -282,6 +318,8 @@ export type CreateUserInput = {
   notes?: string;
   password_hash?: string;
   linked_model_id?: string;
+  /** All linked modelss profile ids (sets join table + linked_model mirror). */
+  linked_model_ids?: string[];
   language_preference?: string;
   telegram_username?: string;
   infloww_employee_id?: number | null;
@@ -306,8 +344,11 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     updated_at: new Date().toISOString(),
   };
   if (input.password_hash) row.password_hash = input.password_hash;
-  if (input.linked_model_id) {
-    row.linked_model = await requireSbUuids("modelss", [input.linked_model_id], "linked_model");
+  const initialLinks =
+    input.linked_model_ids?.filter(Boolean) ??
+    (input.linked_model_id ? [input.linked_model_id] : []);
+  if (initialLinks.length) {
+    row.linked_model = await requireSbUuids("modelss", initialLinks, "linked_model");
   }
   if (input.language_preference) row.language_preference = input.language_preference;
   if (input.telegram_username?.trim()) row.telegram_username = input.telegram_username.trim();
@@ -324,6 +365,11 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   if (input.collaboration_end_date) row.collaboration_end_date = input.collaboration_end_date;
 
   const created = await sbInsert<Row>(TABLE, row);
+  if (initialLinks.length) {
+    await setLinkedModelsForUser(publicId(created), initialLinks, initialLinks[0]).catch(() => {
+      /* join table sync best-effort; linked_model already set */
+    });
+  }
   return mapRow(created);
 }
 
@@ -335,6 +381,7 @@ export type UpdateUserInput = Partial<{
   can_login: boolean;
   notes: string;
   linked_model_id: string | null;
+  linked_model_ids: string[] | null;
   language_preference: string | null;
   secondary_role: "chatter" | "virtual_assistant" | null;
   va_type: VaType | null;
@@ -356,9 +403,19 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   if (input.status !== undefined) patch.status = input.status;
   if (input.can_login !== undefined) patch.can_login = input.can_login;
   if (input.notes !== undefined) patch.notes = input.notes;
-  if (input.linked_model_id !== undefined) {
-    patch.linked_model = input.linked_model_id
-      ? await requireSbUuids("modelss", [input.linked_model_id], "linked_model")
+
+  const syncLinks =
+    input.linked_model_ids !== undefined
+      ? (input.linked_model_ids ?? []).filter(Boolean)
+      : input.linked_model_id !== undefined
+        ? input.linked_model_id
+          ? [input.linked_model_id]
+          : []
+        : null;
+
+  if (syncLinks !== null) {
+    patch.linked_model = syncLinks.length
+      ? await requireSbUuids("modelss", syncLinks, "linked_model")
       : [];
   }
   if (input.language_preference !== undefined) {
@@ -412,6 +469,9 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
     }
   }
   const updated = await sbUpdateByPublicId<Row>(TABLE, recordId, patch);
+  if (syncLinks !== null) {
+    await setLinkedModelsForUser(recordId, syncLinks, syncLinks[0] ?? null);
+  }
   return mapRow(updated);
 }
 
@@ -460,21 +520,5 @@ export async function relinkModelUserForModelProfile(
   modelRecordId: string,
   selectedUserId: string | null
 ): Promise<void> {
-  const modelId = modelRecordId?.trim();
-  if (!modelId) return;
-  const selectedId = selectedUserId?.trim() || null;
-
-  const users = await listAllUsers();
-  const modelUsers = users.filter((u) => u.role === "model");
-  const currentlyLinked = modelUsers.find((u) => u.linked_model_id === modelId) ?? null;
-
-  if (currentlyLinked && currentlyLinked.id !== selectedId) {
-    await updateUser(currentlyLinked.id, { linked_model_id: null });
-  }
-
-  if (!selectedId) return;
-
-  const selected = modelUsers.find((u) => u.id === selectedId);
-  if (!selected) throw new Error("Selected model user account not found.");
-  await updateUser(selectedId, { linked_model_id: modelId });
+  await relinkSingleModelProfile(modelRecordId, selectedUserId);
 }

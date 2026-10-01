@@ -451,11 +451,14 @@ export function EditModelForm({
               <option
                 key={u.id}
                 value={u.id}
-                disabled={u.alreadyLinked && !u.linkedToThisModel}
                 className={selectOptionClass}
               >
                 {u.name} ({u.email})
-                {u.alreadyLinked && !u.linkedToThisModel ? "(linked to other model)" : ""}
+                {u.linkedToThisModel
+                  ? " (linked here)"
+                  : u.alreadyLinked
+                    ? " (has other profiles)"
+                    : ""}
               </option>
             ))}
           </FormSelect>

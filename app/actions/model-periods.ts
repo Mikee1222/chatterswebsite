@@ -39,12 +39,12 @@ function resolveLoggedBy(role: string | undefined): PeriodLoggedBy {
   return "admin";
 }
 
-async function getLinkedModelIdForSession(): Promise<string | null> {
+async function getLinkedModelIdsForSession(): Promise<string[]> {
   const session = await getSessionFromCookies();
-  if (!session?.airtableUserId) return null;
-  const user = await getUserByAirtableId(session.airtableUserId);
-  if (!user || user.role !== "model") return null;
-  return user.linked_model_id ?? null;
+  if (!session || session.role !== "model") return [];
+  const { loadModelContextForUser } = await import("@/lib/model-context-server");
+  const ctx = await loadModelContextForUser(session);
+  return ctx.linkedModelIds;
 }
 
 async function canManagePeriodForModel(modelId: string): Promise<boolean> {
@@ -53,8 +53,8 @@ async function canManagePeriodForModel(modelId: string): Promise<boolean> {
   if (await hasPermission(session, PERMISSIONS.MODELS_MANAGE)) return true;
   if (getEffectiveStaffRole(session) === "virtual_assistant") return true;
   if (session.role === "model") {
-    const linked = await getLinkedModelIdForSession();
-    return linked === modelId;
+    const linked = await getLinkedModelIdsForSession();
+    return linked.includes(modelId);
   }
   return false;
 }
@@ -79,7 +79,7 @@ export async function logPeriodAction(
   const allowed =
     (await hasPermission(session, PERMISSIONS.MODELS_MANAGE)) ||
     eff === "virtual_assistant" ||
-    (session.role === "model" && (await getLinkedModelIdForSession()) === modelId);
+    (session.role === "model" && (await getLinkedModelIdsForSession()).includes(modelId));
 
   if (!allowed) return { success: false, error: "You cannot log periods for this model." };
 

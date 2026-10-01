@@ -77,6 +77,10 @@ import {
 } from "@/lib/nav-preferences";
 import { useNavPreferencesState } from "@/hooks/use-nav-preferences";
 import { showAllNavSections } from "@/app/actions/nav-preferences";
+import {
+  ModelProfileSwitcher,
+  type ModelProfileOption,
+} from "@/components/model-profile-switcher";
 
 const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   Home,
@@ -172,6 +176,7 @@ export function Sidebar({
   hiddenNavConfig,
   navBadgeCounts,
   modelUiLanguage,
+  modelProfileSwitcher = null,
   userPermissions = [],
   quickStats,
   roleLabel,
@@ -182,6 +187,10 @@ export function Sidebar({
   hiddenNavConfig: ParsedHiddenNavConfig;
   navBadgeCounts?: Record<string, number>;
   modelUiLanguage?: ModelLang;
+  modelProfileSwitcher?: {
+    profiles: ModelProfileOption[];
+    activeProfileId: string | null;
+  } | null;
   userPermissions?: Permission[];
   quickStats?: SidebarQuickStats;
   roleLabel?: string;
@@ -542,6 +551,16 @@ export function Sidebar({
             </Link>
           )}
         </div>
+
+        {modelProfileSwitcher && modelProfileSwitcher.profiles.length > 1 && !collapsed ? (
+          <div className="border-b border-white/[0.06] px-3 py-2">
+            <ModelProfileSwitcher
+              profiles={modelProfileSwitcher.profiles}
+              activeProfileId={modelProfileSwitcher.activeProfileId}
+              className="w-full [&_button]:w-full"
+            />
+          </div>
+        ) : null}
 
         {/* Search */}
         {!collapsed ? (

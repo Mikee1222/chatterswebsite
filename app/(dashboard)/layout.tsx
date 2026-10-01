@@ -129,8 +129,29 @@ export default async function DashboardLayout({
   const roleColor = matchedRole?.color;
 
   let modelUiLanguage: ModelLang | undefined;
+  let modelProfileSwitcher: {
+    profiles: { id: string; name: string }[];
+    activeProfileId: string | null;
+  } | null = null;
   if (user.role === "model") {
     modelUiLanguage = await getModelDashboardLanguage(user);
+    try {
+      const { loadModelContextForUser } = await import("@/lib/model-context-server");
+      const ctx = await loadModelContextForUser(user);
+      if (ctx.linkedModelIds.length > 1) {
+        const allModels = await getCachedModelss().catch(() => []);
+        const byId = new Map(allModels.map((m) => [m.id, m.model_name]));
+        modelProfileSwitcher = {
+          profiles: ctx.linkedModelIds.map((id) => ({
+            id,
+            name: byId.get(id) || ctx.modelRecord?.model_name || id,
+          })),
+          activeProfileId: ctx.linkedModelId,
+        };
+      }
+    } catch {
+      modelProfileSwitcher = null;
+    }
   }
 
   const notificationUserId = getNotificationUserId(user);
@@ -155,6 +176,7 @@ export default async function DashboardLayout({
             hiddenNavConfig={hiddenNavConfig}
             navBadgeCounts={navBadgeCounts}
             modelUiLanguage={modelUiLanguage}
+            modelProfileSwitcher={modelProfileSwitcher}
             userPermissions={userPermissions}
             quickStats={quickStats}
             roleLabel={roleLabel}
@@ -162,7 +184,7 @@ export default async function DashboardLayout({
             initialNavPreferences={initialNavPreferences}
           />
           <DashboardContentOffset>
-            <Topbar user={user} />
+            <Topbar user={user} modelProfileSwitcher={modelProfileSwitcher} />
             <MobileAppShell
               user={user}
               activeShift={activeShift}
@@ -170,6 +192,7 @@ export default async function DashboardLayout({
               hiddenNavConfig={hiddenNavConfig}
               navBadgeCounts={navBadgeCounts}
               modelUiLanguage={modelUiLanguage}
+              modelProfileSwitcher={modelProfileSwitcher}
               userPermissions={userPermissions}
               initialNavPreferences={initialNavPreferences}
             >

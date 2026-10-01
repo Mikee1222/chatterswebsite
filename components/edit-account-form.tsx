@@ -78,7 +78,13 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
       ? user.va_type
       : ""
   );
-  const [linkedModelId, setLinkedModelId] = React.useState(user.linked_model_id ?? "");
+  const [linkedModelIds, setLinkedModelIds] = React.useState<string[]>(
+    user.linked_model_ids?.length
+      ? user.linked_model_ids
+      : user.linked_model_id
+        ? [user.linked_model_id]
+        : []
+  );
   const [languagePreference, setLanguagePreference] = React.useState(user.language_preference ?? "en");
   const [accountStatus, setAccountStatus] = React.useState(user.status || "active");
   const [deleteOpen, setDeleteOpen] = React.useState(false);
@@ -321,32 +327,54 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
           {role === "model" && (
             <>
               <FormField
-                label="Link to model profile"
+                label="Link to model profiles"
                 icon={<Link2 />}
-                htmlFor="linked_model_id"
-                description="Links this login account to a model profile so they can access their dashboard."
+                htmlFor="linked_model_ids"
+                description="Link this login to one or more model profiles. The model can switch between them. First checked = primary default."
               >
-                <FormSelect
-                  id="linked_model_id"
-                  name="linked_model_id"
-                  value={linkedModelId}
-                  onChange={(e) => setLinkedModelId(e.target.value)}
-                >
-                  <option value="" className={selectOptionClass}>
-                    — No model profile linked —
-                  </option>
-                  {modelOptions.map((m) => (
-                    <option
-                      key={m.id}
-                      value={m.id}
-                      disabled={Boolean(m.alreadyLinked && m.id !== linkedModelId)}
-                      className={selectOptionClass}
-                    >
-                      {m.model_name}
-                      {m.alreadyLinked && m.id !== linkedModelId ? " (already linked)" : ""}
-                    </option>
-                  ))}
-                </FormSelect>
+                <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3">
+                  {modelOptions.length === 0 ? (
+                    <p className="text-sm text-white/45">No model profiles available.</p>
+                  ) : (
+                    modelOptions.map((m) => {
+                      const checked = linkedModelIds.includes(m.id);
+                      const disabled = Boolean(m.alreadyLinked && !checked);
+                      return (
+                        <label
+                          key={m.id}
+                          className={`flex cursor-pointer items-start gap-2 text-sm ${
+                            disabled ? "cursor-not-allowed opacity-45" : "text-white/85"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            name="linked_model_ids"
+                            value={m.id}
+                            checked={checked}
+                            disabled={disabled}
+                            onChange={(e) => {
+                              setLinkedModelIds((prev) =>
+                                e.target.checked
+                                  ? [...prev, m.id]
+                                  : prev.filter((id) => id !== m.id)
+                              );
+                            }}
+                            className="mt-0.5 h-4 w-4 rounded border-white/20 bg-transparent text-pink-500 focus:ring-pink-500/40"
+                          />
+                          <span>
+                            {m.model_name}
+                            {disabled ? (
+                              <span className="text-white/40"> (linked to another account)</span>
+                            ) : null}
+                            {checked && linkedModelIds[0] === m.id ? (
+                              <span className="text-pink-300/80"> · primary</span>
+                            ) : null}
+                          </span>
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
               </FormField>
               <FormField label="Language" icon={<Languages />} htmlFor="language_preference">
                 <FormSelect
