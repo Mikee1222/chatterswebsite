@@ -325,9 +325,17 @@ async function fetchInflowwModelsUncached(): Promise<InflowwModel[]> {
   return out;
 }
 
-export async function getInflowwModels(): Promise<InflowwModel[]> {
+/**
+ * GET /v1/creators (paginated). In-process TTL cache cuts duplicate chains during sync.
+ * Pass `{ forceRefresh: true }` for admin lookup / Refresh so callers never get a stale list.
+ */
+export async function getInflowwModels(opts?: { forceRefresh?: boolean }): Promise<InflowwModel[]> {
   const now = Date.now();
-  if (inflowwModelsCache && now - inflowwModelsCache.fetchedAt < INFLOWW_MODELS_CACHE_TTL_MS) {
+  if (
+    !opts?.forceRefresh &&
+    inflowwModelsCache &&
+    now - inflowwModelsCache.fetchedAt < INFLOWW_MODELS_CACHE_TTL_MS
+  ) {
     return inflowwModelsCache.models;
   }
   const models = await fetchInflowwModelsUncached();

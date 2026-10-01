@@ -24,10 +24,15 @@ export function AdminInflowwCreatorsLookup() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/infloww-creators");
+      // Cache-bust + no-store: Refresh must hit live Infloww, not a stale browser/CDN/server list.
+      const res = await fetch(`/api/admin/infloww-creators?refresh=1&_=${Date.now()}`, {
+        cache: "no-store",
+        headers: { "Cache-Control": "no-cache" },
+      });
       const body = (await res.json().catch(() => ({}))) as {
         error?: string;
         creators?: InflowwModel[];
+        count?: number;
       };
       if (!res.ok) {
         throw new Error(body.error || `Failed to load creators (${res.status})`);
@@ -104,7 +109,9 @@ export function AdminInflowwCreatorsLookup() {
             Creator ID lookup
           </p>
           <p className="mt-1 text-sm text-white/55">
-            Live Infloww creators — copy the ID into Accounts → Models → Infloww creator ID.
+            Live Infloww creators (agency API) — copy the ID into Accounts → Models → Infloww
+            creator ID. Only creators currently connected to this Infloww agency appear; Refresh
+            always re-fetches live.
           </p>
         </div>
         <button
@@ -148,9 +155,14 @@ export function AdminInflowwCreatorsLookup() {
 
       {!loading && !error && filtered.length === 0 ? (
         <p className="px-4 py-10 text-center text-sm text-white/40">
-          {creators.length === 0
-            ? "No creators returned from Infloww."
-            : "No matches for the current search."}
+          {creators.length === 0 ? (
+            <>
+              No creators returned from Infloww for this API key / agency OID. Connect (or
+              re-bind) creators in the Infloww dashboard under this agency, then Refresh.
+            </>
+          ) : (
+            "No matches for the current search."
+          )}
         </p>
       ) : null}
 
@@ -216,7 +228,11 @@ export function AdminInflowwCreatorsLookup() {
           <p className="text-xs text-white/35">
             Showing {filtered.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1}–
             {Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length}
-            {query.trim() ? <span className="text-white/25"> ({creators.length} total)</span> : null}
+            {query.trim() ? (
+              <span className="text-white/25"> ({creators.length} from API)</span>
+            ) : (
+              <span className="text-white/25"> (live API total)</span>
+            )}
           </p>
           {filtered.length > 0 ? (
             <div className="flex items-center gap-2">

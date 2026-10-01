@@ -38,7 +38,11 @@ Unmatched models are skipped and counted in sync results (`unmatchedModels`).
 Admin UI: `/admin/earnings` → **Creator ID lookup** (same permission as earnings:
 `earnings:view`). Copy an id into Accounts → Models → Edit → **Infloww creator ID**.
 
-API: `GET /api/admin/infloww-creators`.
+API: `GET /api/admin/infloww-creators` — always live (`forceRefresh`); maps to
+Infloww `GET /v1/creators`. Only creators currently connected to the agency OID
+for `INFLOWW_API_KEY` are returned. Historical earnings can still appear for a
+previously linked `infloww_creator_id` even after the creator drops off this list
+(e.g. unbound on Infloww).
 
 Optional backfill of fuzzy matches:
 `npx tsx scripts/backfill-infloww-creator-ids.ts`
