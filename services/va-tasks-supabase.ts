@@ -392,7 +392,13 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
   if (data.reminder_minutes_before != null) payload.reminder_minutes_before = data.reminder_minutes_before;
   const due = toIsoDateTimeUtc(data.due_date ?? undefined);
   if (due) payload.due_date = due;
-  const recEnd = toDateOnly(data.recurrence_end_date ?? undefined);
+  // Recreated recurring rows often inherit a series end before the new due day —
+  // drop it so daily spawn/virtual preview continue past the stale end.
+  let recEnd = toDateOnly(data.recurrence_end_date ?? undefined);
+  if (recEnd && due && Boolean(data.is_recurring)) {
+    const { normalizeRecurrenceEndForDue } = await import("@/lib/recurrence");
+    recEnd = normalizeRecurrenceEndForDue(recEnd, due) ?? undefined;
+  }
   if (recEnd) payload.recurrence_end_date = recEnd;
   if (data.recurrence_skipped_dates !== undefined) {
     payload.recurrence_skipped_dates = parseSkippedDates(data.recurrence_skipped_dates);
@@ -465,9 +471,22 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
   }
   if (data.recurrence_interval !== undefined) payload.recurrence_interval = data.recurrence_interval;
   if (data.recurrence_end_date !== undefined) {
-    const recEnd = toDateOnly(data.recurrence_end_date === null ? undefined : data.recurrence_end_date);
+    let recEnd = toDateOnly(data.recurrence_end_date === null ? undefined : data.recurrence_end_date);
+    if (recEnd) {
+      const dueForNorm =
+        (typeof payload.due_date === "string" ? payload.due_date : null) ??
+        (data.due_date !== undefined && data.due_date !== null ? toIsoDateTimeUtc(data.due_date) : null);
+      if (dueForNorm) {
+        const { normalizeRecurrenceEndForDue } = await import("@/lib/recurrence");
+        recEnd = normalizeRecurrenceEndForDue(recEnd, dueForNorm) ?? undefined;
+      }
+    }
     if (recEnd) payload.recurrence_end_date = recEnd;
     else if (data.recurrence_end_date === null) payload.recurrence_end_date = null;
+    else if (data.recurrence_end_date !== undefined && !recEnd) {
+      // Stale end before due was dropped — persist null so series stays active.
+      payload.recurrence_end_date = null;
+    }
   }
   if (data.recurrence_skipped_dates !== undefined) {
     payload.recurrence_skipped_dates = parseSkippedDates(data.recurrence_skipped_dates);

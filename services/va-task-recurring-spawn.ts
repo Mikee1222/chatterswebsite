@@ -5,6 +5,7 @@ import {
   shouldSpawnRecurring,
   vaTaskSeriesKey,
   buildRecurringSpawnKey,
+  normalizeRecurrenceEndForDue,
 } from "@/lib/recurrence";
 import {
   getVaTasksViewTodayYmd,
@@ -158,7 +159,8 @@ function buildSpawnInput(
     recurrence_type: anchor.recurrence_type,
     recurrence_days: [...anchor.recurrence_days],
     recurrence_interval: anchor.recurrence_interval ?? undefined,
-    recurrence_end_date: anchor.recurrence_end_date,
+    // Drop stale series ends that are before this occurrence (manual recreate leftover).
+    recurrence_end_date: normalizeRecurrenceEndForDue(anchor.recurrence_end_date, dueIso),
     recurrence_skipped_dates: [...(anchor.recurrence_skipped_dates ?? [])],
     reminder_minutes_before: anchor.reminder_minutes_before,
     recurring_spawn_key: spawnKey,

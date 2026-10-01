@@ -162,6 +162,13 @@ export function getNextOccurrence(
   return toAirtableDateTimeIsoUtc(next);
 }
 
+/**
+ * True when a recurring row's schedule is still active for Athens "today".
+ * Uses Athens calendar YMD (not wall-clock UTC end-of-day) so series that were
+ * accidentally ended on day D still project/spawn for D itself, and so a
+ * recreated occurrence whose due day is after a stale end date can be healed
+ * via {@link normalizeRecurrenceEndForDue}.
+ */
 export function shouldSpawnRecurring(task: {
   is_recurring: boolean;
   recurrence_type: string | null | "";
@@ -172,11 +179,36 @@ export function shouldSpawnRecurring(task: {
   const rt = typeof task.recurrence_type === "string" ? task.recurrence_type.trim() : "";
   if (!rt) return false;
   if (!task.due_date?.trim()) return false;
-  if (task.recurrence_end_date?.trim()) {
-    const end = parseRecurrenceEndUtc(task.recurrence_end_date);
-    if (end && Date.now() > end.getTime()) return false;
+  const end = task.recurrence_end_date?.trim().slice(0, 10) ?? "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    // Prefer the row's own due day when it is after "today" (recreated ahead),
+    // otherwise compare against Athens today so midnight UTC doesn't kill the series early.
+    const dueYmd = ymdInAthens(task.due_date);
+    const todayYmd = ymdInAthens(new Date().toISOString());
+    const activeThrough = dueYmd && dueYmd > (todayYmd || "") ? dueYmd : todayYmd;
+    if (activeThrough && end < activeThrough) return false;
   }
   return true;
+}
+
+/**
+ * If a recurring create/spawn would attach an end date before the occurrence's
+ * Athens due day (common after manual delete+recreate that inherited a stale
+ * series end), drop the end date so daily recurrence continues.
+ */
+export function normalizeRecurrenceEndForDue(
+  recurrenceEndDate: string | null | undefined,
+  dueIsoOrYmd: string | null | undefined,
+): string | null {
+  const end = recurrenceEndDate?.trim().slice(0, 10) ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(end)) return null;
+  const raw = dueIsoOrYmd?.trim() ?? "";
+  if (!raw) return end;
+  const dueYmd = /^\d{4}-\d{2}-\d{2}$/.test(raw.slice(0, 10)) && raw.length === 10
+    ? raw.slice(0, 10)
+    : ymdInAthens(raw);
+  if (dueYmd && end < dueYmd) return null;
+  return end;
 }
 
 /**

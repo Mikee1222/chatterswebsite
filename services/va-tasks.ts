@@ -361,7 +361,11 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
   };
   const due = toAirtableDateTimeIsoUtc(data.due_date ?? undefined);
   if (due) payload[AIRTABLE_FIELD_DUE_DATE] = due;
-  const recEnd = toRecurrenceEndDateOnly(data.recurrence_end_date ?? undefined);
+  let recEnd = toRecurrenceEndDateOnly(data.recurrence_end_date ?? undefined);
+  if (recEnd && due && Boolean(data.is_recurring)) {
+    const { normalizeRecurrenceEndForDue } = await import("@/lib/recurrence");
+    recEnd = normalizeRecurrenceEndForDue(recEnd, due) ?? undefined;
+  }
   if (recEnd) payload.recurrence_end_date = recEnd;
   logOutgoingPayload("create", undefined, payload);
   const rec = await createRecord<Fields>(TABLE, payload);
