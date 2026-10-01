@@ -120,6 +120,9 @@ function stage2BasePhaseItems(): SeedItem[] {
   return items;
 }
 
+/** Platforms that still use Stories in warm-up checklists. TikTok Stories discontinued. */
+const STORY_PLATFORMS = NEW_ACCOUNT_WARMUP_US_PLATFORMS.filter((p) => p !== "TikTok");
+
 function stage2Phase1Extras(): SeedItem[] {
   const items: SeedItem[] = [];
   let sort = NEW_ACCOUNT_WARMUP_US_PLATFORMS.length * 5;
@@ -132,7 +135,7 @@ function stage2Phase1Extras(): SeedItem[] {
       sort_order: sort++,
     });
   }
-  for (const platform of NEW_ACCOUNT_WARMUP_US_PLATFORMS) {
+  for (const platform of STORY_PLATFORMS) {
     items.push({
       title: `Post ${platform} Story (Daily)`,
       description: "",
@@ -147,7 +150,7 @@ function stage2Phase1Extras(): SeedItem[] {
 function stage2Phase3Extras(): SeedItem[] {
   const items: SeedItem[] = [];
   let sort = NEW_ACCOUNT_WARMUP_US_PLATFORMS.length * 5;
-  for (const platform of NEW_ACCOUNT_WARMUP_US_PLATFORMS) {
+  for (const platform of STORY_PLATFORMS) {
     items.push({
       title: `Post ${platform} Story (CTA)`,
       description: "",
