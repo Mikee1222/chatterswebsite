@@ -32,12 +32,23 @@ export default async function AdminLayout({
   const pathname = (await headers()).get("x-pathname") ?? "";
   const staff = getEffectiveStaffRole(user);
 
-  // Chatter + roles DB `chatter_program:view` can surface TEAM → /admin/weekly-program in
-  // shared nav; that board is for admins/custom roles. Send chatters to their schedule.
+  // Chatter + roles DB grants can surface agency-wide admin boards via shared nav.
+  // Those boards are for admins/custom roles — send chatters to their personal surfaces.
   if (staff === "chatter") {
     const p = (pathname.split("?")[0] || "").replace(/\/$/, "") || "/";
     if (p === ROUTES.admin.weeklyProgram || p.startsWith(`${ROUTES.admin.weeklyProgram}/`)) {
       redirect(ROUTES.chatter.weeklyProgram);
+    }
+    if (p === ROUTES.admin.finesBonuses || p.startsWith(`${ROUTES.admin.finesBonuses}/`)) {
+      redirect(ROUTES.finesBonuses);
+    }
+    if (
+      p === ROUTES.admin.customRequests ||
+      p.startsWith(`${ROUTES.admin.customRequests}/`) ||
+      p === ROUTES.admin.customs ||
+      p.startsWith(`${ROUTES.admin.customs}/`)
+    ) {
+      redirect(ROUTES.chatter.requestCustom);
     }
   }
 

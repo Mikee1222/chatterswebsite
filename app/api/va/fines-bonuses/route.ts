@@ -5,6 +5,11 @@ import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { getFinesBonusesForUser } from "@/services/fines-bonuses";
 
+/**
+ * VA personal fines list.
+ * Always scopes to the authenticated session user — any client-supplied user_id
+ * (query/body) is ignored.
+ */
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

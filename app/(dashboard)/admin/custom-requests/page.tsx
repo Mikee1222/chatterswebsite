@@ -8,7 +8,7 @@ import { AdminCustomRequestsClient } from "@/components/admin-custom-requests-cl
 import type { CustomRequest } from "@/types";
 
 export default async function AdminCustomRequestsPage() {
-  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CUSTOM_REQUESTS_VIEW);
+  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CUSTOM_REQUESTS_MANAGE);
 
   const [first, models, users] = await Promise.all([
     listCustomRequestsPaginated({}, 1, 50, null).catch(() => ({

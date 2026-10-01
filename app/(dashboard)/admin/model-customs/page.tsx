@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 
 /** Admin customs hub lives at /admin/customs; keep this URL for nav and bookmarks. */
 export default async function AdminModelCustomsRedirectPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CUSTOM_REQUESTS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CUSTOM_REQUESTS_MANAGE);
 
   redirect(ROUTES.admin.customs);
 }

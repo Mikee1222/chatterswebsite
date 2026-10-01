@@ -10,12 +10,13 @@ import {
   agencyMarkCustomRequestDelivered,
 } from "@/services/custom-request-agency-queue";
 import { listCustomRequestsPaginated } from "@/services/custom-requests";
-import { hasPermission } from "@/lib/rbac";
+import { hasPermission, isAdminAreaUser } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 
+/** Agency queue mutations — admin/manager/custom roles with manage. Chatters are read-only. */
 async function assertCustomRequestsManage() {
   const u = await getSessionFromCookies();
-  if (!u || !(await hasPermission(u, PERMISSIONS.CUSTOM_REQUESTS_MANAGE))) {
+  if (!u || !isAdminAreaUser(u) || !(await hasPermission(u, PERMISSIONS.CUSTOM_REQUESTS_MANAGE))) {
     throw new Error("Unauthorized");
   }
   return u;

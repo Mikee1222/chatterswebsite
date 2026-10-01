@@ -14,7 +14,7 @@ import { getActiveModelUserAirtableIdByLinkedModelRecordId, getUserByAirtableId 
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import type { CustomRequestAdminStatus } from "@/types";
-import { hasPermission } from "@/lib/rbac";
+import { hasPermission, isAdminAreaUser } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 
 export type UpdateCustomStatusResult = { success: true } | { success: false; error: string };
@@ -40,7 +40,8 @@ export async function deleteCustomRequestAction(
   const staffRole = getEffectiveStaffRole(user);
   const sessionRecordId = (user.airtableUserId ?? user.id)?.trim() ?? "";
 
-  if (await hasPermission(user, PERMISSIONS.CUSTOM_REQUESTS_MANAGE)) {
+  // Agency delete-any: admin-area roles with manage only (chatters with leftover manage grants cannot).
+  if (isAdminAreaUser(user) && (await hasPermission(user, PERMISSIONS.CUSTOM_REQUESTS_MANAGE))) {
     // Agency staff may delete any custom request.
   } else if (staffRole === "virtual_assistant" || role === "virtual_assistant") {
     if (existing.admin_status !== "pending") {
@@ -58,6 +59,7 @@ export async function deleteCustomRequestAction(
       return { success: false, error: "This request is not assigned to you." };
     }
   } else if (staffRole === "chatter" || role === "chatter") {
+    // Chatters: read-only on the history tab. Own pending deletes only (no agency mutations).
     if (existing.admin_status !== "pending" || existing.model_status !== "waiting_schedule") {
       return { success: false, error: "Only pending requests can be deleted." };
     }
@@ -82,6 +84,15 @@ export async function updateCustomStatusAction(
   recordId: string,
   admin_status: CustomRequestAdminStatus
 ): Promise<UpdateCustomStatusResult> {
+  const user = await getSessionFromCookies();
+  if (!user) {
+    return { success: false, error: "Unauthorized" };
+  }
+  // Status changes are agency-only. Chatters are strictly read-only for status.
+  if (!isAdminAreaUser(user) || !(await hasPermission(user, PERMISSIONS.CUSTOM_REQUESTS_MANAGE))) {
+    return { success: false, error: "Forbidden" };
+  }
+
   try {
     const updated = await updateCustomRequestAdminStatus(recordId, admin_status);
     const customTitle = (updated.request_title ?? "").trim() || "Custom request";

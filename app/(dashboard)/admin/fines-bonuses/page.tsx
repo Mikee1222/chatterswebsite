@@ -10,7 +10,7 @@ import { getCachedModelss } from "@/lib/modelss-cache";
 import { AdminFinesBonusesClient } from "@/components/admin-fines-bonuses-client";
 
 export default async function AdminFinesBonusesPage() {
-  const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.FINES_VIEW);
+  const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.FINES_MANAGE);
 
   const [entries, users, modelss] = await Promise.all([
     listFinesBonuses({}).catch(() => []),

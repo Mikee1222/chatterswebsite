@@ -8,7 +8,7 @@ import { AdminCustomsClient } from "@/components/admin-customs-client";
 import type { CustomRequest } from "@/types";
 
 export default async function AdminCustomsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CUSTOM_REQUESTS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CUSTOM_REQUESTS_MANAGE);
 
   const requests = await listAllCustomRequests().catch(() => []);
 

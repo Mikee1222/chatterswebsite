@@ -632,7 +632,9 @@ const adminNav: NavItem[] = [
     label: "Custom requests",
     iconKey: "Receipt",
     navSection: "FINANCE",
-    requiresPermission: PERMISSIONS.CUSTOM_REQUESTS_VIEW,
+    // Manage (not view): chatters have custom-requests:view for their own submit page;
+    // shared admin nav must not surface the agency-wide queue to them.
+    requiresPermission: PERMISSIONS.CUSTOM_REQUESTS_MANAGE,
   },
   {
     href: ROUTES.admin.rebillsTips,
@@ -646,7 +648,9 @@ const adminNav: NavItem[] = [
     label: "Fines & Bonuses",
     iconKey: "Coins",
     navSection: "FINANCE",
-    requiresPermission: PERMISSIONS.FINES_VIEW,
+    // Manage (not view): chatters/VAs have fines:view for personal /fines-bonuses;
+    // shared admin nav must not surface the agency-wide list to them.
+    requiresPermission: PERMISSIONS.FINES_MANAGE,
   },
   {
     href: ROUTES.admin.expenseRequests,
@@ -1185,7 +1189,13 @@ export function resolvePermissionAwareNavHrefs(
   if (shouldHideAdminProgramNavForChatter(role)) {
     next = next.filter(
       (item) =>
-        item.href !== ROUTES.admin.weeklyProgram && item.href !== ROUTES.admin.weeklyProgramVa
+        item.href !== ROUTES.admin.weeklyProgram &&
+        item.href !== ROUTES.admin.weeklyProgramVa &&
+        // Personal surfaces already exist; never show agency-wide finance queues to chatters.
+        item.href !== ROUTES.admin.finesBonuses &&
+        item.href !== ROUTES.admin.customRequests &&
+        item.href !== ROUTES.admin.customs &&
+        item.href !== ROUTES.admin.modelCustoms
     );
   }
   if (!shouldUsePersonalVaTasksNav(role, granted)) return next;

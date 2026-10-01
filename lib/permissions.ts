@@ -513,7 +513,9 @@ const CHATTER_PERMISSIONS: Permission[] = [
   PERMISSIONS.WHALES_VIEW,
   PERMISSIONS.WHALES_MANAGE,
   PERMISSIONS.CUSTOM_REQUESTS_VIEW,
-  PERMISSIONS.CUSTOM_REQUESTS_MANAGE,
+  // custom-requests:manage intentionally NOT a chatter default — that permission unlocks
+  // agency-wide admin queue + approve/decline/edit. Chatters submit via /request-custom
+  // (view + create service) and see their own history read-only.
   PERMISSIONS.FINES_VIEW,
   PERMISSIONS.REWARDS_VIEW,
   PERMISSIONS.SOPS_VIEW,
