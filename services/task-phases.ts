@@ -289,20 +289,67 @@ export async function taskHasAnyPhases(taskId: string): Promise<boolean> {
 
 export async function scorePhaseCloneSources(
   taskIds: string[],
-): Promise<Array<{ taskId: string; itemCount: number; withModel: boolean }>> {
+): Promise<
+  Array<{
+    taskId: string;
+    itemCount: number;
+    phaseCount: number;
+    emptyPhaseCount: number;
+    withModel: boolean;
+    isComplete: boolean;
+  }>
+> {
   if (isSupabaseBackend()) {
     return (await import("./task-phases-supabase")).scorePhaseCloneSources(taskIds);
   }
-  const out: Array<{ taskId: string; itemCount: number; withModel: boolean }> = [];
+  const out: Array<{
+    taskId: string;
+    itemCount: number;
+    phaseCount: number;
+    emptyPhaseCount: number;
+    withModel: boolean;
+    isComplete: boolean;
+  }> = [];
   for (const id of taskIds) {
     const phases = await getPhasesByTask(id);
+    const emptyPhaseCount = phases.filter((p) => (p.items?.length ?? 0) === 0).length;
+    const itemCount = phases.reduce((n, p) => n + p.items.length, 0);
+    const phaseCount = phases.length;
     out.push({
       taskId: id,
-      itemCount: phases.reduce((n, p) => n + p.items.length, 0),
+      itemCount,
+      phaseCount,
+      emptyPhaseCount,
       withModel: phases.some((p) => Boolean(p.assigned_model_id?.trim())),
+      isComplete: phaseCount > 0 && emptyPhaseCount === 0 && itemCount > 0,
     });
   }
   return out;
+}
+
+export async function taskPhasesMatchTemplate(
+  targetTaskId: string,
+  sourceTaskId: string,
+): Promise<boolean> {
+  if (isVirtualVaTaskId(targetTaskId) || isVirtualVaTaskId(sourceTaskId)) return false;
+  if (isSupabaseBackend()) {
+    return (await import("./task-phases-supabase")).taskPhasesMatchTemplate(
+      targetTaskId,
+      sourceTaskId,
+    );
+  }
+  const [target, source] = await Promise.all([
+    getPhasesByTask(targetTaskId),
+    getPhasesByTask(sourceTaskId),
+  ]);
+  if (!source.length) return target.length === 0;
+  if (target.length < source.length) return false;
+  for (const sp of source) {
+    if ((sp.items?.length ?? 0) === 0) continue;
+    const tp = target.find((p) => p.phase_number === sp.phase_number);
+    if (!tp || (tp.items?.length ?? 0) === 0) return false;
+  }
+  return true;
 }
 
 /** Lightweight phase lookup (record id → phase_id) for ownership / create-item routing. */
@@ -593,25 +640,31 @@ export async function clonePhasesToTask(
     );
   }
 
-  // Phases OR leftover checklist items — never invent a second Warm-Up set.
-  if (await taskHasAnyPhases(targetTask.id)) return 0;
+  // Airtable path: heal missing phases vs source (do not skip on partial structure).
+  if (await taskPhasesMatchTemplate(targetTask.id, sourceTaskId)) return 0;
 
+  const existingTarget = await getPhasesByTask(targetTask.id);
+  const existingByNumber = new Map(existingTarget.map((p) => [p.phase_number, p]));
   const phases = dedupePhasesForClone(await getPhasesByTask(sourceTaskId));
   let cloned = 0;
   for (const phase of phases) {
-    const created = await createPhase({
-      task_id: targetTask.id,
-      task_title: targetTask.title,
-      phase_number: phase.phase_number,
-      title: phase.title,
-      description: phase.description,
-      region: phase.region,
-      scheduled_time: phase.scheduled_time,
-      assigned_va_id: phase.assigned_va_id,
-      assigned_va_name: phase.assigned_va_name,
-      assigned_model_id: phase.assigned_model_id,
-      assigned_model_name: phase.assigned_model_name,
-    });
+    let created = existingByNumber.get(phase.phase_number);
+    if (!created) {
+      created = await createPhase({
+        task_id: targetTask.id,
+        task_title: targetTask.title,
+        phase_number: phase.phase_number,
+        title: phase.title,
+        description: phase.description,
+        region: phase.region,
+        scheduled_time: phase.scheduled_time,
+        assigned_va_id: phase.assigned_va_id,
+        assigned_va_name: phase.assigned_va_name,
+        assigned_model_id: phase.assigned_model_id,
+        assigned_model_name: phase.assigned_model_name,
+      });
+      cloned += 1;
+    }
 
     const sourceModelId = phase.assigned_model_id?.trim() ?? "";
     const sourceModelName = phase.assigned_model_name?.trim() ?? "";
@@ -632,7 +685,10 @@ export async function clonePhasesToTask(
     }
 
     const stablePhaseId = created.phase_id || created.id;
-    const items = dedupePhaseItemsForClone(phase.items ?? []);
+    const existingSorts = new Set((created.items ?? []).map((i) => i.sort_order));
+    const items = dedupePhaseItemsForClone(phase.items ?? []).filter(
+      (item) => !existingSorts.has(item.sort_order),
+    );
     await Promise.all(
       items.map((item) =>
         createPhaseItem({
@@ -649,7 +705,7 @@ export async function clonePhasesToTask(
         }),
       ),
     );
-    cloned += 1;
+    if (items.length && !cloned) cloned += 1;
   }
   return cloned;
 }

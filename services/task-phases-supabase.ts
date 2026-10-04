@@ -436,7 +436,11 @@ export async function taskHasAnyPhases(taskId: string): Promise<boolean> {
 export type PhaseCloneSourceScore = {
   taskId: string;
   itemCount: number;
+  phaseCount: number;
+  emptyPhaseCount: number;
   withModel: boolean;
+  /** True when every phase has ≥1 item — incomplete shells must never win source selection. */
+  isComplete: boolean;
 };
 
 /**
@@ -447,50 +451,183 @@ export async function scorePhaseCloneSources(taskIds: string[]): Promise<PhaseCl
   const ids = [...new Set(taskIds.map((t) => t.trim()).filter(Boolean))];
   if (!ids.length) return [];
 
+  const empty = (taskId: string): PhaseCloneSourceScore => ({
+    taskId,
+    itemCount: 0,
+    phaseCount: 0,
+    emptyPhaseCount: 0,
+    withModel: false,
+    isComplete: false,
+  });
+
   const { queryIds, aliasesFor } = await expandTaskIdAliases(ids);
-  if (!queryIds.length) return ids.map((taskId) => ({ taskId, itemCount: 0, withModel: false }));
+  if (!queryIds.length) return ids.map(empty);
 
   const [phaseData, itemData] = await Promise.all([
-    selectAllByTaskIds<{ id: string; task_id?: string | null; assigned_model_id?: string | null } & SbRow>(
-      T_PHASES,
-      queryIds,
-      "phase_number",
-      "id, task_id, assigned_model_id",
-    ),
-    selectAllByTaskIds<{ id: string; task_id?: string | null } & SbRow>(
+    selectAllByTaskIds<
+      {
+        id: string;
+        task_id?: string | null;
+        phase_id?: string | null;
+        assigned_model_id?: string | null;
+      } & SbRow
+    >(T_PHASES, queryIds, "phase_number", "id, task_id, phase_id, assigned_model_id"),
+    selectAllByTaskIds<{ id: string; task_id?: string | null; phase_id?: string | null } & SbRow>(
       T_ITEMS,
       queryIds,
       "sort_order",
-      "id, task_id",
+      "id, task_id, phase_id",
     ),
   ]);
 
   const itemCountByStored = new Map<string, number>();
+  const itemsByPhaseKey = new Set<string>();
   for (const row of itemData) {
     const tid = String(row.task_id ?? "").trim();
-    if (!tid) continue;
-    itemCountByStored.set(tid, (itemCountByStored.get(tid) ?? 0) + 1);
+    if (tid) itemCountByStored.set(tid, (itemCountByStored.get(tid) ?? 0) + 1);
+    const phaseKey = String(row.phase_id ?? "").trim();
+    if (phaseKey) itemsByPhaseKey.add(phaseKey);
   }
-  const modelByStored = new Map<string, boolean>();
+
+  type PhaseAgg = { phaseCount: number; emptyPhaseCount: number; withModel: boolean };
+  const phaseAggByStored = new Map<string, PhaseAgg>();
   for (const row of phaseData) {
     const tid = String(row.task_id ?? "").trim();
     if (!tid) continue;
-    if (String(row.assigned_model_id ?? "").trim()) modelByStored.set(tid, true);
+    const agg = phaseAggByStored.get(tid) ?? { phaseCount: 0, emptyPhaseCount: 0, withModel: false };
+    agg.phaseCount += 1;
+    if (String(row.assigned_model_id ?? "").trim()) agg.withModel = true;
+    const phaseKey = String(row.phase_id ?? "").trim() || publicId(row);
+    const hasItems =
+      itemsByPhaseKey.has(phaseKey) || itemsByPhaseKey.has(publicId(row)) || itemsByPhaseKey.has(row.id);
+    if (!hasItems) agg.emptyPhaseCount += 1;
+    phaseAggByStored.set(tid, agg);
   }
 
   return ids.map((taskId) => {
     let itemCount = 0;
+    let phaseCount = 0;
+    let emptyPhaseCount = 0;
     let withModel = false;
     for (const [stored, count] of itemCountByStored) {
       if (stored === taskId || aliasesFor(stored).includes(taskId)) itemCount += count;
     }
-    for (const [stored, has] of modelByStored) {
-      if (has && (stored === taskId || aliasesFor(stored).includes(taskId))) withModel = true;
+    for (const [stored, agg] of phaseAggByStored) {
+      if (stored === taskId || aliasesFor(stored).includes(taskId)) {
+        phaseCount += agg.phaseCount;
+        emptyPhaseCount += agg.emptyPhaseCount;
+        if (agg.withModel) withModel = true;
+      }
     }
     if (itemCount === 0) itemCount = itemCountByStored.get(taskId) ?? 0;
-    if (!withModel) withModel = modelByStored.get(taskId) === true;
-    return { taskId, itemCount, withModel };
+    if (phaseCount === 0) {
+      const fallback = phaseAggByStored.get(taskId);
+      if (fallback) {
+        phaseCount = fallback.phaseCount;
+        emptyPhaseCount = fallback.emptyPhaseCount;
+        withModel = withModel || fallback.withModel;
+      }
+    }
+    const isComplete = phaseCount > 0 && emptyPhaseCount === 0 && itemCount > 0;
+    return { taskId, itemCount, phaseCount, emptyPhaseCount, withModel, isComplete };
   });
+}
+
+export type ClonePhasesAtomicResult = {
+  ok: boolean;
+  phases_created: number;
+  items_created: number;
+  source_phase_count: number;
+  target_phase_count: number;
+  waited?: boolean;
+  error?: string;
+};
+
+/** Single-transaction clone/heal via Postgres RPC — complete structure or nothing on error. */
+export async function clonePhasesToTaskAtomic(
+  sourceTaskId: string,
+  targetTask: { id: string; title: string },
+): Promise<ClonePhasesAtomicResult> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.rpc("clone_va_task_phases_atomic", {
+    p_source_task_id: sourceTaskId.trim(),
+    p_target_task_id: targetTask.id.trim(),
+    p_target_title: targetTask.title ?? "",
+  });
+  if (error) throw new Error(`clone_va_task_phases_atomic: ${error.message}`);
+  const row = (data ?? {}) as Partial<ClonePhasesAtomicResult>;
+  return {
+    ok: row.ok !== false,
+    phases_created: Number(row.phases_created ?? 0),
+    items_created: Number(row.items_created ?? 0),
+    source_phase_count: Number(row.source_phase_count ?? 0),
+    target_phase_count: Number(row.target_phase_count ?? 0),
+    waited: row.waited,
+    error: row.error,
+  };
+}
+
+/**
+ * True when target has at least as many phases as source and every source phase that
+ * has items is mirrored by a target phase with items. Used by spawn self-heal.
+ */
+export async function taskPhasesMatchTemplate(
+  targetTaskId: string,
+  sourceTaskId: string,
+): Promise<boolean> {
+  const targetId = targetTaskId.trim();
+  const sourceId = sourceTaskId.trim();
+  if (!targetId || !sourceId) return false;
+  const sb = getSupabaseServiceClient();
+  const [{ data: srcPhases, error: sErr }, { data: tgtPhases, error: tErr }] = await Promise.all([
+    sb.from(T_PHASES).select("id, phase_id, phase_number").eq("task_id", sourceId),
+    sb.from(T_PHASES).select("id, phase_id, phase_number").eq("task_id", targetId),
+  ]);
+  if (sErr) throw new Error(`taskPhasesMatchTemplate source: ${sErr.message}`);
+  if (tErr) throw new Error(`taskPhasesMatchTemplate target: ${tErr.message}`);
+  const source = srcPhases ?? [];
+  const target = tgtPhases ?? [];
+  if (!source.length) return target.length === 0;
+  if (target.length < source.length) return false;
+
+  const srcKeys = source.flatMap((p) =>
+    [String(p.phase_id ?? "").trim(), String(p.id ?? "").trim()].filter(Boolean),
+  );
+  const tgtKeys = target.flatMap((p) =>
+    [String(p.phase_id ?? "").trim(), String(p.id ?? "").trim()].filter(Boolean),
+  );
+  const [{ data: srcItems, error: siErr }, { data: tgtItems, error: tiErr }] = await Promise.all([
+    srcKeys.length
+      ? sb.from(T_ITEMS).select("phase_id").in("phase_id", srcKeys)
+      : Promise.resolve({ data: [], error: null }),
+    tgtKeys.length
+      ? sb.from(T_ITEMS).select("phase_id").in("phase_id", tgtKeys)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (siErr) throw new Error(`taskPhasesMatchTemplate source items: ${siErr.message}`);
+  if (tiErr) throw new Error(`taskPhasesMatchTemplate target items: ${tiErr.message}`);
+
+  const srcItemPhases = new Set((srcItems ?? []).map((i) => String(i.phase_id ?? "").trim()));
+  const tgtByNumber = new Map<number, { keys: string[] }>();
+  for (const p of target) {
+    const n = Number(p.phase_number);
+    if (!Number.isFinite(n)) continue;
+    const keys = [String(p.phase_id ?? "").trim(), String(p.id ?? "").trim()].filter(Boolean);
+    tgtByNumber.set(n, { keys });
+  }
+  const tgtItemPhases = new Set((tgtItems ?? []).map((i) => String(i.phase_id ?? "").trim()));
+
+  for (const sp of source) {
+    const n = Number(sp.phase_number);
+    const srcHasItems = [String(sp.phase_id ?? "").trim(), String(sp.id ?? "").trim()]
+      .filter(Boolean)
+      .some((k) => srcItemPhases.has(k));
+    if (!srcHasItems) continue;
+    const tgt = tgtByNumber.get(n);
+    if (!tgt) return false;
+    if (!tgt.keys.some((k) => tgtItemPhases.has(k))) return false;
+  }
+  return true;
 }
 
 export async function resolvePhaseItemRowId(paramId: string): Promise<string | null> {
@@ -522,115 +659,47 @@ type ClonePhaseDeps = {
 };
 
 /**
- * Cross-instance clone with claim-row mutex + unique indexes.
- * Session advisory locks are unsafe under PgBouncer/pooler (lock held on a
- * different connection than the inserts). Instead we INSERT a PK claim row —
- * only one cloner wins; losers wait for structure then return 0.
- * Unique indexes on (task_id, phase_number) and (phase_id, sort_order) remain
- * the hard DB guarantee if two racers both somehow proceed.
+ * Cross-instance clone via atomic Postgres RPC.
+ *
+ * Previous app-level loop (phase → items → next phase) could abort mid-way and leave
+ * permanently incomplete tasks because spawn skipped whenever ANY phase existed.
+ * The RPC inserts only missing phases/items in one transaction and self-heals partial
+ * structure without touching completed checklist progress.
+ *
+ * `deps` retained for Airtable fallback callers / tests; Supabase path ignores per-row inserts.
  */
 export async function clonePhasesToTaskLocked(
   sourceTaskId: string,
   targetTask: { id: string; title: string },
-  deps: ClonePhaseDeps,
+  _deps: ClonePhaseDeps,
 ): Promise<number> {
   const targetId = targetTask.id.trim();
-  if (!targetId) return 0;
+  const sourceId = sourceTaskId.trim();
+  if (!targetId || !sourceId) return 0;
 
-  const sb = getSupabaseServiceClient();
+  if (await taskPhasesMatchTemplate(targetId, sourceId)) return 0;
 
-  if (await deps.taskHasAnyPhases(targetId)) return 0;
-
-  const { error: claimErr } = await sb.from("va_task_clone_claims").insert({ task_id: targetId });
-  if (claimErr) {
-    const msg = claimErr.message ?? "";
-    const isConflict =
-      claimErr.code === "23505" || msg.includes("duplicate key") || msg.includes("unique");
-    if (!isConflict) throw new Error(`va_task_clone_claims: ${msg}`);
-    // Another instance is cloning — wait for phases/items to appear.
+  const result = await clonePhasesToTaskAtomic(sourceId, targetTask);
+  if (!result.ok) {
+    // Another worker is mid-clone — wait for completeness rather than leaving a shell.
     for (let i = 0; i < 40; i++) {
-      if (await deps.taskHasAnyPhases(targetId)) return 0;
+      if (await taskPhasesMatchTemplate(targetId, sourceId)) return 0;
       await new Promise((r) => setTimeout(r, 150));
     }
+    console.error(
+      "[clonePhasesToTaskLocked] clone_in_progress timeout",
+      { sourceId, targetId, result },
+    );
     return 0;
   }
 
-  try {
-    // Re-check under claim — winner of the race may have finished between first check and claim.
-    if (await deps.taskHasAnyPhases(targetId)) return 0;
-
-    const phases = deps.dedupePhases(await deps.getPhasesByTask(sourceTaskId));
-    let cloned = 0;
-    for (const phase of phases) {
-      let created: TaskPhase;
-      try {
-        created = await deps.createPhase({
-          task_id: targetId,
-          task_title: targetTask.title,
-          phase_number: phase.phase_number,
-          title: phase.title,
-          description: phase.description,
-          region: phase.region,
-          scheduled_time: phase.scheduled_time,
-          assigned_va_id: phase.assigned_va_id,
-          assigned_va_name: phase.assigned_va_name,
-          assigned_model_id: phase.assigned_model_id,
-          assigned_model_name: phase.assigned_model_name,
-        });
-      } catch (err) {
-        if (deps.isUniqueViolation(err)) {
-          // Partial concurrent structure — stop; unique indexes already protect items.
-          return cloned;
-        }
-        throw err;
-      }
-
-      const sourceModelId = phase.assigned_model_id?.trim() ?? "";
-      const sourceModelName = phase.assigned_model_name?.trim() ?? "";
-      const sourceVaId = phase.assigned_va_id?.trim() ?? "";
-      const sourceVaName = phase.assigned_va_name?.trim() ?? "";
-      const needsModelPatch =
-        Boolean(sourceModelId) && (created.assigned_model_id?.trim() ?? "") !== sourceModelId;
-      const needsVaPatch =
-        Boolean(sourceVaId) && (created.assigned_va_id?.trim() ?? "") !== sourceVaId;
-      if (needsModelPatch || needsVaPatch) {
-        await deps.updatePhase(created.id, {
-          task_id: targetId,
-          ...(needsModelPatch
-            ? { assigned_model_id: sourceModelId, assigned_model_name: sourceModelName }
-            : {}),
-          ...(needsVaPatch ? { assigned_va_id: sourceVaId, assigned_va_name: sourceVaName } : {}),
-        });
-      }
-
-      const stablePhaseId = created.phase_id || created.id;
-      const items = deps.dedupeItems(phase.items ?? []);
-      await Promise.all(
-        items.map(async (item) => {
-          try {
-            await deps.createPhaseItem({
-              phase_id: stablePhaseId,
-              task_id: targetId,
-              title: item.title,
-              description: item.description,
-              requires_screenshot: item.requires_screenshot,
-              sort_order: item.sort_order,
-              step_type: deps.inferStepType(item.title, item.step_type),
-            });
-          } catch (err) {
-            if (!deps.isUniqueViolation(err)) throw err;
-          }
-        }),
-      );
-      cloned += 1;
-    }
-    return cloned;
-  } finally {
-    const { error: releaseErr } = await sb.from("va_task_clone_claims").delete().eq("task_id", targetId);
-    if (releaseErr) {
-      console.error("[clonePhasesToTaskLocked] claim release failed", releaseErr.message);
-    }
+  const created = result.phases_created + (result.items_created > 0 && result.phases_created === 0 ? 1 : 0);
+  if (result.phases_created > 0 || result.items_created > 0) {
+    console.log(
+      `[clonePhasesToTaskLocked] healed ${targetId} from ${sourceId}: +${result.phases_created} phases, +${result.items_created} items (now ${result.target_phase_count}/${result.source_phase_count})`,
+    );
   }
+  return created || (result.target_phase_count > 0 ? result.target_phase_count : 0);
 }
 
 export async function updatePhase(id: string, patch: Record<string, unknown>): Promise<void> {

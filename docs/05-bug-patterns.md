@@ -264,9 +264,15 @@ Mitigations in `services/va-task-recurring-spawn.ts`:
 - Fresh fetch before insert
 - `recurringRealRowExistsForAthensYmd()` check
 - `dedupeRecurringRealRowsOnDay()` in date expand (display-side safety net)
-- `clonePhasesToTask()` skips when target already has phases
+- `clonePhasesToTask()` uses `clone_va_task_phases_atomic` RPC (single transaction) and
+  self-heals when target phase count / items are below the template — does **not** skip
+  merely because any phase exists
+- Source selection prefers **complete** templates (no empty phases); prefer-smaller
+  itemCount alone must not rank incomplete shells above healthy days
 
 If duplicates appear, run `npx tsx scripts/cleanup-duplicate-recurring-tasks.ts`.
+If incomplete phases appear, spawn/heal will fill missing phases/items; or call
+`clone_va_task_phases_atomic(source, target)` directly.
 
 ---
 

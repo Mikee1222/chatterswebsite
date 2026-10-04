@@ -98,15 +98,33 @@ async function pickPhaseCloneSourceId(
   // One batched score — never N× full getPhasesByTask over series history (Daily Marketing
   // alone grew to 50+ rows; each Warm-Up fetch is ~76 checklist items).
   const scores = await scorePhaseCloneSources(inSeries.map((t) => t.id));
-  // Prefer modeled + non-empty sources, but NEVER reward bloated checklists —
-  // max(itemCount) previously selected poisoned Warm-Up rows (92 vs healthy 44)
-  // and re-cloned the double into the next day.
+  // Incomplete shells (empty phases / truncated phase sets) MUST lose — prefer-smaller
+  // itemCount previously ranked Sept 30 Lydia (2 phases / 19 items, Phase 2 empty) above
+  // healthy 3×50 days and re-poisoned Oct 4.
+  // Among complete sources: withModel → more phases → smaller itemCount (anti-bloat).
   let bestId = fallbackId;
   let bestScore = Number.NEGATIVE_INFINITY;
   for (const row of scores) {
-    if (row.itemCount <= 0) continue;
+    if (!row.isComplete) continue;
     const score =
-      (row.withModel ? 1_000_000 : 0) + 100_000 - Math.min(row.itemCount, 99_999);
+      (row.withModel ? 1_000_000 : 0) +
+      row.phaseCount * 10_000 +
+      100_000 -
+      Math.min(row.itemCount, 99_999);
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = row.taskId;
+    }
+  }
+  if (bestScore > Number.NEGATIVE_INFINITY) return bestId;
+  // Last resort: best incomplete is still better than nothing (heal path will fill).
+  for (const row of scores) {
+    if (row.itemCount <= 0 && row.phaseCount <= 0) continue;
+    const score =
+      (row.withModel ? 1_000_000 : 0) +
+      row.phaseCount * 10_000 -
+      row.emptyPhaseCount * 50_000 -
+      Math.min(row.itemCount, 99_999);
     if (score > bestScore) {
       bestScore = score;
       bestId = row.taskId;
@@ -222,7 +240,7 @@ async function spawnRecurringOccurrenceIfMissingLocked(
   if (recurrenceSkipsAthensYmd(anchor, targetYmd)) return null;
 
   const spawnKey = buildRecurringSpawnKey(series, targetYmd);
-  const { clonePhasesToTask, taskHasAnyPhases } = await import("@/services/task-phases");
+  const { clonePhasesToTask, taskPhasesMatchTemplate } = await import("@/services/task-phases");
   const { updateVaTask } = await import("@/services/va-tasks");
 
   // Prefer spawn-key + in-memory — never full-table getAllVaTasks on the common path
@@ -235,8 +253,9 @@ async function spawnRecurringOccurrenceIfMissingLocked(
 
   const existing = await resolveExisting();
   if (existing) {
-    if (await taskHasAnyPhases(existing.id)) return null;
     const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
+    // Self-heal: do NOT skip when ANY phase exists — only when structure matches template.
+    if (await taskPhasesMatchTemplate(existing.id, sourceId)) return null;
     const models = await resolveSpawnModelFields(anchor, sourceId);
     if (models.assigned_model_ids.length && !(existing.assigned_model_ids ?? []).length) {
       await updateVaTask(existing.id, {
@@ -246,8 +265,7 @@ async function spawnRecurringOccurrenceIfMissingLocked(
         console.error("[va-task-recurring-spawn] backfill task models failed", err),
       );
     }
-    // Re-check after model patch — concurrent backfill may have finished first.
-    if (await taskHasAnyPhases(existing.id)) return null;
+    if (await taskPhasesMatchTemplate(existing.id, sourceId)) return null;
     await clonePhasesToTask(sourceId, existing).catch((err) =>
       console.error("[va-task-recurring-spawn] backfill phases failed", err),
     );
@@ -259,6 +277,12 @@ async function spawnRecurringOccurrenceIfMissingLocked(
   const racedByKey = await resolveExistingBySpawnKey(spawnKey);
   if (racedByKey) {
     allTasks.push(racedByKey);
+    const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
+    if (!(await taskPhasesMatchTemplate(racedByKey.id, sourceId))) {
+      await clonePhasesToTask(sourceId, racedByKey).catch((err) =>
+        console.error("[va-task-recurring-spawn] race-key heal phases failed", err),
+      );
+    }
     return racedByKey;
   }
 
@@ -267,6 +291,12 @@ async function spawnRecurringOccurrenceIfMissingLocked(
     const raced = findExistingRowForDueIso(freshBeforeInsert, series, dueIso);
     if (raced) {
       allTasks.push(raced);
+      const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
+      if (!(await taskPhasesMatchTemplate(raced.id, sourceId))) {
+        await clonePhasesToTask(sourceId, raced).catch((err) =>
+          console.error("[va-task-recurring-spawn] race-day heal phases failed", err),
+        );
+      }
       return raced;
     }
     return null;
