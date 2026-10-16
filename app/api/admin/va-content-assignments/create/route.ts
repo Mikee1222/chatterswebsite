@@ -16,6 +16,7 @@ import { getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
 import { notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { notifyModelOfContentAssignment } from "@/services/va-content-assignment-model-notify";
 
 const formSchema = z.object({
   va_user_record_id: z.string().trim().min(1),
@@ -135,6 +136,16 @@ export async function POST(req: Request) {
     }
 
     const displayTitle = parsed.data.title.trim() || "Chatting content assignment";
+    const [modelRec, vaProfile] = await Promise.all([
+      getModelById(parsed.data.model_record_id).catch(() => null),
+      getUserByAirtableId(parsed.data.va_user_record_id).catch(() => null),
+    ]);
+    const actorName =
+      (vaProfile?.full_name ?? "").trim() ||
+      (vaProfile?.email ?? "").trim() ||
+      "Admin";
+    void modelRec;
+
     await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
       personal_user_id: parsed.data.va_user_record_id,
       priority: NOTIFICATION_PRIORITY.NORMAL,
@@ -144,12 +155,14 @@ export async function POST(req: Request) {
       entity_id: row.id,
     }).catch(() => {});
 
-    const [modelRec, vaProfile] = await Promise.all([
-      getModelById(parsed.data.model_record_id).catch(() => null),
-      getUserByAirtableId(parsed.data.va_user_record_id).catch(() => null),
-    ]);
-    void modelRec;
-    void vaProfile;
+    await notifyModelOfContentAssignment({
+      modelRecordId: parsed.data.model_record_id,
+      assignmentId: row.id,
+      title: displayTitle,
+      actorUserId: session.airtableUserId ?? session.id,
+      actorName,
+      triggerSource: "admin_va_content_create_model",
+    }).catch(() => {});
 
     revalidatePath(ROUTES.admin.vaContentAssignments);
     revalidatePath(ROUTES.va.contentAssignments);

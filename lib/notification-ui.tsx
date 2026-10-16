@@ -88,6 +88,7 @@ export function getTitleEmoji(eventType: NotificationEventType): string {
     case "model_live_scheduled":
       return "";
     case "model_content_scheduled":
+    case "model_content_assigned":
     case "va_content_assigned":
     case "va_content_scheduled":
       return "";

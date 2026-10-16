@@ -139,6 +139,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "Assigned model/VA when content is scheduled.",
   },
+  model_content_assigned: {
+    rule: "assigned_model_only",
+    description: "The model user when chatting content is delivered to them (admin or VA assign).",
+  },
   va_content_assigned: {
     rule: "assigned_user_only",
     description: "Assigned VA when they receive chatting content.",
@@ -750,6 +754,7 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "all_phases_completed",
   "model_content_scheduled",
   "model_content_completed",
+  "model_content_assigned",
   "va_content_completed",
   "custom_request_created",
   "custom_request_updated",

@@ -421,8 +421,16 @@ export const NOTIFICATION_TEST_PRESETS: NotificationTestPreset[] = [
     entity_type: "va_content_assignment",
   },
   {
-    id: "va_content_assigned",
+    id: "model_content_assigned",
     group: "model",
+    event_type: "model_content_assigned",
+    title: "TEST: Chatting Assignment for model",
+    body: "New Chatting Assignment is ready (debug).",
+    entity_type: "va_content_assignment",
+  },
+  {
+    id: "va_content_assigned",
+    group: "virtual_assistant",
     event_type: "va_content_assigned",
     title: "TEST: Chatting Content assigned",
     body: "New Chatting Content assignment (debug).",

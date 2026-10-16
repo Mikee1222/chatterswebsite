@@ -1014,9 +1014,9 @@ export async function reviewVAContentAssignmentByAdmin(
     const rec = await updateRecord<Fields>(TABLE, rid, updateData);
     const row = mapRecord(rec as AirtableRecord<Fields>);
 
+    const displayTitle = (row.title || current.title).trim() || "Chatting content assignment";
     const vaTarget = current.va_id?.trim();
     if (vaTarget) {
-      const displayTitle = (row.title || current.title).trim() || "Chatting content assignment";
       await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
         personal_user_id: vaTarget,
         priority: NOTIFICATION_PRIORITY.NORMAL,
@@ -1035,6 +1035,18 @@ export async function reviewVAContentAssignmentByAdmin(
         entity_type: "va_content_assignment",
         entity_id: rid,
         _triggerSource: "va_assignment_admin_review",
+      }).catch(() => {});
+    }
+    if (current.model_id?.trim()) {
+      const { notifyModelOfContentAssignment } = await import(
+        "@/services/va-content-assignment-model-notify"
+      );
+      await notifyModelOfContentAssignment({
+        modelRecordId: current.model_id,
+        assignmentId: rid,
+        title: displayTitle,
+        actorName: reviewer,
+        triggerSource: "va_assignment_admin_approve_model",
       }).catch(() => {});
     }
 

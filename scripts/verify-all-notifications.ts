@@ -324,6 +324,7 @@ const NOTIFY_EVENTS: RegEntry[] = [
   { event: "model_live_ended", entityType: "model_live_stream" },
   { event: "model_content_completed", entityType: "va_content_assignment" },
   { event: "model_content_scheduled", entityType: "va_content_assignment" },
+  { event: "model_content_assigned", entityType: "va_content_assignment" },
   { event: "model_content_request_created", entityType: "model_content_request" },
   { event: "model_content_request_reviewed", entityType: "model_content_request" },
   { event: "va_content_assigned", entityType: "va_content_assignment" },

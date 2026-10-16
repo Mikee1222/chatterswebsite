@@ -12,10 +12,11 @@ import {
   createVaContentAssignmentAdmin,
   uploadVAContentAssignmentAttachments,
 } from "@/services/va-content-assignments";
-import { getActiveModelUserAirtableIdByLinkedModelRecordId, getUserByAirtableId } from "@/services/users";
+import { getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
-import { notify, notifyAdmins } from "@/services/notification-service";
+import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { notifyModelOfContentAssignment } from "@/services/va-content-assignment-model-notify";
 
 const formSchema = z.object({
   model_record_id: z.string().trim().min(1),
@@ -129,10 +130,9 @@ export async function POST(req: Request) {
       }
     }
 
-    const [modelRec, vaProfile, modelUserId] = await Promise.all([
+    const [modelRec, vaProfile] = await Promise.all([
       getModelById(parsed.data.model_record_id).catch(() => null),
       getUserByAirtableId(vaUserRecordId).catch(() => null),
-      getActiveModelUserAirtableIdByLinkedModelRecordId(parsed.data.model_record_id).catch(() => null),
     ]);
     const modelName = (modelRec?.model_name ?? "").trim() || "the model";
     const vaName =
@@ -151,20 +151,14 @@ export async function POST(req: Request) {
       _triggerSource: "va_content_create_admin_fyi",
     }).catch(() => {});
 
-    if (modelUserId) {
-      await notify({
-        user_id: modelUserId,
-        event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "📋 New Chatting Content",
-        body: `${displayTitle} is ready for you. Open Chatting Assignments to schedule it.`,
-        entity_type: "va_content_assignment",
-        entity_id: row.id,
-        actor_user_id: vaUserRecordId,
-        actor_name: vaName,
-        _triggerSource: "va_content_create_model",
-      }).catch(() => {});
-    }
+    await notifyModelOfContentAssignment({
+      modelRecordId: parsed.data.model_record_id,
+      assignmentId: row.id,
+      title: displayTitle,
+      actorUserId: vaUserRecordId,
+      actorName: vaName,
+      triggerSource: "va_content_create_model",
+    }).catch(() => {});
 
     revalidatePath(ROUTES.va.contentAssignments);
     revalidatePath(ROUTES.admin.vaContentAssignments);

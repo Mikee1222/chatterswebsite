@@ -32,7 +32,7 @@ export function getPushTargetPath(
     case "va_task_phase_item":
       return isAdmin ? ROUTES.admin.vaTasks : ROUTES.va.tasks;
     case "va_content_assignment":
-      if (isModel) return ROUTES.model.contentCalendar;
+      if (isModel) return ROUTES.model.contentAssignments;
       return ROUTES.va.contentAssignments;
     case "model":
       if (isAdmin && entityId) return ROUTES.admin.modelDetail(entityId);
@@ -166,7 +166,7 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
     case "va_task_phase_item":
       return isAdmin ? ROUTES.admin.vaTasks : ROUTES.va.tasks;
     case "va_content_assignment":
-      if (isModel) return ROUTES.model.contentCalendar;
+      if (isModel) return ROUTES.model.contentAssignments;
       return ROUTES.va.contentAssignments;
     case "model":
       if (isAdmin && entity_id) return ROUTES.admin.modelDetail(entity_id);
@@ -306,6 +306,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "model_content_request_reviewed":
     case "model_content_completed":
     case "model_content_scheduled":
+    case "model_content_assigned":
     case "va_content_assigned":
     case "va_content_scheduled":
     case "va_content_completed":

@@ -140,6 +140,7 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   va_task_reminder: ["virtual_assistant"],
   va_task_assigned: ["virtual_assistant"],
   va_content_assigned: ["virtual_assistant"],
+  model_content_assigned: ["model"],
   model_content_request_reviewed: ["model"],
   va_content_scheduled: ["model"],
   va_content_completed: ["model"],
@@ -487,6 +488,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Model marks content complete (admin)",
       "Αποστέλλεται όταν το model σημειώνει περιεχόμενο ως ολοκληρωμένο",
       "Ενημερώνει τον admin για ολοκλήρωση περιεχομένου"
+    ),
+    eventEntry(
+      "model_content_assigned",
+      "New chatting content assigned to you",
+      "Αποστέλλεται στο model όταν του ανατίθεται chatting content (admin ή VA)"
     ),
     ...pairedEvents(
       "va_content_assigned",

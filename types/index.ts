@@ -1085,6 +1085,7 @@ export type NotificationEventType =
   | "model_missed_live"
   | "model_content_completed"
   | "model_content_scheduled"
+  | "model_content_assigned"
   | "va_content_assigned"
   | "va_content_scheduled"
   | "va_content_completed"
