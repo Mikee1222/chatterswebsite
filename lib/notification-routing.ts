@@ -452,6 +452,14 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "icloud_management:manage holders when iCloud organization is marked complete.",
   },
+  posting_brief_published: {
+    rule: "assigned_party_only",
+    description: "VAs / Marketing Executives assigned to the brief's model when a posting brief is published.",
+  },
+  posting_brief_updated: {
+    rule: "assigned_party_only",
+    description: "VAs / Marketing Executives assigned to the brief's model when an active posting brief is updated.",
+  },
   recreate_video_slot_deleted: {
     rule: "assigned_party_only",
     description: "Researcher who submitted the Fill Bunches find when admin removes their approved slot.",

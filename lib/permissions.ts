@@ -95,6 +95,10 @@ export const PERMISSIONS = {
   ICLOUD_MANAGEMENT_VIEW: "icloud_management:view",
   ICLOUD_MANAGEMENT_MANAGE: "icloud_management:manage",
 
+  /** Posting briefs — Creative Director manage / Marketing Executive view (opt-in via Roles UI). */
+  POSTING_BRIEFS_VIEW: "posting_briefs:view",
+  POSTING_BRIEFS_MANAGE: "posting_briefs:manage",
+
   DAILY_REVIEW_SUBMIT: "daily_review:submit",
   DAILY_REVIEW_MANAGE: "daily_review:manage",
 
@@ -256,6 +260,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   filming: "Filming",
   editing: "Editing",
   icloud_management: "iCloud management",
+  posting_briefs: "Posting briefs",
   daily_review: "Daily review",
   content: "Content",
   "spin-wheel": "Spin wheel",
@@ -390,6 +395,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "icloud_management:view": "Οργάνωση iCloud φακέλων για bunches μετά το editing upload",
   "icloud_management:manage": "Διαχείριση iCloud οργάνωσης και material runway alerts",
 
+  "posting_briefs:view": "Προβολή posting briefs για ανατεθειμένα μοντέλα (read-only)",
+  "posting_briefs:manage": "Δημιουργία, επεξεργασία και αρχειοθέτηση posting briefs",
+
   "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
   "daily_review:manage": "Διαχείριση ημερήσιων αξιολογήσεων και exec audits marketing",
 
@@ -502,6 +510,9 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.AI_AGENT_USE,
   // Integrations: manager gets view via defaults; manage stays admin-only (opt-in for manager).
   PERMISSIONS.INTEGRATIONS_MANAGE,
+  // Posting briefs: opt-in via Roles UI (Creative Director / Marketing Executive grants).
+  PERMISSIONS.POSTING_BRIEFS_VIEW,
+  PERMISSIONS.POSTING_BRIEFS_MANAGE,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [

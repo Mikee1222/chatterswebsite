@@ -87,6 +87,9 @@ export function getPushTargetPath(
       return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
     case "icloud_organization":
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
+    case "posting_brief":
+      if (entityId) return ROUTES.postingBrief(entityId);
+      return ROUTES.postingBriefs;
     case "infloww_performance":
       return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "spot_check":
@@ -209,6 +212,9 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
     case "icloud_organization":
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
+    case "posting_brief":
+      if (entity_id) return ROUTES.postingBrief(entity_id);
+      return ROUTES.postingBriefs;
     case "infloww_performance":
       return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "fraud_anomaly":
@@ -355,6 +361,8 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "bunch_assigned_to_editor":
     case "bunch_editing_uploaded":
     case "bunch_icloud_organized":
+    case "posting_brief_published":
+    case "posting_brief_updated":
     case "recreate_video_slot_deleted":
     case "material_until_approaching":
     case "infloww_performance_alert":

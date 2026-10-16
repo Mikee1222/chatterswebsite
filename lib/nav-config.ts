@@ -914,6 +914,14 @@ const sharedPermissionNavItems: NavItem[] = [
     // Manage holders still use this page (no per-bunch assign) — do not hide on manage.
     excludeFromMobileMainTabs: true,
   },
+  {
+    href: ROUTES.postingBriefs,
+    label: "Posting Briefs",
+    iconKey: "FileText",
+    navSection: "CONTENT PIPELINE",
+    requiresAnyPermission: [PERMISSIONS.POSTING_BRIEFS_VIEW, PERMISSIONS.POSTING_BRIEFS_MANAGE],
+    excludeFromMobileMainTabs: true,
+  },
 
   // ── REVIEW & QA ──
   {

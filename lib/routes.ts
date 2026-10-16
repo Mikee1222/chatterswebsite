@@ -232,6 +232,11 @@ export const ROUTES = {
   editAssignments: "/edit-assignments",
   /** iCloud manager: organize folders after editing upload (permission-gated). */
   icloudOrganization: "/icloud-organization",
+  /** Posting briefs — Creative Director manage / Marketing Executive view (permission-gated). */
+  postingBriefs: "/posting-briefs",
+  postingBriefNew: "/posting-briefs/new",
+  postingBrief: (id: string) => `/posting-briefs/${encodeURIComponent(id)}`,
+  postingBriefEdit: (id: string) => `/posting-briefs/${encodeURIComponent(id)}/edit`,
   /** Standalone video transcription tool (permission-gated). */
   transcriptVideos: "/transcript-videos",
   /** VA assigned models, social accounts, and phones. */

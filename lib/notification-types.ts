@@ -117,6 +117,8 @@ export const NOTIFICATION_EVENT = {
   BUNCH_ASSIGNED_TO_EDITOR: "bunch_assigned_to_editor" as const,
   BUNCH_EDITING_UPLOADED: "bunch_editing_uploaded" as const,
   BUNCH_ICLOUD_ORGANIZED: "bunch_icloud_organized" as const,
+  POSTING_BRIEF_PUBLISHED: "posting_brief_published" as const,
+  POSTING_BRIEF_UPDATED: "posting_brief_updated" as const,
   RECREATE_VIDEO_SLOT_DELETED: "recreate_video_slot_deleted" as const,
   MATERIAL_UNTIL_APPROACHING: "material_until_approaching" as const,
   INFLOWW_PERFORMANCE_ALERT: "infloww_performance_alert" as const,
@@ -325,6 +327,8 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   bunch_assigned_to_editor: "high",
   bunch_editing_uploaded: "high",
   bunch_icloud_organized: "high",
+  posting_brief_published: "normal",
+  posting_brief_updated: "normal",
   recreate_video_slot_deleted: "high",
   material_until_approaching: "high",
   infloww_performance_alert: "high",
@@ -387,6 +391,7 @@ export const NOTIFICATION_ENTITY = {
   FRAUD_ANOMALY: "fraud_anomaly",
   WELLBEING_SIGNAL: "wellbeing_signal",
   CONTENT_QUALITY: "content_quality",
+  POSTING_BRIEF: "posting_brief",
 } as const;
 
 /** Priorities. */

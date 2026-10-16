@@ -1183,6 +1183,8 @@ export type NotificationEventType =
   | "bunch_assigned_to_editor"
   | "bunch_editing_uploaded"
   | "bunch_icloud_organized"
+  | "posting_brief_published"
+  | "posting_brief_updated"
   | "recreate_video_slot_deleted"
   | "material_until_approaching"
   | "infloww_performance_alert"
