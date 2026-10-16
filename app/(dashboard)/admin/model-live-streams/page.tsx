@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { AdminModelOpsPlaceholder } from "@/components/admin-model-ops-placeholder";
 
 export default async function AdminModelLiveStreamsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MODELS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MODELS_MANAGE);
 
   return (
     <AdminModelOpsPlaceholder

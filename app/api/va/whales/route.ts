@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { listAllWhales } from "@/services/whales";
@@ -9,7 +10,9 @@ import { buildWhalesFilterFormula, type WhalesListFilters } from "@/lib/whales-f
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "whales:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(session, PERMISSIONS.WHALES_VIEW_ALL))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.whales);
   if (blocked) return blocked;
 

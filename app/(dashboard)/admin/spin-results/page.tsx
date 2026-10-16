@@ -37,7 +37,7 @@ function computeStats(rows: AdminSpinRow[]) {
 }
 
 export default async function AdminSpinResultsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SPIN_WHEEL_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SPIN_WHEEL_MANAGE);
 
   const rows = await getAllSpinsForAdmin().catch(() => []);
   const stats = computeStats(rows);

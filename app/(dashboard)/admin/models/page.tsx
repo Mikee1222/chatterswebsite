@@ -17,7 +17,7 @@ const stagger = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export default async function AdminModelsPage() {
   const session = await getSessionFromCookies();
-  const user = await requireAdminRoute(session, PERMISSIONS.MODELS_VIEW);
+  const user = await requireAdminRoute(session, PERMISSIONS.MODELS_MANAGE);
   const canCreate = session ? await hasPermission(session, PERMISSIONS.ACCOUNTS_CREATE) : false;
 
   const modelss = await getCachedModelss();

@@ -9,7 +9,7 @@ import { AdminClientsClient } from "@/components/admin-clients-client";
 export const revalidate = 30;
 
 export default async function AdminClientsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CLIENTS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CLIENTS_MANAGE);
 
   const clients = await getCachedListAllClients(false);
 

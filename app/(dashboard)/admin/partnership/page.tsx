@@ -31,7 +31,7 @@ type SearchParams = Promise<{
 }>;
 
 export default async function AdminPartnershipPage({ searchParams }: { searchParams: SearchParams }) {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CLIENTS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CLIENTS_MANAGE);
 
   const params = await searchParams;
   const selectedMonth = params.month ?? new Date().toISOString().slice(0, 7);

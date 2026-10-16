@@ -54,7 +54,7 @@ export default async function AdminWhalesPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.WHALES_MANAGE);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.WHALES_VIEW_ALL);
 
   const params = await searchParams;
   const filters = filtersFromSearchParams(params);

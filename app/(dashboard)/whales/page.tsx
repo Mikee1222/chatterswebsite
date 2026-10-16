@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listAllWhales } from "@/services/whales";
 import { WhalesTable } from "@/components/whales-table";
@@ -12,13 +14,20 @@ export default async function WhalesPage({
 }) {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
+
+  // Personal scope → dedicated My whales surface (never load the full agency list first).
+  if (await hasPermission(user, PERMISSIONS.WHALES_VIEW_OWN)) {
+    if (!(await hasPermission(user, PERMISSIONS.WHALES_VIEW_ALL))) {
+      redirect(ROUTES.chatter.myWhales);
+    }
+  } else if (!(await hasPermission(user, PERMISSIONS.WHALES_VIEW_ALL))) {
+    redirect(ROUTES.dashboard);
+  }
+
   const params = await searchParams;
   const whales = await listAllWhales().catch(() => []);
 
   let filtered = whales;
-  if (user.role === "chatter" && user.airtableUserId) {
-    filtered = whales.filter((w) => w.assigned_chatter_id === user.airtableUserId);
-  }
   if (params.q) {
     const q = params.q.toLowerCase();
     filtered = filtered.filter(

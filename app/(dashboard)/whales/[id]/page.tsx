@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getWhaleById } from "@/services/whales";
 import { listWhaleActivityByWhaleId } from "@/services/whale-activity";
@@ -12,10 +14,17 @@ export default async function WhaleDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
+
+  const canViewAll = await hasPermission(user, PERMISSIONS.WHALES_VIEW_ALL);
+  const canViewOwn = await hasPermission(user, PERMISSIONS.WHALES_VIEW_OWN);
+  if (!canViewAll && !canViewOwn) redirect(ROUTES.dashboard);
+
   const whale = await getWhaleById(id);
   if (!whale) notFound();
-  if (user.role === "chatter" && user.airtableUserId && whale.assigned_chatter_id !== user.airtableUserId) {
-    notFound();
+
+  if (!canViewAll) {
+    const chatterId = user.airtableUserId ?? user.id;
+    if (whale.assigned_chatter_id !== chatterId) notFound();
   }
 
   const [activity, allTx] = await Promise.all([
@@ -29,10 +38,12 @@ export default async function WhaleDetailPage({ params }: { params: Promise<{ id
     .slice(0, 50)
     .map((t) => ({ ...t } as Record<string, unknown>));
 
+  const backHref = canViewAll ? ROUTES.admin.whales : ROUTES.chatter.myWhales;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
-        <Link href={ROUTES.whales} className="text-sm text-white/60 hover:text-white">
+        <Link href={backHref} className="text-sm text-white/60 hover:text-white">
           ← Whales
         </Link>
       </div>

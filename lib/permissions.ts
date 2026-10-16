@@ -45,6 +45,14 @@ export const PERMISSIONS = {
   CLIENTS_VIEW: "clients:view",
   CLIENTS_MANAGE: "clients:manage",
 
+  /** Personal / assigned whales only (e.g. chatter My whales). */
+  WHALES_VIEW_OWN: "whales:view_own",
+  /** Agency-wide whales list (admin / VA read-only). */
+  WHALES_VIEW_ALL: "whales:view_all",
+  /**
+   * @deprecated Legacy alias — expanded to view_own (chatter) or view_all (other roles) at resolve time.
+   * Kept so stored role JSON / Roles UI saves are not stripped before migration.
+   */
   WHALES_VIEW: "whales:view",
   WHALES_MANAGE: "whales:manage",
   WHALES_ASSIGN: "whales:assign",
@@ -350,8 +358,10 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "clients:view": "Προβολή στοιχείων και συμβολαίων πελατών",
   "clients:manage": "Δημιουργία και διαχείριση πελατών",
 
-  "whales:view": "Προβολή πελατών-φάλαινων και ιστορικού",
-  "whales:manage": "Επεξεργασία δεδομένων πελατών-φάλαινων",
+  "whales:view_own": "Προβολή φάλαινων που έχουν ανατεθεί στον χρήστη",
+  "whales:view_all": "Προβολή όλων των πελατών-φάλαινων και ιστορικού",
+  "whales:view": "Παλαιό δικαίωμα προβολής φάλαινων (αντικαθίσταται από view_own / view_all)",
+  "whales:manage": "Επεξεργασία δεδομένων πελατών-φάλαινων (agency-wide)",
   "whales:assign": "Ανάθεση φάλαινων σε χειριστές",
 
   "marketing:view": "Προβολή καμπανιών και λογαριασμών marketing",
@@ -521,8 +531,8 @@ const CHATTER_PERMISSIONS: Permission[] = [
   PERMISSIONS.INFLOWW_STATS_VIEW_OWN,
   // Baseline for Informations nav (/informations) — core chatter reference data, not toggleable off.
   PERMISSIONS.INFORMATIONS_VIEW,
-  PERMISSIONS.WHALES_VIEW,
-  PERMISSIONS.WHALES_MANAGE,
+  // Own whales only — never whales:view_all / whales:manage (those unlock agency /admin/whales).
+  PERMISSIONS.WHALES_VIEW_OWN,
   PERMISSIONS.CUSTOM_REQUESTS_VIEW,
   // custom-requests:manage intentionally NOT a chatter default — that permission unlocks
   // agency-wide admin queue + approve/decline/edit. Chatters submit via /request-custom
@@ -550,7 +560,8 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.MARKETING_SHADOWBAN_REPORT,
   PERMISSIONS.CONTENT_VIEW,
   PERMISSIONS.CONTENT_MANAGE,
-  PERMISSIONS.WHALES_VIEW,
+  // Read-only agency whales list (/va/whales) — not manage / assign.
+  PERMISSIONS.WHALES_VIEW_ALL,
   PERMISSIONS.SOPS_VIEW,
   PERMISSIONS.SOPS_SIGN_OFF,
   PERMISSIONS.SOPS_QUIZ,

@@ -89,6 +89,50 @@ function expandTaskProgressPermissions(perms: Set<Permission>): Set<Permission> 
   return expanded;
 }
 
+/**
+ * Map legacy `whales:view` / mistaken chatter `whales:manage` onto own vs all scopes.
+ * Chatters must never receive agency-wide whale list access from defaults or stale DB grants.
+ */
+function expandLegacyWhalePermissions(perms: Set<Permission>, roleId: string): Set<Permission> {
+  const expanded = new Set(perms);
+  const isChatter = roleId === "chatter";
+
+  if (expanded.has(PERMISSIONS.WHALES_VIEW)) {
+    if (isChatter) {
+      expanded.add(PERMISSIONS.WHALES_VIEW_OWN);
+    } else {
+      expanded.add(PERMISSIONS.WHALES_VIEW_ALL);
+    }
+    expanded.delete(PERMISSIONS.WHALES_VIEW);
+  }
+
+  if (isChatter) {
+    // Stale DB/defaults previously granted manage for personal whale edits — that key also
+    // unlocked /admin/whales via shared nav. Strip agency scopes; keep own list only.
+    if (
+      expanded.has(PERMISSIONS.WHALES_MANAGE) ||
+      expanded.has(PERMISSIONS.WHALES_VIEW_ALL) ||
+      expanded.has(PERMISSIONS.WHALES_ASSIGN)
+    ) {
+      expanded.add(PERMISSIONS.WHALES_VIEW_OWN);
+    }
+    expanded.delete(PERMISSIONS.WHALES_MANAGE);
+    expanded.delete(PERMISSIONS.WHALES_VIEW_ALL);
+    expanded.delete(PERMISSIONS.WHALES_ASSIGN);
+    // Stale DB grants that unlock agency-wide queues (personal surfaces use :view only).
+    expanded.delete(PERMISSIONS.CUSTOM_REQUESTS_MANAGE);
+    expanded.delete(PERMISSIONS.CUSTOM_REQUESTS_APPROVE);
+  } else if (expanded.has(PERMISSIONS.WHALES_MANAGE)) {
+    expanded.add(PERMISSIONS.WHALES_VIEW_ALL);
+  }
+
+  return expanded;
+}
+
+function expandRolePermissions(perms: Set<Permission>, roleId: string): Set<Permission> {
+  return expandLegacyWhalePermissions(expandTaskProgressPermissions(perms), roleId);
+}
+
 function resolveRoleForPermissions(user: AuthUser): string {
   const staff = getEffectiveStaffRole(user);
   if (staff) return staff;
@@ -114,7 +158,7 @@ async function loadPermissionsForRole(role: string): Promise<Set<Permission>> {
     perms = DEFAULT_ROLE_PERMISSIONS[key as UserRole] ?? [];
   }
 
-  const set = expandTaskProgressPermissions(new Set(perms));
+  const set = expandRolePermissions(new Set(perms), key);
   rolePermissionsCache.set(key, { permissions: set, expiresAt: now + CACHE_TTL_MS });
   return set;
 }

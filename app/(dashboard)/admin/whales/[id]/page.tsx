@@ -11,7 +11,7 @@ import { WhaleDetail } from "@/components/whale-detail";
 
 export default async function AdminWhaleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.WHALES_MANAGE);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.WHALES_VIEW_ALL);
 
   const whale = await getWhaleById(id);
   if (!whale) notFound();

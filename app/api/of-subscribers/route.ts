@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasAnyPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import {
   listStoredSubscribersByAccount,
   toApiSubscriber,
@@ -24,7 +25,13 @@ function maxIso(dates: (string | undefined)[]): string | null {
 export async function GET(req: Request) {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasAnyPermission(user, ["earnings:view", "whales:view"]))) {
+  if (
+    !(await hasAnyPermission(user, [
+      PERMISSIONS.EARNINGS_VIEW,
+      PERMISSIONS.WHALES_VIEW_ALL,
+      PERMISSIONS.WHALES_MANAGE,
+    ]))
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

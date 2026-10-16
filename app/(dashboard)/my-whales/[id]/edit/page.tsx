@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getWhaleById } from "@/services/whales";
 import { EditWhaleForm } from "@/components/edit-whale-form";
@@ -8,12 +9,13 @@ import { EditWhaleForm } from "@/components/edit-whale-form";
 export default async function EditWhalePage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const user = await getSessionFromCookies();
-  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
+  if (!user) redirect(ROUTES.login);
+  if (!(await hasPermission(user, PERMISSIONS.WHALES_VIEW_OWN))) redirect(ROUTES.dashboard);
 
-  const { id } = params;
+  const { id } = await params;
   const whale = await getWhaleById(id);
   if (!whale || whale.assigned_chatter_id !== (user.airtableUserId ?? user.id)) notFound();
 

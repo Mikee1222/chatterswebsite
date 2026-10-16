@@ -1,5 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { redirect } from "next/navigation";
@@ -50,9 +51,8 @@ function filtersFromSearchParams(sp: SearchParams): WhalesListFilters {
 
 export default async function VAWhalesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await getSessionFromCookies();
-  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") {
-    redirect(ROUTES.va.home);
-  }
+  if (!user) redirect(ROUTES.login);
+  if (!(await hasPermission(user, PERMISSIONS.WHALES_VIEW_ALL))) redirect(ROUTES.dashboard);
   await assertVaTypeCanAccessNavHref(user, ROUTES.va.whales);
 
   const params = await searchParams;

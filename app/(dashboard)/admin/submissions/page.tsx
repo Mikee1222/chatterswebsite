@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function AdminSubmissionsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.PAYMENTS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.PAYMENTS_MANAGE);
 
   const [allSubmissions, clients, billingCycles] = await Promise.all([
     getAllPaymentSubmissions(),

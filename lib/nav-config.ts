@@ -297,7 +297,14 @@ const chatterNav: NavItem[] = [
   },
 
   // ── WORK ──
-  { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true, navSection: "WORK" },
+  {
+    href: ROUTES.chatter.myWhales,
+    label: "My whales",
+    iconKey: "Users",
+    beta: true,
+    navSection: "WORK",
+    requiresPermission: PERMISSIONS.WHALES_VIEW_OWN,
+  },
   { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true, navSection: "WORK" },
   { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true, navSection: "WORK", requiresPermission: PERMISSIONS.MISTAKES_VIEW },
   {
@@ -344,8 +351,17 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck", navSection: "OVERVIEW" },
 
   // ── TASKS ──
-  { href: ROUTES.va.tasks, label: "Tasks", iconKey: "ListTodo", navSection: "TASKS" },
-  { href: ROUTES.va.whales, label: "Whales", iconKey: "Users", navSection: "TASKS" },
+  // NOTE: "Tasks" (VA_TASKS_VIEW) lives in `sharedPermissionNavItems` with hiddenIf manage/progress
+  // so agency-board holders do not also see the personal /va-tasks link.
+  {
+    href: ROUTES.va.whales,
+    label: "Whales",
+    iconKey: "Users",
+    navSection: "TASKS",
+    requiresPermission: PERMISSIONS.WHALES_VIEW_ALL,
+    // Agency management board (/admin/whales) is for manage holders; read-only VAs stay here.
+    hiddenIfPermission: PERMISSIONS.WHALES_MANAGE,
+  },
   { href: ROUTES.va.contentAssignments, label: "Chatting Content", iconKey: "FileText", navSection: "TASKS" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package", navSection: "TASKS" },
   // NOTE: "Mistakes" (MISTAKES_VIEW) moved to `sharedPermissionNavItems` so the VA mistakes
@@ -382,7 +398,8 @@ const adminNav: NavItem[] = [
     label: "Shift activity",
     iconKey: "Clock",
     navSection: "OVERVIEW",
-    requiresPermission: PERMISSIONS.SHIFTS_VIEW,
+    // Manage (not view): chatters hold shifts:view for their own shift UX; agency log is manage-tier.
+    requiresPermission: PERMISSIONS.SHIFTS_MANAGE,
   },
   {
     href: ROUTES.admin.modelSchedulesOverview,
@@ -419,7 +436,8 @@ const adminNav: NavItem[] = [
     label: "Models",
     iconKey: "UserCheck",
     navSection: "CREATORS",
-    requiresPermission: PERMISSIONS.MODELS_VIEW,
+    // Manage (not view): models hold models:view for their own surfaces; agency list is manage-tier.
+    requiresPermission: PERMISSIONS.MODELS_MANAGE,
   },
   {
     href: ROUTES.admin.modelAvailability,
@@ -448,7 +466,7 @@ const adminNav: NavItem[] = [
     iconKey: "Radio",
     navSection: "CREATORS",
     beta: true,
-    requiresPermission: PERMISSIONS.MODELS_VIEW,
+    requiresPermission: PERMISSIONS.MODELS_MANAGE,
   },
   {
     href: ROUTES.admin.modelCustoms,
@@ -483,14 +501,18 @@ const adminNav: NavItem[] = [
     label: "Clients",
     iconKey: "Users",
     navSection: "CREATORS",
-    requiresPermission: PERMISSIONS.CLIENTS_VIEW,
+    // Manage (not view): client role holds clients:view for their portal; agency list is manage-tier.
+    requiresPermission: PERMISSIONS.CLIENTS_MANAGE,
   },
   {
     href: ROUTES.admin.whales,
     label: "Whales",
     iconKey: "Users",
     navSection: "CREATORS",
-    requiresPermission: PERMISSIONS.WHALES_MANAGE,
+    // view_all unlocks read access; manage holders and view_all custom roles both need the link.
+    // Chatters never receive view_all (rbac expand + defaults). VAs with view_all-only use /va/whales
+    // (see resolvePermissionAwareNavHrefs preferPersonalWhalesNav).
+    requiresAnyPermission: [PERMISSIONS.WHALES_VIEW_ALL, PERMISSIONS.WHALES_MANAGE],
   },
 
   // ── CONTENT PIPELINE ──
@@ -501,7 +523,8 @@ const adminNav: NavItem[] = [
     label: "Model content requests",
     iconKey: "FileText",
     navSection: "CONTENT PIPELINE",
-    requiresPermission: PERMISSIONS.CONTENT_VIEW,
+    // Manage (not view): models hold content:view for personal assignments; agency queue is manage-tier.
+    requiresPermission: PERMISSIONS.CONTENT_MANAGE,
   },
   {
     href: ROUTES.admin.winnerVideos,
@@ -576,7 +599,8 @@ const adminNav: NavItem[] = [
     label: "Informations",
     iconKey: "Info",
     navSection: "MARKETING",
-    requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
+    // Manage (not view): chatters/VAs hold informations:view for /informations; admin editor is manage-tier.
+    requiresPermission: PERMISSIONS.INFORMATIONS_MANAGE,
   },
   {
     href: ROUTES.admin.spotChecks,
@@ -671,14 +695,15 @@ const adminNav: NavItem[] = [
     label: "Submissions",
     iconKey: "FileText",
     navSection: "FINANCE",
-    requiresPermission: PERMISSIONS.PAYMENTS_VIEW,
+    // Manage (not view): clients hold payments:view for their own submissions; agency queue is manage-tier.
+    requiresPermission: PERMISSIONS.PAYMENTS_MANAGE,
   },
   {
     href: ROUTES.admin.partnership,
     label: "Partnership",
     iconKey: "TrendingUp",
     navSection: "FINANCE",
-    requiresPermission: PERMISSIONS.CLIENTS_VIEW,
+    requiresPermission: PERMISSIONS.CLIENTS_MANAGE,
   },
   {
     href: ROUTES.admin.inflowwReassignments,
@@ -697,7 +722,8 @@ const adminNav: NavItem[] = [
     label: "Rewards",
     iconKey: "Trophy",
     navSection: "REWARDS",
-    requiresPermission: PERMISSIONS.REWARDS_VIEW,
+    // Manage (not view): chatters hold rewards:view for /rewards; agency rewards board is manage-tier.
+    requiresPermission: PERMISSIONS.REWARDS_MANAGE,
   },
   {
     href: ROUTES.admin.challenges,
@@ -712,7 +738,8 @@ const adminNav: NavItem[] = [
     label: "Spin results",
     iconKey: "Sparkles",
     navSection: "REWARDS",
-    requiresPermission: PERMISSIONS.SPIN_WHEEL_VIEW,
+    // Manage (not view): chatters hold spin-wheel:view to play; agency results board is manage-tier.
+    requiresPermission: PERMISSIONS.SPIN_WHEEL_MANAGE,
   },
   {
     href: ROUTES.admin.rewardsConfig,
@@ -1017,6 +1044,17 @@ const sharedPermissionNavItems: NavItem[] = [
     hiddenIfPermission: PERMISSIONS.SOPS_MANAGE,
     excludeFromMobileMainTabs: true,
   },
+  // Read-only Informations (/informations). VAs and any role with informations:view need this
+  // once admin /admin/informations is manage-gated. Manage holders use the admin editor instead.
+  {
+    href: ROUTES.chatter.informations,
+    label: "Informations",
+    iconKey: "Info",
+    navSection: "INFO",
+    requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
+    hiddenIfPermission: PERMISSIONS.INFORMATIONS_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
 ];
 
 type SharedAdminPathEntry = {
@@ -1187,6 +1225,20 @@ export function shouldHideAdminProgramNavForChatter(role: string): boolean {
   return role.trim().toLowerCase() === "chatter";
 }
 
+/**
+ * When a role has the personal /va/whales surface and only view_all (not manage),
+ * drop the agency /admin/whales link so VAs are not shown both.
+ */
+export function shouldPreferPersonalWhalesNav(
+  items: readonly NavItem[],
+  granted: ReadonlySet<Permission> | readonly Permission[]
+): boolean {
+  const set = granted instanceof Set ? granted : new Set(granted);
+  if (set.has(PERMISSIONS.WHALES_MANAGE)) return false;
+  if (!set.has(PERMISSIONS.WHALES_VIEW_ALL)) return false;
+  return items.some((item) => item.href === ROUTES.va.whales);
+}
+
 /** Rewrite admin VA Tasks href → personal task view when appropriate; hide chatter admin program dupes. */
 export function resolvePermissionAwareNavHrefs(
   items: NavItem[],
@@ -1199,12 +1251,20 @@ export function resolvePermissionAwareNavHrefs(
       (item) =>
         item.href !== ROUTES.admin.weeklyProgram &&
         item.href !== ROUTES.admin.weeklyProgramVa &&
-        // Personal surfaces already exist; never show agency-wide finance queues to chatters.
+        // Personal surfaces already exist; never show agency-wide boards to chatters.
         item.href !== ROUTES.admin.finesBonuses &&
         item.href !== ROUTES.admin.customRequests &&
         item.href !== ROUTES.admin.customs &&
-        item.href !== ROUTES.admin.modelCustoms
+        item.href !== ROUTES.admin.modelCustoms &&
+        item.href !== ROUTES.admin.whales &&
+        item.href !== ROUTES.admin.rewards &&
+        item.href !== ROUTES.admin.spinResults &&
+        item.href !== ROUTES.admin.informations &&
+        item.href !== ROUTES.admin.shiftActivity
     );
+  }
+  if (shouldPreferPersonalWhalesNav(next, granted)) {
+    next = next.filter((item) => item.href !== ROUTES.admin.whales);
   }
   if (!shouldUsePersonalVaTasksNav(role, granted)) return next;
   return next.map((item) =>

@@ -50,6 +50,21 @@ export default async function AdminLayout({
     ) {
       redirect(ROUTES.chatter.requestCustom);
     }
+    if (p === ROUTES.admin.whales || p.startsWith(`${ROUTES.admin.whales}/`)) {
+      redirect(ROUTES.chatter.myWhales);
+    }
+    if (p === ROUTES.admin.rewards || p.startsWith(`${ROUTES.admin.rewards}/`)) {
+      redirect(ROUTES.chatter.rewards);
+    }
+    if (p === ROUTES.admin.spinResults || p.startsWith(`${ROUTES.admin.spinResults}/`)) {
+      redirect(ROUTES.chatter.spinWheel);
+    }
+    if (p === ROUTES.admin.informations || p.startsWith(`${ROUTES.admin.informations}/`)) {
+      redirect(ROUTES.chatter.informations);
+    }
+    if (p === ROUTES.admin.shiftActivity || p.startsWith(`${ROUTES.admin.shiftActivity}/`)) {
+      redirect(ROUTES.chatter.home);
+    }
   }
 
   // Shared permission-gated admin pages (e.g. PDF Maker, Accounts, Instagram Insights) —

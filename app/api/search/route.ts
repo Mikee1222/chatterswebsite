@@ -340,13 +340,15 @@ export async function GET(req: Request) {
     })();
 
     const whalesPromise = (async (): Promise<SearchHit[]> => {
-      if (session.role === "model" || staffMode === "virtual_assistant") return [];
+      const canViewAll = has(PERMISSIONS.WHALES_VIEW_ALL);
+      const canViewOwn = has(PERMISSIONS.WHALES_VIEW_OWN);
+      if (!canViewAll && !canViewOwn) return [];
       const all = await listAllWhales();
       return topScored(
         all
           .filter((w) => {
-            if (staffMode === "chatter" && chatterRecordId && w.assigned_chatter_id !== chatterRecordId) {
-              return false;
+            if (!canViewAll) {
+              return Boolean(chatterRecordId && w.assigned_chatter_id === chatterRecordId);
             }
             return true;
           })
@@ -356,7 +358,7 @@ export async function GET(req: Request) {
               id: w.id,
               label,
               sublabel: (w.whale_id ?? "").trim() || undefined,
-              href: ROUTES.admin.whaleDetail(w.id),
+              href: canViewAll ? ROUTES.admin.whaleDetail(w.id) : ROUTES.chatter.myWhaleEdit(w.id),
               score: fuzzyMatchAny([label, w.whale_id], q),
             };
           }),

@@ -83,7 +83,7 @@ export default async function AdminShiftActivityPage({
 }: {
   searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SHIFTS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SHIFTS_MANAGE);
 
   const params = await searchParams;
   const range = (params.range as "daily" | "weekly" | "monthly" | "custom") || "weekly";

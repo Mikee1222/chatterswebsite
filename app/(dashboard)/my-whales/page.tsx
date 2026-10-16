@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { MyWhalesClient } from "@/components/my-whales-client";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getWhalesByChatter } from "@/services/whales";
 import { getCachedModelss } from "@/lib/modelss-cache";
@@ -9,7 +10,8 @@ import { devLog } from "@/lib/dev-log";
 
 export default async function MyWhalesPage() {
   const user = await getSessionFromCookies();
-  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
+  if (!user) redirect(ROUTES.login);
+  if (!(await hasPermission(user, PERMISSIONS.WHALES_VIEW_OWN))) redirect(ROUTES.dashboard);
 
   const chatterId = user.airtableUserId ?? user.id;
   const [whales, modelss] = await Promise.all([

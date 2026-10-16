@@ -8,7 +8,7 @@ import { getCachedModelss } from "@/lib/modelss-cache";
 import { AdminModelContentRequestsClient } from "@/components/admin-model-content-requests-client";
 
 export default async function AdminModelContentRequestsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CONTENT_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CONTENT_MANAGE);
 
   const [rows, models] = await Promise.all([
     listAllModelContentRequests().catch(() => []),

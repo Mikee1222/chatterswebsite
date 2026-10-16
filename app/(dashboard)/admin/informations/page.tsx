@@ -7,7 +7,7 @@ import { getAllPricingRowsAdmin, getAllPricingSpecialsAdmin } from "@/services/p
 import { AdminInformationsClient } from "@/components/admin-informations-client";
 
 export default async function AdminInformationsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.INFORMATIONS_VIEW);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.INFORMATIONS_MANAGE);
   const canManage = await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE);
 
   const [lists, tiers, pricingRows, pricingSpecials] = await Promise.all([

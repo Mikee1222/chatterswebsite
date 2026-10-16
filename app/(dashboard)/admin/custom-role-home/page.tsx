@@ -100,11 +100,11 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
     description: PERMISSION_DESCRIPTIONS["marketing:view"],
   },
   {
-    permission: "whales:view",
+    permission: "whales:view_all",
     title: "Whales",
     href: ROUTES.admin.whales,
     icon: Star,
-    description: PERMISSION_DESCRIPTIONS["whales:view"],
+    description: PERMISSION_DESCRIPTIONS["whales:view_all"],
   },
   {
     permission: "va-tasks:view",

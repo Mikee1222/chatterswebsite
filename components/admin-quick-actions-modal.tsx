@@ -132,7 +132,7 @@ function buildAdminQuickActions(
       Icon: Coins,
       permission: PERMISSIONS.FINES_MANAGE,
     },
-    { href: ROUTES.admin.whales, label: "Whales", Icon: Fish, permission: PERMISSIONS.WHALES_VIEW },
+    { href: ROUTES.admin.whales, label: "Whales", Icon: Fish, permission: PERMISSIONS.WHALES_VIEW_ALL },
     // Cross-cutting permission-gated action: any role that can manage VA tasks gets a shortcut.
     {
       href: ROUTES.admin.vaTasks,
