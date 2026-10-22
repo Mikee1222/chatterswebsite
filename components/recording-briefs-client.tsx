@@ -3,20 +3,36 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, Filter, Loader2, Plus, RotateCcw, Upload } from "lucide-react";
+import {
+  Archive,
+  Plus,
+  RotateCcw,
+  Upload,
+} from "lucide-react";
 import { RecordingBriefView } from "@/components/recording-brief-view";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { ROUTES } from "@/lib/routes";
+import { cn } from "@/lib/utils";
+import type { RecordingBrief, RecordingBriefStatus } from "@/services/recording-briefs";
 import {
+  BriefBoardColumn,
+  BriefCard,
+  BriefCardSkeleton,
+  BriefConfirmAction,
+  BriefEmptyState,
+  BriefFilterToolbar,
+  BriefPageHeader,
+  BriefStatsRow,
+  BriefStickyActionBar,
+  computeBriefListStats,
+  filterByDeadlineWindow,
+  sortBriefsByUrgencyThenDeadline,
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
   VA_CARD,
   VA_FILTER_INPUT,
-} from "@/lib/va-tasks-tokens";
-import { cn } from "@/lib/utils";
-import type { RecordingBrief, RecordingBriefStatus } from "@/services/recording-briefs";
-import { formatCountdown } from "@/lib/brief-deadlines";
+} from "@/components/briefs/shared";
 
 type ModelOption = { id: string; model_name: string };
 
@@ -28,6 +44,9 @@ type Props = {
   modelNameById: Record<string, string>;
   reminderLeadHours?: number;
 };
+
+type DeadlineFilter = "" | "today" | "week" | "overdue";
+type SortMode = "urgency_deadline" | "deadline" | "title";
 
 export function RecordingBriefsClient({
   initialBriefs,
@@ -43,12 +62,17 @@ export function RecordingBriefsClient({
   const [status, setStatus] = React.useState<string>(canManage ? "all" : "active");
   const [modelFilter, setModelFilter] = React.useState("");
   const [urgentOnly, setUrgentOnly] = React.useState(false);
+  const [deadlineFilter, setDeadlineFilter] = React.useState<DeadlineFilter>("");
+  const [search, setSearch] = React.useState("");
+  const [sortMode, setSortMode] = React.useState<SortMode>("urgency_deadline");
+  const [viewMode, setViewMode] = React.useState<"list" | "board">("list");
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(
     initialBriefs[0]?.id ?? null,
   );
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [leadHours, setLeadHours] = React.useState(String(reminderLeadHours));
+  const [confirmUpload, setConfirmUpload] = React.useState(false);
 
   const selected = briefs.find((b) => b.id === selectedId) ?? null;
 
@@ -86,6 +110,33 @@ export function RecordingBriefsClient({
     void reload();
   }, [reload]);
 
+  const filtered = React.useMemo(() => {
+    let list = briefs;
+    const q = search.trim().toLowerCase();
+    if (q) list = list.filter((b) => (b.title || "").toLowerCase().includes(q));
+    list = filterByDeadlineWindow(list, deadlineFilter);
+    if (sortMode === "urgency_deadline") list = sortBriefsByUrgencyThenDeadline(list);
+    else if (sortMode === "deadline") {
+      list = [...list].sort((a, b) => {
+        const da = a.deadline_at ? new Date(a.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+        const db = b.deadline_at ? new Date(b.deadline_at).getTime() : Number.POSITIVE_INFINITY;
+        return da - db;
+      });
+    } else {
+      list = [...list].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    }
+    return list;
+  }, [briefs, search, deadlineFilter, sortMode]);
+
+  const stats = React.useMemo(
+    () =>
+      computeBriefListStats(briefs, {
+        isActive: (b) => b.status === "published" || b.status === "uploaded",
+        awaitingUpload: (b) => b.status === "published",
+      }),
+    [briefs],
+  );
+
   const setStatusFor = async (id: string, next: RecordingBriefStatus) => {
     setBusyId(id);
     try {
@@ -117,6 +168,7 @@ export function RecordingBriefsClient({
       );
     } finally {
       setBusyId(null);
+      setConfirmUpload(false);
     }
   };
 
@@ -154,7 +206,14 @@ export function RecordingBriefsClient({
       const data = (await res.json()) as { lead_hours?: number; error?: string };
       if (!res.ok) throw new Error(data.error || "Failed");
       setLeadHours(String(data.lead_hours ?? leadHours));
-      addToast(winnerVideoLocalToast(`rb-lead-${Date.now()}`, "Reminder updated", `${data.lead_hours}h before deadline`, "normal"));
+      addToast(
+        winnerVideoLocalToast(
+          `rb-lead-${Date.now()}`,
+          "Reminder updated",
+          `${data.lead_hours}h before deadline`,
+          "normal",
+        ),
+      );
     } catch (e) {
       addToast(
         winnerVideoLocalToast(
@@ -167,71 +226,178 @@ export function RecordingBriefsClient({
     }
   };
 
+  const chips = [
+    modelFilter
+      ? {
+          key: "model",
+          label: models.find((m) => m.id === modelFilter)?.model_name || "Model",
+          clear: () => setModelFilter(""),
+        }
+      : null,
+    status !== (canManage ? "all" : "active")
+      ? { key: "status", label: `Status: ${status}`, clear: () => setStatus(canManage ? "all" : "active") }
+      : null,
+    urgentOnly ? { key: "urgent", label: "Urgent", clear: () => setUrgentOnly(false) } : null,
+    deadlineFilter
+      ? {
+          key: "deadline",
+          label: `Deadline: ${deadlineFilter}`,
+          clear: () => setDeadlineFilter(""),
+        }
+      : null,
+    search.trim()
+      ? { key: "search", label: `“${search.trim()}”`, clear: () => setSearch("") }
+      : null,
+  ].filter(Boolean) as { key: string; label: string; clear: () => void }[];
+
+  const filterControls = (
+    <>
+      {canManage ? (
+        <div>
+          <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">Status</label>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className={cn(VA_FILTER_INPUT, "min-h-11")}
+          >
+            <option value="all">All</option>
+            <option value="draft">Draft</option>
+            <option value="published">Published</option>
+            <option value="uploaded">Uploaded</option>
+            <option value="archived">Archived</option>
+            <option value="active">Active (published+uploaded)</option>
+          </select>
+        </div>
+      ) : null}
+      {canManage ? (
+        <div>
+          <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">Model</label>
+          <select
+            value={modelFilter}
+            onChange={(e) => setModelFilter(e.target.value)}
+            className={cn(VA_FILTER_INPUT, "min-h-11")}
+          >
+            <option value="">All models</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.model_name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ) : null}
+      <div>
+        <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">
+          Deadline
+        </label>
+        <select
+          value={deadlineFilter}
+          onChange={(e) => setDeadlineFilter(e.target.value as DeadlineFilter)}
+          className={cn(VA_FILTER_INPUT, "min-h-11")}
+        >
+          <option value="">Any</option>
+          <option value="today">Due today</option>
+          <option value="week">This week</option>
+          <option value="overdue">Overdue</option>
+        </select>
+      </div>
+      <label className="inline-flex min-h-11 items-center gap-2 text-sm text-white/70">
+        <input
+          type="checkbox"
+          checked={urgentOnly}
+          onChange={(e) => setUrgentOnly(e.target.checked)}
+          className="h-5 w-5 rounded border-white/20"
+        />
+        Urgent only
+      </label>
+    </>
+  );
+
+  const boardColumns: { id: RecordingBriefStatus; label: string }[] = [
+    { id: "draft", label: "Draft" },
+    { id: "published", label: "Published" },
+    { id: "uploaded", label: "Uploaded" },
+    { id: "archived", label: "Archived" },
+  ];
+
+  const canMarkUploaded = canViewOwn && selected?.status === "published";
+  const uploadDisabledReason = !canViewOwn
+    ? "You can only mark Uploaded on your own model briefs"
+    : selected && selected.status !== "published"
+      ? selected.status === "uploaded"
+        ? "Already marked Uploaded"
+        : "Only published briefs can be marked Uploaded"
+      : null;
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Recording Briefs</h1>
-          <p className="mt-1 text-sm text-white/50">
-            {canManage
-              ? "Create and publish filming briefs for creators"
-              : "Your published filming briefs — urgent first"}
-          </p>
-        </div>
-        {canManage ? (
-          <Link href={ROUTES.recordingBriefNew} className={cn(VA_BTN_PRIMARY, "inline-flex min-h-12 items-center gap-2 px-5")}>
-            <Plus className="h-4 w-4" /> New brief
-          </Link>
-        ) : null}
-      </div>
+      <BriefPageHeader
+        eyebrow="Content pipeline"
+        title="Recording Briefs"
+        description={
+          canManage
+            ? "Create and publish filming briefs for creators"
+            : "Your published filming briefs — urgent first"
+        }
+        action={
+          canManage ? (
+            <Link
+              href={ROUTES.recordingBriefNew}
+              className={cn(VA_BTN_PRIMARY, "inline-flex min-h-12 items-center gap-2 px-5")}
+            >
+              <Plus className="h-4 w-4" /> New brief
+            </Link>
+          ) : null
+        }
+      />
 
-      <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 p-4")}>
-        <Filter className="mb-2 h-4 w-4 text-white/40" aria-hidden />
-        {canManage ? (
+      <BriefStatsRow
+        stats={[
+          { label: "Active", value: stats.active, accent: "champagne" },
+          { label: "Urgent", value: stats.urgent, accent: "pink" },
+          { label: "Due today", value: stats.dueToday, accent: "amber" },
+          { label: "Overdue", value: stats.overdue, accent: "pink" },
+          {
+            label: "Awaiting upload",
+            value: stats.awaitingUpload,
+            accent: "emerald",
+            tooltip: "Published briefs waiting for creator upload",
+          },
+        ]}
+      />
+
+      <BriefFilterToolbar
+        search={search}
+        onSearchChange={setSearch}
+        chips={chips}
+        onClearAll={() => {
+          setSearch("");
+          setModelFilter("");
+          setUrgentOnly(false);
+          setDeadlineFilter("");
+          setStatus(canManage ? "all" : "active");
+        }}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        showBoard={canManage}
+        filterControls={filterControls}
+        sortControl={
           <div>
-            <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">Status</label>
+            <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">
+              Sort
+            </label>
             <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
               className={cn(VA_FILTER_INPUT, "min-h-11")}
             >
-              <option value="all">All</option>
-              <option value="draft">Draft</option>
-              <option value="published">Published</option>
-              <option value="uploaded">Uploaded</option>
-              <option value="archived">Archived</option>
-              <option value="active">Active (published+uploaded)</option>
+              <option value="urgency_deadline">Urgent → deadline</option>
+              <option value="deadline">Deadline</option>
+              <option value="title">Title</option>
             </select>
           </div>
-        ) : null}
-        {canManage ? (
-          <div>
-            <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">Model</label>
-            <select
-              value={modelFilter}
-              onChange={(e) => setModelFilter(e.target.value)}
-              className={cn(VA_FILTER_INPUT, "min-h-11")}
-            >
-              <option value="">All models</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.model_name}
-                </option>
-              ))}
-            </select>
-          </div>
-        ) : null}
-        <label className="inline-flex min-h-11 items-center gap-2 text-sm text-white/70">
-          <input
-            type="checkbox"
-            checked={urgentOnly}
-            onChange={(e) => setUrgentOnly(e.target.checked)}
-            className="h-5 w-5 rounded border-white/20"
-          />
-          Urgent only
-        </label>
-        {loading ? <Loader2 className="h-5 w-5 animate-spin text-white/40" /> : null}
-      </div>
+        }
+      />
 
       {canManage ? (
         <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 p-4")}>
@@ -248,69 +414,84 @@ export function RecordingBriefsClient({
               className={cn(VA_FILTER_INPUT, "min-h-11 w-28")}
             />
           </div>
-          <button type="button" className={cn(VA_BTN_SECONDARY, "min-h-11")} onClick={() => void saveLead()}>
+          <button
+            type="button"
+            className={cn(VA_BTN_SECONDARY, "min-h-11")}
+            onClick={() => void saveLead()}
+          >
             Save reminder
           </button>
         </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_1fr]">
-        <ul className="space-y-2">
-          {briefs.length === 0 ? (
-            <li className="rounded-2xl border border-dashed border-white/15 px-4 py-8 text-center text-sm text-white/40">
-              No briefs
-            </li>
-          ) : (
-            briefs.map((b) => {
-              const cd = formatCountdown(b.deadline_at);
-              return (
-                <li key={b.id}>
-                  <button
-                    type="button"
+      {loading && !briefs.length ? (
+        <BriefCardSkeleton />
+      ) : viewMode === "board" && canManage ? (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {boardColumns.map((col) => {
+            const items = filtered.filter((b) => b.status === col.id);
+            return (
+              <BriefBoardColumn key={col.id} title={col.label} count={items.length}>
+                {items.map((b) => (
+                  <BriefCard
+                    key={b.id}
+                    selected={selectedId === b.id}
                     onClick={() => setSelectedId(b.id)}
-                    className={cn(
-                      "w-full rounded-2xl border px-4 py-3 text-left transition",
-                      selectedId === b.id
-                        ? "border-[#D4AF8C]/45 bg-[#D4AF8C]/10"
-                        : "border-white/[0.08] bg-white/[0.02] hover:border-white/20",
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-white/90">{b.title || "Untitled"}</p>
-                      {b.priority === "urgent" ? (
-                        <span className="shrink-0 rounded-md bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase text-rose-200">
-                          Urgent
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-xs text-white/45">
-                      {modelNameById[b.model_id] || b.model_id} · {b.status}
-                    </p>
-                    {b.deadline_at ? (
-                      <p className={cn("mt-1 text-xs", cd.overdue ? "text-rose-300" : "text-white/40")}>
-                        {cd.label}
-                      </p>
-                    ) : null}
-                  </button>
+                    title={b.title}
+                    modelName={modelNameById[b.model_id]}
+                    priority={b.priority}
+                    status={b.status}
+                    deadlineAt={b.deadline_at}
+                    progressHint={`${b.variations.length} variation${b.variations.length === 1 ? "" : "s"}`}
+                  />
+                ))}
+              </BriefBoardColumn>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_1fr]">
+          <ul className="space-y-2">
+            {filtered.length === 0 ? (
+              <li>
+                <BriefEmptyState title="No briefs match these filters" />
+              </li>
+            ) : (
+              filtered.map((b) => (
+                <li key={b.id}>
+                  <BriefCard
+                    selected={selectedId === b.id}
+                    onClick={() => setSelectedId(b.id)}
+                    title={b.title}
+                    modelName={modelNameById[b.model_id]}
+                    priority={b.priority}
+                    status={b.status}
+                    deadlineAt={b.deadline_at}
+                    progressHint={`${b.variations.length} variation${b.variations.length === 1 ? "" : "s"}`}
+                  />
                 </li>
-              );
-            })
-          )}
-        </ul>
+              ))
+            )}
+          </ul>
 
-        <div className={cn(VA_CARD, "p-4 md:p-6")}>
-          {!selected ? (
-            <p className="text-sm text-white/40">Select a brief</p>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-2">
+          <div className={cn(VA_CARD, "p-4 md:p-6")}>
+            {!selected ? (
+              <BriefEmptyState title="Select a brief" description="Choose from the list to preview" />
+            ) : (
+              <div className="space-y-4">
                 {canManage ? (
-                  <>
+                  <div className="flex flex-wrap gap-2">
                     <Link
                       href={ROUTES.recordingBriefEdit(selected.id)}
                       className={cn(VA_BTN_SECONDARY, "min-h-11 px-4")}
                     >
                       Edit
+                    </Link>
+                    <Link
+                      href={ROUTES.recordingBrief(selected.id)}
+                      className={cn(VA_BTN_SECONDARY, "min-h-11 px-4")}
+                    >
+                      Open
                     </Link>
                     <button
                       type="button"
@@ -324,7 +505,10 @@ export function RecordingBriefsClient({
                       <button
                         type="button"
                         disabled={busyId === selected.id}
-                        className={cn(VA_BTN_SECONDARY, "inline-flex min-h-11 items-center gap-2 px-4")}
+                        className={cn(
+                          VA_BTN_SECONDARY,
+                          "inline-flex min-h-11 items-center gap-2 px-4",
+                        )}
                         onClick={() => void setStatusFor(selected.id, "archived")}
                       >
                         <Archive className="h-4 w-4" /> Archive
@@ -333,7 +517,10 @@ export function RecordingBriefsClient({
                       <button
                         type="button"
                         disabled={busyId === selected.id}
-                        className={cn(VA_BTN_SECONDARY, "inline-flex min-h-11 items-center gap-2 px-4")}
+                        className={cn(
+                          VA_BTN_SECONDARY,
+                          "inline-flex min-h-11 items-center gap-2 px-4",
+                        )}
                         onClick={() => void setStatusFor(selected.id, "draft")}
                       >
                         <RotateCcw className="h-4 w-4" /> Restore draft
@@ -347,28 +534,47 @@ export function RecordingBriefsClient({
                         Create Editing Brief
                       </Link>
                     ) : null}
-                  </>
+                  </div>
                 ) : null}
-                {canViewOwn && selected.status === "published" ? (
-                  <button
-                    type="button"
-                    disabled={busyId === selected.id}
-                    className={cn(VA_BTN_PRIMARY, "inline-flex min-h-12 items-center gap-2 px-5")}
-                    onClick={() => void setStatusFor(selected.id, "uploaded")}
-                  >
-                    <Upload className="h-4 w-4" /> Uploaded
-                  </button>
+
+                {canViewOwn ? (
+                  <BriefStickyActionBar disabledReason={uploadDisabledReason}>
+                    <button
+                      type="button"
+                      disabled={busyId === selected.id || !canMarkUploaded}
+                      className={cn(
+                        VA_BTN_PRIMARY,
+                        "inline-flex min-h-12 flex-1 items-center justify-center gap-2 px-5 disabled:opacity-40",
+                      )}
+                      onClick={() => setConfirmUpload(true)}
+                    >
+                      <Upload className="h-4 w-4" /> Uploaded
+                    </button>
+                  </BriefStickyActionBar>
                 ) : null}
+
+                <RecordingBriefView
+                  brief={selected}
+                  modelName={modelNameById[selected.model_id]}
+                  viewerMode={!canManage}
+                />
               </div>
-              <RecordingBriefView
-                brief={selected}
-                modelName={modelNameById[selected.model_id]}
-                viewerMode={!canManage}
-              />
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      <BriefConfirmAction
+        open={confirmUpload}
+        onClose={() => setConfirmUpload(false)}
+        onConfirm={async () => {
+          if (selected) await setStatusFor(selected.id, "uploaded");
+        }}
+        title="Mark as Uploaded?"
+        description="Confirm that footage for this brief has been uploaded to the path in the brief."
+        confirmLabel="Mark Uploaded"
+        loading={busyId === selected?.id}
+      />
     </div>
   );
 }

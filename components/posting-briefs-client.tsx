@@ -3,19 +3,28 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, Copy, Filter, Loader2, Plus, RotateCcw } from "lucide-react";
+import { Archive, Copy, Plus, RotateCcw } from "lucide-react";
 import { PostingBriefView } from "@/components/posting-brief-view";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { ROUTES } from "@/lib/routes";
+import { cn } from "@/lib/utils";
+import type { PostingBrief } from "@/services/posting-briefs";
 import {
+  BriefBoardColumn,
+  BriefCard,
+  BriefCardSkeleton,
+  BriefEmptyState,
+  BriefFilterToolbar,
+  BriefPageHeader,
+  BriefStatsRow,
+  computeBriefListStats,
+  sortBriefsByUrgencyThenDeadline,
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
   VA_CARD,
   VA_FILTER_INPUT,
-} from "@/lib/va-tasks-tokens";
-import { cn } from "@/lib/utils";
-import type { PostingBrief } from "@/services/posting-briefs";
+} from "@/components/briefs/shared";
 
 type ModelOption = { id: string; model_name: string };
 
@@ -25,6 +34,8 @@ type Props = {
   models: ModelOption[];
   modelNameById: Record<string, string>;
 };
+
+type SortMode = "urgency" | "title" | "account";
 
 export function PostingBriefsClient({
   initialBriefs,
@@ -39,6 +50,9 @@ export function PostingBriefsClient({
   const [modelFilter, setModelFilter] = React.useState("");
   const [accountFilter, setAccountFilter] = React.useState("");
   const [urgentOnly, setUrgentOnly] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [sortMode, setSortMode] = React.useState<SortMode>("urgency");
+  const [viewMode, setViewMode] = React.useState<"list" | "board">("list");
   const [loading, setLoading] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(
     initialBriefs[0]?.id ?? null,
@@ -82,25 +96,46 @@ export function PostingBriefsClient({
     void reload();
   }, [reload]);
 
-  const grouped = React.useMemo(() => {
-    const map = new Map<string, PostingBrief[]>();
-    for (const b of briefs) {
-      const key = `${b.model_id}::${b.account_handle || "—"}`;
-      const list = map.get(key) ?? [];
-      list.push(b);
-      map.set(key, list);
+  const filtered = React.useMemo(() => {
+    let list = briefs;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (b) =>
+          (b.title || "").toLowerCase().includes(q) ||
+          (b.account_handle || "").toLowerCase().includes(q),
+      );
     }
-    return [...map.entries()].map(([key, items]) => {
-      const first = items[0];
-      return {
-        key,
-        modelId: first.model_id,
-        modelName: modelNameById[first.model_id] || first.model_id || "Model",
-        account: first.account_handle || "—",
-        items,
-      };
-    });
-  }, [briefs, modelNameById]);
+    if (sortMode === "urgency") {
+      list = sortBriefsByUrgencyThenDeadline(
+        list.map((b) => ({ ...b, deadline_at: null })),
+      );
+    } else if (sortMode === "title") {
+      list = [...list].sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+    } else {
+      list = [...list].sort((a, b) =>
+        (a.account_handle || "").localeCompare(b.account_handle || ""),
+      );
+    }
+    return list;
+  }, [briefs, search, sortMode]);
+
+  const stats = React.useMemo(() => {
+    const base = computeBriefListStats(
+      briefs.map((b) => ({
+        ...b,
+        deadline_at: null as string | null,
+      })),
+      {
+        isActive: (b) => b.status === "active",
+      },
+    );
+    return {
+      ...base,
+      active: briefs.filter((b) => b.status === "active").length,
+      urgent: briefs.filter((b) => b.status === "active" && b.priority === "urgent").length,
+    };
+  }, [briefs]);
 
   const setStatusFor = async (id: string, next: "active" | "archived") => {
     setBusyId(id);
@@ -161,48 +196,54 @@ export function PostingBriefsClient({
     }
   };
 
-  return (
-    <div className="space-y-6">
-      <header className="relative overflow-hidden rounded-3xl border border-[#D4AF8C]/15 bg-gradient-to-br from-[#151315] via-[#0D0B0D] to-[#120810] px-5 py-7 md:px-7">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#FF1493]/10 blur-3xl" />
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/70">
-              Content pipeline
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">
-              Posting Briefs
-            </h1>
-            <p className="mt-2 max-w-xl text-sm text-white/50">
-              {canManage
-                ? "Create structured posting instructions for Marketing Executives."
-                : "Read-only briefs for your assigned models — copy captions exactly."}
-            </p>
-          </div>
-          {canManage ? (
-            <Link href={ROUTES.postingBriefNew} className={cn(VA_BTN_PRIMARY, "inline-flex min-h-11 items-center gap-2 px-4")}>
-              <Plus className="h-4 w-4" />
-              New brief
-            </Link>
-          ) : null}
-        </div>
-      </header>
+  const chips = [
+    modelFilter
+      ? {
+          key: "model",
+          label: models.find((m) => m.id === modelFilter)?.model_name || "Model",
+          clear: () => setModelFilter(""),
+        }
+      : null,
+    accountFilter.trim()
+      ? {
+          key: "account",
+          label: `Account: ${accountFilter.trim()}`,
+          clear: () => setAccountFilter(""),
+        }
+      : null,
+    status !== "active"
+      ? { key: "status", label: `Status: ${status}`, clear: () => setStatus("active") }
+      : null,
+    urgentOnly ? { key: "urgent", label: "Urgent", clear: () => setUrgentOnly(false) } : null,
+    search.trim()
+      ? { key: "search", label: `“${search.trim()}”`, clear: () => setSearch("") }
+      : null,
+  ].filter(Boolean) as { key: string; label: string; clear: () => void }[];
 
-      <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/[0.08] bg-white/[0.03] p-3">
-        <Filter className="h-4 w-4 text-white/35" aria-hidden />
+  const filterControls = (
+    <>
+      <div>
+        <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">
+          Status
+        </label>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as typeof status)}
-          className={cn(VA_FILTER_INPUT, "min-w-[8rem]")}
+          className={cn(VA_FILTER_INPUT, "min-h-11")}
         >
           <option value="active">Active</option>
           <option value="archived">Archived</option>
           <option value="all">All</option>
         </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">
+          Model
+        </label>
         <select
           value={modelFilter}
           onChange={(e) => setModelFilter(e.target.value)}
-          className={cn(VA_FILTER_INPUT, "min-w-[10rem]")}
+          className={cn(VA_FILTER_INPUT, "min-h-11")}
         >
           <option value="">All models</option>
           {models.map((m) => (
@@ -211,74 +252,150 @@ export function PostingBriefsClient({
             </option>
           ))}
         </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">
+          Account
+        </label>
         <input
           value={accountFilter}
           onChange={(e) => setAccountFilter(e.target.value)}
           placeholder="Account…"
-          className={cn(VA_FILTER_INPUT, "min-w-[8rem] flex-1")}
+          className={cn(VA_FILTER_INPUT, "min-h-11 min-w-[8rem]")}
         />
-        <label className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/60">
-          <input
-            type="checkbox"
-            checked={urgentOnly}
-            onChange={(e) => setUrgentOnly(e.target.checked)}
-            className="rounded border-white/20"
-          />
-          Urgent only
-        </label>
       </div>
+      <label className="inline-flex min-h-11 items-center gap-2 text-sm text-white/70">
+        <input
+          type="checkbox"
+          checked={urgentOnly}
+          onChange={(e) => setUrgentOnly(e.target.checked)}
+          className="h-5 w-5 rounded border-white/20"
+        />
+        Urgent only
+      </label>
+    </>
+  );
 
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-16 text-white/45">
-          <Loader2 className="h-5 w-5 animate-spin text-[#D4AF8C]/70" />
-          Loading…
+  return (
+    <div className="space-y-6">
+      <BriefPageHeader
+        eyebrow="Content pipeline"
+        title="Posting Briefs"
+        description={
+          canManage
+            ? "Create structured posting instructions for Marketing Executives."
+            : "Read-only briefs for your assigned models — copy captions exactly."
+        }
+        action={
+          canManage ? (
+            <Link
+              href={ROUTES.postingBriefNew}
+              className={cn(VA_BTN_PRIMARY, "inline-flex min-h-11 items-center gap-2 px-4")}
+            >
+              <Plus className="h-4 w-4" />
+              New brief
+            </Link>
+          ) : null
+        }
+      />
+
+      <BriefStatsRow
+        stats={[
+          { label: "Active", value: stats.active, accent: "champagne" },
+          { label: "Urgent", value: stats.urgent, accent: "pink" },
+          {
+            label: "Total shown",
+            value: filtered.length,
+            accent: "emerald",
+            tooltip: "Briefs matching current filters",
+          },
+        ]}
+      />
+
+      <BriefFilterToolbar
+        search={search}
+        onSearchChange={setSearch}
+        chips={chips}
+        onClearAll={() => {
+          setSearch("");
+          setModelFilter("");
+          setAccountFilter("");
+          setUrgentOnly(false);
+          setStatus("active");
+        }}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        showBoard={canManage}
+        filterControls={filterControls}
+        sortControl={
+          <div>
+            <label className="mb-1 block text-[10px] uppercase tracking-wider text-white/40">
+              Sort
+            </label>
+            <select
+              value={sortMode}
+              onChange={(e) => setSortMode(e.target.value as SortMode)}
+              className={cn(VA_FILTER_INPUT, "min-h-11")}
+            >
+              <option value="urgency">Urgent first</option>
+              <option value="title">Title</option>
+              <option value="account">Account</option>
+            </select>
+          </div>
+        }
+      />
+
+      {loading && !briefs.length ? (
+        <BriefCardSkeleton />
+      ) : viewMode === "board" && canManage ? (
+        <div className="flex gap-3 overflow-x-auto pb-2">
+          {(
+            [
+              { id: "active", label: "Active" },
+              { id: "archived", label: "Archived" },
+            ] as const
+          ).map((col) => {
+            const items = filtered.filter((b) => b.status === col.id);
+            return (
+              <BriefBoardColumn key={col.id} title={col.label} count={items.length}>
+                {items.map((b) => (
+                  <BriefCard
+                    key={b.id}
+                    selected={selectedId === b.id}
+                    onClick={() => setSelectedId(b.id)}
+                    title={b.title}
+                    modelName={modelNameById[b.model_id]}
+                    priority={b.priority}
+                    status={b.status}
+                    progressHint={`${b.content_type} · ${b.posts.length} post${b.posts.length === 1 ? "" : "s"}`}
+                  />
+                ))}
+              </BriefBoardColumn>
+            );
+          })}
         </div>
-      ) : !briefs.length ? (
-        <div className={cn(VA_CARD, "px-6 py-14 text-center")}>
-          <p className="text-sm text-white/45">No posting briefs match these filters.</p>
-        </div>
+      ) : !filtered.length ? (
+        <BriefEmptyState title="No posting briefs match these filters." />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]">
-          <div className="space-y-4">
-            {grouped.map((group) => (
-              <div key={group.key} className="space-y-2">
-                <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/40">
-                  {group.modelName}
-                  <span className="text-white/25"> · </span>
-                  {group.account.startsWith("@") || group.account === "—"
-                    ? group.account
-                    : `@${group.account}`}
-                </p>
-                {group.items.map((b) => {
-                  const active = b.id === selectedId;
-                  return (
-                    <button
-                      key={b.id}
-                      type="button"
-                      onClick={() => setSelectedId(b.id)}
-                      className={cn(
-                        "w-full rounded-2xl border px-4 py-3 text-left transition",
-                        active
-                          ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/10"
-                          : "border-white/[0.08] bg-white/[0.03] hover:border-white/[0.14]",
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="font-medium text-white/90">{b.title}</p>
-                        {b.priority === "urgent" ? (
-                          <span className="shrink-0 rounded-full border border-rose-400/35 bg-rose-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-rose-200">
-                            Urgent
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="mt-1 text-xs text-white/40">
-                        {b.content_type} · {b.posts.length} post{b.posts.length === 1 ? "" : "s"}
-                        {b.status === "archived" ? " · archived" : ""}
-                      </p>
-                    </button>
-                  );
-                })}
-              </div>
+          <div className="space-y-2">
+            {filtered.map((b) => (
+              <BriefCard
+                key={b.id}
+                selected={selectedId === b.id}
+                onClick={() => setSelectedId(b.id)}
+                title={b.title}
+                modelName={
+                  `${modelNameById[b.model_id] || b.model_id}${
+                    b.account_handle
+                      ? ` · ${b.account_handle.startsWith("@") ? b.account_handle : `@${b.account_handle}`}`
+                      : ""
+                  }`
+                }
+                priority={b.priority}
+                status={b.status}
+                progressHint={`${b.content_type} · ${b.posts.length} post${b.posts.length === 1 ? "" : "s"}`}
+              />
             ))}
           </div>
 
@@ -297,7 +414,10 @@ export function PostingBriefsClient({
                       type="button"
                       disabled={busyId === selected.id}
                       onClick={() => void duplicate(selected.id)}
-                      className={cn(VA_BTN_SECONDARY, "inline-flex min-h-11 items-center gap-2 px-4")}
+                      className={cn(
+                        VA_BTN_SECONDARY,
+                        "inline-flex min-h-11 items-center gap-2 px-4",
+                      )}
                     >
                       <Copy className="h-4 w-4" />
                       Duplicate
@@ -307,7 +427,10 @@ export function PostingBriefsClient({
                         type="button"
                         disabled={busyId === selected.id}
                         onClick={() => void setStatusFor(selected.id, "archived")}
-                        className={cn(VA_BTN_SECONDARY, "inline-flex min-h-11 items-center gap-2 px-4")}
+                        className={cn(
+                          VA_BTN_SECONDARY,
+                          "inline-flex min-h-11 items-center gap-2 px-4",
+                        )}
                       >
                         <Archive className="h-4 w-4" />
                         Archive
@@ -317,7 +440,10 @@ export function PostingBriefsClient({
                         type="button"
                         disabled={busyId === selected.id}
                         onClick={() => void setStatusFor(selected.id, "active")}
-                        className={cn(VA_BTN_SECONDARY, "inline-flex min-h-11 items-center gap-2 px-4")}
+                        className={cn(
+                          VA_BTN_SECONDARY,
+                          "inline-flex min-h-11 items-center gap-2 px-4",
+                        )}
                       >
                         <RotateCcw className="h-4 w-4" />
                         Unarchive
@@ -337,9 +463,7 @@ export function PostingBriefsClient({
                 />
               </div>
             ) : (
-              <div className={cn(VA_CARD, "px-6 py-14 text-center text-sm text-white/40")}>
-                Select a brief
-              </div>
+              <BriefEmptyState title="Select a brief" />
             )}
           </div>
         </div>

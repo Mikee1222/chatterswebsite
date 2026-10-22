@@ -354,7 +354,7 @@ export function PostingBriefForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6 pb-28 md:pb-6">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="md:col-span-2">
           <FieldLabel>Title</FieldLabel>
@@ -575,32 +575,34 @@ export function PostingBriefForm({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="submit" disabled={saving} className={cn(VA_BTN_PRIMARY, "min-h-11 px-5")}>
-          {saving ? "Saving…" : submitLabel}
-        </button>
-        <button
-          type="button"
-          onClick={() => setShowPreview((v) => !v)}
-          className={cn(VA_BTN_SECONDARY, "min-h-11 px-5")}
-        >
-          {showPreview ? "Hide preview" : "Preview as VA"}
-        </button>
-        {onCancel ? (
-          <button type="button" onClick={onCancel} className={cn(VA_BTN_SECONDARY, "min-h-11 px-5")}>
-            Cancel
-          </button>
-        ) : null}
-      </div>
-
       {showPreview ? (
         <div className="rounded-3xl border border-[#D4AF8C]/20 bg-black/20 p-4 md:p-6">
           <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/70">
-            VA preview
+            Live preview
           </p>
           <PostingBriefView brief={previewBrief} modelName={modelName} />
         </div>
       ) : null}
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[#0A0A0A]/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md md:static md:border-0 md:bg-transparent md:p-0 md:pt-2 md:backdrop-blur-none">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-3">
+          <button type="submit" disabled={saving} className={cn(VA_BTN_PRIMARY, "min-h-12 px-5")}>
+            {saving ? "Saving…" : submitLabel}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowPreview((v) => !v)}
+            className={cn(VA_BTN_SECONDARY, "min-h-12 px-5")}
+          >
+            {showPreview ? "Hide preview" : "Preview"}
+          </button>
+          {onCancel ? (
+            <button type="button" onClick={onCancel} className={cn(VA_BTN_SECONDARY, "min-h-12 px-5")}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
+      </div>
     </form>
   );
 }

@@ -94,7 +94,7 @@ export default function EditEditingBriefPage() {
         editors={editors}
         recordingBriefOptions={recordingBriefs}
         initial={brief}
-        submitLabel="Save draft"
+        submitLabel={brief.status === "draft" ? "Save draft" : "Save changes"}
         onSubmit={onSubmit}
         onCancel={() => router.push(ROUTES.editingBrief(brief.id))}
       />

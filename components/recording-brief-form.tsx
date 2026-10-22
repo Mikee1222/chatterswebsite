@@ -291,7 +291,9 @@ export function RecordingBriefForm({
     setBusy(true);
     setError(null);
     try {
-      const next = publish ? "published" : status === "published" ? "published" : "draft";
+      // Keep current lifecycle status on save — never silently force Draft
+      // when editing a published/uploaded brief (fires existing "updated" notify).
+      const next = publish ? "published" : status;
       await onSubmit(buildInput(next as RecordingBriefInput["status"]));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -300,28 +302,56 @@ export function RecordingBriefForm({
     }
   };
 
-  if (preview) {
-    const modelName = models.find((m) => m.id === modelId)?.model_name;
-    return (
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <button type="button" className={VA_BTN_SECONDARY} onClick={() => setPreview(false)}>
-            Back to edit
-          </button>
-        </div>
-        <RecordingBriefView brief={previewBrief} modelName={modelName} />
-      </div>
-    );
-  }
+  const saveLabel =
+    submitLabel !== "Save" && submitLabel !== "Save draft"
+      ? submitLabel
+      : status === "draft"
+        ? "Save draft"
+        : "Save changes";
+
+  const modelName = models.find((m) => m.id === modelId)?.model_name;
 
   return (
+    <div className="space-y-4">
+      <div className="flex gap-2 md:hidden">
+        <button
+          type="button"
+          className={cn(
+            VA_BTN_SECONDARY,
+            "min-h-11 flex-1",
+            !preview && "border-[#FF1493]/40 bg-[#FF1493]/10 text-[#FFB6DE]",
+          )}
+          onClick={() => setPreview(false)}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          className={cn(
+            VA_BTN_SECONDARY,
+            "min-h-11 flex-1",
+            preview && "border-[#FF1493]/40 bg-[#FF1493]/10 text-[#FFB6DE]",
+          )}
+          onClick={() => setPreview(true)}
+        >
+          Preview
+        </button>
+      </div>
+
+      {preview ? (
+        <div className="space-y-4 md:hidden">
+          <RecordingBriefView brief={previewBrief} modelName={modelName} />
+        </div>
+      ) : null}
+
     <form
-      className="space-y-6"
+      className={cn("space-y-6 pb-28", preview && "hidden md:grid md:grid-cols-2 md:gap-6 md:space-y-0")}
       onSubmit={(e) => {
         e.preventDefault();
         void submit(false);
       }}
     >
+      <div className={cn("space-y-6", preview && "md:block")}>
       {error ? (
         <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
           {error}
@@ -482,40 +512,49 @@ export function RecordingBriefForm({
         />
       </div>
 
-      <div className="flex flex-wrap gap-2 border-t border-white/10 pt-4">
-        <button
-          type="button"
-          disabled={busy}
-          className={cn(VA_BTN_PRIMARY, "min-h-12 px-6")}
-          onClick={() => void submit(true)}
-        >
-          {busy ? "Saving…" : "Publish"}
-        </button>
-        <button type="submit" disabled={busy} className={cn(VA_BTN_SECONDARY, "min-h-12 px-6")}>
-          {submitLabel}
-        </button>
-        <button
-          type="button"
-          className={cn(VA_BTN_SECONDARY, "inline-flex min-h-12 items-center gap-2 px-5")}
-          onClick={() => setPreview(true)}
-        >
-          <Eye className="h-4 w-4" /> Preview
-        </button>
-        {onCancel ? (
-          <button type="button" className={cn(VA_BTN_SECONDARY, "min-h-12 px-5")} onClick={onCancel}>
-            Cancel
+      </div>
+
+      {preview ? (
+        <div className="hidden md:block">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+            Live preview
+          </p>
+          <RecordingBriefView brief={previewBrief} modelName={modelName} />
+        </div>
+      ) : null}
+
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-[#0A0A0A]/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-md md:static md:border-0 md:bg-transparent md:p-0 md:pt-4 md:backdrop-blur-none">
+        <div className="mx-auto flex max-w-5xl flex-wrap gap-2 border-t border-white/10 pt-0 md:border-t md:pt-4">
+          <button
+            type="submit"
+            disabled={busy}
+            className={cn(VA_BTN_SECONDARY, "min-h-12 px-6")}
+          >
+            {busy ? "Saving…" : saveLabel}
           </button>
-        ) : null}
-        {initial?.status === "published" ? (
           <button
             type="button"
-            className="sr-only"
-            onClick={() => setStatus("published")}
-            tabIndex={-1}
-            aria-hidden
-          />
-        ) : null}
+            className={cn(VA_BTN_SECONDARY, "hidden min-h-12 items-center gap-2 px-5 md:inline-flex")}
+            onClick={() => setPreview((v) => !v)}
+          >
+            <Eye className="h-4 w-4" /> {preview ? "Hide preview" : "Preview"}
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            className={cn(VA_BTN_PRIMARY, "min-h-12 px-6")}
+            onClick={() => void submit(true)}
+          >
+            {busy ? "Saving…" : "Publish"}
+          </button>
+          {onCancel ? (
+            <button type="button" className={cn(VA_BTN_SECONDARY, "min-h-12 px-5")} onClick={onCancel}>
+              Cancel
+            </button>
+          ) : null}
+        </div>
       </div>
     </form>
+    </div>
   );
 }

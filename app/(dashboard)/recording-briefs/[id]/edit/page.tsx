@@ -80,7 +80,7 @@ export default function EditRecordingBriefPage() {
       <RecordingBriefForm
         models={models}
         initial={brief}
-        submitLabel="Save draft"
+        submitLabel={brief.status === "draft" ? "Save draft" : "Save changes"}
         onSubmit={onSubmit}
         onCancel={() => router.push(ROUTES.recordingBrief(brief.id))}
       />
