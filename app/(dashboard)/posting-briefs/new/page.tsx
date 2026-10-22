@@ -1,20 +1,23 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { PostingBriefForm, type AccountSuggestion } from "@/components/posting-brief-form";
 import { ROUTES } from "@/lib/routes";
-import type { PostingBriefInput } from "@/services/posting-briefs";
+import type { PostingBrief, PostingBriefInput } from "@/services/posting-briefs";
 import type { ModelRecord } from "@/types";
 import { VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
 export default function NewPostingBriefPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const fromEditing = searchParams.get("from_editing");
   const [models, setModels] = React.useState<{ id: string; model_name: string }[]>([]);
   const [suggestions, setSuggestions] = React.useState<Record<string, AccountSuggestion[]>>({});
+  const [initial, setInitial] = React.useState<PostingBrief | null>(null);
   const [ready, setReady] = React.useState(false);
   const [forbidden, setForbidden] = React.useState(false);
 
@@ -37,6 +40,15 @@ export default function NewPostingBriefPage() {
           if (!cancelled) setForbidden(true);
           return;
         }
+        if (fromEditing) {
+          const pre = await fetch(
+            `/api/posting-briefs/prefill-from-editing?id=${encodeURIComponent(fromEditing)}`,
+          );
+          if (pre.ok) {
+            const pref = (await pre.json()) as { brief?: PostingBrief };
+            if (!cancelled && pref.brief) setInitial(pref.brief);
+          }
+        }
         if (!cancelled) {
           setModels((data.models ?? []).map((m) => ({ id: m.id, model_name: m.model_name })));
           setSuggestions(data.accountsByModel ?? {});
@@ -49,7 +61,7 @@ export default function NewPostingBriefPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fromEditing]);
 
   const onSubmit = async (input: PostingBriefInput) => {
     const res = await fetch("/api/posting-briefs", {
@@ -85,6 +97,7 @@ export default function NewPostingBriefPage() {
         <PostingBriefForm
           models={models}
           accountSuggestionsByModel={suggestions}
+          initial={initial}
           onSubmit={onSubmit}
           onCancel={() => router.push(ROUTES.postingBriefs)}
         />
