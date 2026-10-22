@@ -107,6 +107,17 @@ export const PERMISSIONS = {
   POSTING_BRIEFS_VIEW: "posting_briefs:view",
   POSTING_BRIEFS_MANAGE: "posting_briefs:manage",
 
+  /** Recording briefs — CD manage / creator view_own / admin·manager view_all (opt-in via Roles UI). */
+  RECORDING_BRIEFS_MANAGE: "recording_briefs:manage",
+  RECORDING_BRIEFS_VIEW_OWN: "recording_briefs:view_own",
+  RECORDING_BRIEFS_VIEW_ALL: "recording_briefs:view_all",
+
+  /** Editing briefs — CD manage / editor view_assigned / manager review / admin·manager view_all. Distinct from bunch-pipeline editing:*. */
+  EDITING_BRIEFS_MANAGE: "editing_briefs:manage",
+  EDITING_BRIEFS_VIEW_ASSIGNED: "editing_briefs:view_assigned",
+  EDITING_BRIEFS_REVIEW: "editing_briefs:review",
+  EDITING_BRIEFS_VIEW_ALL: "editing_briefs:view_all",
+
   DAILY_REVIEW_SUBMIT: "daily_review:submit",
   DAILY_REVIEW_MANAGE: "daily_review:manage",
 
@@ -269,6 +280,8 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   editing: "Editing",
   icloud_management: "iCloud management",
   posting_briefs: "Posting briefs",
+  recording_briefs: "Recording briefs",
+  editing_briefs: "Editing briefs",
   daily_review: "Daily review",
   content: "Content",
   "spin-wheel": "Spin wheel",
@@ -408,6 +421,15 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "posting_briefs:view": "Προβολή posting briefs για ανατεθειμένα μοντέλα (read-only)",
   "posting_briefs:manage": "Δημιουργία, επεξεργασία και αρχειοθέτηση posting briefs",
 
+  "recording_briefs:manage": "Δημιουργία, επεξεργασία, δημοσίευση και αρχειοθέτηση recording briefs",
+  "recording_briefs:view_own": "Προβολή recording briefs για τα συνδεδεμένα μοντέλα (Uploaded action)",
+  "recording_briefs:view_all": "Προβολή όλων των recording briefs",
+
+  "editing_briefs:manage": "Δημιουργία, επεξεργασία, δημοσίευση και αρχειοθέτηση editing briefs",
+  "editing_briefs:view_assigned": "Προβολή ανατεθειμένων editing briefs (Delivered action)",
+  "editing_briefs:review": "Έγκριση ή αίτημα αλλαγών σε delivered editing briefs",
+  "editing_briefs:view_all": "Προβολή όλων των editing briefs",
+
   "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
   "daily_review:manage": "Διαχείριση ημερήσιων αξιολογήσεων και exec audits marketing",
 
@@ -520,9 +542,14 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.AI_AGENT_USE,
   // Integrations: manager gets view via defaults; manage stays admin-only (opt-in for manager).
   PERMISSIONS.INTEGRATIONS_MANAGE,
-  // Posting briefs: opt-in via Roles UI (Creative Director / Marketing Executive grants).
+  // Posting / Recording / Editing briefs manage: opt-in via Roles UI (Creative Director).
+  // Manager keeps view_all + editing_briefs:review via defaults (not listed here).
   PERMISSIONS.POSTING_BRIEFS_VIEW,
   PERMISSIONS.POSTING_BRIEFS_MANAGE,
+  PERMISSIONS.RECORDING_BRIEFS_MANAGE,
+  PERMISSIONS.RECORDING_BRIEFS_VIEW_OWN,
+  PERMISSIONS.EDITING_BRIEFS_MANAGE,
+  PERMISSIONS.EDITING_BRIEFS_VIEW_ASSIGNED,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [

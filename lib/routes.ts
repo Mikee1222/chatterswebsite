@@ -237,6 +237,16 @@ export const ROUTES = {
   postingBriefNew: "/posting-briefs/new",
   postingBrief: (id: string) => `/posting-briefs/${encodeURIComponent(id)}`,
   postingBriefEdit: (id: string) => `/posting-briefs/${encodeURIComponent(id)}/edit`,
+  /** Recording briefs — CD manage / creator view_own (permission-gated). */
+  recordingBriefs: "/recording-briefs",
+  recordingBriefNew: "/recording-briefs/new",
+  recordingBrief: (id: string) => `/recording-briefs/${encodeURIComponent(id)}`,
+  recordingBriefEdit: (id: string) => `/recording-briefs/${encodeURIComponent(id)}/edit`,
+  /** Editing briefs — CD manage / editor view_assigned / manager review (distinct from Edit Assignments). */
+  editingBriefs: "/editing-briefs",
+  editingBriefNew: "/editing-briefs/new",
+  editingBrief: (id: string) => `/editing-briefs/${encodeURIComponent(id)}`,
+  editingBriefEdit: (id: string) => `/editing-briefs/${encodeURIComponent(id)}/edit`,
   /** Standalone video transcription tool (permission-gated). */
   transcriptVideos: "/transcript-videos",
   /** VA assigned models, social accounts, and phones. */

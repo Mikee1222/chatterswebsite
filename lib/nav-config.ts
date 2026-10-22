@@ -949,6 +949,31 @@ const sharedPermissionNavItems: NavItem[] = [
     requiresAnyPermission: [PERMISSIONS.POSTING_BRIEFS_VIEW, PERMISSIONS.POSTING_BRIEFS_MANAGE],
     excludeFromMobileMainTabs: true,
   },
+  {
+    href: ROUTES.recordingBriefs,
+    label: "Recording Briefs",
+    iconKey: "PlayCircle",
+    navSection: "CONTENT PIPELINE",
+    requiresAnyPermission: [
+      PERMISSIONS.RECORDING_BRIEFS_MANAGE,
+      PERMISSIONS.RECORDING_BRIEFS_VIEW_OWN,
+      PERMISSIONS.RECORDING_BRIEFS_VIEW_ALL,
+    ],
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.editingBriefs,
+    label: "Editing Briefs",
+    iconKey: "Sparkles",
+    navSection: "CONTENT PIPELINE",
+    requiresAnyPermission: [
+      PERMISSIONS.EDITING_BRIEFS_MANAGE,
+      PERMISSIONS.EDITING_BRIEFS_VIEW_ASSIGNED,
+      PERMISSIONS.EDITING_BRIEFS_REVIEW,
+      PERMISSIONS.EDITING_BRIEFS_VIEW_ALL,
+    ],
+    excludeFromMobileMainTabs: true,
+  },
 
   // ── REVIEW & QA ──
   {

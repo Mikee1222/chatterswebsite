@@ -207,6 +207,18 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   bunch_icloud_organized: ["admin", "manager"],
   posting_brief_published: ["virtual_assistant"],
   posting_brief_updated: ["virtual_assistant"],
+  recording_brief_published: ["model"],
+  recording_brief_updated: ["model"],
+  recording_brief_reminder: ["model"],
+  recording_brief_uploaded: ["admin", "manager"],
+  recording_brief_overdue: ["admin", "manager"],
+  editing_brief_published: ["admin", "manager", "virtual_assistant", "chatter"],
+  editing_brief_updated: ["admin", "manager", "virtual_assistant", "chatter"],
+  editing_brief_reminder: ["admin", "manager", "virtual_assistant", "chatter"],
+  editing_brief_delivered: ["admin", "manager"],
+  editing_brief_changes_needed: ["admin", "manager", "virtual_assistant", "chatter"],
+  editing_brief_approved: ["admin", "manager", "virtual_assistant", "chatter"],
+  editing_brief_overdue: ["admin", "manager"],
   recreate_video_slot_deleted: ["virtual_assistant"],
   material_until_approaching: ["admin", "manager"],
   infloww_performance_alert: ["admin", "manager"],
@@ -921,6 +933,66 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "posting_brief_updated",
       "Posting brief updated",
       "Αποστέλλεται στον VA / Marketing Executive όταν ενημερώνεται ενεργό posting brief για το μοντέλο του"
+    ),
+    eventEntry(
+      "recording_brief_published",
+      "New recording brief published",
+      "Αποστέλλεται στον creator (model) όταν δημοσιεύεται νέο recording brief για το προφίλ του"
+    ),
+    eventEntry(
+      "recording_brief_updated",
+      "Recording brief updated",
+      "Αποστέλλεται στον creator όταν ενημερώνεται ενεργό recording brief"
+    ),
+    eventEntry(
+      "recording_brief_reminder",
+      "Recording brief deadline reminder",
+      "Υπενθύμιση στον creator πριν την προθεσμία αν δεν έχει γίνει Upload"
+    ),
+    eventEntry(
+      "recording_brief_uploaded",
+      "Recording brief uploaded",
+      "Ενημερώνει Creative Director / admin όταν ο creator σημειώσει Uploaded"
+    ),
+    eventEntry(
+      "recording_brief_overdue",
+      "Recording brief overdue",
+      "Ενημερώνει Creative Director / admin όταν περάσει η προθεσμία χωρίς Upload"
+    ),
+    eventEntry(
+      "editing_brief_published",
+      "New editing brief published",
+      "Αποστέλλεται στον ανατεθειμένο editor όταν δημοσιεύεται editing brief"
+    ),
+    eventEntry(
+      "editing_brief_updated",
+      "Editing brief updated",
+      "Αποστέλλεται στον editor όταν ενημερώνεται ενεργό editing brief"
+    ),
+    eventEntry(
+      "editing_brief_reminder",
+      "Editing brief deadline reminder",
+      "Υπενθύμιση στον editor πριν την προθεσμία αν δεν έχει γίνει Delivered"
+    ),
+    eventEntry(
+      "editing_brief_delivered",
+      "Editing brief delivered",
+      "Ενημερώνει CD / Marketing Manager όταν ο editor σημειώσει Delivered"
+    ),
+    eventEntry(
+      "editing_brief_changes_needed",
+      "Editing brief changes needed",
+      "Αποστέλλεται στον editor με σχόλιο reviewer όταν ζητηθούν αλλαγές"
+    ),
+    eventEntry(
+      "editing_brief_approved",
+      "Editing brief approved",
+      "Ενημερώνει editor + Creative Director όταν εγκριθεί editing brief"
+    ),
+    eventEntry(
+      "editing_brief_overdue",
+      "Editing brief overdue",
+      "Ενημερώνει Creative Director όταν περάσει η προθεσμία χωρίς Delivered"
     ),
     eventEntry(
       "recreate_video_slot_deleted",

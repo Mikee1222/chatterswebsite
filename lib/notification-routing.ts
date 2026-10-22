@@ -464,6 +464,54 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "VAs / Marketing Executives assigned to the brief's model when an active posting brief is updated.",
   },
+  recording_brief_published: {
+    rule: "assigned_party_only",
+    description: "Creator (model login linked to the brief's model) when a recording brief is published.",
+  },
+  recording_brief_updated: {
+    rule: "assigned_party_only",
+    description: "Creator when an active (published) recording brief is updated.",
+  },
+  recording_brief_reminder: {
+    rule: "assigned_party_only",
+    description: "Creator X hours before deadline if not yet Uploaded.",
+  },
+  recording_brief_uploaded: {
+    rule: "admin_only",
+    description: "recording_briefs:manage holders + admins when creator marks Uploaded.",
+  },
+  recording_brief_overdue: {
+    rule: "admin_only",
+    description: "recording_briefs:manage holders + admins when deadline passes without Uploaded.",
+  },
+  editing_brief_published: {
+    rule: "assigned_party_only",
+    description: "Assigned editor when an editing brief is published.",
+  },
+  editing_brief_updated: {
+    rule: "assigned_party_only",
+    description: "Assigned editor when an active editing brief is updated.",
+  },
+  editing_brief_reminder: {
+    rule: "assigned_party_only",
+    description: "Assigned editor X hours before deadline if not yet Delivered.",
+  },
+  editing_brief_delivered: {
+    rule: "admin_only",
+    description: "editing_briefs:manage + editing_briefs:review holders when editor marks Delivered.",
+  },
+  editing_brief_changes_needed: {
+    rule: "assigned_party_only",
+    description: "Assigned editor when manager requests changes (includes reviewer comment).",
+  },
+  editing_brief_approved: {
+    rule: "assigned_party_only",
+    description: "Assigned editor + editing_briefs:manage holders when brief is Approved.",
+  },
+  editing_brief_overdue: {
+    rule: "admin_only",
+    description: "editing_briefs:manage holders when deadline passes without Delivered.",
+  },
   recreate_video_slot_deleted: {
     rule: "assigned_party_only",
     description: "Researcher who submitted the Fill Bunches find when admin removes their approved slot.",

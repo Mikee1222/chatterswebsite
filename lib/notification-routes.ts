@@ -90,6 +90,12 @@ export function getPushTargetPath(
     case "posting_brief":
       if (entityId) return ROUTES.postingBrief(entityId);
       return ROUTES.postingBriefs;
+    case "recording_brief":
+      if (entityId) return ROUTES.recordingBrief(entityId);
+      return ROUTES.recordingBriefs;
+    case "editing_brief":
+      if (entityId) return ROUTES.editingBrief(entityId);
+      return ROUTES.editingBriefs;
     case "infloww_performance":
       return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "spot_check":
@@ -215,6 +221,12 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
     case "posting_brief":
       if (entity_id) return ROUTES.postingBrief(entity_id);
       return ROUTES.postingBriefs;
+    case "recording_brief":
+      if (entity_id) return ROUTES.recordingBrief(entity_id);
+      return ROUTES.recordingBriefs;
+    case "editing_brief":
+      if (entity_id) return ROUTES.editingBrief(entity_id);
+      return ROUTES.editingBriefs;
     case "infloww_performance":
       return isAdmin ? ROUTES.admin.inflowwPerformance : ROUTES.dashboard;
     case "fraud_anomaly":
@@ -364,6 +376,18 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "bunch_icloud_organized":
     case "posting_brief_published":
     case "posting_brief_updated":
+    case "recording_brief_published":
+    case "recording_brief_updated":
+    case "recording_brief_reminder":
+    case "recording_brief_uploaded":
+    case "recording_brief_overdue":
+    case "editing_brief_published":
+    case "editing_brief_updated":
+    case "editing_brief_reminder":
+    case "editing_brief_delivered":
+    case "editing_brief_changes_needed":
+    case "editing_brief_approved":
+    case "editing_brief_overdue":
     case "recreate_video_slot_deleted":
     case "material_until_approaching":
     case "infloww_performance_alert":
