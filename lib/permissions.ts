@@ -192,6 +192,15 @@ export const PERMISSIONS = {
   INTEGRATIONS_VIEW: "integrations:view",
   INTEGRATIONS_MANAGE: "integrations:manage",
 
+  /** Model Personas — opt-in via Roles UI (admin all; manager view+manage; creative view). */
+  PERSONAS_VIEW: "personas:view",
+  PERSONAS_VIEW_SENSITIVE: "personas:view_sensitive",
+  PERSONAS_MANAGE: "personas:manage",
+  PERSONAS_EDIT_OWN: "personas:edit_own",
+
+  /** AI Creative Studio — captions / text-on-screen / video analyzer (opt-in). */
+  CREATIVE_STUDIO_USE: "creative_studio:use",
+
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -247,6 +256,8 @@ const ACTION_LABELS: Record<string, string> = {
   view_own: "View own",
   view_all: "View all",
   view_assignments: "View assignments",
+  view_sensitive: "View sensitive",
+  edit_own: "Edit own",
   use: "Use",
 };
 
@@ -306,6 +317,8 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   applications: "Applications",
   ai_agent: "Gunzo Agent",
   integrations: "Integrations",
+  personas: "Model Personas",
+  creative_studio: "AI Creative Studio",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -499,6 +512,13 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "integrations:view": "Προβολή κατάστασης συνδέσεων (Infloww, ClarioSuite, Anthropic, Supabase)",
   "integrations:manage": "Δοκιμή συνδέσεων και χειροκίνητος συγχρονισμός integrations",
+
+  "personas:view": "Προβολή model personas (χωρίς sensitive ενότητες)",
+  "personas:view_sensitive": "Προβολή Physique και Intimate Details σε personas",
+  "personas:manage": "Δημιουργία και επεξεργασία όλων των model personas",
+  "personas:edit_own": "Επεξεργασία μη-sensitive ενοτήτων στα συνδεδεμένα δικά μοντέλα",
+
+  "creative_studio:use": "Χρήση AI Creative Studio (captions, text on screen, video analyzer)",
 };
 
 export type PermissionGroup = {
@@ -550,6 +570,10 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.RECORDING_BRIEFS_VIEW_OWN,
   PERMISSIONS.EDITING_BRIEFS_MANAGE,
   PERMISSIONS.EDITING_BRIEFS_VIEW_ASSIGNED,
+  // Personas: manager keeps view + manage via defaults; sensitive / edit_own / studio are opt-in.
+  PERMISSIONS.PERSONAS_VIEW_SENSITIVE,
+  PERMISSIONS.PERSONAS_EDIT_OWN,
+  PERMISSIONS.CREATIVE_STUDIO_USE,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [

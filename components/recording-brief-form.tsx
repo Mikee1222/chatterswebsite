@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Eye, GripVertical, Plus, Trash2 } from "lucide-react";
+import { BriefAiGenerateButton } from "@/components/brief-ai-generate-button";
 import { RecordingBriefView } from "@/components/recording-brief-view";
 import {
   BriefDeadlineFields,
@@ -60,11 +61,13 @@ function SortableVariation({
   index,
   onChange,
   onRemove,
+  modelId,
 }: {
   item: DraftVar;
   index: number;
   onChange: (next: DraftVar) => void;
   onRemove: () => void;
+  modelId: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.key,
@@ -110,7 +113,22 @@ function SortableVariation({
           />
         </div>
         <div>
-          <BriefFieldLabel>Script / shot list</BriefFieldLabel>
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <BriefFieldLabel>Script / shot list</BriefFieldLabel>
+            <BriefAiGenerateButton
+              modelId={modelId}
+              mode="text_on_screen"
+              label="Generate TOS hooks"
+              onResult={(text) => {
+                const prev = (item.script_shot_list ?? "").trim();
+                const block = `Text on screen:\n${text}`;
+                onChange({
+                  ...item,
+                  script_shot_list: prev ? `${prev}\n\n${block}` : block,
+                });
+              }}
+            />
+          </div>
           <BriefTextArea
             value={item.script_shot_list ?? ""}
             onChange={(e) => onChange({ ...item, script_shot_list: e.target.value })}
@@ -475,6 +493,7 @@ export function RecordingBriefForm({
                   key={item.key}
                   item={item}
                   index={index}
+                  modelId={modelId}
                   onChange={(next) =>
                     setVariations((list) => list.map((x) => (x.key === item.key ? next : x)))
                   }

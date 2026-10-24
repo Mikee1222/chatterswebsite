@@ -20,6 +20,7 @@ export const GUNZO_READ_TOOL_NAMES = [
   "get_chatter_performance",
   "get_model_revenue",
   "get_model_subscriber_stats",
+  "get_model_persona",
   "get_instagram_insights_summary",
   "get_link_analytics",
   "get_va_stats",
@@ -69,6 +70,13 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     requiredPermission: PERMISSIONS.EARNINGS_VIEW,
     description:
       "Daily creator subscriber/fan stats from synced Infloww creator report (new subs, renewals, active fans, conversion, chat volume)",
+  },
+  get_model_persona: {
+    name: "get_model_persona",
+    kind: "read",
+    requiredPermission: PERMISSIONS.PERSONAS_VIEW,
+    description:
+      "Allowlisted Model Persona fields for chatting/creative context (never physique or intimate details)",
   },
   get_instagram_insights_summary: {
     name: "get_instagram_insights_summary",
@@ -276,6 +284,21 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
         end_ymd: { type: "string", description: "YYYY-MM-DD end when date_range=custom" },
       },
       required: ["model_name_or_id"],
+    },
+  },
+  {
+    name: "get_model_persona",
+    description:
+      "Fetch the allowlisted Model Persona for one model (bio, personal info, chatting voice, lifestyle, content niche/red lines, socials, active live updates). NEVER returns physique or intimate details. Religion/ideology/relationship/orientation only when tagged usable for AI. Use when drafting chatter voice guidance or creative direction grounded in the persona.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: {
+          type: "string",
+          description: "Model name (e.g. Lina, Diana) or record id (required)",
+        },
+      },
+      required: ["model_name"],
     },
   },
   {

@@ -17,6 +17,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Trash2 } from "lucide-react";
+import { BriefAiGenerateButton } from "@/components/brief-ai-generate-button";
 import { PostingBriefView } from "@/components/posting-brief-view";
 import type {
   PostingBrief,
@@ -101,12 +102,14 @@ function SortablePostRow({
   onChange,
   onRemove,
   canRemove,
+  modelId,
 }: {
   post: DraftPost;
   index: number;
   onChange: (next: DraftPost) => void;
   onRemove: () => void;
   canRemove: boolean;
+  modelId: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: post.key,
@@ -161,7 +164,14 @@ function SortablePostRow({
           />
         </div>
         <div>
-          <FieldLabel>Text on screen</FieldLabel>
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <FieldLabel>Text on screen</FieldLabel>
+            <BriefAiGenerateButton
+              modelId={modelId}
+              mode="text_on_screen"
+              onResult={(text) => onChange({ ...post, text_on_screen: text })}
+            />
+          </div>
           <TextArea
             value={post.text_on_screen ?? ""}
             onChange={(e) => onChange({ ...post, text_on_screen: e.target.value })}
@@ -169,7 +179,14 @@ function SortablePostRow({
           />
         </div>
         <div>
-          <FieldLabel>Caption</FieldLabel>
+          <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+            <FieldLabel>Caption</FieldLabel>
+            <BriefAiGenerateButton
+              modelId={modelId}
+              mode="captions"
+              onResult={(text) => onChange({ ...post, caption: text })}
+            />
+          </div>
           <TextArea
             value={post.caption ?? ""}
             onChange={(e) => onChange({ ...post, caption: e.target.value })}
@@ -557,6 +574,7 @@ export function PostingBriefForm({
                   key={post.key}
                   post={post}
                   index={index}
+                  modelId={modelId}
                   canRemove={posts.length > 1}
                   onChange={(next) =>
                     setPosts((all) => all.map((p) => (p.key === post.key ? next : p)))

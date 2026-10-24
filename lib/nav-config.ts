@@ -942,6 +942,26 @@ const sharedPermissionNavItems: NavItem[] = [
     excludeFromMobileMainTabs: true,
   },
   {
+    href: ROUTES.personas,
+    label: "Model Personas",
+    iconKey: "UserCheck",
+    navSection: "CONTENT PIPELINE",
+    requiresAnyPermission: [
+      PERMISSIONS.PERSONAS_VIEW,
+      PERMISSIONS.PERSONAS_MANAGE,
+      PERMISSIONS.PERSONAS_EDIT_OWN,
+    ],
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.creativeStudio,
+    label: "Creative Studio",
+    iconKey: "Sparkles",
+    navSection: "CONTENT PIPELINE",
+    requiresPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.postingBriefs,
     label: "Posting Briefs",
     iconKey: "FileText",

@@ -320,6 +320,41 @@ export async function executeGunzoTool(
         };
       }
 
+      case "get_model_persona": {
+        const modelId = str(parameters.model_name) || str(parameters.model_name_or_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { getPersonaByModelId, listLiveUpdates } = await import("@/services/model-personas");
+        const { buildPersonaAiContext } = await import("@/lib/persona-ai-context");
+        const persona = await getPersonaByModelId(modelId);
+        if (!persona) {
+          return {
+            ok: true,
+            summary: `No persona saved for model ${modelId}`,
+            data: { model_id: modelId, persona: null, allowlist_keys: [] },
+          };
+        }
+        const live = await listLiveUpdates(persona.id, { includeInactive: false });
+        const bundle = buildPersonaAiContext(persona, live);
+        // Log ids + keys only — never persona text
+        console.info("[gunzo-agent] get_model_persona", {
+          modelId,
+          personaId: persona.id,
+          allowlistKeys: bundle.allowlistKeysUsed,
+        });
+        return {
+          ok: true,
+          summary: `Persona for model ${modelId}: ${bundle.allowlistKeysUsed.length} allowlisted fields`,
+          data: {
+            model_id: modelId,
+            persona_id: persona.id,
+            allowlist_keys: bundle.allowlistKeysUsed,
+            context: bundle.context,
+          },
+        };
+      }
+
       case "get_model_subscriber_stats": {
         const modelRecordId = str(parameters.model_name_or_id);
         if (!modelRecordId) {

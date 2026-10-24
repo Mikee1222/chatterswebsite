@@ -416,6 +416,7 @@ const MODEL_ID_FIELDS = [
   "model_id",
   "model_record_id",
   "model_name_or_id",
+  "model_name",
   "creator_id",
 ] as const;
 const CHATTER_ID_FIELDS = ["chatter_id", "public_user_id", "va_id", "exec_va_id"] as const;
