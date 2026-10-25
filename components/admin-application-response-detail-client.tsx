@@ -29,14 +29,14 @@ import {
 import { ApplyButton } from "@/components/application-ui-buttons";
 import { VA_CARD, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import { Check, Copy, Languages, PartyPopper, Sparkles } from "lucide-react";
+import { Check, Languages, PartyPopper, Sparkles } from "lucide-react";
 import { translationLangLabel } from "@/lib/application-ai-display";
-import {
-  buildApplicationApprovalMessage,
-  extractCandidateFullName,
-  shouldShowApprovalMessage,
-} from "@/lib/application-approval-messages";
-import type { ApplicationFormAnswer } from "@/lib/application-forms-types";
+import { extractCandidateFullName } from "@/lib/application-approval-messages";
+import { ApplicationCopyApprovalButton } from "@/components/application-copy-approval-button";
+import type {
+  ApplicationFormAnswer,
+  ApprovalMessageTemplates,
+} from "@/lib/application-forms-types";
 
 const COGNITIVE_SCORE_TIP =
   "Cognitive percentile shows how this candidate compares to others who took the screening — this becomes more meaningful as more candidates apply";
@@ -45,6 +45,8 @@ const EQ_SCORE_TIP = "EQ score (0-100) from situational judgment scenarios";
 type Props = {
   formId: string;
   formTitle: string;
+  positionTitle: string | null;
+  approvalTemplates: ApprovalMessageTemplates;
   questions: ApplicationFormQuestion[];
   initialResponse: ApplicationFormResponseWithAnswers;
   canManage: boolean;
@@ -136,6 +138,8 @@ function ScoreCard({
 export function AdminApplicationResponseDetailClient({
   formId,
   formTitle,
+  positionTitle,
+  approvalTemplates,
   questions,
   initialResponse,
   canManage,
@@ -205,29 +209,6 @@ export function AdminApplicationResponseDetailClient({
     () => extractCandidateFullName(questions, response.answers),
     [questions, response.answers],
   );
-
-  const approvalMessage = useMemo(() => {
-    if (!shouldShowApprovalMessage(response.status)) return "";
-    return buildApplicationApprovalMessage({
-      fullName: displayName,
-      formTitle,
-      preferredLanguage: response.preferred_language,
-      status: response.status,
-    });
-  }, [displayName, formTitle, response.preferred_language, response.status]);
-
-  const [approvalCopied, setApprovalCopied] = useState(false);
-
-  async function copyApprovalMessage() {
-    try {
-      await navigator.clipboard.writeText(approvalMessage);
-      setApprovalCopied(true);
-      toast.success("Approval message copied");
-      window.setTimeout(() => setApprovalCopied(false), 1500);
-    } catch {
-      toast.error("Could not copy message");
-    }
-  }
 
   const textAnswerQuestions = useMemo(() => {
     return questions.filter(
@@ -592,42 +573,15 @@ export function AdminApplicationResponseDetailClient({
               <span className="font-medium text-[#D4AF8C]">{response.generated_username}</span>
             </p>
           ) : null}
-          {shouldShowApprovalMessage(response.status) ? (
-            <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-300/90">
-                  Copy approval message
-                </label>
-                <button
-                  type="button"
-                  onClick={() => void copyApprovalMessage()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.04] px-3 py-1.5 text-[11px] font-medium text-white/75 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-white"
-                >
-                  {approvalCopied ? (
-                    <Check className="h-3.5 w-3.5 text-emerald-400" aria-hidden />
-                  ) : (
-                    <Copy className="h-3.5 w-3.5" aria-hidden />
-                  )}
-                  {approvalCopied ? "Copied" : "Copy message"}
-                </button>
-              </div>
-              <p className="mt-1 text-xs text-white/45">
-                Ready to send in{" "}
-                {response.preferred_language === "el" ? "Greek" : "English"} — personalized for{" "}
-                {displayName}.
-              </p>
-              <textarea
-                readOnly
-                value={approvalMessage}
-                rows={8}
-                className={cn(
-                  APPLY_INPUT,
-                  "mt-3 min-h-[180px] w-full resize-y py-3 text-sm leading-relaxed text-white/85",
-                )}
-                onFocus={(e) => e.currentTarget.select()}
-              />
-            </div>
-          ) : null}
+          <ApplicationCopyApprovalButton
+            variant="full"
+            fullName={displayName}
+            formTitle={formTitle}
+            positionTitle={positionTitle}
+            templates={approvalTemplates}
+            preferredLanguage={response.preferred_language}
+            status={response.status}
+          />
           <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-white/35">
             Internal notes
           </label>

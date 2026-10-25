@@ -3,6 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { isApplicationFormStatus, parsePipelineConfig } from "@/lib/application-forms-types";
+import { parseApprovalMessageTemplates } from "@/lib/application-approval-messages";
 import {
   deleteApplicationForm,
   getApplicationFormById,
@@ -51,6 +52,8 @@ export async function PATCH(request: Request, ctx: Ctx) {
     slug?: string;
     status?: string;
     pipeline_config?: unknown;
+    position_title?: string | null;
+    approval_message_templates?: unknown;
   } | null;
 
   try {
@@ -65,6 +68,14 @@ export async function PATCH(request: Request, ctx: Ctx) {
       pipeline_config: Array.isArray(body?.pipeline_config)
         ? parsePipelineConfig(body!.pipeline_config)
         : undefined,
+      position_title:
+        body && Object.prototype.hasOwnProperty.call(body, "position_title")
+          ? body.position_title
+          : undefined,
+      approval_message_templates:
+        body?.approval_message_templates !== undefined
+          ? parseApprovalMessageTemplates(body.approval_message_templates)
+          : undefined,
     });
     return NextResponse.json({ form });
   } catch (err) {

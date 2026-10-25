@@ -46,11 +46,13 @@ import {
 import { ApplicationFormPreview } from "@/components/application-form-preview";
 import { ApplicationPipelineBuilder } from "@/components/application-pipeline-builder";
 import { ApplicationFormTabs } from "@/components/application-form-tabs";
+import { ApplicationApprovalMessageSettings } from "@/components/application-approval-message-settings";
 import { ApplyButton } from "@/components/application-ui-buttons";
 import {
   APPLY_INPUT,
   APPLY_SECTION,
 } from "@/lib/application-ui-tokens";
+import type { ApprovalMessageTemplates } from "@/lib/application-forms-types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -300,6 +302,8 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
       footer_text_el: string;
       slug: string;
       pipeline_config: PipelineStepConfig[];
+      position_title: string | null;
+      approval_message_templates: ApprovalMessageTemplates;
     }>,
   ) {
     setSavingMeta(true);
@@ -318,6 +322,21 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
     } finally {
       setSavingMeta(false);
     }
+  }
+
+  function saveApprovalSettings(override?: {
+    positionTitle?: string;
+    templates?: ApprovalMessageTemplates;
+  }) {
+    const positionRaw =
+      override?.positionTitle !== undefined
+        ? override.positionTitle
+        : (form.position_title ?? "");
+    const templates = override?.templates ?? form.approval_message_templates;
+    void saveMeta({
+      position_title: positionRaw.trim() || null,
+      approval_message_templates: templates,
+    });
   }
 
   async function setStatus(status: ApplicationFormStatus) {
@@ -520,6 +539,27 @@ export function AdminApplicationFormBuilderClient({ initialForm, canManage }: Pr
             if (canManage) void saveMeta({ pipeline_config: next });
           }}
         />
+      </div>
+
+      <div className="mt-6">
+        <ApplicationApprovalMessageSettings
+          formTitle={form.title}
+          positionTitle={form.position_title ?? ""}
+          templates={form.approval_message_templates}
+          canManage={canManage}
+          onPositionChange={(value) =>
+            setForm((prev) => ({ ...prev, position_title: value.trim() || null }))
+          }
+          onTemplatesChange={(next) =>
+            setForm((prev) => ({ ...prev, approval_message_templates: next }))
+          }
+          onSave={(override) => {
+            if (canManage) saveApprovalSettings(override);
+          }}
+        />
+        {savingMeta ? (
+          <p className="mt-2 text-[11px] text-white/35">Saving approval settings…</p>
+        ) : null}
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">

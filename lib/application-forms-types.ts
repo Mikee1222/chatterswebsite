@@ -114,6 +114,14 @@ export const CHOICE_QUESTION_TYPES: ReadonlySet<ApplicationQuestionType> = new S
   "dropdown",
 ]);
 
+/** Per-status EN/EL approval outreach templates stored on the form. */
+export type ApprovalMessageLangPair = { en: string; el: string };
+
+export type ApprovalMessageTemplates = {
+  shortlisted: ApprovalMessageLangPair;
+  hired: ApprovalMessageLangPair;
+};
+
 export type ApplicationFormRecord = {
   id: string;
   title: string;
@@ -124,6 +132,10 @@ export type ApplicationFormRecord = {
   slug: string;
   status: ApplicationFormStatus;
   pipeline_config: PipelineStepConfig[];
+  /** Role label for approval messages (e.g. Chatter, Marketing Executive). Null = neutral. */
+  position_title: string | null;
+  /** Editable Shortlisted/Hired templates per language. Empty slots → neutral defaults. */
+  approval_message_templates: ApprovalMessageTemplates;
   created_by: string | null;
   created_at: string;
   updated_at: string;

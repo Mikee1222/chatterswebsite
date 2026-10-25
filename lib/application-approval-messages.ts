@@ -1,12 +1,13 @@
 /**
  * Shortlist & hire approval copy for admin → candidate outreach.
- * Edit templates here — no rebuild of business logic required.
+ * Prefer per-form templates + position_title; never default to a named role.
  */
 
 import type {
   ApplicationFormAnswer,
   ApplicationFormQuestion,
   ApplicationResponseStatus,
+  ApprovalMessageTemplates,
 } from "@/lib/application-forms-types";
 import type { PipelineLanguage } from "@/lib/application-pipeline-i18n";
 
@@ -15,92 +16,137 @@ export const APPROVAL_MESSAGE_STATUSES = ["shortlisted", "hired"] as const satis
 
 export type ApprovalMessageStatus = (typeof APPROVAL_MESSAGE_STATUSES)[number];
 
-export type ApplicationPositionType = "chatter" | "va";
+export const APPROVAL_TEMPLATE_PLACEHOLDERS = ["{name}", "{position}", "{form_title}"] as const;
 
-const POSITION_LABELS: Record<PipelineLanguage, Record<ApplicationPositionType, string>> = {
-  en: { chatter: "Chatter", va: "VA" },
-  el: { chatter: "Chatter", va: "VA" },
-};
+/** Neutral Shortlisted — with position_title. First person, quick call, no role name baked in. */
+export const NEUTRAL_SHORTLISTED_WITH_POSITION_EN = `Hi {name}! 🎉 Great news — you've been shortlisted for the {position} role at Gunzo Agency!
 
-/** Shortlisted — English templates; {name} and {position} are replaced at runtime. */
-export const APPLICATION_APPROVAL_TEMPLATES_EN: Record<ApplicationPositionType, string> = {
-  chatter: `Hi {name}! 🎉 Great news — you've been shortlisted for the {position} position at Gunzo Agency!
-
-We were really impressed with your application and we'd love to move forward with the next steps. Someone from our team will reach out shortly with more details.
+I was really impressed with your application and I'd love to hop on a quick call to go over the next steps. I'll reach out shortly with a time that works.
 
 If you have any questions in the meantime, feel free to reply here.
 
 Best regards,
-The Gunzo Agency Team`,
-  va: `Hi {name}! 🎉 Great news — you've been shortlisted for the {position} position at Gunzo Agency!
+The Gunzo Agency Team`;
 
-We were really impressed with your application and we'd love to move forward with the next steps. Someone from our team will reach out shortly with more details.
+export const NEUTRAL_SHORTLISTED_WITHOUT_POSITION_EN = `Hi {name}! 🎉 Great news — you've been shortlisted for the role at Gunzo Agency!
+
+I was really impressed with your application and I'd love to hop on a quick call to go over the next steps. I'll reach out shortly with a time that works.
 
 If you have any questions in the meantime, feel free to reply here.
 
 Best regards,
-The Gunzo Agency Team`,
-};
+The Gunzo Agency Team`;
 
-/** Shortlisted — Greek templates; warm, natural phrasing (not literal translation). */
-export const APPLICATION_APPROVAL_TEMPLATES_EL: Record<ApplicationPositionType, string> = {
-  chatter: `Γεια σου {name}! 🎉 Έχουμε πολύ καλά νέα — προκριθήκες για τη θέση {position} στο Gunzo Agency!
+export const NEUTRAL_SHORTLISTED_WITH_POSITION_EL = `Γεια σου {name}! 🎉 Έχουμε πολύ καλά νέα — προκριθήκες για τη θέση {position} στο Gunzo Agency!
 
-Μας εντυπωσίασε η αίτησή σου και θα θέλαμε να προχωρήσουμε στο επόμενο βήμα. Σύντομα κάποιος από την ομάδα μας θα επικοινωνήσει μαζί σου με περισσότερες λεπτομέρειες.
+Μου έκανε πολύ καλή εντύπωση η αίτησή σου και θα ήθελα να κάνουμε μια σύντομη κλήση για τα επόμενα βήματα. Θα επικοινωνήσω σύντομα μαζί σου για ώρα που σε βολεύει.
 
-Αν έχεις οποιαδήποτε απορία μέχρι τότε, μη διστάσεις να μας γράψεις.
+Αν έχεις οποιαδήποτε απορία μέχρι τότε, μη διστάσεις να μου γράψεις.
 
 Με εκτίμηση,
-Η ομάδα του Gunzo Agency`,
-  va: `Γεια σου {name}! 🎉 Έχουμε πολύ καλά νέα — προκριθήκες για τη θέση {position} στο Gunzo Agency!
+Η ομάδα του Gunzo Agency`;
 
-Μας εντυπωσίασε η αίτησή σου και θα θέλαμε να προχωρήσουμε στο επόμενο βήμα. Σύντομα κάποιος από την ομάδα μας θα επικοινωνήσει μαζί σου με περισσότερες λεπτομέρειες.
+export const NEUTRAL_SHORTLISTED_WITHOUT_POSITION_EL = `Γεια σου {name}! 🎉 Έχουμε πολύ καλά νέα — προκριθήκες για τη θέση στο Gunzo Agency!
 
-Αν έχεις οποιαδήποτε απορία μέχρι τότε, μη διστάσεις να μας γράψεις.
+Μου έκανε πολύ καλή εντύπωση η αίτησή σου και θα ήθελα να κάνουμε μια σύντομη κλήση για τα επόμενα βήματα. Θα επικοινωνήσω σύντομα μαζί σου για ώρα που σε βολεύει.
+
+Αν έχεις οποιαδήποτε απορία μέχρι τότε, μη διστάσεις να μου γράψεις.
 
 Με εκτίμηση,
-Η ομάδα του Gunzo Agency`,
-};
+Η ομάδα του Gunzo Agency`;
 
-/** Hired — English welcome (no credentials; account details sent separately). */
-export const APPLICATION_HIRED_TEMPLATES_EN: Record<ApplicationPositionType, string> = {
-  chatter: `Hi {name}! 🎉 Welcome to the Gunzo Agency team! I'm really excited to have you on board as a {position}.
+/** Neutral Hired — welcome only; never include credentials. */
+export const NEUTRAL_HIRED_WITH_POSITION_EN = `Hi {name}! 🎉 Welcome to the Gunzo Agency team! I'm really excited to have you on board as a {position}.
 
-I'll be sending over your account details separately, and we'll get you set up and ready to start. Looking forward to working with you!`,
-  va: `Hi {name}! 🎉 Welcome to the Gunzo Agency team! I'm really excited to have you on board as a {position}.
+I'll be sending over your account details separately, and we'll get you set up and ready to start. Looking forward to working with you!`;
 
-I'll be sending over your account details separately, and we'll get you set up and ready to start. Looking forward to working with you!`,
-};
+export const NEUTRAL_HIRED_WITHOUT_POSITION_EN = `Hi {name}! 🎉 Welcome to the Gunzo Agency team! I'm really excited to have you on board.
 
-/** Hired — Greek welcome (no credentials; account details sent separately). */
-export const APPLICATION_HIRED_TEMPLATES_EL: Record<ApplicationPositionType, string> = {
-  chatter: `Γεια σου {name}! 🎉 Καλώς ήρθες στην ομάδα του Gunzo Agency! Χαίρομαι ιδιαίτερα που θα είσαι μαζί μας ως {position}.
+I'll be sending over your account details separately, and we'll get you set up and ready to start. Looking forward to working with you!`;
 
-Θα σου στείλω τα στοιχεία του λογαριασμού σου ξεχωριστά και θα σε βοηθήσουμε να είσαι έτοιμος/η να ξεκινήσεις. Ανυπομονώ να δουλέψουμε μαζί!`,
-  va: `Γεια σου {name}! 🎉 Καλώς ήρθες στην ομάδα του Gunzo Agency! Χαίρομαι ιδιαίτερα που θα είσαι μαζί μας ως {position}.
+export const NEUTRAL_HIRED_WITH_POSITION_EL = `Γεια σου {name}! 🎉 Καλώς ήρθες στην ομάδα του Gunzo Agency! Χαίρομαι ιδιαίτερα που θα είσαι μαζί μας ως {position}.
 
-Θα σου στείλω τα στοιχεία του λογαριασμού σου ξεχωριστά και θα σε βοηθήσουμε να είσαι έτοιμος/η να ξεκινήσεις. Ανυπομονώ να δουλέψουμε μαζί!`,
-};
+Θα σου στείλω τα στοιχεία του λογαριασμού σου ξεχωριστά και θα σε βοηθήσουμε να είσαι έτοιμος/η να ξεκινήσεις. Ανυπομονώ να δουλέψουμε μαζί!`;
 
-const TEMPLATES_BY_STATUS: Record<
-  ApprovalMessageStatus,
-  Record<PipelineLanguage, Record<ApplicationPositionType, string>>
-> = {
-  shortlisted: {
-    en: APPLICATION_APPROVAL_TEMPLATES_EN,
-    el: APPLICATION_APPROVAL_TEMPLATES_EL,
-  },
-  hired: {
-    en: APPLICATION_HIRED_TEMPLATES_EN,
-    el: APPLICATION_HIRED_TEMPLATES_EL,
-  },
-};
+export const NEUTRAL_HIRED_WITHOUT_POSITION_EL = `Γεια σου {name}! 🎉 Καλώς ήρθες στην ομάδα του Gunzo Agency! Χαίρομαι ιδιαίτερα που θα είσαι μαζί μας.
 
-export function resolveApplicationPositionType(formTitle: string): ApplicationPositionType {
-  const t = formTitle.toLowerCase();
-  if (/\bva\b|virtual\s*assistant/.test(t)) return "va";
-  if (/chatter/.test(t)) return "chatter";
-  return "chatter";
+Θα σου στείλω τα στοιχεία του λογαριασμού σου ξεχωριστά και θα σε βοηθήσουμε να είσαι έτοιμος/η να ξεκινήσεις. Ανυπομονώ να δουλέψουμε μαζί!`;
+
+function neutralDefault(
+  status: ApprovalMessageStatus,
+  lang: PipelineLanguage,
+  hasPosition: boolean,
+): string {
+  if (status === "shortlisted") {
+    if (lang === "el") {
+      return hasPosition
+        ? NEUTRAL_SHORTLISTED_WITH_POSITION_EL
+        : NEUTRAL_SHORTLISTED_WITHOUT_POSITION_EL;
+    }
+    return hasPosition
+      ? NEUTRAL_SHORTLISTED_WITH_POSITION_EN
+      : NEUTRAL_SHORTLISTED_WITHOUT_POSITION_EN;
+  }
+  if (lang === "el") {
+    return hasPosition ? NEUTRAL_HIRED_WITH_POSITION_EL : NEUTRAL_HIRED_WITHOUT_POSITION_EL;
+  }
+  return hasPosition ? NEUTRAL_HIRED_WITH_POSITION_EN : NEUTRAL_HIRED_WITHOUT_POSITION_EN;
+}
+
+/** Default seed text for a form that has a position_title (uses {position}). */
+export function defaultApprovalTemplateForPosition(
+  status: ApprovalMessageStatus,
+  lang: PipelineLanguage,
+): string {
+  return neutralDefault(status, lang, true);
+}
+
+export function emptyApprovalMessageTemplates(): ApprovalMessageTemplates {
+  return {
+    shortlisted: { en: "", el: "" },
+    hired: { en: "", el: "" },
+  };
+}
+
+export function parseApprovalMessageTemplates(raw: unknown): ApprovalMessageTemplates {
+  const out = emptyApprovalMessageTemplates();
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  const obj = raw as Record<string, unknown>;
+  for (const status of APPROVAL_MESSAGE_STATUSES) {
+    const block = obj[status];
+    if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+    const langs = block as Record<string, unknown>;
+    out[status] = {
+      en: typeof langs.en === "string" ? langs.en : "",
+      el: typeof langs.el === "string" ? langs.el : "",
+    };
+  }
+  return out;
+}
+
+export function normalizeApprovalMessageTemplates(
+  raw: unknown,
+): ApprovalMessageTemplates {
+  return parseApprovalMessageTemplates(raw);
+}
+
+function pickFormTemplate(
+  templates: ApprovalMessageTemplates | null | undefined,
+  status: ApprovalMessageStatus,
+  lang: PipelineLanguage,
+): string | null {
+  const text = templates?.[status]?.[lang]?.trim() ?? "";
+  return text || null;
+}
+
+export function fillApprovalTemplate(
+  template: string,
+  vars: { name: string; position: string; formTitle: string },
+): string {
+  return template
+    .replace(/\{name\}/g, vars.name)
+    .replace(/\{position\}/g, vars.position)
+    .replace(/\{form_title\}/g, vars.formTitle);
 }
 
 export function extractCandidateFullName(
@@ -121,31 +167,42 @@ export function extractCandidateFullName(
   return first?.answer_text?.trim() || "there";
 }
 
-function fillTemplate(
-  template: string,
-  name: string,
-  positionLabel: string,
-): string {
-  return template.replace(/\{name\}/g, name).replace(/\{position\}/g, positionLabel);
-}
-
 export type BuildApprovalMessageInput = {
   fullName: string;
   formTitle: string;
   preferredLanguage: PipelineLanguage | null | undefined;
   status: ApprovalMessageStatus;
+  /** Form's position_title — never inferred from title. */
+  positionTitle?: string | null;
+  /** Form's stored templates; empty/missing slots fall through to neutral defaults. */
+  templates?: ApprovalMessageTemplates | null;
 };
 
+/**
+ * Resolution: form template for status+lang → neutral global default.
+ * Neutral never names Chatter / VA / Marketing Executive.
+ */
 export function buildApplicationApprovalMessage(input: BuildApprovalMessageInput): string {
   const lang: PipelineLanguage = input.preferredLanguage === "el" ? "el" : "en";
-  const positionType = resolveApplicationPositionType(input.formTitle);
-  const positionLabel = POSITION_LABELS[lang][positionType];
-  const templates = TEMPLATES_BY_STATUS[input.status][lang];
-  return fillTemplate(templates[positionType], input.fullName, positionLabel);
+  const position = (input.positionTitle ?? "").trim();
+  const hasPosition = position.length > 0;
+  const formTpl = pickFormTemplate(input.templates, input.status, lang);
+  const template = formTpl ?? neutralDefault(input.status, lang, hasPosition);
+  return fillApprovalTemplate(template, {
+    name: input.fullName.trim() || "there",
+    position,
+    formTitle: input.formTitle.trim() || "application",
+  });
 }
 
 export function shouldShowApprovalMessage(
   status: ApplicationResponseStatus,
 ): status is ApprovalMessageStatus {
   return (APPROVAL_MESSAGE_STATUSES as readonly ApplicationResponseStatus[]).includes(status);
+}
+
+export function approvalLanguageLabel(
+  preferredLanguage: PipelineLanguage | null | undefined,
+): string {
+  return preferredLanguage === "el" ? "Greek" : "English";
 }

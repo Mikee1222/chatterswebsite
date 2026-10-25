@@ -27,8 +27,10 @@ import {
   type ApplicationRecentActivityItem,
   type ApplicationResponseStatus,
   type ApplicationResponsesListAnalytics,
+  type ApprovalMessageTemplates,
   type PipelineStepConfig,
 } from "@/lib/application-forms-types";
+import { parseApprovalMessageTemplates } from "@/lib/application-approval-messages";
 import {
   getScreeningByResponseIds,
   linkSessionToResponse,
@@ -47,6 +49,8 @@ type FormRow = {
   slug: string;
   status: string;
   pipeline_config?: unknown;
+  position_title?: string | null;
+  approval_message_templates?: unknown;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -96,6 +100,9 @@ type AnswerRow = {
 };
 
 function mapForm(row: FormRow): ApplicationFormRecord {
+  const positionRaw = row.position_title;
+  const position_title =
+    typeof positionRaw === "string" && positionRaw.trim() ? positionRaw.trim() : null;
   return {
     id: row.id,
     title: row.title,
@@ -106,6 +113,8 @@ function mapForm(row: FormRow): ApplicationFormRecord {
     slug: row.slug,
     status: isApplicationFormStatus(row.status) ? row.status : "draft",
     pipeline_config: parsePipelineConfig(row.pipeline_config),
+    position_title,
+    approval_message_templates: parseApprovalMessageTemplates(row.approval_message_templates),
     created_by: row.created_by,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -327,6 +336,8 @@ export async function createApplicationForm(input: {
   slug?: string;
   status?: ApplicationFormStatus;
   pipeline_config?: PipelineStepConfig[];
+  position_title?: string | null;
+  approval_message_templates?: ApprovalMessageTemplates;
   created_by?: string | null;
 }): Promise<ApplicationFormRecord> {
   const title = input.title.trim();
@@ -334,6 +345,11 @@ export async function createApplicationForm(input: {
 
   const baseSlug = slugifyFormTitle(input.slug?.trim() || title);
   const slug = await ensureUniqueSlug(baseSlug);
+
+  const position_title =
+    typeof input.position_title === "string" && input.position_title.trim()
+      ? input.position_title.trim()
+      : null;
 
   const sb = getSupabaseServiceClient();
   const now = new Date().toISOString();
@@ -348,6 +364,10 @@ export async function createApplicationForm(input: {
       slug,
       status: input.status && isApplicationFormStatus(input.status) ? input.status : "draft",
       pipeline_config: parsePipelineConfig(input.pipeline_config),
+      position_title,
+      approval_message_templates: parseApprovalMessageTemplates(
+        input.approval_message_templates ?? {},
+      ),
       created_by: input.created_by ?? null,
       created_at: now,
       updated_at: now,
@@ -369,6 +389,8 @@ export async function updateApplicationForm(
     slug?: string;
     status?: ApplicationFormStatus;
     pipeline_config?: PipelineStepConfig[];
+    position_title?: string | null;
+    approval_message_templates?: ApprovalMessageTemplates;
   },
 ): Promise<ApplicationFormRecord> {
   const sb = getSupabaseServiceClient();
@@ -402,6 +424,17 @@ export async function updateApplicationForm(
   if (patch.pipeline_config !== undefined) {
     updates.pipeline_config = parsePipelineConfig(patch.pipeline_config);
   }
+  if (patch.position_title !== undefined) {
+    updates.position_title =
+      typeof patch.position_title === "string" && patch.position_title.trim()
+        ? patch.position_title.trim()
+        : null;
+  }
+  if (patch.approval_message_templates !== undefined) {
+    updates.approval_message_templates = parseApprovalMessageTemplates(
+      patch.approval_message_templates,
+    );
+  }
 
   const { data, error } = await sb
     .from("application_forms")
@@ -434,6 +467,8 @@ export async function duplicateApplicationForm(
     footer_text_el: source.footer_text_el,
     status: "draft",
     pipeline_config: source.pipeline_config,
+    position_title: source.position_title,
+    approval_message_templates: source.approval_message_templates,
     created_by: createdBy ?? null,
   });
 

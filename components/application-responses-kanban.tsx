@@ -23,13 +23,17 @@ import {
   hireCandidateRequest,
   type HireCredentialsPayload,
 } from "@/components/application-hire-credentials-modal";
+import { ApplicationCopyApprovalButton } from "@/components/application-copy-approval-button";
+import { extractCandidateFullName } from "@/lib/application-approval-messages";
 import { AdminRowAvatar } from "@/components/admin-list-primitives";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
   RESPONSE_STATUS_LABELS,
+  type ApplicationFormQuestion,
   type ApplicationFormResponseWithAnswers,
   type ApplicationResponseStatus,
+  type ApprovalMessageTemplates,
 } from "@/lib/application-forms-types";
 import { RESPONSE_STATUS_STYLE } from "@/lib/application-ui-tokens";
 import { VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
@@ -46,12 +50,20 @@ function candidateLabel(r: ApplicationFormResponseWithAnswers): string {
 function KanbanCardInner({
   r,
   formId,
+  formTitle,
+  positionTitle,
+  approvalTemplates,
+  questions,
   canManage,
   onHire,
   dragging,
 }: {
   r: ApplicationFormResponseWithAnswers;
   formId: string;
+  formTitle: string;
+  positionTitle: string | null;
+  approvalTemplates: ApprovalMessageTemplates;
+  questions: ApplicationFormQuestion[];
   canManage: boolean;
   onHire: (r: ApplicationFormResponseWithAnswers) => void;
   dragging?: boolean;
@@ -102,6 +114,15 @@ function KanbanCardInner({
       ) : summaryPending ? (
         <p className="mt-2 text-[11px] italic text-white/30">Generating summary…</p>
       ) : null}
+      <ApplicationCopyApprovalButton
+        className="mt-2 w-full justify-center"
+        fullName={extractCandidateFullName(questions, r.answers)}
+        formTitle={formTitle}
+        positionTitle={positionTitle}
+        templates={approvalTemplates}
+        preferredLanguage={r.preferred_language}
+        status={r.status}
+      />
       {canManage && r.status !== "hired" ? (
         <button
           type="button"
@@ -131,14 +152,23 @@ function KanbanCardInner({
   );
 }
 
+type ApprovalFormMeta = {
+  formTitle: string;
+  positionTitle: string | null;
+  approvalTemplates: ApprovalMessageTemplates;
+  questions: ApplicationFormQuestion[];
+};
+
 function DraggableCard({
   r,
   formId,
+  formMeta,
   canManage,
   onHire,
 }: {
   r: ApplicationFormResponseWithAnswers;
   formId: string;
+  formMeta: ApprovalFormMeta;
   canManage: boolean;
   onHire: (r: ApplicationFormResponseWithAnswers) => void;
 }) {
@@ -154,7 +184,16 @@ function DraggableCard({
 
   return (
     <div ref={setNodeRef} style={style} {...listeners} {...attributes} className="touch-none">
-      <KanbanCardInner r={r} formId={formId} canManage={canManage} onHire={onHire} />
+      <KanbanCardInner
+        r={r}
+        formId={formId}
+        formTitle={formMeta.formTitle}
+        positionTitle={formMeta.positionTitle}
+        approvalTemplates={formMeta.approvalTemplates}
+        questions={formMeta.questions}
+        canManage={canManage}
+        onHire={onHire}
+      />
     </div>
   );
 }
@@ -163,12 +202,14 @@ function DropColumn({
   status,
   items,
   formId,
+  formMeta,
   canManage,
   onHire,
 }: {
   status: ApplicationResponseStatus;
   items: ApplicationFormResponseWithAnswers[];
   formId: string;
+  formMeta: ApprovalFormMeta;
   canManage: boolean;
   onHire: (r: ApplicationFormResponseWithAnswers) => void;
 }) {
@@ -198,6 +239,7 @@ function DropColumn({
               key={r.id}
               r={r}
               formId={formId}
+              formMeta={formMeta}
               canManage={canManage}
               onHire={onHire}
             />
@@ -210,6 +252,10 @@ function DropColumn({
 
 type Props = {
   formId: string;
+  formTitle: string;
+  positionTitle: string | null;
+  approvalTemplates: ApprovalMessageTemplates;
+  questions: ApplicationFormQuestion[];
   responses: ApplicationFormResponseWithAnswers[];
   canManage: boolean;
   onStatusChange: (id: string, status: ApplicationResponseStatus) => Promise<void>;
@@ -218,11 +264,21 @@ type Props = {
 
 export function ApplicationResponsesKanban({
   formId,
+  formTitle,
+  positionTitle,
+  approvalTemplates,
+  questions,
   responses,
   canManage,
   onStatusChange,
   onHired,
 }: Props) {
+  const formMeta: ApprovalFormMeta = {
+    formTitle,
+    positionTitle,
+    approvalTemplates,
+    questions,
+  };
   const [activeId, setActiveId] = useState<string | null>(null);
   const [mobileCol, setMobileCol] = useState<ApplicationResponseStatus>("new");
   const [hiringId, setHiringId] = useState<string | null>(null);
@@ -320,6 +376,7 @@ export function ApplicationResponsesKanban({
                     status={status}
                     items={items}
                     formId={formId}
+                    formMeta={formMeta}
                     canManage={canManage && !hiringId}
                     onHire={(row) => void handleHire(row)}
                   />
@@ -334,6 +391,10 @@ export function ApplicationResponsesKanban({
               <KanbanCardInner
                 r={active}
                 formId={formId}
+                formTitle={formTitle}
+                positionTitle={positionTitle}
+                approvalTemplates={approvalTemplates}
+                questions={questions}
                 canManage={false}
                 onHire={() => undefined}
                 dragging

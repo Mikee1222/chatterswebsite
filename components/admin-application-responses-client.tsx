@@ -35,6 +35,8 @@ import {
   hireCandidateRequest,
   type HireCredentialsPayload,
 } from "@/components/application-hire-credentials-modal";
+import { ApplicationCopyApprovalButton } from "@/components/application-copy-approval-button";
+import { extractCandidateFullName } from "@/lib/application-approval-messages";
 import { ROUTES } from "@/lib/routes";
 import {
   APPLICATION_RESPONSE_STATUSES,
@@ -901,6 +903,10 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
         ) : (
           <ApplicationResponsesKanban
             formId={form.id}
+            formTitle={form.title}
+            positionTitle={form.position_title}
+            approvalTemplates={form.approval_message_templates}
+            questions={form.questions}
             responses={responses}
             canManage={canManage}
             onStatusChange={patchStatus}
@@ -1033,26 +1039,36 @@ export function AdminApplicationResponsesClient({ form, canManage }: Props) {
                     >
                       {RESPONSE_STATUS_LABELS[r.status]}
                     </span>
-                    {canManage ? (
-                      <button
-                        type="button"
-                        disabled={hiringId === r.id}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          void handleHire(r);
-                        }}
-                        className={cn(
-                          "pointer-events-auto relative z-[2] inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition",
-                          r.status === "hired"
-                            ? "border-white/12 bg-white/[0.04] text-white/70 hover:bg-white/[0.07]"
-                            : "border-[#D4AF8C]/40 bg-[#D4AF8C]/15 text-[#D4AF8C] hover:bg-[#D4AF8C]/25",
-                        )}
-                      >
-                        <PartyPopper className="h-3 w-3" aria-hidden />
-                        {r.status === "hired" && r.has_hire_password ? "Credentials" : "Hire"}
-                      </button>
-                    ) : null}
+                    <div className="pointer-events-auto relative z-[2] flex flex-wrap items-center gap-2">
+                      <ApplicationCopyApprovalButton
+                        fullName={extractCandidateFullName(form.questions, r.answers)}
+                        formTitle={form.title}
+                        positionTitle={form.position_title}
+                        templates={form.approval_message_templates}
+                        preferredLanguage={r.preferred_language}
+                        status={r.status}
+                      />
+                      {canManage ? (
+                        <button
+                          type="button"
+                          disabled={hiringId === r.id}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            void handleHire(r);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold transition",
+                            r.status === "hired"
+                              ? "border-white/12 bg-white/[0.04] text-white/70 hover:bg-white/[0.07]"
+                              : "border-[#D4AF8C]/40 bg-[#D4AF8C]/15 text-[#D4AF8C] hover:bg-[#D4AF8C]/25",
+                          )}
+                        >
+                          <PartyPopper className="h-3 w-3" aria-hidden />
+                          {r.status === "hired" && r.has_hire_password ? "Credentials" : "Hire"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               );

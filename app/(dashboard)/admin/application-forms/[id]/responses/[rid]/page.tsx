@@ -34,6 +34,8 @@ export default async function AdminApplicationResponseDetailPage({ params }: Pro
     <AdminApplicationResponseDetailClient
       formId={form.id}
       formTitle={form.title}
+      positionTitle={form.position_title}
+      approvalTemplates={form.approval_message_templates}
       questions={form.questions}
       initialResponse={response}
       canManage={canManage}
