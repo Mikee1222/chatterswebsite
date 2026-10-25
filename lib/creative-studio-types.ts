@@ -15,7 +15,17 @@ export type CreativeIdea = {
   updated_at: string;
 };
 
+export type VideoAnalysisShotType = {
+  type: "close-up" | "medium" | "full-body" | "wide" | "other";
+  count: number;
+};
+
 export type VideoAnalysisJson = {
+  analysis_status?: "ok" | "frames_unreadable";
+  shot_types?: VideoAnalysisShotType[];
+  framing_variety?: "low" | "medium" | "high";
+  camera_movement?: string;
+  number_of_distinct_scenes?: number;
   setting?: string;
   outfit?: string;
   activity?: string;
@@ -29,8 +39,29 @@ export type VideoAnalysisJson = {
     not_9_16?: boolean;
     watermark?: boolean;
   };
+  /** Graded advisory only — not a refusal signal. */
+  platform_risk?: {
+    level?: "low" | "medium" | "high";
+    notes?: string;
+  };
+  /** Graded advisory attire — keep notes platform-safe. */
+  attire?: {
+    coverage?: "fully_clothed" | "swimwear" | "lingerie" | "minimal" | "unclear";
+    notes?: string;
+  };
   suggested_hooks?: string[];
   suggested_caption_angles?: string[];
   refusal?: boolean;
   refusal_message?: string;
+};
+
+/** Persisted sampling telemetry (no pixels, no video). */
+export type VideoSamplingMetaJson = {
+  duration_sec?: number;
+  seek_timestamps_sec?: number[];
+  frames_requested?: number;
+  frames_analysed?: number;
+  frame_byte_lengths?: number[];
+  blank_frames_replaced?: number;
+  vision_model?: string;
 };

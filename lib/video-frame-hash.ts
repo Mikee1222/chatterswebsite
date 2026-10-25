@@ -69,3 +69,32 @@ export function hashSetSimilarity(a: string[], b: string[]): number {
   const avg = scores.reduce((x, y) => x + y, 0) / scores.length;
   return Math.round(avg * 100);
 }
+
+/** All-0s or all-1s aHash — near-uniform / blank frames. Ignore for duplicate banners. */
+export function isLowInfoHash(hex: string): boolean {
+  const h = hex.trim().toLowerCase();
+  if (!h || h.length < 8) return true;
+  return /^0+$/.test(h) || /^f+$/.test(h);
+}
+
+export function informativeHashes(hashes: string[]): string[] {
+  return hashes.map((h) => String(h)).filter((h) => h.length > 0 && !isLowInfoHash(h));
+}
+
+/** Minimum informative hashes required on both sides before a duplicate banner. */
+export const MIN_INFORMATIVE_HASHES_FOR_DUP = 3;
+
+/**
+ * Duplicate similarity using only informative hashes.
+ * Returns 0 when either side lacks enough non-blank hashes.
+ */
+export function informativeHashSetSimilarity(
+  a: string[],
+  b: string[],
+  minInformative = MIN_INFORMATIVE_HASHES_FOR_DUP,
+): number {
+  const ia = informativeHashes(a);
+  const ib = informativeHashes(b);
+  if (ia.length < minInformative || ib.length < minInformative) return 0;
+  return hashSetSimilarity(ia, ib);
+}

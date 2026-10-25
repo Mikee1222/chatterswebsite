@@ -300,8 +300,15 @@ export type AnthropicImageSource = {
   base64: string;
 };
 
+export type CallAnthropicVisionResult = CallAnthropicResult & {
+  /** Present when a forced/optional tool was used — structured input object. */
+  toolInput?: Record<string, unknown> | null;
+  stopReason?: string | null;
+};
+
 /**
  * Multimodal Messages call (text + optional images). Claude Sonnet supports vision.
+ * Optional tools + tool_choice for forced JSON schema output (one usage log per call).
  */
 export async function callAnthropicVision(options: {
   text: string;
@@ -311,7 +318,12 @@ export async function callAnthropicVision(options: {
   temperature?: number;
   logLabel?: string;
   model?: string;
-}): Promise<CallAnthropicResult | null> {
+  tools?: AnthropicToolDef[];
+  toolChoice?:
+    | { type: "auto" }
+    | { type: "any" }
+    | { type: "tool"; name: string };
+}): Promise<CallAnthropicVisionResult | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   const label = options.logLabel ?? "ai-assistant-vision";
   if (!apiKey) {
@@ -340,6 +352,7 @@ export async function callAnthropicVision(options: {
   }
 
   const model = options.model?.trim() || AI_ASSISTANT_MODEL;
+  const useTools = Array.isArray(options.tools) && options.tools.length > 0;
   try {
     const body: Record<string, unknown> = {
       model,
@@ -348,6 +361,10 @@ export async function callAnthropicVision(options: {
       messages: [{ role: "user", content }],
     };
     if (options.system?.trim()) body.system = options.system.trim();
+    if (useTools) {
+      body.tools = options.tools;
+      if (options.toolChoice) body.tool_choice = options.toolChoice;
+    }
 
     const res = await fetch(ANTHROPIC_MESSAGES_URL, {
       method: "POST",
@@ -366,19 +383,39 @@ export async function callAnthropicVision(options: {
       return null;
     }
 
-    const out = (data.content ?? [])
+    const blocks = data.content ?? [];
+    let toolInput: Record<string, unknown> | null = null;
+    if (useTools) {
+      for (const b of blocks) {
+        if (b.type === "tool_use" && b.input && typeof b.input === "object" && !Array.isArray(b.input)) {
+          toolInput = b.input as Record<string, unknown>;
+          break;
+        }
+      }
+    }
+
+    const outText = blocks
       .filter((b) => b.type === "text" && typeof b.text === "string")
       .map((b) => b.text!.trim())
       .filter(Boolean)
       .join("\n")
       .trim();
 
-    if (!out) {
+    // Prefer structured tool input; fall back to text JSON
+    const textOut =
+      toolInput != null ? JSON.stringify(toolInput) : outText;
+
+    if (!textOut) {
       recordUsage(label, model, false);
       return null;
     }
     recordUsage(label, model, true);
-    return { text: out, model };
+    return {
+      text: textOut,
+      model,
+      toolInput,
+      stopReason: data.stop_reason ?? null,
+    };
   } catch (err) {
     console.error(`[${label}] fetch failed`, err);
     recordUsage(label, model, false);

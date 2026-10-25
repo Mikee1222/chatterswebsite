@@ -15,7 +15,8 @@ export type VideoAnalysisRefusalReason =
   | "refusal_flag"
   | "refusal_text"
   | "all_frames_failed"
-  | "partial_refusal";
+  | "partial_refusal"
+  | "frames_unreadable";
 
 export type ParsedVideoAnalysis = {
   refused: boolean;
@@ -64,6 +65,36 @@ function hasUsableAnalysisFields(obj: Record<string, unknown>): boolean {
   return false;
 }
 
+const SHOT_TYPES = new Set(["close-up", "medium", "full-body", "wide", "other"]);
+const FRAMING = new Set(["low", "medium", "high"]);
+const RISK = new Set(["low", "medium", "high"]);
+const COVERAGE = new Set([
+  "fully_clothed",
+  "swimwear",
+  "lingerie",
+  "minimal",
+  "unclear",
+]);
+
+function sanitizeShotTypes(
+  v: unknown,
+): VideoAnalysisJson["shot_types"] {
+  if (!Array.isArray(v)) return undefined;
+  const out: NonNullable<VideoAnalysisJson["shot_types"]> = [];
+  for (const row of v) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const r = row as Record<string, unknown>;
+    const type = asString(r.type);
+    const count = typeof r.count === "number" ? Math.max(0, Math.floor(r.count)) : 0;
+    if (!SHOT_TYPES.has(type)) continue;
+    out.push({
+      type: type as NonNullable<VideoAnalysisJson["shot_types"]>[number]["type"],
+      count,
+    });
+  }
+  return out.length ? out : undefined;
+}
+
 function sanitizeSuccessAnalysis(obj: Record<string, unknown>): VideoAnalysisJson {
   const q = obj.quality_flags;
   const quality_flags =
@@ -77,7 +108,44 @@ function sanitizeSuccessAnalysis(obj: Record<string, unknown>): VideoAnalysisJso
         }
       : undefined;
 
+  const pr = obj.platform_risk;
+  const platform_risk =
+    pr && typeof pr === "object" && !Array.isArray(pr)
+      ? {
+          level: RISK.has(asString((pr as Record<string, unknown>).level))
+            ? (asString((pr as Record<string, unknown>).level) as "low" | "medium" | "high")
+            : undefined,
+          notes: asString((pr as Record<string, unknown>).notes) || undefined,
+        }
+      : undefined;
+
+  const at = obj.attire;
+  const attire =
+    at && typeof at === "object" && !Array.isArray(at)
+      ? {
+          coverage: COVERAGE.has(asString((at as Record<string, unknown>).coverage))
+            ? (asString(
+                (at as Record<string, unknown>).coverage,
+              ) as NonNullable<VideoAnalysisJson["attire"]>["coverage"])
+            : undefined,
+          notes: asString((at as Record<string, unknown>).notes) || undefined,
+        }
+      : undefined;
+
+  const framingRaw = asString(obj.framing_variety);
+  const scenes = obj.number_of_distinct_scenes;
+
   return {
+    analysis_status: "ok",
+    shot_types: sanitizeShotTypes(obj.shot_types),
+    framing_variety: FRAMING.has(framingRaw)
+      ? (framingRaw as "low" | "medium" | "high")
+      : undefined,
+    camera_movement: asString(obj.camera_movement) || undefined,
+    number_of_distinct_scenes:
+      typeof scenes === "number" && Number.isFinite(scenes)
+        ? Math.max(0, Math.floor(scenes))
+        : undefined,
     setting: asString(obj.setting) || undefined,
     outfit: asString(obj.outfit) || undefined,
     activity: asString(obj.activity) || undefined,
@@ -85,6 +153,8 @@ function sanitizeSuccessAnalysis(obj: Record<string, unknown>): VideoAnalysisJso
     objects_props: asStringArray(obj.objects_props),
     visible_text: asStringArray(obj.visible_text),
     quality_flags,
+    platform_risk,
+    attire,
     suggested_hooks: asStringArray(obj.suggested_hooks),
     suggested_caption_angles: asStringArray(obj.suggested_caption_angles),
   };
@@ -188,6 +258,12 @@ export function parseVideoAnalysisModelResponse(
       looksLikeRefusalText(trimmed) ? "refusal_text" : "non_json",
       trimmed.slice(0, 8_000),
     );
+  }
+
+  // Narrow technical status from forced schema — not a safety refusal invitation
+  const analysisStatus = asString(obj.analysis_status);
+  if (analysisStatus === "frames_unreadable") {
+    return refusedResult("frames_unreadable", trimmed.slice(0, 8_000));
   }
 
   // Optional per-frame payload (partial refusal support)
@@ -332,6 +408,16 @@ export function analysisToIdeaContext(analysis: VideoAnalysisJson): string {
   }
   if (analysis.visible_text?.length) {
     parts.push(`Visible text: ${analysis.visible_text.join(" | ")}`);
+  }
+  if (analysis.shot_types?.length) {
+    parts.push(
+      `Shots: ${analysis.shot_types.map((s) => `${s.type}×${s.count}`).join(", ")}`,
+    );
+  }
+  if (analysis.framing_variety) parts.push(`Framing variety: ${analysis.framing_variety}`);
+  if (analysis.camera_movement) parts.push(`Camera: ${analysis.camera_movement}`);
+  if (typeof analysis.number_of_distinct_scenes === "number") {
+    parts.push(`Scenes: ${analysis.number_of_distinct_scenes}`);
   }
   if (analysis.suggested_hooks?.length) {
     parts.push(`Hook ideas: ${analysis.suggested_hooks.join(" / ")}`);

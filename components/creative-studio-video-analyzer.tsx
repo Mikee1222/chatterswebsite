@@ -10,6 +10,15 @@ import * as React from "react";
 import { AlertTriangle, Film, Loader2 } from "lucide-react";
 import { aHashFromImageData } from "@/lib/video-frame-hash";
 import {
+  blankReplacementOffsets,
+  clampSeekTime,
+  frameCountForDuration,
+  isTechnicallyBlankImageData,
+  MAX_VIDEO_SAMPLE_FRAMES,
+  sampleTimestamps,
+  type VideoSamplingMeta,
+} from "@/lib/video-frame-sampling";
+import {
   manualDescriptionToIdeaContext,
   NEUTRAL_ANALYSIS_REFUSAL_MESSAGE,
 } from "@/lib/video-analysis-refusal";
@@ -34,6 +43,7 @@ type SampledFrame = {
   hash: string;
   timeSec: number;
   previewUrl: string;
+  byteLength: number;
 };
 
 type PriorMatch = {
@@ -42,34 +52,69 @@ type PriorMatch = {
   kind: "analysed" | "could_not_analyse";
 };
 
-const MAX_SAMPLE_FRAMES = 10;
+const MAX_SAMPLE_FRAMES = MAX_VIDEO_SAMPLE_FRAMES;
 const MAX_EDGE = 768;
-const MIN_SAMPLE_FRAMES = 4;
 
-function sampleTimestamps(duration: number, count: number): number[] {
-  const n = Math.max(1, Math.min(MAX_SAMPLE_FRAMES, count));
-  if (n === 1) return [Math.min(0.05, Math.max(0, duration * 0.5))];
-  const times: number[] = [];
-  for (let i = 0; i < n; i++) {
-    // Evenly across whole timeline including near start / middle / end
-    const t = (i / (n - 1)) * Math.max(0, duration - 0.05);
-    times.push(Math.max(0, Math.min(duration - 0.05, t)));
+type CaptureResult = {
+  frame: SampledFrame;
+  /** True when ImageData variance was near-uniform (technical blank). */
+  blank: boolean;
+};
+
+async function captureAt(
+  video: HTMLVideoElement,
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  timeSec: number,
+): Promise<CaptureResult> {
+  await seek(video, timeSec);
+
+  const vw = video.videoWidth || 720;
+  const vh = video.videoHeight || 1280;
+  const scale = Math.min(1, MAX_EDGE / Math.max(vw, vh));
+  canvas.width = Math.max(1, Math.round(vw * scale));
+  canvas.height = Math.max(1, Math.round(vh * scale));
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+  const b64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
+
+  let hash = "";
+  let blank = false;
+  const hashCanvas = document.createElement("canvas");
+  hashCanvas.width = 32;
+  hashCanvas.height = 32;
+  const hctx = hashCanvas.getContext("2d", { willReadFrequently: true });
+  if (hctx) {
+    hctx.drawImage(canvas, 0, 0, 32, 32);
+    const img = hctx.getImageData(0, 0, 32, 32);
+    hash = aHashFromImageData(img);
+    // Technical blank-frame check, not content filter.
+    blank = isTechnicallyBlankImageData(img);
   }
-  return times;
-}
 
-function frameCountForDuration(duration: number): number {
-  if (duration >= 90) return 10;
-  if (duration >= 45) return 9;
-  if (duration >= 20) return 8;
-  if (duration >= 10) return 7;
-  return Math.max(MIN_SAMPLE_FRAMES, 6);
+  return {
+    blank,
+    frame: {
+      jpeg: b64,
+      hash,
+      timeSec,
+      previewUrl: `data:image/jpeg;base64,${b64}`,
+      byteLength: b64.length,
+    },
+  };
 }
 
 async function extractFramesAtTimes(
   file: File,
   times: number[],
-): Promise<{ frames: SampledFrame[]; duration: number }> {
+  opts?: { replaceBlanks?: boolean },
+): Promise<{
+  frames: SampledFrame[];
+  duration: number;
+  blankFramesReplaced: number;
+  seekTimestamps: number[];
+}> {
   const url = URL.createObjectURL(file);
   try {
     const video = document.createElement("video");
@@ -90,39 +135,34 @@ async function extractFramesAtTimes(
     if (!ctx) throw new Error("Canvas unsupported");
 
     const frames: SampledFrame[] = [];
+    const seekTimestamps: number[] = [];
+    let blankFramesReplaced = 0;
+    const replaceBlanks = opts?.replaceBlanks !== false;
+
     for (const t of times) {
-      await seek(video, t);
+      let chosen = await captureAt(video, canvas, ctx, t);
+      let usedTime = t;
 
-      const vw = video.videoWidth || 720;
-      const vh = video.videoHeight || 1280;
-      const scale = Math.min(1, MAX_EDGE / Math.max(vw, vh));
-      canvas.width = Math.max(1, Math.round(vw * scale));
-      canvas.height = Math.max(1, Math.round(vh * scale));
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-      const b64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
-
-      let hash = "";
-      const hashCanvas = document.createElement("canvas");
-      hashCanvas.width = 32;
-      hashCanvas.height = 32;
-      const hctx = hashCanvas.getContext("2d", { willReadFrequently: true });
-      if (hctx) {
-        hctx.drawImage(canvas, 0, 0, 32, 32);
-        const img = hctx.getImageData(0, 0, 32, 32);
-        hash = aHashFromImageData(img);
+      // Technical blank-frame check, not content filter — replace with nearest informative frame.
+      if (replaceBlanks && chosen.blank) {
+        for (const off of blankReplacementOffsets()) {
+          const alt = clampSeekTime(t + off, duration);
+          if (Math.abs(alt - t) < 0.04) continue;
+          const candidate = await captureAt(video, canvas, ctx, alt);
+          if (!candidate.blank) {
+            chosen = candidate;
+            usedTime = alt;
+            blankFramesReplaced += 1;
+            break;
+          }
+        }
       }
 
-      frames.push({
-        jpeg: b64,
-        hash,
-        timeSec: t,
-        previewUrl: `data:image/jpeg;base64,${b64}`,
-      });
+      frames.push({ ...chosen.frame, timeSec: usedTime });
+      seekTimestamps.push(usedTime);
     }
 
-    return { frames, duration };
+    return { frames, duration, blankFramesReplaced, seekTimestamps };
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -171,6 +211,9 @@ export function CreativeStudioVideoAnalyzer({
   const [videoFile, setVideoFile] = React.useState<File | null>(null);
   const [scrubTime, setScrubTime] = React.useState(0);
   const [feedbackNote, setFeedbackNote] = React.useState<string | null>(null);
+  const [lastSamplingMeta, setLastSamplingMeta] = React.useState<VideoSamplingMeta | null>(
+    null,
+  );
 
   // Manual describe form
   const [manualWhat, setManualWhat] = React.useState("");
@@ -205,11 +248,23 @@ export function CreativeStudioVideoAnalyzer({
     setFeedbackNote(null);
   }
 
-  async function runAnalysis(framesToSend: SampledFrame[]) {
+  async function runAnalysis(
+    framesToSend: SampledFrame[],
+    samplingMeta?: VideoSamplingMeta | null,
+  ) {
     if (!framesToSend.length || !modelId) return;
     setBusy(true);
     resetResultState();
     setStatus("Analysing frames (video stays local)…");
+    const meta: VideoSamplingMeta = samplingMeta ??
+      lastSamplingMeta ?? {
+        duration_sec: duration,
+        seek_timestamps_sec: framesToSend.map((f) => f.timeSec),
+        frames_requested: framesToSend.length,
+        frames_analysed: framesToSend.length,
+        frame_byte_lengths: framesToSend.map((f) => f.byteLength ?? f.jpeg.length),
+        blank_frames_replaced: 0,
+      };
     try {
       const res = await fetch("/api/creative-studio/analyze-video", {
         method: "POST",
@@ -219,6 +274,7 @@ export function CreativeStudioVideoAnalyzer({
           frames: framesToSend.map((f) => f.jpeg),
           frameHashes: framesToSend.map((f) => f.hash),
           coverThumbnailBase64: framesToSend[0]?.jpeg,
+          samplingMeta: meta,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -314,12 +370,26 @@ export function CreativeStudioVideoAnalyzer({
 
       const count = frameCountForDuration(dur);
       const times = sampleTimestamps(dur, count);
-      const { frames: sampled, duration: d } = await extractFramesAtTimes(file, times);
+      const {
+        frames: sampled,
+        duration: d,
+        blankFramesReplaced,
+        seekTimestamps,
+      } = await extractFramesAtTimes(file, times, { replaceBlanks: true });
       setDuration(d);
       setFrames(sampled);
       setSelected(new Set(sampled.map((_, i) => i)));
       setScrubTime(0);
-      await runAnalysis(sampled);
+      const meta: VideoSamplingMeta = {
+        duration_sec: d,
+        seek_timestamps_sec: seekTimestamps,
+        frames_requested: count,
+        frames_analysed: sampled.length,
+        frame_byte_lengths: sampled.map((f) => f.byteLength),
+        blank_frames_replaced: blankFramesReplaced,
+      };
+      setLastSamplingMeta(meta);
+      await runAnalysis(sampled, meta);
     } catch {
       setBusy(false);
       setStatus(null);
@@ -412,8 +482,8 @@ export function CreativeStudioVideoAnalyzer({
 
       <div>
         <p className="mb-3 text-sm text-white/55">
-          Drop or choose a local video. Frames are sampled in your browser (up to{" "}
-          {MAX_SAMPLE_FRAMES} JPEGs across the timeline, max 768px). The video file is never
+          Drop or choose a local video. Frames are sampled in your browser (10+ JPEGs across
+          the timeline, up to {MAX_SAMPLE_FRAMES}, max 768px). The video file is never
           uploaded. Faces are never identified.
         </p>
         <label

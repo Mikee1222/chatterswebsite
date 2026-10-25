@@ -22,6 +22,14 @@ export async function POST(req: Request) {
     frames?: string[];
     frameHashes?: string[];
     coverThumbnailBase64?: string;
+    samplingMeta?: {
+      duration_sec?: number;
+      seek_timestamps_sec?: number[];
+      frames_requested?: number;
+      frames_analysed?: number;
+      frame_byte_lengths?: number[];
+      blank_frames_replaced?: number;
+    };
   };
 
   const modelId = body.modelId?.trim();
@@ -36,9 +44,9 @@ export async function POST(req: Request) {
     );
   }
 
-  // Reject oversized payloads (approx > 5MB total base64 for up to 10 frames)
+  // Reject oversized payloads (approx > 7MB total base64 for up to 14 frames)
   const totalLen = body.frames.reduce((n, f) => n + (f?.length ?? 0), 0);
-  if (totalLen > 5_500_000) {
+  if (totalLen > 7_500_000) {
     return Response.json({ error: "frames too large" }, { status: 413 });
   }
 
@@ -49,6 +57,7 @@ export async function POST(req: Request) {
       frames: body.frames,
       frameHashes: Array.isArray(body.frameHashes) ? body.frameHashes.map(String) : [],
       coverThumbnailBase64: body.coverThumbnailBase64,
+      samplingMeta: body.samplingMeta ?? null,
     });
 
     const ideaContext = analysisToIdeaContext(result.analysis);

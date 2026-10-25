@@ -8,11 +8,18 @@
 import "server-only";
 
 import {
-  AI_FAST_MODEL,
+  AI_ASSISTANT_MODEL,
   callAnthropicVision,
   type AnthropicImageSource,
 } from "@/lib/ai-assistant";
-import { hashSetSimilarity } from "@/lib/video-frame-hash";
+import {
+  VIDEO_ANALYSIS_MAX_TOKENS,
+  VIDEO_ANALYSIS_SYSTEM_PROMPT,
+  VIDEO_ANALYSIS_TOOL,
+  VIDEO_ANALYSIS_TOOL_NAME,
+} from "@/lib/video-analysis-schema";
+import { informativeHashSetSimilarity } from "@/lib/video-frame-hash";
+import { MAX_VIDEO_SAMPLE_FRAMES } from "@/lib/video-frame-sampling";
 import {
   analysisToIdeaContext,
   NEUTRAL_ANALYSIS_REFUSAL_MESSAGE,
@@ -26,14 +33,16 @@ import {
   getPersonaByModelId,
   isPersonaAdult,
 } from "@/services/model-personas";
-import { logAiUsage } from "@/services/ai-usage-log";
-import type { VideoAnalysisJson } from "@/lib/creative-studio-types";
+import type {
+  VideoAnalysisJson,
+  VideoSamplingMetaJson,
+} from "@/lib/creative-studio-types";
 
-export type { VideoAnalysisJson };
+export type { VideoAnalysisJson, VideoSamplingMetaJson };
 
 const TABLE = "creative_studio_video_analyses";
 const DUPLICATE_THRESHOLD = 72; // % similarity
-export const MAX_VIDEO_ANALYSIS_FRAMES = 10;
+export const MAX_VIDEO_ANALYSIS_FRAMES = MAX_VIDEO_SAMPLE_FRAMES;
 
 export type VideoAnalysisStatus = "success" | "refused" | "failed";
 export type VideoAnalysisUserFeedback = "ok" | "flag_wrong" | "wrong_refusal";
@@ -48,6 +57,7 @@ export type VideoAnalysisRow = {
   created_by: string;
   created_at: string;
   user_feedback: VideoAnalysisUserFeedback | null;
+  sampling_meta: VideoSamplingMetaJson | null;
 };
 
 export type PriorAttemptMatch = {
@@ -72,6 +82,11 @@ function mapFeedback(v: unknown): VideoAnalysisUserFeedback | null {
   return null;
 }
 
+function mapSamplingMeta(v: unknown): VideoSamplingMetaJson | null {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null;
+  return v as VideoSamplingMetaJson;
+}
+
 function mapRow(row: Record<string, unknown>): VideoAnalysisRow {
   const hashes = Array.isArray(row.frame_hashes)
     ? (row.frame_hashes as unknown[]).map((h) => String(h))
@@ -90,7 +105,16 @@ function mapRow(row: Record<string, unknown>): VideoAnalysisRow {
     created_by: asString(row.created_by),
     created_at: asString(row.created_at),
     user_feedback: mapFeedback(row.user_feedback),
+    sampling_meta: mapSamplingMeta(row.sampling_meta),
   };
+}
+
+function statusForParsed(reason: string, refused: boolean): VideoAnalysisStatus {
+  if (!refused) return "success";
+  if (reason === "frames_unreadable" || reason === "empty" || reason === "all_frames_failed") {
+    return "failed";
+  }
+  return "refused";
 }
 
 async function findBestHashMatch(
@@ -103,7 +127,7 @@ async function findBestHashMatch(
   const { data, error } = await sb
     .from(TABLE)
     .select(
-      "id, model_id, frame_hashes, analysis, cover_thumbnail_base64, status, created_by, created_at, user_feedback",
+      "id, model_id, frame_hashes, analysis, cover_thumbnail_base64, status, created_by, created_at, user_feedback, sampling_meta",
     )
     .eq("model_id", modelId)
     .in("status", statuses)
@@ -114,7 +138,8 @@ async function findBestHashMatch(
   let best: { row: VideoAnalysisRow; similarity: number } | null = null;
   for (const raw of data ?? []) {
     const row = mapRow(raw as Record<string, unknown>);
-    const sim = hashSetSimilarity(hashes, row.frame_hashes);
+    // Only informative hashes; low-info (all 0s / all 1s) ignored
+    const sim = informativeHashSetSimilarity(hashes, row.frame_hashes);
     if (sim >= DUPLICATE_THRESHOLD && (!best || sim > best.similarity)) {
       best = { row, similarity: sim };
     }
@@ -141,10 +166,11 @@ export async function findPriorFailedAttempt(
 export async function analyzeVideoFrames(input: {
   modelId: string;
   userId: string;
-  /** JPEG base64 frames (no data: prefix), max ~10 */
+  /** JPEG base64 frames (no data: prefix), max ~14 */
   frames: string[];
   frameHashes: string[];
   coverThumbnailBase64?: string;
+  samplingMeta?: VideoSamplingMetaJson | null;
 }): Promise<{
   analysis: VideoAnalysisJson;
   duplicate?: PriorAttemptMatch;
@@ -152,6 +178,7 @@ export async function analyzeVideoFrames(input: {
   generationDisabledReason?: string;
   allowlistKeysUsed: string[];
   refused: boolean;
+  visionModel?: string;
 }> {
   await assertCreativeRateLimit(input.userId);
 
@@ -172,6 +199,7 @@ export async function analyzeVideoFrames(input: {
 
   const hashes = input.frameHashes.slice(0, MAX_VIDEO_ANALYSIS_FRAMES);
 
+  // Duplicate banner: status=success only + informative hashes
   const successDup = await findDuplicateAnalysis(input.modelId, hashes);
   const failedPrior = successDup
     ? null
@@ -201,6 +229,14 @@ export async function analyzeVideoFrames(input: {
     }))
     .filter((img) => img.base64.length > 0);
 
+  const baseMeta: VideoSamplingMetaJson = {
+    ...(input.samplingMeta ?? {}),
+    frames_analysed: images.length,
+    frame_byte_lengths:
+      input.samplingMeta?.frame_byte_lengths ??
+      images.map((img) => img.base64.length),
+  };
+
   if (!images.length) {
     const analysisId = await persistAttempt({
       modelId: input.modelId,
@@ -213,6 +249,7 @@ export async function analyzeVideoFrames(input: {
       status: "failed",
       rawModelResponse: null,
       coverThumbnailBase64: undefined,
+      samplingMeta: { ...baseMeta, vision_model: AI_ASSISTANT_MODEL },
     });
     return {
       analysis: {
@@ -223,49 +260,46 @@ export async function analyzeVideoFrames(input: {
       refused: true,
       allowlistKeysUsed: [],
       duplicate: priorMatch,
+      visionModel: AI_ASSISTANT_MODEL,
     };
   }
 
-  const system = [
-    "You analyse short social-video frame samples for a creative studio.",
-    "NEVER identify, name, or guess the identity of any person from faces.",
-    "Describe setting, outfit, activity, mood, props, visible text, and quality issues only.",
-    "Return ONLY JSON with keys: setting, outfit, activity, mood_vibe, objects_props (array),",
-    "visible_text (array), quality_flags {blur, dark, wrong_orientation, not_9_16, watermark},",
-    "suggested_hooks (array of short strings), suggested_caption_angles (array).",
-    "Keep descriptions platform-safe (no nudity/explicit sexual detail).",
-    'If frames are unusable, set refusal:true and refusal_message:"could not analyse, describe manually".',
-  ].join(" ");
+  // Stronger vision model (captions/TOS keep the fast tier elsewhere).
+  const visionModel = AI_ASSISTANT_MODEL;
 
-  // Log counts only — never persona or model response content
   console.info("[creative-studio] video-analyze", {
     modelId: input.modelId,
     feature: "creative_studio_video",
     frameCount: images.length,
     hashCount: hashes.length,
+    visionModel,
+    blankFramesReplaced: baseMeta.blank_frames_replaced ?? 0,
   });
 
+  // Single usage log via callAnthropicVision.recordUsage — do not also logAiUsage.
   const result = await callAnthropicVision({
-    text: "Analyse these evenly spaced video frames. Do not identify people.",
+    text: "Analyse these evenly spaced video frames with submit_video_analysis. Do not identify people.",
     images,
-    system,
-    maxTokens: 900,
-    temperature: 0.2,
-    model: AI_FAST_MODEL,
+    system: VIDEO_ANALYSIS_SYSTEM_PROMPT,
+    maxTokens: VIDEO_ANALYSIS_MAX_TOKENS,
+    temperature: 0,
+    model: visionModel,
     logLabel: "creative_studio_video",
+    tools: [VIDEO_ANALYSIS_TOOL],
+    toolChoice: { type: "tool", name: VIDEO_ANALYSIS_TOOL_NAME },
   });
 
-  void logAiUsage({
-    featureKey: "creative_studio_video",
-    model: result?.model ?? AI_FAST_MODEL,
-    ok: Boolean(result?.text),
-  });
+  const usedModel = result?.model ?? visionModel;
+  const samplingMeta: VideoSamplingMetaJson = {
+    ...baseMeta,
+    vision_model: usedModel,
+  };
 
   const parsed = parseVideoAnalysisModelResponse(result?.text ?? null, {
     allFramesFailed: false,
   });
 
-  const status: VideoAnalysisStatus = parsed.refused ? "refused" : "success";
+  const status = statusForParsed(parsed.reason, parsed.refused);
   const cover =
     status === "success"
       ? input.coverThumbnailBase64
@@ -281,6 +315,7 @@ export async function analyzeVideoFrames(input: {
     status,
     rawModelResponse: parsed.rawModelResponse,
     coverThumbnailBase64: cover,
+    samplingMeta,
   });
 
   return {
@@ -289,6 +324,7 @@ export async function analyzeVideoFrames(input: {
     refused: parsed.refused,
     allowlistKeysUsed: [],
     duplicate: priorMatch,
+    visionModel: usedModel,
   };
 }
 
@@ -300,6 +336,7 @@ async function persistAttempt(input: {
   status: VideoAnalysisStatus;
   rawModelResponse: string | null;
   coverThumbnailBase64?: string;
+  samplingMeta?: VideoSamplingMetaJson | null;
 }): Promise<string | null> {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
@@ -311,6 +348,7 @@ async function persistAttempt(input: {
       cover_thumbnail_base64: input.coverThumbnailBase64 || null,
       created_by: input.userId,
       status: input.status,
+      sampling_meta: input.samplingMeta ?? null,
       // Store raw only for refused/failed — admin pattern review. Never frames/video.
       raw_model_response:
         input.status === "success" ? null : input.rawModelResponse?.slice(0, 8_000) ?? null,
@@ -377,13 +415,14 @@ export async function listVideoAnalysisAdminReview(limit = 50): Promise<
     frame_hash_count: number;
     raw_model_response: string | null;
     analysis: VideoAnalysisJson;
+    sampling_meta: VideoSamplingMetaJson | null;
   }>
 > {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from(TABLE)
     .select(
-      "id, model_id, status, user_feedback, feedback_by, feedback_at, created_by, created_at, frame_hashes, raw_model_response, analysis",
+      "id, model_id, status, user_feedback, feedback_by, feedback_at, created_by, created_at, frame_hashes, raw_model_response, analysis, sampling_meta",
     )
     .or("user_feedback.not.is.null,status.eq.refused,status.eq.failed")
     .order("created_at", { ascending: false })
@@ -409,7 +448,7 @@ export async function listVideoAnalysisAdminReview(limit = 50): Promise<
         row.analysis && typeof row.analysis === "object"
           ? (row.analysis as VideoAnalysisJson)
           : {},
+      sampling_meta: mapSamplingMeta(row.sampling_meta),
     };
   });
 }
-
