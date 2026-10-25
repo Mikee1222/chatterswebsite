@@ -21,7 +21,10 @@ import {
   type PersonaContent,
   type PersonaIntimateDetails,
   type PersonaSocials,
+  type PersonaListSummary,
 } from "@/lib/persona-types";
+
+export type { PersonaListSummary };
 
 const TABLE = "model_personas";
 const REVISIONS = "model_persona_revisions";
@@ -113,23 +116,78 @@ export async function getPersonaByModelId(modelId: string): Promise<ModelPersona
   return mapPersona(data as Record<string, unknown>);
 }
 
-export async function listPersonasSummary(): Promise<
-  Array<{ id: string; model_id: string; updated_at: string; last_updated_by_name: string; has_birth_date: boolean }>
-> {
+export async function listPersonasSummary(): Promise<PersonaListSummary[]> {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from(TABLE)
-    .select("id, model_id, updated_at, last_updated_by_name, personal_info")
+    .select(
+      "id, model_id, updated_at, last_updated_by_name, bio, personal_info, chatting, lifestyle, content, socials",
+    )
     .order("updated_at", { ascending: false });
   if (error) throw new Error(`listPersonasSummary: ${error.message}`);
+
+  const ids = (data ?? []).map((row) => asString((row as { id?: unknown }).id)).filter(Boolean);
+  const liveCountByPersona = new Map<string, number>();
+  if (ids.length) {
+    const { data: liveRows } = await sb
+      .from(LIVE)
+      .select("persona_id")
+      .eq("is_live", true)
+      .in("persona_id", ids);
+    for (const row of liveRows ?? []) {
+      const pid = asString((row as { persona_id?: unknown }).persona_id);
+      if (!pid) continue;
+      liveCountByPersona.set(pid, (liveCountByPersona.get(pid) ?? 0) + 1);
+    }
+  }
+
+  // Import scoring lazily via inline to avoid circular deps with client lib —
+  // duplicate the same heuristics used in lib/persona-completeness.
+  const filled = (v: unknown): boolean => {
+    if (v == null || v === "") return false;
+    if (Array.isArray(v)) return v.length > 0;
+    if (typeof v === "boolean") return true;
+    if (typeof v === "object") {
+      return Object.values(v as Record<string, unknown>).some(filled);
+    }
+    return String(v).trim().length > 0;
+  };
+  const sectionScore = (obj: Record<string, unknown>, liveCount: number, isBio?: boolean, isLive?: boolean) => {
+    if (isLive) return liveCount > 0 ? 1 : 0;
+    if (isBio) return filled(obj.bio) ? 1 : 0;
+    const entries = Object.entries(obj).filter(([, v]) => filled(v));
+    return Math.min(1, entries.length / 8);
+  };
+
   return (data ?? []).map((row) => {
-    const pi = asObj((row as { personal_info?: unknown }).personal_info, {} as PersonaPersonalInfo);
+    const r = row as Record<string, unknown>;
+    const id = asString(r.id);
+    const pi = asObj(r.personal_info, {} as PersonaPersonalInfo);
+    const chatting = asObj(r.chatting, {} as PersonaChatting);
+    const liveCount = liveCountByPersona.get(id) ?? 0;
+    const scores: Record<string, number> = {
+      bio: sectionScore({ bio: asString(r.bio) }, liveCount, true),
+      personal_info: sectionScore(pi as Record<string, unknown>, liveCount),
+      chatting: sectionScore(chatting as Record<string, unknown>, liveCount),
+      lifestyle: sectionScore(asObj(r.lifestyle, {} as PersonaLifestyle) as Record<string, unknown>, liveCount),
+      content: sectionScore(asObj(r.content, {} as PersonaContent) as Record<string, unknown>, liveCount),
+      socials: sectionScore(asObj(r.socials, {} as PersonaSocials) as Record<string, unknown>, liveCount),
+      live_updates: sectionScore({}, liveCount, false, true),
+    };
+    const vals = Object.values(scores);
+    const completeness = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     return {
-      id: asString((row as { id?: unknown }).id),
-      model_id: asString((row as { model_id?: unknown }).model_id),
-      updated_at: asString((row as { updated_at?: unknown }).updated_at),
-      last_updated_by_name: asString((row as { last_updated_by_name?: unknown }).last_updated_by_name),
+      id,
+      model_id: asString(r.model_id),
+      updated_at: asString(r.updated_at),
+      last_updated_by_name: asString(r.last_updated_by_name),
       has_birth_date: Boolean(pi.birth_date?.trim()),
+      is_adult: isPersonaAdult(pi),
+      persona_type: asString(chatting.persona_type),
+      has_live_updates: liveCount > 0,
+      live_update_count: liveCount,
+      completeness,
+      section_scores: scores,
     };
   });
 }

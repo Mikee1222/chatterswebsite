@@ -294,6 +294,23 @@ export const PERSONA_SECTION_LABELS: Record<PersonaSectionKey, string> = {
   live_updates: "Live Updates",
 };
 
+/** List-page summary — never includes sensitive section content. */
+export type PersonaListSummary = {
+  id: string;
+  model_id: string;
+  updated_at: string;
+  last_updated_by_name: string;
+  has_birth_date: boolean;
+  is_adult: boolean;
+  persona_type: string;
+  has_live_updates: boolean;
+  live_update_count: number;
+  /** 0–1 using non-sensitive sections only (safe for all viewers). */
+  completeness: number;
+  /** Per-section scores; sensitive keys omitted from payload. */
+  section_scores: Record<string, number>;
+};
+
 /** Fields that feed AI (for UI tooltips). Sensitive sections never listed. */
 export const PERSONA_AI_FEED_HINTS: Partial<Record<PersonaSectionKey, string>> = {
   bio: "Feeds AI captions & text-on-screen voice",

@@ -25,6 +25,8 @@ type Props = {
   modelId: string;
   onUseForCaptions: (ctx: string) => void;
   onUseForTos: (ctx: string) => void;
+  /** When true, block new analysis (e.g. birth date / 18+ missing). */
+  disabled?: boolean;
 };
 
 type SampledFrame = {
@@ -153,6 +155,7 @@ export function CreativeStudioVideoAnalyzer({
   modelId,
   onUseForCaptions,
   onUseForTos,
+  disabled = false,
 }: Props) {
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<string | null>(null);
@@ -400,29 +403,43 @@ export function CreativeStudioVideoAnalyzer({
 
   return (
     <div className="space-y-4">
+      {/* Mode: video file only (Instagram link mode not shipped) */}
+      <div className="inline-flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
+        <span className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-[#FF1493]/40 bg-[#FF1493]/15 px-3.5 text-xs font-medium text-white">
+          <Film className="h-3.5 w-3.5" /> Video file
+        </span>
+      </div>
+
       <div>
-        <p className="mb-2 text-sm text-white/55">
-          Choose a local video. Frames are sampled in your browser (up to {MAX_SAMPLE_FRAMES}{" "}
-          JPEGs across the timeline, max 768px). The video file is never uploaded. Faces are
-          never identified.
+        <p className="mb-3 text-sm text-white/55">
+          Drop or choose a local video. Frames are sampled in your browser (up to{" "}
+          {MAX_SAMPLE_FRAMES} JPEGs across the timeline, max 768px). The video file is never
+          uploaded. Faces are never identified.
         </p>
         <label
           className={cn(
-            VA_BTN_SECONDARY,
-            "inline-flex cursor-pointer items-center gap-2 px-4 py-2.5 text-sm",
-            busy && "pointer-events-none opacity-50",
+            "flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-[#D4AF8C]/35 bg-[#D4AF8C]/[0.04] px-4 py-8 text-center transition",
+            (busy || disabled || !modelId) && "pointer-events-none opacity-50",
           )}
         >
-          <Film className="h-4 w-4" />
-          {busy ? "Working…" : "Choose video"}
+          <Film className="h-8 w-8 text-[#D4AF8C]/80" />
+          <span className="text-sm font-medium text-white/80">
+            {busy ? "Working…" : "Drop video or tap to choose"}
+          </span>
+          <span className="text-[11px] text-white/35">MP4, MOV, WebM · stays on device</span>
           <input
             type="file"
             accept="video/*"
             className="hidden"
-            disabled={busy || !modelId}
+            disabled={busy || disabled || !modelId}
             onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
           />
         </label>
+        {disabled && (
+          <p className="mt-2 text-xs text-amber-200/80">
+            Analysis disabled until birth date / 18+ is set on the persona.
+          </p>
+        )}
       </div>
 
       {busy && (
@@ -507,7 +524,8 @@ export function CreativeStudioVideoAnalyzer({
         </div>
       )}
 
-      {duplicate && (
+      {/* Dup banner only after successful analysis (not on refusal) */}
+      {duplicate && analysis && !analysis.refusal && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100/90">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>
@@ -539,7 +557,29 @@ export function CreativeStudioVideoAnalyzer({
       )}
 
       {analysis && !analysis.refusal && (
-        <div className="space-y-3 rounded-xl border border-white/[0.06] bg-black/25 p-4 text-sm text-white/80">
+        <div className="space-y-3 rounded-2xl border border-white/[0.08] bg-black/30 p-4 text-sm text-white/80 md:p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+            Analysis
+          </p>
+          {analysis.quality_flags && (
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(analysis.quality_flags)
+                .filter(([, v]) => v)
+                .map(([k]) => (
+                  <span
+                    key={k}
+                    className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-100/90"
+                  >
+                    {k.replace(/_/g, " ")}
+                  </span>
+                ))}
+              {!Object.values(analysis.quality_flags).some(Boolean) && (
+                <span className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-100/90">
+                  Quality ok
+                </span>
+              )}
+            </div>
+          )}
           {analysis.setting && (
             <p>
               <span className="text-white/40">Setting · </span>
@@ -576,26 +616,28 @@ export function CreativeStudioVideoAnalyzer({
               {analysis.visible_text.join(" | ")}
             </p>
           ) : null}
-          {analysis.quality_flags && (
-            <p>
-              <span className="text-white/40">Quality · </span>
-              {Object.entries(analysis.quality_flags)
-                .filter(([, v]) => v)
-                .map(([k]) => k.replace(/_/g, " "))
-                .join(", ") || "ok"}
-            </p>
-          )}
           {analysis.suggested_hooks?.length ? (
-            <p>
-              <span className="text-white/40">Hooks · </span>
-              {analysis.suggested_hooks.join(" · ")}
-            </p>
+            <div>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                Hooks
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {analysis.suggested_hooks.map((h) => (
+                  <span
+                    key={h}
+                    className="rounded-lg border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 px-2.5 py-1 text-xs text-[#E8D5B5]"
+                  >
+                    {h}
+                  </span>
+                ))}
+              </div>
+            </div>
           ) : null}
 
           <div className="flex flex-wrap gap-2 pt-2">
             <button
               type="button"
-              className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-xs")}
+              className={cn(VA_BTN_PRIMARY, "min-h-11 px-4 text-xs")}
               onClick={() => onUseForCaptions(ideaContext)}
               disabled={!ideaContext.trim()}
             >
@@ -603,7 +645,7 @@ export function CreativeStudioVideoAnalyzer({
             </button>
             <button
               type="button"
-              className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-xs")}
+              className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 text-xs")}
               onClick={() => onUseForTos(ideaContext)}
               disabled={!ideaContext.trim()}
             >
@@ -613,14 +655,14 @@ export function CreativeStudioVideoAnalyzer({
               <>
                 <button
                   type="button"
-                  className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-xs")}
+                  className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 text-xs")}
                   onClick={() => void sendFeedback("ok")}
                 >
                   Mark as OK
                 </button>
                 <button
                   type="button"
-                  className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-xs")}
+                  className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 text-xs")}
                   onClick={() => void sendFeedback("flag_wrong")}
                 >
                   Flag was wrong
