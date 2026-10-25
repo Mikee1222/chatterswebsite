@@ -1,9 +1,11 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { NEUTRAL_ANALYSIS_REFUSAL_MESSAGE } from "@/lib/video-analysis-refusal";
 import {
   analyzeVideoFrames,
   analysisToIdeaContext,
+  MAX_VIDEO_ANALYSIS_FRAMES,
 } from "@/services/creative-studio-video";
 
 export const maxDuration = 60;
@@ -27,13 +29,16 @@ export async function POST(req: Request) {
   if (!Array.isArray(body.frames) || body.frames.length === 0) {
     return Response.json({ error: "frames required" }, { status: 400 });
   }
-  if (body.frames.length > 8) {
-    return Response.json({ error: "max 8 frames" }, { status: 400 });
+  if (body.frames.length > MAX_VIDEO_ANALYSIS_FRAMES) {
+    return Response.json(
+      { error: `max ${MAX_VIDEO_ANALYSIS_FRAMES} frames` },
+      { status: 400 },
+    );
   }
 
-  // Reject oversized payloads (approx > 4MB total base64)
+  // Reject oversized payloads (approx > 5MB total base64 for up to 10 frames)
   const totalLen = body.frames.reduce((n, f) => n + (f?.length ?? 0), 0);
-  if (totalLen > 4_500_000) {
+  if (totalLen > 5_500_000) {
     return Response.json({ error: "frames too large" }, { status: 413 });
   }
 
@@ -47,20 +52,29 @@ export async function POST(req: Request) {
     });
 
     const ideaContext = analysisToIdeaContext(result.analysis);
+    // Never return raw model refusal text — analysis already sanitised server-side
     return Response.json({
-      ...result,
+      analysis: result.analysis,
+      analysisId: result.analysisId,
+      refused: result.refused,
+      duplicate: result.duplicate,
       ideaContext,
+      generationDisabledReason: result.generationDisabledReason,
+      allowlistKeysUsed: result.allowlistKeysUsed,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Analysis failed";
     const status = msg.includes("Rate limit") ? 429 : 500;
+    // Do not leak internal error text that might echo model refusals
     return Response.json(
       {
-        error: msg,
+        error: status === 429 ? msg : "Analysis failed",
+        refused: true,
         analysis: {
           refusal: true,
-          refusal_message: "could not analyse, describe manually",
+          refusal_message: NEUTRAL_ANALYSIS_REFUSAL_MESSAGE,
         },
+        ideaContext: "",
       },
       { status },
     );
