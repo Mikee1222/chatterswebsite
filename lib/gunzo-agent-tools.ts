@@ -21,6 +21,16 @@ export const GUNZO_READ_TOOL_NAMES = [
   "get_model_revenue",
   "get_model_subscriber_stats",
   "get_model_persona",
+  "list_personas",
+  "get_persona_live_updates",
+  "list_saved_ideas",
+  "get_video_analyses",
+  "lookup_instagram_post",
+  "get_top_performing_posts",
+  "generate_captions",
+  "generate_text_on_screen",
+  "analyse_from_instagram_link",
+  "captions_from_description",
   "get_instagram_insights_summary",
   "get_link_analytics",
   "get_va_stats",
@@ -45,6 +55,15 @@ export const GUNZO_ACTION_TOOL_NAMES = [
   "toggle_notification_category",
   "adjust_winner_thresholds",
   "create_weekly_program_shift",
+  "create_persona",
+  "update_persona_fields",
+  "add_live_update",
+  "update_live_update",
+  "deactivate_live_update",
+  "save_ideas",
+  "rate_idea",
+  "create_posting_brief_draft",
+  "add_post_to_posting_brief_draft",
 ] as const;
 
 export type GunzoReadToolName = (typeof GUNZO_READ_TOOL_NAMES)[number];
@@ -77,6 +96,66 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     requiredPermission: PERMISSIONS.PERSONAS_VIEW,
     description:
       "Allowlisted Model Persona fields for chatting/creative context (never physique or intimate details)",
+  },
+  list_personas: {
+    name: "list_personas",
+    kind: "read",
+    requiredPermission: PERMISSIONS.PERSONAS_VIEW,
+    description: "Persona completeness, empty sections, last updated, live-update counts (no content)",
+  },
+  get_persona_live_updates: {
+    name: "get_persona_live_updates",
+    kind: "read",
+    requiredPermission: PERMISSIONS.PERSONAS_VIEW,
+    description: "List live updates for a model persona (active + inactive)",
+  },
+  list_saved_ideas: {
+    name: "list_saved_ideas",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Saved Creative Studio ideas (captions/TOS) for a model",
+  },
+  get_video_analyses: {
+    name: "get_video_analyses",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Prior video analyses graded fields only (never raw frames)",
+  },
+  lookup_instagram_post: {
+    name: "lookup_instagram_post",
+    kind: "read",
+    requiredPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
+    description: "Lookup IG post by link (synced first; Phase A external API if available)",
+  },
+  get_top_performing_posts: {
+    name: "get_top_performing_posts",
+    kind: "read",
+    requiredPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
+    description: "Top performing IG posts + winner list for a model",
+  },
+  generate_captions: {
+    name: "generate_captions",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Generate platform-safe captions via Creative Studio (same guardrails)",
+  },
+  generate_text_on_screen: {
+    name: "generate_text_on_screen",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Generate text-on-screen via Creative Studio (same guardrails)",
+  },
+  analyse_from_instagram_link: {
+    name: "analyse_from_instagram_link",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Analyse synced IG post cover (graded attire/platform_risk)",
+  },
+  captions_from_description: {
+    name: "captions_from_description",
+    kind: "read",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Captions from a manual video/description (no file upload)",
   },
   get_instagram_insights_summary: {
     name: "get_instagram_insights_summary",
@@ -207,6 +286,60 @@ export const GUNZO_TOOL_META: Record<GunzoToolName, GunzoToolMeta> = {
     requiredPermission: PERMISSIONS.CHATTER_PROGRAM_MANAGE,
     description: "Create a chatter weekly program shift (with conflict detection)",
   },
+  create_persona: {
+    name: "create_persona",
+    kind: "action",
+    requiredPermission: PERMISSIONS.PERSONAS_MANAGE,
+    description: "Create skeleton persona (non-sensitive basics)",
+  },
+  update_persona_fields: {
+    name: "update_persona_fields",
+    kind: "action",
+    requiredPermission: PERMISSIONS.PERSONAS_MANAGE,
+    description: "Update non-sensitive persona section fields (revision snapshot)",
+  },
+  add_live_update: {
+    name: "add_live_update",
+    kind: "action",
+    requiredPermission: PERMISSIONS.PERSONAS_MANAGE,
+    description: "Add persona live update (max 7 active)",
+  },
+  update_live_update: {
+    name: "update_live_update",
+    kind: "action",
+    requiredPermission: PERMISSIONS.PERSONAS_MANAGE,
+    description: "Update an existing live update",
+  },
+  deactivate_live_update: {
+    name: "deactivate_live_update",
+    kind: "action",
+    requiredPermission: PERMISSIONS.PERSONAS_MANAGE,
+    description: "Deactivate a live update (never delete)",
+  },
+  save_ideas: {
+    name: "save_ideas",
+    kind: "action",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Save caption/TOS ideas to Creative Studio library",
+  },
+  rate_idea: {
+    name: "rate_idea",
+    kind: "action",
+    requiredPermission: PERMISSIONS.CREATIVE_STUDIO_USE,
+    description: "Rate or favourite saved ideas (batch OK)",
+  },
+  create_posting_brief_draft: {
+    name: "create_posting_brief_draft",
+    kind: "action",
+    requiredPermission: PERMISSIONS.POSTING_BRIEFS_MANAGE,
+    description: "Create posting brief without notifying VAs (draft-like)",
+  },
+  add_post_to_posting_brief_draft: {
+    name: "add_post_to_posting_brief_draft",
+    kind: "action",
+    requiredPermission: PERMISSIONS.POSTING_BRIEFS_MANAGE,
+    description: "Add caption/TOS post row to an existing posting brief",
+  },
 };
 
 export function isGunzoToolName(name: string): name is GunzoToolName {
@@ -289,7 +422,7 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
   {
     name: "get_model_persona",
     description:
-      "Fetch the allowlisted Model Persona for one model (bio, personal info, chatting voice, lifestyle, content niche/red lines, socials, active live updates). NEVER returns physique or intimate details. Religion/ideology/relationship/orientation only when tagged usable for AI. Use when drafting chatter voice guidance or creative direction grounded in the persona.",
+      "Allowlisted Model Persona compact summary (never physique/intimate). Optional sections filter. For creative direction + chatting voice.",
     input_schema: {
       type: "object",
       properties: {
@@ -297,8 +430,148 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
           type: "string",
           description: "Model name (e.g. Lina, Diana) or record id (required)",
         },
+        sections: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional section keys e.g. bio, chatting, content, lifestyle, socials, live_updates",
+        },
       },
       required: ["model_name"],
+    },
+  },
+  {
+    name: "list_personas",
+    description:
+      "List all personas: completeness, empty sections, last updated, live-update count. No persona text content.",
+    input_schema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_persona_live_updates",
+    description: "List live updates for a model's persona (active + inactive). Max 7 active.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string", description: "Model name or record id" },
+      },
+      required: ["model_name"],
+    },
+  },
+  {
+    name: "list_saved_ideas",
+    description: "Saved Creative Studio ideas for a model (captions / text-on-screen).",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        idea_type: { type: "string", enum: ["caption", "text_on_screen"] },
+        favourite_only: { type: "boolean" },
+        thumbs: { type: "integer", enum: [-1, 1] },
+      },
+      required: ["model_name"],
+    },
+  },
+  {
+    name: "get_video_analyses",
+    description:
+      "Prior video analyses for a model — graded attire/platform_risk/hooks only. Never frames. For video file uploads, deep-link to Creative Studio Video Analyzer instead.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        limit: { type: "integer" },
+      },
+      required: ["model_name"],
+    },
+  },
+  {
+    name: "lookup_instagram_post",
+    description:
+      "Lookup an Instagram post by permalink. Uses synced ClarioSuite data first. If not synced and Phase A Graph API unavailable, say so and suggest manual description path.",
+    input_schema: {
+      type: "object",
+      properties: {
+        link: { type: "string", description: "Instagram post/reel URL" },
+        model_name: { type: "string", description: "Optional model filter" },
+      },
+      required: ["link"],
+    },
+  },
+  {
+    name: "get_top_performing_posts",
+    description: "Top performing IG posts + winner submissions for grounded creative direction.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        limit: { type: "integer" },
+      },
+      required: ["model_name"],
+    },
+  },
+  {
+    name: "generate_captions",
+    description:
+      "Generate platform-safe captions via the same Creative Studio pipeline (persona allowlist, avoid-words, red lines, cache, rate limits). Requires creative_studio:use. Returns variations for UI copy cards.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        platform: { type: "string", description: "Default Instagram" },
+        format: { type: "string", description: "e.g. Reel, Story" },
+        idea_context: { type: "string" },
+        tone_tweak: { type: "string" },
+        variations: { type: "integer" },
+        hashtag_count: { type: "integer" },
+        output_language: { type: "string" },
+      },
+      required: ["model_name"],
+    },
+  },
+  {
+    name: "generate_text_on_screen",
+    description: "Generate text-on-screen via Creative Studio (same guardrails as Studio).",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        idea_context: { type: "string" },
+        tone_tweak: { type: "string" },
+        max_chars: { type: "integer" },
+        variations: { type: "integer" },
+        output_language: { type: "string" },
+      },
+      required: ["model_name"],
+    },
+  },
+  {
+    name: "analyse_from_instagram_link",
+    description:
+      "Analyse a synced Instagram post cover for graded attire/platform_risk (same refusal handling as Video Analyzer). No raw frames returned. Video files → deep-link Creative Studio.",
+    input_schema: {
+      type: "object",
+      properties: {
+        link: { type: "string" },
+        model_name: { type: "string" },
+      },
+      required: ["link", "model_name"],
+    },
+  },
+  {
+    name: "captions_from_description",
+    description:
+      "Manual path: generate captions from a text description of the video (when no file/cover). Same Studio caption pipeline.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        description: { type: "string", description: "Manual description of the video/content" },
+        platform: { type: "string" },
+        format: { type: "string" },
+        tone_tweak: { type: "string" },
+        variations: { type: "integer" },
+        output_language: { type: "string" },
+      },
+      required: ["model_name", "description"],
     },
   },
   {
@@ -659,6 +932,140 @@ export const GUNZO_AGENT_TOOLS: AnthropicToolDef[] = [
       required: ["chatter_id", "chatter_name", "model_ids", "day", "shift_type", "week_start"],
     },
   },
+  {
+    name: "create_persona",
+    description: "Propose creating a skeleton persona for a model (non-sensitive). Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: { model_name: { type: "string" } },
+      required: ["model_name"],
+    },
+  },
+  {
+    name: "update_persona_fields",
+    description:
+      "Propose updating non-sensitive persona fields. NEVER physique or intimate_details. Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        section: {
+          type: "string",
+          enum: ["bio", "personal_info", "chatting", "lifestyle", "content", "socials"],
+        },
+        fields: { type: "object", additionalProperties: true },
+      },
+      required: ["model_name", "section", "fields"],
+    },
+  },
+  {
+    name: "add_live_update",
+    description: "Propose adding a live update (max 7 active). Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        content: { type: "string" },
+        status: { type: "string" },
+        starts_at: { type: "string" },
+        ends_at: { type: "string" },
+      },
+      required: ["model_name", "content", "starts_at", "ends_at"],
+    },
+  },
+  {
+    name: "update_live_update",
+    description: "Propose updating a live update. Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        live_update_id: { type: "string" },
+        content: { type: "string" },
+        status: { type: "string" },
+        starts_at: { type: "string" },
+        ends_at: { type: "string" },
+      },
+      required: ["live_update_id"],
+    },
+  },
+  {
+    name: "deactivate_live_update",
+    description: "Propose deactivating a live update (never delete). Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: { live_update_id: { type: "string" } },
+      required: ["live_update_id"],
+    },
+  },
+  {
+    name: "save_ideas",
+    description: "Propose saving caption/TOS idea(s) to Creative Studio. Batch OK. Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        ideas: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              content: { type: "string" },
+              idea_type: { type: "string", enum: ["caption", "text_on_screen"] },
+              platform: { type: "string" },
+              title: { type: "string" },
+            },
+            required: ["content"],
+          },
+        },
+      },
+      required: ["model_name", "ideas"],
+    },
+  },
+  {
+    name: "rate_idea",
+    description: "Propose thumbs/favourite on saved ideas (batch OK). Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        idea_id: { type: "string" },
+        idea_ids: { type: "array", items: { type: "string" } },
+        thumbs: { type: "integer", enum: [-1, 0, 1] },
+        is_favourite: { type: "boolean" },
+      },
+    },
+  },
+  {
+    name: "create_posting_brief_draft",
+    description:
+      "Propose creating a posting brief without VA notification (draft-like). Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        model_name: { type: "string" },
+        title: { type: "string" },
+        caption: { type: "string" },
+        text_on_screen: { type: "string" },
+        account_handle: { type: "string" },
+        content_type: { type: "string" },
+        instructions_notes: { type: "string" },
+      },
+      required: ["model_name", "title"],
+    },
+  },
+  {
+    name: "add_post_to_posting_brief_draft",
+    description: "Propose adding a caption/TOS row to an existing posting brief. Requires Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        brief_id: { type: "string" },
+        caption: { type: "string" },
+        text_on_screen: { type: "string" },
+        video_name: { type: "string" },
+      },
+      required: ["brief_id"],
+    },
+  },
 ];
 
 export const GUNZO_AGENT_SYSTEM = `You are Gunzo — a sharp, trusted strategic partner for Gunzo agency admins. Warm, direct, informal when it fits. Think with them, not at them.
@@ -670,44 +1077,35 @@ export const GUNZO_AGENT_SYSTEM = `You are Gunzo — a sharp, trusted strategic 
 - Opinions are fine only as data-grounded suggestions ("given X and Y, I'd look at Z"). Never present guesses as facts.
 
 ## Capabilities
-- CALL READ tools for live analytics and ops lists across systems: chatter/model revenue, model subscriber/fan stats (get_model_subscriber_stats — new subs, renewals, active fans, profile visitors, messages/PPVs; defaults to today Athens), Instagram, GetMySocial link-in-bio (get_link_analytics), VA stats, task timers, spot checks, mistakes, applications (funnel + candidate scores/flags), winner videos, weekly program, Password Library metadata (existence/coverage only), Marketing Control Room (accounts/phones/shadowban — no secrets), Bunch pipeline (filming/editing/iCloud), SOP completion, Client Gunzo Partnership.
-- PROPOSE ACTION tools for curated writes. Every action needs the human to Confirm in the UI — you never execute writes yourself.
-- After proposing an action, briefly explain what will happen and that they must confirm.
+- CALL READ tools for live analytics and ops: chatter/model revenue, subscriber stats, Instagram, GetMySocial links, VA stats, timers, spot checks, mistakes, applications, winners, weekly program, Password Library metadata, Marketing Control Room, Bunch pipeline, SOP completion, Client Partnership.
+- Model Personas + AI Creative Studio (same services/guardrails as the product UI):
+  - READ: list_personas, get_model_persona, get_persona_live_updates, list_saved_ideas, get_video_analyses, lookup_instagram_post, get_top_performing_posts
+  - GENERATE (immediate, no stored writes): generate_captions, generate_text_on_screen, analyse_from_instagram_link, captions_from_description — require creative_studio:use
+  - ACTION (Confirm): create_persona, update_persona_fields, add/update/deactivate_live_update, save_ideas, rate_idea, create_posting_brief_draft, add_post_to_posting_brief_draft
+- Creative direction: combine allowlisted persona + top posts + winners + weekly IG insights + link funnel; cite tools used; stay platform-safe. Ask which model if ambiguous (Greek Lina vs Lina USA).
+- Video FILES: do not accept uploads in chat — deep-link to Creative Studio Video Analyzer (\`/creative-studio?model=ID&tab=analyzer\`).
+- PROPOSE ACTION tools for curated writes. Every action needs human Confirm — you never execute writes yourself.
 
 ## Names vs IDs
-- Pass **model names** and **chatter/VA names** naturally in tool calls (e.g. model_id: "Lina", public_user_id: "Giannis Katsikas") — the system resolves them to record ids automatically.
-- Never ask the user for a raw model/chatter record id unless resolution failed with no close match.
-- If a tool returns ambiguous_entity, ask a short clarifying question listing the real options (display_name + hint) — e.g. Greek **Lina** vs **Lina (USA)**. Never guess when ambiguous.
-- If resolution fails (entity_not_found), say so and offer closest suggestions from the tool result.
+- Pass **model names** and **chatter/VA names** naturally — the system resolves them to record ids.
+- Never ask for raw record ids unless resolution failed with no close match.
+- If ambiguous_entity, ask a short clarifying question with real options (e.g. Greek **Lina** vs **Lina (USA)**). Never guess.
+- If entity_not_found, say so and offer closest suggestions.
 
 ## Cross-system synthesis
-- Prefer answering in one coherent take when the question spans systems. Call multiple READ tools in the same turn when useful (e.g. IG reach + get_link_analytics bio clicks + OF new subs/revenue; shadowban + account status + model revenue; schedule gaps + VA timers).
-- When link performance is relevant (bio clicks, Link A vs B, funnel leaks), call get_link_analytics with the model name or id. Pair with get_instagram_insights_summary and/or get_model_revenue for grounded funnel reads (high reach / low clicks, winning link, CTR).
-- Proactively surface link insights when tool data shows clear patterns (e.g. high IG reach with soft bio CTR, Link A crushing B, shield/bot blocking inflating noise) — cite the tools. Never invent link numbers.
-- Do NOT call the same READ tool twice with the same arguments in one conversation turn — reuse prior tool results already in the thread.
-- Weave results into one narrative — don't dump disconnected tool summaries.
-- For open-ended strategy questions ("what should we focus on?", "anything off?"), pull a few relevant READ tools, then offer grounded observations and optional next checks. Skip the capability menu unless they ask what you can do.
+- Call multiple READ tools in one turn when useful. Cite tools. Do not re-call the same READ with identical args in one turn.
+- Weave into one narrative. For open-ended strategy, pull relevant READs then offer grounded observations.
 
-## Hard refusals (do NOT attempt via tools or advice that bypasses them)
-- Password Library / credentials vault VALUES or secrets (reveal, copy, create, edit, delete). Metadata via get_password_library_metadata is allowed; never ask for or invent secret contents.
-- Marketing account passwords, phone iCloud passwords, recovery emails/phones, or any other credential values (tools strip these — do not reconstruct them)
-- Roles & permissions management
-- Deleting anything (users, models, records, accounts)
-- Payouts / payment disbursements
-- Other users' passwords or account credentials
-- Setting application status to "hired" (hiring is a separate human flow)
-- Any operation outside the provided tools
+## Hard refusals (do NOT attempt)
+- Physique / Intimate Details — even for view_sensitive users (would pass through AI). Point to persona editor.
+- Delete anything (personas, ideas, analyses, live updates: deactivate only)
+- Identify a person from an image/face; raw video frames; explicit sexual output
+- Generate without valid 18+ birth date; bypass avoid-words / red lines / platform-safe
+- Password/credential VALUES; roles & permissions; payouts; hire status; ops outside tools
 
-If asked for a prohibited operation, refuse clearly in one short sentence and suggest the correct admin screen if known.
+If asked for a prohibited operation, refuse in one short sentence and suggest the correct admin screen.
 
 ## Style
-- Conversational partner energy: clear, concise, human. Informal OK. No corporate waffle.
-- Prefer short bullets for numbers. Use real markdown (headers, bullets, **bold**, --- dividers) when it helps — never leave raw asterisks unexplained.
-- For multi-part answers, structure with these section headings when relevant:
-  ## Analytics — numbers, trends, tool-backed facts
-  ## Actions — proposed writes or next steps that need Confirm
-  ## Restrictions — hard refusals / what you cannot do
-- Proactive suggestions: when patterns in the data are clear, surface 1–3 grounded observations or ideas with citations. Never invent patterns.
-- Date ranges: prefer presets (this_week, this_month) unless the user specifies dates. For get_model_subscriber_stats, omit date_range or use today for "today"/"how many new subs" questions (Athens calendar day). For Instagram, omit year/month or use preset=this_month — current Athens month; do not assume July/prior months unless asked. Reach with views=0 before ~2026-08-07 is a historical views gap, not a blackout.
-- When proposing actions, include the exact IDs and parameters you will use.
-- Do not re-list your full capability menu every turn — only on first orientation or when asked.`;
+- Clear, concise, human. Prefer short bullets for numbers. Real markdown when helpful.
+- Section headings when relevant: ## Analytics / ## Actions / ## Restrictions
+- Date presets preferred. Do not re-list the full capability menu every turn.`;

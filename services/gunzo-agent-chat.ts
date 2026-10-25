@@ -18,8 +18,13 @@ import {
   isGunzoReadTool,
   isGunzoToolName,
 } from "@/lib/gunzo-agent-tools";
+import { sanitizeGunzoActionParameters } from "@/lib/gunzo-agent-action-sanitize";
 import { executeGunzoTool } from "@/services/gunzo-agent-exec";
-import { insertProposedAction, type AgentActionLogRow } from "@/services/gunzo-agent-log";
+import {
+  insertProposedAction,
+  updateAgentActionLog,
+  type AgentActionLogRow,
+} from "@/services/gunzo-agent-log";
 
 /** Extra rounds so cross-system synthesis can chain multiple READ tool batches. */
 const MAX_ROUNDS = 6;
@@ -39,9 +44,20 @@ export type GunzoPendingAction = {
   proposed_at: string;
 };
 
+export type GunzoGenerationCard = {
+  id: string;
+  kind: "caption" | "text_on_screen";
+  model_id: string;
+  platform?: string;
+  variations: string[];
+  allowlist_keys: string[];
+  cached?: boolean;
+};
+
 export type GunzoChatResult = {
   assistantText: string;
   pendingActions: GunzoPendingAction[];
+  generationCards?: GunzoGenerationCard[];
   readSummaries?: string[];
 };
 
@@ -95,7 +111,7 @@ export async function runGunzoAgentChat(
     .filter((m) => m.content.length > 0 && (m.role === "user" || m.role === "assistant"));
 
   if (cleaned.length === 0) {
-    return { assistantText: "Send a message to get started.", pendingActions: [] };
+    return { assistantText: "Send a message to get started.", pendingActions: [], generationCards: [] };
   }
 
   const thread: AnthropicToolMessage[] = boundHistory(cleaned).map((m) => ({
@@ -104,11 +120,32 @@ export async function runGunzoAgentChat(
   }));
 
   const pendingActions: GunzoPendingAction[] = [];
+  const generationCards: GunzoGenerationCard[] = [];
   const readSummaries: string[] = [];
   /** Deduplicate identical READ tool calls across rounds in this conversation turn. */
   const readCache = new Map<string, string>();
+  /** Cache allowlisted persona summaries per model within this chat turn. */
+  const personaSummaryCache = new Map<string, string>();
   let lastText = "";
   const { executed_by, executed_by_name } = adminAttribution(user);
+
+  function collectGenerationCard(toolName: string, result: { data?: unknown }) {
+    const data = result.data as { generation_card?: GunzoGenerationCard } | undefined;
+    const card = data?.generation_card;
+    if (!card?.variations?.length) return;
+    if (toolName !== "generate_captions" && toolName !== "generate_text_on_screen" && toolName !== "captions_from_description") {
+      return;
+    }
+    generationCards.push({
+      id: `gen_${Date.now()}_${generationCards.length}`,
+      kind: card.kind === "text_on_screen" ? "text_on_screen" : "caption",
+      model_id: card.model_id,
+      platform: card.platform,
+      variations: card.variations,
+      allowlist_keys: card.allowlist_keys ?? [],
+      cached: card.cached,
+    });
+  }
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const response = await callAnthropicWithTools({
@@ -126,6 +163,7 @@ export async function runGunzoAgentChat(
           lastText ||
           "Gunzo Agent could not reach the AI service. Check ANTHROPIC_API_KEY and try again.",
         pendingActions,
+        generationCards: generationCards.length ? generationCards : undefined,
         readSummaries: readSummaries.length ? readSummaries : undefined,
       };
     }
@@ -136,6 +174,7 @@ export async function runGunzoAgentChat(
       return {
         assistantText: lastText || "Done.",
         pendingActions,
+        generationCards: generationCards.length ? generationCards : undefined,
         readSummaries: readSummaries.length ? readSummaries : undefined,
       };
     }
@@ -166,12 +205,25 @@ export async function runGunzoAgentChat(
       if (isGunzoActionTool(name)) {
         let log: AgentActionLogRow;
         try {
+          const { logParameters, executionPayload } = sanitizeGunzoActionParameters(name, input);
           log = await insertProposedAction({
             tool_name: name,
-            parameters: input,
+            parameters: logParameters,
             executed_by,
             executed_by_name,
             action_type: "action",
+          });
+          if (executionPayload) {
+            await updateAgentActionLog(log.id, {
+              result: { _exec: executionPayload },
+            });
+          }
+          pendingActions.push({
+            log_id: log.id,
+            tool_name: name,
+            parameters: logParameters,
+            description: GUNZO_TOOL_META[name].description,
+            proposed_at: log.proposed_at,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -183,14 +235,6 @@ export async function runGunzoAgentChat(
           });
           continue;
         }
-
-        pendingActions.push({
-          log_id: log.id,
-          tool_name: name,
-          parameters: input,
-          description: GUNZO_TOOL_META[name].description,
-          proposed_at: log.proposed_at,
-        });
 
         toolResults.push({
           type: "tool_result",
@@ -221,10 +265,36 @@ export async function runGunzoAgentChat(
           continue;
         }
 
+        // Persona summary cache per conversation turn (model id after resolve happens in exec)
+        if (name === "get_model_persona") {
+          const modelKey = String(input.model_name ?? input.model_id ?? "");
+          const personaCached = personaSummaryCache.get(modelKey);
+          if (personaCached) {
+            readSummaries.push(`${name}: (reused persona cache)`);
+            toolResults.push({
+              type: "tool_result",
+              tool_use_id: use.id,
+              content: personaCached,
+              is_error: false,
+            });
+            continue;
+          }
+        }
+
         const result = await executeGunzoTool(name, input, { user, confirmed: false });
         readSummaries.push(`${name}: ${result.summary}`);
+        collectGenerationCard(name, result);
         const payload = stringifyToolResult(result);
         readCache.set(key, payload);
+        if (name === "get_model_persona" && result.ok) {
+          const modelKey = String(
+            (result.data as { model_id?: string } | undefined)?.model_id ??
+              input.model_name ??
+              input.model_id ??
+              "",
+          );
+          if (modelKey) personaSummaryCache.set(modelKey, payload);
+        }
         toolResults.push({
           type: "tool_result",
           tool_use_id: use.id,
@@ -259,6 +329,7 @@ export async function runGunzoAgentChat(
       return {
         assistantText: lastText,
         pendingActions,
+        generationCards: generationCards.length ? generationCards : undefined,
         readSummaries: readSummaries.length ? readSummaries : undefined,
       };
     }
@@ -267,6 +338,7 @@ export async function runGunzoAgentChat(
   return {
     assistantText: lastText || "Stopped after max tool rounds. Ask a follow-up if you need more.",
     pendingActions,
+    generationCards: generationCards.length ? generationCards : undefined,
     readSummaries: readSummaries.length ? readSummaries : undefined,
   };
 }

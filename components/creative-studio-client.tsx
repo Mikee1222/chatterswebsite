@@ -86,6 +86,20 @@ export function CreativeStudioClient({
 }: Props) {
   const [modelId, setModelId] = React.useState(models[0]?.id ?? "");
   const [tab, setTab] = React.useState<Tab>("captions");
+  React.useEffect(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const qModel = sp.get("model")?.trim() ?? "";
+      const qTab = sp.get("tab")?.trim();
+      if (qModel && models.some((m) => m.id === qModel)) setModelId(qModel);
+      if (qTab === "video" || qTab === "analyzer") setTab("analyzer");
+      else if (qTab === "tos") setTab("tos");
+      else if (qTab === "ideas" || qTab === "saved") setTab("saved");
+      else if (qTab === "captions") setTab("captions");
+    } catch {
+      /* ignore */
+    }
+  }, [models]);
   const [platform, setPlatform] = React.useState("Instagram");
   const [format, setFormat] = React.useState("Reel");
   const [ideaContext, setIdeaContext] = React.useState("");

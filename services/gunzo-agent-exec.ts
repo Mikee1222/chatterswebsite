@@ -325,33 +325,219 @@ export async function executeGunzoTool(
         if (!modelId) {
           return { ok: false, summary: "model_name required", error: "model_name required" };
         }
-        const { getPersonaByModelId, listLiveUpdates } = await import("@/services/model-personas");
-        const { buildPersonaAiContext } = await import("@/lib/persona-ai-context");
-        const persona = await getPersonaByModelId(modelId);
-        if (!persona) {
+        const sections = Array.isArray(parameters.sections)
+          ? parameters.sections.map((x) => str(x)).filter(Boolean)
+          : undefined;
+        const { agentGetModelPersona } = await import("@/services/gunzo-agent-studio");
+        const result = await agentGetModelPersona(modelId, sections);
+        if (!result.summary) {
           return {
             ok: true,
             summary: `No persona saved for model ${modelId}`,
             data: { model_id: modelId, persona: null, allowlist_keys: [] },
           };
         }
-        const live = await listLiveUpdates(persona.id, { includeInactive: false });
-        const bundle = buildPersonaAiContext(persona, live);
-        // Log ids + keys only — never persona text
-        console.info("[gunzo-agent] get_model_persona", {
-          modelId,
-          personaId: persona.id,
-          allowlistKeys: bundle.allowlistKeysUsed,
+        return {
+          ok: true,
+          summary: `Persona for model ${modelId}: ${result.summary.allowlist_keys.length} allowlisted fields`,
+          data: result,
+        };
+      }
+
+      case "list_personas": {
+        const { agentListPersonas } = await import("@/services/gunzo-agent-studio");
+        const result = await agentListPersonas();
+        return {
+          ok: true,
+          summary: `${result.personas.length} personas (completeness metadata only)`,
+          data: result,
+        };
+      }
+
+      case "get_persona_live_updates": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { agentGetPersonaLiveUpdates } = await import("@/services/gunzo-agent-studio");
+        const result = await agentGetPersonaLiveUpdates(modelId);
+        return {
+          ok: true,
+          summary: `Live updates for ${modelId}: ${result.active_count} active / ${result.max_active} max`,
+          data: result,
+        };
+      }
+
+      case "list_saved_ideas": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { agentListSavedIdeas } = await import("@/services/gunzo-agent-studio");
+        const result = await agentListSavedIdeas(modelId, {
+          idea_type: str(parameters.idea_type) || undefined,
+          favourite_only: bool(parameters.favourite_only) === true,
+          thumbs: num(parameters.thumbs) ?? undefined,
         });
         return {
           ok: true,
-          summary: `Persona for model ${modelId}: ${bundle.allowlistKeysUsed.length} allowlisted fields`,
+          summary: `${result.ideas.length} saved ideas for ${modelId}`,
+          data: result,
+        };
+      }
+
+      case "get_video_analyses": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { agentGetVideoAnalyses } = await import("@/services/gunzo-agent-studio");
+        const result = await agentGetVideoAnalyses(modelId, num(parameters.limit) ?? 20);
+        return {
+          ok: true,
+          summary: `${result.analyses.length} video analyses for ${modelId} (graded fields only)`,
+          data: result,
+        };
+      }
+
+      case "lookup_instagram_post": {
+        const link = str(parameters.link);
+        if (!link) return { ok: false, summary: "link required", error: "link required" };
+        const modelId = str(parameters.model_name) || str(parameters.model_id) || undefined;
+        const { agentLookupInstagramPost } = await import("@/services/gunzo-agent-studio");
+        const result = await agentLookupInstagramPost(link, modelId);
+        return {
+          ok: result.ok,
+          summary: result.ok
+            ? `IG post found (${result.source})`
+            : ("error" in result ? result.error : "Lookup failed"),
+          data: result,
+          error: result.ok ? undefined : ("error" in result ? result.error : "Lookup failed"),
+        };
+      }
+
+      case "get_top_performing_posts": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { agentGetTopPerformingPosts } = await import("@/services/gunzo-agent-studio");
+        const result = await agentGetTopPerformingPosts(modelId, num(parameters.limit) ?? 10);
+        return {
+          ok: true,
+          summary: `Top posts for ${modelId}: ${result.top_posts.length} posts, ${result.winners.length} winners`,
+          data: result,
+        };
+      }
+
+      case "generate_captions":
+      case "captions_from_description": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const ideaContext =
+          str(parameters.description) ||
+          str(parameters.idea_context) ||
+          str(parameters.ideaContext) ||
+          undefined;
+        if (toolName === "captions_from_description" && !ideaContext) {
+          return { ok: false, summary: "description required", error: "description required" };
+        }
+        const { agentGenerateCaptions } = await import("@/services/gunzo-agent-studio");
+        const userId = (ctx.user.airtableUserId ?? ctx.user.id)?.trim() || ctx.user.id;
+        const result = await agentGenerateCaptions({
+          modelId,
+          userId,
+          platform: str(parameters.platform) || undefined,
+          format: str(parameters.format) || undefined,
+          ideaContext,
+          toneTweak: str(parameters.tone_tweak) || str(parameters.toneTweak) || undefined,
+          variations: num(parameters.variations) ?? undefined,
+          hashtagCount: num(parameters.hashtag_count) ?? num(parameters.hashtagCount) ?? undefined,
+          outputLanguage: str(parameters.output_language) || str(parameters.outputLanguage) || undefined,
+        });
+        if (result.generationDisabledReason) {
+          return {
+            ok: false,
+            summary: result.generationDisabledReason,
+            error: result.generationDisabledReason,
+            data: { model_id: modelId, allowlist_keys: result.allowlistKeysUsed },
+          };
+        }
+        return {
+          ok: true,
+          summary: `Generated ${result.variations.length} captions for ${modelId}${result.cached ? " (cached)" : ""}`,
           data: {
-            model_id: modelId,
-            persona_id: persona.id,
-            allowlist_keys: bundle.allowlistKeysUsed,
-            context: bundle.context,
+            ...result,
+            generation_card: {
+              kind: "caption",
+              model_id: modelId,
+              platform: result.platform,
+              variations: result.variations,
+              allowlist_keys: result.allowlistKeysUsed,
+              cached: result.cached,
+            },
           },
+        };
+      }
+
+      case "generate_text_on_screen": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { agentGenerateTextOnScreen } = await import("@/services/gunzo-agent-studio");
+        const userId = (ctx.user.airtableUserId ?? ctx.user.id)?.trim() || ctx.user.id;
+        const result = await agentGenerateTextOnScreen({
+          modelId,
+          userId,
+          ideaContext: str(parameters.idea_context) || str(parameters.ideaContext) || undefined,
+          toneTweak: str(parameters.tone_tweak) || str(parameters.toneTweak) || undefined,
+          maxChars: num(parameters.max_chars) ?? num(parameters.maxChars) ?? undefined,
+          variations: num(parameters.variations) ?? undefined,
+          outputLanguage: str(parameters.output_language) || str(parameters.outputLanguage) || undefined,
+        });
+        if (result.generationDisabledReason) {
+          return {
+            ok: false,
+            summary: result.generationDisabledReason,
+            error: result.generationDisabledReason,
+            data: { model_id: modelId, allowlist_keys: result.allowlistKeysUsed },
+          };
+        }
+        return {
+          ok: true,
+          summary: `Generated ${result.variations.length} text-on-screen for ${modelId}${result.cached ? " (cached)" : ""}`,
+          data: {
+            ...result,
+            generation_card: {
+              kind: "text_on_screen",
+              model_id: modelId,
+              variations: result.variations,
+              allowlist_keys: result.allowlistKeysUsed,
+              cached: result.cached,
+            },
+          },
+        };
+      }
+
+      case "analyse_from_instagram_link": {
+        const link = str(parameters.link);
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!link || !modelId) {
+          return { ok: false, summary: "link and model_name required", error: "link and model_name required" };
+        }
+        const { agentAnalyseFromInstagramLink } = await import("@/services/gunzo-agent-studio");
+        const userId = (ctx.user.airtableUserId ?? ctx.user.id)?.trim() || ctx.user.id;
+        const result = await agentAnalyseFromInstagramLink({ link, modelId, userId });
+        return {
+          ok: result.ok,
+          summary: result.ok
+            ? `Cover analysis for ${modelId}${result.refused ? " (refused/neutral)" : ""}`
+            : ("error" in result ? result.error : "Analysis failed"),
+          data: result,
+          error: result.ok ? undefined : ("error" in result ? result.error : "Analysis failed"),
         };
       }
 
@@ -1350,6 +1536,211 @@ export async function executeGunzoTool(
         return {
           ok: true,
           summary: `Created shift ${result.id} for ${chatterName} (${day} ${shiftType})`,
+          data: result,
+        };
+      }
+
+      case "create_persona": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { agentCreatePersona } = await import("@/services/gunzo-agent-studio");
+        const { admin_id, admin_name } = adminIds(ctx.user);
+        const result = await agentCreatePersona(modelId, admin_id, admin_name);
+        return {
+          ok: true,
+          summary: result.created
+            ? `Created persona skeleton for ${modelId}`
+            : `Persona already exists for ${modelId}`,
+          data: result,
+        };
+      }
+
+      case "update_persona_fields": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        const section = str(parameters.section);
+        const fields =
+          parameters.fields && typeof parameters.fields === "object" && !Array.isArray(parameters.fields)
+            ? (parameters.fields as Record<string, unknown>)
+            : null;
+        if (!modelId || !section || !fields) {
+          return {
+            ok: false,
+            summary: "model_name, section, fields required",
+            error: "model_name, section, fields required",
+          };
+        }
+        const { agentUpdatePersonaFields } = await import("@/services/gunzo-agent-studio");
+        const { admin_id, admin_name } = adminIds(ctx.user);
+        const result = await agentUpdatePersonaFields({
+          modelId,
+          section,
+          fields,
+          userId: admin_id,
+          userName: admin_name,
+        });
+        if (!result.ok) {
+          return { ok: false, summary: result.error || "Update failed", error: result.error };
+        }
+        return {
+          ok: true,
+          summary: `Updated ${section} fields [${(result.field_keys ?? []).join(", ")}] for ${modelId}`,
+          data: result,
+        };
+      }
+
+      case "add_live_update": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        if (!modelId) {
+          return { ok: false, summary: "model_name required", error: "model_name required" };
+        }
+        const { agentAddLiveUpdate } = await import("@/services/gunzo-agent-studio");
+        const { admin_id, admin_name } = adminIds(ctx.user);
+        const result = await agentAddLiveUpdate({
+          modelId,
+          content: str(parameters.content),
+          status: str(parameters.status) || undefined,
+          starts_at: str(parameters.starts_at),
+          ends_at: str(parameters.ends_at),
+          userId: admin_id,
+          userName: admin_name,
+        });
+        if (!result.ok) {
+          return { ok: false, summary: result.error, error: result.error, data: result };
+        }
+        return { ok: true, summary: `Added live update ${result.id}`, data: result };
+      }
+
+      case "update_live_update": {
+        const id = str(parameters.live_update_id);
+        if (!id) {
+          return { ok: false, summary: "live_update_id required", error: "live_update_id required" };
+        }
+        const { agentUpdateLiveUpdate } = await import("@/services/gunzo-agent-studio");
+        const result = await agentUpdateLiveUpdate({
+          liveUpdateId: id,
+          content: parameters.content != null ? str(parameters.content) : undefined,
+          status: parameters.status != null ? str(parameters.status) : undefined,
+          starts_at: parameters.starts_at != null ? str(parameters.starts_at) : undefined,
+          ends_at: parameters.ends_at != null ? str(parameters.ends_at) : undefined,
+        });
+        if (!result.ok) {
+          return { ok: false, summary: result.error, error: result.error };
+        }
+        return { ok: true, summary: `Updated live update ${result.id}`, data: result };
+      }
+
+      case "deactivate_live_update": {
+        const id = str(parameters.live_update_id);
+        if (!id) {
+          return { ok: false, summary: "live_update_id required", error: "live_update_id required" };
+        }
+        const { agentDeactivateLiveUpdate } = await import("@/services/gunzo-agent-studio");
+        const result = await agentDeactivateLiveUpdate(id);
+        return { ok: true, summary: `Deactivated live update ${result.id}`, data: result };
+      }
+
+      case "save_ideas": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        const ideas = Array.isArray(parameters.ideas) ? parameters.ideas : [];
+        if (!modelId || !ideas.length) {
+          return { ok: false, summary: "model_name and ideas required", error: "model_name and ideas required" };
+        }
+        const { agentSaveIdeas } = await import("@/services/gunzo-agent-studio");
+        const { admin_id } = adminIds(ctx.user);
+        const result = await agentSaveIdeas({
+          modelId,
+          userId: admin_id,
+          ideas: ideas.map((raw) => {
+            const idea = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+            return {
+              content: str(idea.content),
+              idea_type: str(idea.idea_type) || undefined,
+              platform: str(idea.platform) || undefined,
+              title: str(idea.title) || undefined,
+            };
+          }),
+        });
+        return {
+          ok: true,
+          summary: `Saved ${result.idea_ids.length} ideas`,
+          data: { idea_ids: result.idea_ids, model_id: modelId },
+        };
+      }
+
+      case "rate_idea": {
+        const { agentRateIdea } = await import("@/services/gunzo-agent-studio");
+        const thumbsRaw = num(parameters.thumbs);
+        const thumbs =
+          thumbsRaw === -1 || thumbsRaw === 0 || thumbsRaw === 1
+            ? (thumbsRaw as -1 | 0 | 1)
+            : undefined;
+        const result = await agentRateIdea({
+          idea_id: str(parameters.idea_id) || undefined,
+          idea_ids: Array.isArray(parameters.idea_ids)
+            ? parameters.idea_ids.map((x) => str(x)).filter(Boolean)
+            : undefined,
+          thumbs,
+          is_favourite:
+            bool(parameters.is_favourite) === null ? undefined : bool(parameters.is_favourite) === true,
+        });
+        if (!result.ok) {
+          return { ok: false, summary: result.error, error: result.error };
+        }
+        return {
+          ok: true,
+          summary: `Rated ${result.idea_ids.length} ideas`,
+          data: result,
+        };
+      }
+
+      case "create_posting_brief_draft": {
+        const modelId = str(parameters.model_name) || str(parameters.model_id);
+        const title = str(parameters.title);
+        if (!modelId || !title) {
+          return { ok: false, summary: "model_name and title required", error: "model_name and title required" };
+        }
+        const { agentCreatePostingBriefDraft } = await import("@/services/gunzo-agent-studio");
+        const { admin_id } = adminIds(ctx.user);
+        const result = await agentCreatePostingBriefDraft({
+          modelId,
+          userId: admin_id,
+          title,
+          caption: str(parameters.caption) || undefined,
+          text_on_screen: str(parameters.text_on_screen) || undefined,
+          account_handle: str(parameters.account_handle) || undefined,
+          content_type: str(parameters.content_type) || undefined,
+          instructions_notes: str(parameters.instructions_notes) || undefined,
+        });
+        if (!result.ok) {
+          return { ok: false, summary: result.error, error: result.error };
+        }
+        return {
+          ok: true,
+          summary: `Created posting brief draft ${result.brief_id} (no VA notify)`,
+          data: result,
+        };
+      }
+
+      case "add_post_to_posting_brief_draft": {
+        const briefId = str(parameters.brief_id);
+        if (!briefId) {
+          return { ok: false, summary: "brief_id required", error: "brief_id required" };
+        }
+        const { agentAddPostToPostingBriefDraft } = await import("@/services/gunzo-agent-studio");
+        const result = await agentAddPostToPostingBriefDraft({
+          briefId,
+          caption: str(parameters.caption) || undefined,
+          text_on_screen: str(parameters.text_on_screen) || undefined,
+          video_name: str(parameters.video_name) || undefined,
+        });
+        if (!result.ok) {
+          return { ok: false, summary: result.error, error: result.error };
+        }
+        return {
+          ok: true,
+          summary: `Added post to brief ${result.brief_id}`,
           data: result,
         };
       }

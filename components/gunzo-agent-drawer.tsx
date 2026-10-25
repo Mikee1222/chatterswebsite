@@ -6,9 +6,11 @@ import {
   AlertTriangle,
   BarChart3,
   CheckCircle2,
+  Copy,
   History,
   Loader2,
   MessageSquare,
+  Save,
   Send,
   ShieldAlert,
   Sparkles,
@@ -68,20 +70,34 @@ const WELCOME_CONTENT = `Hey — I'm **Gunzo**, your strategic partner across th
 - Revenue & chatter/VA performance
 - Instagram + Marketing Control Room (accounts, phones, shadowban)
 - Bunch pipeline (filming → editing → iCloud)
-- Applications (funnel + candidate scores/flags)
-- Weekly program, task timers, SOP completion
-- Password Library *metadata* (what exists — never secrets)
-- Client Gunzo Partnership stats
+- Applications, weekly program, SOP completion
+- Password Library *metadata* (never secrets)
+- **Model Personas** (allowlisted — never Physique / Intimate Details)
+- **AI Creative Studio** — captions, text-on-screen, IG cover analysis, saved ideas
 
-**I can propose** curated writes — you always **Confirm** before anything changes.
+**I can generate** captions & text-on-screen immediately (same Studio guardrails).
 
-Ask anything. Strategy questions welcome.`;
+**I can propose** persona updates, live updates, save ideas, posting-brief drafts — you always **Confirm** before anything changes.
+
+Video *files* → Creative Studio Video Analyzer (I deep-link; no uploads in chat).
+
+Ask anything. Strategy & creative direction welcome.`;
 
 const SUGGESTIONS = [
+  "Creative direction for Lina this week?",
+  "Generate Instagram captions for Diana",
   "What's off across IG and revenue this month?",
-  "How's the bunch pipeline looking?",
-  "Any spot checks or shadowbans pending?",
 ];
+
+type GenerationCard = {
+  id: string;
+  kind: "caption" | "text_on_screen";
+  model_id: string;
+  platform?: string;
+  variations: string[];
+  allowlist_keys: string[];
+  cached?: boolean;
+};
 
 const SECTION_META: Record<
   Exclude<SectionKind, "generic">,
@@ -333,6 +349,8 @@ export function GunzoAgentDrawer({ canUse }: GunzoAgentDrawerProps) {
     },
   ]);
   const [pending, setPending] = React.useState<PendingAction[]>([]);
+  const [generationCards, setGenerationCards] = React.useState<GenerationCard[]>([]);
+  const [copyFlash, setCopyFlash] = React.useState<string | null>(null);
   const [history, setHistory] = React.useState<HistoryLog[]>([]);
   const [historyLoaded, setHistoryLoaded] = React.useState(false);
   const [isMobile, setIsMobile] = React.useState(false);
@@ -413,6 +431,7 @@ export function GunzoAgentDrawer({ canUse }: GunzoAgentDrawerProps) {
       const data = (await res.json().catch(() => ({}))) as {
         assistantText?: string;
         pendingActions?: PendingAction[];
+        generationCards?: GenerationCard[];
         error?: string;
       };
       if (!res.ok) throw new Error(data.error || "Chat failed");
@@ -428,11 +447,45 @@ export function GunzoAgentDrawer({ canUse }: GunzoAgentDrawerProps) {
       if (data.pendingActions?.length) {
         setPending((prev) => [...prev, ...data.pendingActions!]);
       }
+      if (data.generationCards?.length) {
+        setGenerationCards((prev) => [...prev, ...data.generationCards!]);
+      }
       setHistoryLoaded(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Chat failed");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function copyText(text: string, flashKey: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyFlash(flashKey);
+      window.setTimeout(() => setCopyFlash(null), 1500);
+    } catch {
+      setError("Could not copy to clipboard");
+    }
+  }
+
+  async function proposeAction(toolName: string, parameters: Record<string, unknown>) {
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/gunzo-agent/propose", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tool_name: toolName, parameters }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        pendingAction?: PendingAction;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(data.error || "Propose failed");
+      if (data.pendingAction) {
+        setPending((prev) => [...prev, data.pendingAction!]);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Propose failed");
     }
   }
 
@@ -724,6 +777,89 @@ export function GunzoAgentDrawer({ canUse }: GunzoAgentDrawerProps) {
                         </div>
                       </div>
                     ) : null}
+
+                    {generationCards.map((card) => (
+                      <div
+                        key={card.id}
+                        className={cn(
+                          "ml-9 overflow-hidden rounded-2xl border border-[#c9a227]/35",
+                          "bg-gradient-to-br from-[#c9a227]/[0.1] via-[#16140e] to-[#10100c]",
+                          "p-3.5 shadow-[0_0_0_1px_rgba(201,162,39,0.1),0_12px_28px_-14px_rgba(201,162,39,0.35)]",
+                        )}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-[#e8d5a3]" aria-hidden />
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#e8d5a3]/90">
+                            {card.kind === "text_on_screen" ? "Text on screen" : "Captions"}
+                            {card.platform ? ` · ${card.platform}` : ""}
+                            {card.cached ? " · cached" : ""}
+                          </p>
+                        </div>
+                        <div className="mt-3 space-y-2.5">
+                          {card.variations.map((text, i) => {
+                            const flashKey = `${card.id}_${i}`;
+                            return (
+                              <div
+                                key={flashKey}
+                                className="rounded-xl border border-white/[0.07] bg-black/35 p-2.5"
+                              >
+                                <pre className="whitespace-pre-wrap font-sans text-[12.5px] leading-relaxed text-white/90">
+                                  {text}
+                                </pre>
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyText(text, flashKey)}
+                                    className="inline-flex items-center gap-1 rounded-lg border border-white/12 bg-white/[0.05] px-2 py-1 text-[11px] text-white/80 hover:bg-white/[0.09]"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                    {copyFlash === flashKey ? "Copied" : "Copy"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void proposeAction("save_ideas", {
+                                        model_name: card.model_id,
+                                        ideas: [
+                                          {
+                                            content: text,
+                                            idea_type:
+                                              card.kind === "text_on_screen"
+                                                ? "text_on_screen"
+                                                : "caption",
+                                            platform: card.platform ?? "Instagram",
+                                          },
+                                        ],
+                                      })
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-lg border border-[#c9a227]/30 bg-[#c9a227]/[0.1] px-2 py-1 text-[11px] text-[#e8d5a3] hover:bg-[#c9a227]/20"
+                                  >
+                                    <Save className="h-3 w-3" />
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void proposeAction("create_posting_brief_draft", {
+                                        model_name: card.model_id,
+                                        title: `Gunzo draft · ${new Date().toLocaleDateString()}`,
+                                        ...(card.kind === "text_on_screen"
+                                          ? { text_on_screen: text }
+                                          : { caption: text }),
+                                      })
+                                    }
+                                    className="inline-flex items-center gap-1 rounded-lg border border-amber-400/30 bg-amber-500/[0.1] px-2 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20"
+                                  >
+                                    <Zap className="h-3 w-3" />
+                                    Use in brief
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
 
                     {pending.map((p) => (
                       <div

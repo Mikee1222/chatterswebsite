@@ -3,6 +3,10 @@ import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import {
+  mergeGunzoActionParameters,
+  stripExecFromResult,
+} from "@/lib/gunzo-agent-action-sanitize";
 import { executeGunzoTool } from "@/services/gunzo-agent-exec";
 import {
   getAgentActionLogById,
@@ -59,7 +63,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, cancelled: true, log: cancelled });
     }
 
-    const result = await executeGunzoTool(log.tool_name, log.parameters, {
+    const execParams = mergeGunzoActionParameters(log.parameters, log.result);
+    const result = await executeGunzoTool(log.tool_name, execParams, {
       user: session,
       confirmed: true,
     });
@@ -68,7 +73,7 @@ export async function POST(req: Request) {
       const failed = await updateAgentActionLog(log_id, {
         status: "failed",
         confirmed_at: new Date().toISOString(),
-        result: { summary: result.summary, data: result.data ?? null },
+        result: stripExecFromResult({ summary: result.summary, data: result.data ?? null }),
         error_message: result.error ?? result.summary,
       });
       return NextResponse.json(
@@ -80,7 +85,7 @@ export async function POST(req: Request) {
     const executed = await updateAgentActionLog(log_id, {
       status: "executed",
       confirmed_at: new Date().toISOString(),
-      result: { summary: result.summary, data: result.data ?? null },
+      result: stripExecFromResult({ summary: result.summary, data: result.data ?? null }),
       error_message: null,
     });
 
