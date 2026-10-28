@@ -31,6 +31,9 @@ export async function GET(req: Request) {
     caption: "",
     pinned_comment: null as string | null,
     notes: v.special_instructions || null,
+    posted_url: null as string | null,
+    posted_at: null as string | null,
+    posted_by: null as string | null,
     created_at: "",
     updated_at: "",
   }));
@@ -47,6 +50,9 @@ export async function GET(req: Request) {
         caption: "",
         pinned_comment: null,
         notes: null,
+        posted_url: null,
+        posted_at: null,
+        posted_by: null,
         created_at: "",
         updated_at: "",
       });

@@ -460,6 +460,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "VAs / Marketing Executives assigned to the brief's model when a posting brief is published.",
   },
+  posting_brief_posted: {
+    rule: "admin_only",
+    description: "posting_briefs:manage holders (Creative Director) + brief author when a Marketing Executive marks a post as posted.",
+  },
   posting_brief_updated: {
     rule: "assigned_party_only",
     description: "VAs / Marketing Executives assigned to the brief's model when an active posting brief is updated.",

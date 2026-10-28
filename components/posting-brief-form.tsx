@@ -302,6 +302,8 @@ export function PostingBriefForm({
     timing_notes: timingNotes,
     final_checklist: checklistRaw.split("\n").filter((l) => l.length > 0 || l === ""),
     posts: posts.map((p) => ({
+      // Existing posts keep their id so the "posted" stage survives an edit.
+      ...(initial?.posts?.some((ip) => ip.id === p.key) ? { id: p.key } : {}),
       video_name: p.video_name ?? "",
       text_on_screen: p.text_on_screen || null,
       caption: p.caption ?? "",
@@ -341,6 +343,9 @@ export function PostingBriefForm({
       caption: p.caption ?? "",
       pinned_comment: p.pinned_comment || null,
       notes: p.notes || null,
+      posted_url: null,
+      posted_at: null,
+      posted_by: null,
       created_at: "",
       updated_at: "",
     })),

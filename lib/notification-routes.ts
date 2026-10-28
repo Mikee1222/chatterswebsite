@@ -376,6 +376,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "bunch_icloud_organized":
     case "posting_brief_published":
     case "posting_brief_updated":
+    case "posting_brief_posted":
     case "recording_brief_published":
     case "recording_brief_updated":
     case "recording_brief_reminder":
