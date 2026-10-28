@@ -568,7 +568,7 @@ export function AdminBunchesClient({
         winnerVideoLocalToast(
           `ws-edit-ok-${Date.now()}`,
           "Bunch assigned to editor",
-          `${editor.name} — visible in Edit Assignments`,
+          `${editor.name} — visible in Edit Assignments (editing checklist unlocks on approved scripts)`,
           "normal",
         ),
       );

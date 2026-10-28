@@ -761,11 +761,17 @@ const SCRIPTS_QUEUE_STATUSES = new Set([
  * Scripts-to-write queue. When `assignedCreativeId` is provided, only finds assigned to
  * that Creative are returned (the queue is per-Creative, not a shared pool).
  * Includes Needs Script + Rejected (actionable) and Pending Review / Approved (status in bunch view).
+ *
+ * Also includes winner videos linked to bunches/slots assigned to this creative, even when
+ * denormalized `winner_videos.assigned_creative_id` drifted (visibility; actions still use status).
  */
 export async function getScriptsQueue(assignedCreativeId?: string): Promise<WinnerVideoRecord[]> {
   const creativeId = assignedCreativeId?.trim();
   if (!creativeId) {
     return getAllWinnerVideos({ script_status: "Needs Script" });
+  }
+  if (isSupabaseBackend()) {
+    return (await import("./winner-videos-supabase")).getScriptsQueueForCreative(creativeId);
   }
   const all = await getAllWinnerVideos({ assigned_creative_id: creativeId });
   return all.filter((v) => SCRIPTS_QUEUE_STATUSES.has(v.script_status));

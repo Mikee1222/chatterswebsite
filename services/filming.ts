@@ -163,11 +163,13 @@ function filmingProgress(slots: RecreateVideoSlot[]): { filmed_count: number; fi
 export async function listShootAssignmentsForFilmer(filmerId: string): Promise<ShootAssignment[]> {
   const id = filmerId.trim();
   if (!id) return [];
+  const { expandAssignmentIdentityIds } = await import("@/lib/assignment-identity");
+  const identityIds = await expandAssignmentIdentityIds(id);
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from("video_bunches")
     .select("*")
-    .eq("assigned_filmer_id", id)
+    .in("assigned_filmer_id", identityIds)
     .in("filming_status", ["assigned", "in_progress", "uploaded"])
     .order("updated_at", { ascending: false });
   if (error) throw new Error(`listShootAssignmentsForFilmer: ${error.message}`);

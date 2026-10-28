@@ -327,7 +327,9 @@ export function EditAssignmentsClient({
                     </div>
                     <p className="mt-1 text-sm text-[#D4AF8C]/80">{a.bunch.model_name || "—"}</p>
                     <p className="mt-1 text-xs tabular-nums text-[#B8B4B8]/50">
-                      {a.edited_count}/{a.editable_count} edited
+                      {a.editable_count > 0
+                        ? `${a.edited_count}/${a.editable_count} edited`
+                        : a.empty_reason || "0 approved slots yet"}
                     </p>
                     <UploadFolderNamesList
                       className="mt-2"
@@ -353,6 +355,12 @@ export function EditAssignmentsClient({
                       className="border-t border-white/[0.06]"
                     >
                       <ul className="space-y-3 px-4 py-4 sm:px-5">
+                        {a.slots.length === 0 ? (
+                          <li className="rounded-xl border border-dashed border-white/10 bg-[#0A0A0A]/60 p-4 text-sm text-[#B8B4B8]/75">
+                            {a.empty_reason ||
+                              "No approved slots to edit yet. Checklist unlocks after scripts are approved."}
+                          </li>
+                        ) : null}
                         {a.slots.map((slot) => {
                           const detailOpen = slotOpen[slot.id] ?? false;
                           return (

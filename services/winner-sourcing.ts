@@ -1877,32 +1877,61 @@ export async function assignCreativeToBunch(input: {
     }
   }
 
-  // Backstop: Approved Research rows on this bunch that still lack the creative
-  // (e.g. approve-before-assign, or slot spawn failed earlier).
+  // Backstop: keep Scripts queue in sync with bunch creative for pre-submit rows.
+  // Covers: approve-before-assign, slot spawn failures, and stale assigned_creative_id
+  // left on winner_videos after a reassignment (slots updated, wv left on previous creative).
   try {
+    const slotWinnerIds = [
+      ...new Set(
+        slots
+          .map((s) => s.winner_video_id?.trim())
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
     const { data: orphanWvs } = await sb
       .from("winner_videos")
-      .select("id, script_status, assigned_creative_id")
+      .select("id, script_status, assigned_creative_id, status")
       .eq("bunch_id", bunch.id)
       .eq("status", "Approved");
-    for (const raw of orphanWvs ?? []) {
+    const seen = new Set<string>();
+    const candidates = [...(orphanWvs ?? [])];
+    if (slotWinnerIds.length > 0) {
+      const { data: linked } = await sb
+        .from("winner_videos")
+        .select("id, script_status, assigned_creative_id, status")
+        .in("id", slotWinnerIds);
+      for (const row of linked ?? []) candidates.push(row);
+    }
+    for (const raw of candidates) {
       const wvId = String((raw as { id: string }).id);
+      if (!wvId || seen.has(wvId)) continue;
+      seen.add(wvId);
       const existingCreative = String(
         (raw as { assigned_creative_id?: string | null }).assigned_creative_id ?? "",
       ).trim();
-      if (existingCreative) continue;
       const scriptStatus = coerceScriptStatus(
         (raw as { script_status?: string | null }).script_status,
       );
+      // Keep historical attribution once a script was submitted/reviewed under another creative.
+      if (
+        existingCreative &&
+        existingCreative !== creativeId &&
+        (scriptStatus === "Pending Review" ||
+          scriptStatus === "Approved" ||
+          scriptStatus === "Rejected")
+      ) {
+        continue;
+      }
+      const needsCreativeUpdate = existingCreative !== creativeId;
+      const needsStatusFix = !scriptStatus || scriptStatus === "Not Applicable";
+      if (!needsCreativeUpdate && !needsStatusFix) continue;
       const patch: Record<string, unknown> = {
         assigned_creative_id: creativeId,
         assigned_creative_name: creativeName,
         bunch_id: bunch.id,
         bunch_name: bunch.name,
       };
-      if (!scriptStatus || scriptStatus === "Not Applicable") {
-        patch.script_status = "Needs Script";
-      }
+      if (needsStatusFix) patch.script_status = "Needs Script";
       await updateWinnerVideoFields(wvId, patch).catch((err) => {
         console.error("[winner-sourcing] assignCreativeToBunch wv backstop failed", wvId, err);
       });
@@ -1946,23 +1975,30 @@ export type BunchScriptProgress = {
   model_name: string;
   total: number;
   written: number;
+  needs_script: number;
+  pending_review: number;
+  approved: number;
+  rejected: number;
 };
 
 /**
  * Progress of scripts for bunches assigned to a creative (or with slots assigned to them).
  * `written` = slots past Needs Script (Pending Review / Approved / Rejected).
+ * Assigned bunches always appear even with zero slots (counts stay 0).
  */
 export async function listBunchScriptProgressForCreative(
   creativeId: string,
 ): Promise<BunchScriptProgress[]> {
   const id = creativeId.trim();
   if (!id) return [];
+  const { expandAssignmentIdentityIds } = await import("@/lib/assignment-identity");
+  const identityIds = await expandAssignmentIdentityIds(id);
   const sb = getSupabaseServiceClient();
 
   const { data: bunches, error: bErr } = await sb
     .from("video_bunches")
     .select("id, name, model_name")
-    .eq("assigned_creative_id", id);
+    .in("assigned_creative_id", identityIds);
   if (bErr) throw new Error(bErr.message);
 
   const bunchOwnedIds = new Set((bunches ?? []).map((b) => String((b as { id: string }).id)));
@@ -1980,7 +2016,7 @@ export async function listBunchScriptProgressForCreative(
   const { data: slotHintRows, error: sErr } = await sb
     .from("recreate_video_slots")
     .select("bunch_id")
-    .eq("assigned_creative_id", id);
+    .in("assigned_creative_id", identityIds);
   if (sErr) throw new Error(sErr.message);
 
   const extraBunchIds = [
@@ -2013,7 +2049,23 @@ export async function listBunchScriptProgressForCreative(
     .in("bunch_id", ids);
   if (allErr) throw new Error(allErr.message);
 
-  const progress = new Map<string, { total: number; written: number }>();
+  type Counts = {
+    total: number;
+    written: number;
+    needs_script: number;
+    pending_review: number;
+    approved: number;
+    rejected: number;
+  };
+  const emptyCounts = (): Counts => ({
+    total: 0,
+    written: 0,
+    needs_script: 0,
+    pending_review: 0,
+    approved: 0,
+    rejected: 0,
+  });
+  const progress = new Map<string, Counts>();
   for (const raw of allSlots ?? []) {
     const r = raw as {
       bunch_id: string;
@@ -2028,13 +2080,21 @@ export async function listBunchScriptProgressForCreative(
 
     // Count slots owned by this creative (denormalized) or active script work under a bunch they own.
     const countThis =
-      slotCreative === id ||
+      identityIds.includes(slotCreative) ||
       (bunchOwned && (status === "Needs Script" || Boolean(r.winner_video_id)));
     if (!countThis) continue;
 
-    const cur = progress.get(bid) ?? { total: 0, written: 0 };
+    const cur = progress.get(bid) ?? emptyCounts();
     cur.total += 1;
-    if (status === "Pending Review" || status === "Approved" || status === "Rejected") {
+    if (status === "Needs Script") cur.needs_script += 1;
+    else if (status === "Pending Review") {
+      cur.pending_review += 1;
+      cur.written += 1;
+    } else if (status === "Approved") {
+      cur.approved += 1;
+      cur.written += 1;
+    } else if (status === "Rejected") {
+      cur.rejected += 1;
       cur.written += 1;
     }
     progress.set(bid, cur);
@@ -2042,7 +2102,7 @@ export async function listBunchScriptProgressForCreative(
 
   return ids
     .map((bid) => {
-      const p = progress.get(bid) ?? { total: 0, written: 0 };
+      const p = progress.get(bid) ?? emptyCounts();
       const meta = metaById.get(bid);
       return {
         bunch_id: bid,
@@ -2050,9 +2110,12 @@ export async function listBunchScriptProgressForCreative(
         model_name: meta?.model_name || "",
         total: p.total,
         written: p.written,
+        needs_script: p.needs_script,
+        pending_review: p.pending_review,
+        approved: p.approved,
+        rejected: p.rejected,
       };
     })
-    .filter((p) => p.total > 0)
     .sort((a, b) => a.bunch_name.localeCompare(b.bunch_name));
 }
 
@@ -2088,12 +2151,14 @@ export async function listSlotScriptMetaForCreative(
 ): Promise<SlotScriptMeta[]> {
   const id = creativeId.trim();
   if (!id) return [];
+  const { expandAssignmentIdentityIds } = await import("@/lib/assignment-identity");
+  const identityIds = await expandAssignmentIdentityIds(id);
   const sb = getSupabaseServiceClient();
 
   const { data: bunches } = await sb
     .from("video_bunches")
     .select("id, name")
-    .eq("assigned_creative_id", id);
+    .in("assigned_creative_id", identityIds);
   const nameById = new Map(
     (bunches ?? []).map((b) => [
       String((b as { id: string }).id),
@@ -2108,7 +2173,7 @@ export async function listSlotScriptMetaForCreative(
     .from("recreate_video_slots")
     .select(selectCols)
     .not("winner_video_id", "is", null)
-    .eq("assigned_creative_id", id);
+    .in("assigned_creative_id", identityIds);
   if (error) throw new Error(error.message);
 
   const bunchIds = [...nameById.keys()];

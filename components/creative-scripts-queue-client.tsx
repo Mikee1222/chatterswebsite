@@ -158,6 +158,10 @@ export function CreativeScriptsQueueClient({
         other.push(v);
       }
     }
+    // Always surface bunches assigned to this creative, even with zero queue videos yet.
+    for (const p of bunchProgress) {
+      if (!byBunch.has(p.bunch_id)) byBunch.set(p.bunch_id, []);
+    }
     const out: QueueGroup[] = [];
     for (const [bunchId, videos] of byBunch) {
       const progress = progressByBunchId.get(bunchId);
@@ -181,12 +185,18 @@ export function CreativeScriptsQueueClient({
       out.push({ key: bunchId, title, modelName, progress, videos: sorted });
     }
     out.sort((a, b) => {
-      const aNeeds = a.videos.some(
-        (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
-      );
-      const bNeeds = b.videos.some(
-        (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
-      );
+      const aNeeds =
+        (a.progress?.needs_script ?? 0) > 0 ||
+        (a.progress?.rejected ?? 0) > 0 ||
+        a.videos.some(
+          (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
+        );
+      const bNeeds =
+        (b.progress?.needs_script ?? 0) > 0 ||
+        (b.progress?.rejected ?? 0) > 0 ||
+        b.videos.some(
+          (v) => v.script_status === "Needs Script" || v.script_status === "Rejected",
+        );
       if (aNeeds !== bNeeds) return aNeeds ? -1 : 1;
       return a.title.localeCompare(b.title);
     });
@@ -201,7 +211,7 @@ export function CreativeScriptsQueueClient({
       });
     }
     return out;
-  }, [queue, progressByBunchId, metaByVideoId]);
+  }, [queue, bunchProgress, progressByBunchId, metaByVideoId]);
 
   const didAutoExpand = React.useRef(false);
   React.useEffect(() => {
@@ -561,7 +571,18 @@ export function CreativeScriptsQueueClient({
             const written = group.progress?.written ?? group.videos.filter((v) => v.script_status !== "Needs Script").length;
             const total = group.progress?.total ?? group.videos.length;
             const pct = total > 0 ? Math.round((written / total) * 100) : 0;
-            const rejectedInGroup = group.videos.filter((v) => v.script_status === "Rejected").length;
+            const rejectedInGroup =
+              group.progress?.rejected ??
+              group.videos.filter((v) => v.script_status === "Rejected").length;
+            const needsInGroup =
+              group.progress?.needs_script ??
+              group.videos.filter((v) => v.script_status === "Needs Script").length;
+            const pendingInGroup =
+              group.progress?.pending_review ??
+              group.videos.filter((v) => v.script_status === "Pending Review").length;
+            const approvedInGroup =
+              group.progress?.approved ??
+              group.videos.filter((v) => v.script_status === "Approved").length;
 
             return (
               <motion.div
@@ -588,7 +609,9 @@ export function CreativeScriptsQueueClient({
                       <p className="mt-1 text-sm text-[#D4AF8C]/85">{group.modelName}</p>
                     ) : null}
                     <p className="mt-1.5 text-xs tabular-nums text-[#B8B4B8]/55">
-                      {written} of {total} scripts written
+                      {total === 0
+                        ? "0 slots yet — waiting for research to fill this bunch"
+                        : `${written} of ${total} scripts written · ${needsInGroup} need script · ${pendingInGroup} pending · ${approvedInGroup} approved`}
                     </p>
                     <div className="mt-2 h-1.5 w-44 max-w-full overflow-hidden rounded-full bg-white/10">
                       <div
@@ -617,6 +640,24 @@ export function CreativeScriptsQueueClient({
                       className="overflow-hidden border-t border-white/[0.06]"
                     >
                       <div className="space-y-3 px-4 py-4 sm:px-5">
+                        {group.videos.length === 0 ? (
+                          <div className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-6 text-sm text-[#B8B4B8]/70">
+                            {total === 0 ? (
+                              <p>
+                                This bunch is assigned to you with no script slots yet. Next: wait for
+                                research finds to be approved into the bunch.
+                              </p>
+                            ) : (
+                              <p>
+                                {needsInGroup} need script
+                                {pendingInGroup > 0 ? `, ${pendingInGroup} pending review` : ""}
+                                {approvedInGroup > 0 ? `, ${approvedInGroup} approved` : ""}
+                                {rejectedInGroup > 0 ? `, ${rejectedInGroup} rejected` : ""}. Slot rows
+                                will appear here once linked winner videos sync — refresh shortly.
+                              </p>
+                            )}
+                          </div>
+                        ) : null}
                         {group.videos.map((v) => {
                           const meta = metaByVideoId.get(v.id);
                           const typeLabel =

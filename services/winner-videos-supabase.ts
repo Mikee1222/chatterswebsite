@@ -261,6 +261,74 @@ export async function getWinnerVideoById(id: string): Promise<WinnerVideoRecord 
   return mapRow(row);
 }
 
+const SCRIPTS_QUEUE_STATUSES = new Set([
+  "Needs Script",
+  "Pending Review",
+  "Approved",
+  "Rejected",
+]);
+
+/**
+ * Creative Scripts queue: videos assigned to this creative OR linked to bunches/slots
+ * they own (covers denormalized assigned_creative_id drift on winner_videos).
+ */
+export async function getScriptsQueueForCreative(creativeId: string): Promise<WinnerVideoRecord[]> {
+  const { expandAssignmentIdentityIds } = await import("@/lib/assignment-identity");
+  const identityIds = await expandAssignmentIdentityIds(creativeId);
+  if (identityIds.length === 0) return [];
+
+  const byId = new Map<string, WinnerVideoRecord>();
+  for (const id of identityIds) {
+    for (const v of await getAllWinnerVideos({ assigned_creative_id: id })) {
+      byId.set(v.id, v);
+    }
+  }
+
+  const sb = getSupabaseServiceClient();
+  const winnerIds = new Set<string>();
+
+  const { data: bunches } = await sb
+    .from("video_bunches")
+    .select("id")
+    .in("assigned_creative_id", identityIds);
+  const bunchIds = [...new Set((bunches ?? []).map((b) => String((b as { id: string }).id)))];
+
+  const { data: slotOwned } = await sb
+    .from("recreate_video_slots")
+    .select("winner_video_id")
+    .in("assigned_creative_id", identityIds)
+    .not("winner_video_id", "is", null);
+  for (const r of slotOwned ?? []) {
+    const wid = String((r as { winner_video_id?: string }).winner_video_id ?? "").trim();
+    if (wid) winnerIds.add(wid);
+  }
+
+  if (bunchIds.length > 0) {
+    const { data: bunchSlots } = await sb
+      .from("recreate_video_slots")
+      .select("winner_video_id")
+      .in("bunch_id", bunchIds)
+      .not("winner_video_id", "is", null);
+    for (const r of bunchSlots ?? []) {
+      const wid = String((r as { winner_video_id?: string }).winner_video_id ?? "").trim();
+      if (wid) winnerIds.add(wid);
+    }
+  }
+
+  const missing = [...winnerIds].filter((id) => !byId.has(id));
+  for (let i = 0; i < missing.length; i += 100) {
+    const chunk = missing.slice(i, i + 100);
+    const { data: rows, error } = await sb.from(TABLE).select("*").in("id", chunk);
+    if (error) throw new Error(`getScriptsQueueForCreative: ${error.message}`);
+    for (const row of rows ?? []) {
+      const v = await mapRow(row as Row);
+      byId.set(v.id, v);
+    }
+  }
+
+  return [...byId.values()].filter((v) => SCRIPTS_QUEUE_STATUSES.has(v.script_status));
+}
+
 export async function createWinnerVideoRow(fields: Record<string, unknown>): Promise<WinnerVideoRecord> {
   const row = await sbInsert<Row>(TABLE, fields);
   return mapRow(row);

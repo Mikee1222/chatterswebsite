@@ -65,12 +65,66 @@ export type EditSlotDetail = RecreateVideoSlot & {
   assigned_creator_name: string;
 };
 
+export type EditSlotStatusCounts = {
+  total: number;
+  approved: number;
+  needs_script: number;
+  pending_review: number;
+  rejected: number;
+  other: number;
+  filmed: number;
+};
+
 export type EditAssignment = {
   bunch: VideoBunch;
   slots: EditSlotDetail[];
   edited_count: number;
   editable_count: number;
+  /** All slots on the bunch (not only approved) — for empty-state messaging. */
+  slot_counts: EditSlotStatusCounts;
+  /** Human-readable next step when there are no approved slots to edit yet. */
+  empty_reason: string | null;
 };
+
+function countSlotStatuses(slots: RecreateVideoSlot[]): EditSlotStatusCounts {
+  const counts: EditSlotStatusCounts = {
+    total: slots.length,
+    approved: 0,
+    needs_script: 0,
+    pending_review: 0,
+    rejected: 0,
+    other: 0,
+    filmed: 0,
+  };
+  for (const s of slots) {
+    if (s.filmed) counts.filmed += 1;
+    if (s.status === "Approved") counts.approved += 1;
+    else if (s.status === "Needs Script") counts.needs_script += 1;
+    else if (s.status === "Pending Review") counts.pending_review += 1;
+    else if (s.status === "Rejected") counts.rejected += 1;
+    else counts.other += 1;
+  }
+  return counts;
+}
+
+function emptyEditReason(counts: EditSlotStatusCounts): string | null {
+  if (counts.approved > 0) return null;
+  if (counts.total === 0) {
+    return "No slots exist on this bunch yet. Wait for research to fill and approve finds.";
+  }
+  const parts: string[] = [
+    `0 approved slots yet`,
+    counts.pending_review > 0 ? `${counts.pending_review} pending review` : "",
+    counts.needs_script > 0 ? `${counts.needs_script} still need scripts` : "",
+    counts.rejected > 0 ? `${counts.rejected} rejected` : "",
+    counts.other > 0 ? `${counts.other} other` : "",
+  ].filter(Boolean);
+  const next =
+    counts.needs_script > 0 || counts.pending_review > 0 || counts.rejected > 0
+      ? "Editing checklist unlocks after scripts are approved."
+      : "Slots exist but none are approved for editing yet.";
+  return `${parts.join(", ")}. ${next}`;
+}
 
 async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<EditSlotDetail[]> {
   const approved = slots.filter((s) => s.status === "Approved" && Boolean(s.winner_video_id));
@@ -112,11 +166,13 @@ function editingProgress(slots: RecreateVideoSlot[]): { edited_count: number; ed
 export async function listEditAssignmentsForEditor(editorId: string): Promise<EditAssignment[]> {
   const id = editorId.trim();
   if (!id) return [];
+  const { expandAssignmentIdentityIds } = await import("@/lib/assignment-identity");
+  const identityIds = await expandAssignmentIdentityIds(id);
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from("video_bunches")
     .select("*")
-    .eq("assigned_editor_id", id)
+    .in("assigned_editor_id", identityIds)
     .in("editing_status", ["assigned", "in_progress", "uploaded"])
     .order("updated_at", { ascending: false });
   if (error) throw new Error(`listEditAssignmentsForEditor: ${error.message}`);
@@ -127,11 +183,14 @@ export async function listEditAssignmentsForEditor(editorId: string): Promise<Ed
     if (!bunch) continue;
     const slots = await listSlotsForBunch(bunch.id);
     const progress = editingProgress(slots);
+    const slot_counts = countSlotStatuses(slots);
     const enriched = await enrichSlotsWithScripts(slots);
     results.push({
       bunch: { ...bunch, ...progress },
       slots: enriched,
       ...progress,
+      slot_counts,
+      empty_reason: emptyEditReason(slot_counts),
     });
   }
   return results;
@@ -156,8 +215,15 @@ export async function assignEditorToBunch(input: {
   }
 
   const slots = await listSlotsForBunch(bunch.id);
+  const slot_counts = countSlotStatuses(slots);
   const approved = slots.filter((s) => s.status === "Approved");
-  if (approved.length === 0) throw new Error("Bunch has no approved slots to edit");
+  // Visibility: allow assignment even with 0 approved slots. Editing checklist actions
+  // remain gated on Approved status. Surface a clear count message instead of hard-failing.
+  if (slots.length === 0) {
+    throw new Error(
+      "Bunch has no slots yet — wait for research to fill finds before assigning an editor",
+    );
+  }
 
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
@@ -183,12 +249,17 @@ export async function assignEditorToBunch(input: {
     .update({ edited: false, edited_at: null, updated_at: new Date().toISOString() })
     .eq("bunch_id", bunch.id);
 
+  const countSummary =
+    approved.length > 0
+      ? `${approved.length} approved slot${approved.length === 1 ? "" : "s"} ready to edit`
+      : emptyEditReason(slot_counts) || "0 approved slots yet";
+
   await notify({
     user_id: editorId,
     event_type: NOTIFICATION_EVENT.BUNCH_ASSIGNED_TO_EDITOR,
     priority: NOTIFICATION_PRIORITY.HIGH,
     title: "✂️ Bunch assigned for editing",
-    body: `“${bunch.name}” (${bunch.model_name || "model"}) was assigned to you — ${approved.length} slot${approved.length === 1 ? "" : "s"} ready to edit.`,
+    body: `“${bunch.name}” (${bunch.model_name || "model"}) was assigned to you — ${countSummary}.`,
     entity_type: NOTIFICATION_ENTITY.EDITING_ASSIGNMENT,
     entity_id: bunch.id,
     actor_user_id: input.actor_user_id,
@@ -216,8 +287,14 @@ export async function setSlotEdited(input: {
 
   const bunch = await getVideoBunch(String(slotRow.bunch_id));
   if (!bunch) throw new Error("Bunch not found");
-  if (!input.allowManage && bunch.assigned_editor_id !== input.actor_user_id) {
-    throw new Error("Forbidden");
+  if (!input.allowManage) {
+    const { expandAssignmentIdentityIds, assignmentIdMatches } = await import(
+      "@/lib/assignment-identity"
+    );
+    const ids = await expandAssignmentIdentityIds(input.actor_user_id);
+    if (!assignmentIdMatches(bunch.assigned_editor_id, ids)) {
+      throw new Error("Forbidden");
+    }
   }
   if (String(slotRow.status) !== "Approved") {
     throw new Error("Only approved script slots can be marked edited");
@@ -295,13 +372,22 @@ export async function submitBunchEditedUpload(input: {
 
   const bunch = await getVideoBunch(input.bunch_id);
   if (!bunch) throw new Error("Bunch not found");
-  if (!input.allowManage && bunch.assigned_editor_id !== input.actor_user_id) {
-    throw new Error("Forbidden");
+  if (!input.allowManage) {
+    const { expandAssignmentIdentityIds, assignmentIdMatches } = await import(
+      "@/lib/assignment-identity"
+    );
+    const ids = await expandAssignmentIdentityIds(input.actor_user_id);
+    if (!assignmentIdMatches(bunch.assigned_editor_id, ids)) {
+      throw new Error("Forbidden");
+    }
   }
 
   const slots = await listSlotsForBunch(bunch.id);
   const progress = editingProgress(slots);
-  if (progress.editable_count === 0) throw new Error("No approved slots to mark edited");
+  if (progress.editable_count === 0) {
+    const counts = countSlotStatuses(slots);
+    throw new Error(emptyEditReason(counts) || "No approved slots to mark edited");
+  }
   if (progress.edited_count < progress.editable_count) {
     throw new Error(`Mark all slots edited first (${progress.edited_count} of ${progress.editable_count})`);
   }
