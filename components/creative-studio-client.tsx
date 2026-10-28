@@ -16,12 +16,14 @@ import {
   Video,
   AlertTriangle,
   Facebook,
+  Trophy,
 } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import type { CreativeIdea } from "@/lib/creative-studio-types";
 import type { PersonaListSummary } from "@/lib/persona-types";
 import { COMPLETE_THRESHOLD, formatRelativeShort } from "@/lib/persona-completeness";
 import { CreativeStudioVideoAnalyzer } from "@/components/creative-studio-video-analyzer";
+import { CreativeStudioWinnerBreakdown } from "@/components/creative-studio-winner-breakdown";
 import {
   CompletenessRing,
   ModelAvatar,
@@ -56,7 +58,7 @@ type PersonaMeta = Pick<
   | "has_live_updates"
 >;
 
-type Tab = "captions" | "tos" | "analyzer" | "saved";
+type Tab = "breakdown" | "captions" | "tos" | "analyzer" | "saved";
 
 type Props = {
   models: ModelOpt[];
@@ -85,14 +87,15 @@ export function CreativeStudioClient({
   canViewPersonas,
 }: Props) {
   const [modelId, setModelId] = React.useState(models[0]?.id ?? "");
-  const [tab, setTab] = React.useState<Tab>("captions");
+  const [tab, setTab] = React.useState<Tab>("breakdown");
   React.useEffect(() => {
     try {
       const sp = new URLSearchParams(window.location.search);
       const qModel = sp.get("model")?.trim() ?? "";
       const qTab = sp.get("tab")?.trim();
       if (qModel && models.some((m) => m.id === qModel)) setModelId(qModel);
-      if (qTab === "video" || qTab === "analyzer") setTab("analyzer");
+      if (qTab === "breakdown" || qTab === "winner") setTab("breakdown");
+      else if (qTab === "video" || qTab === "analyzer") setTab("analyzer");
       else if (qTab === "tos") setTab("tos");
       else if (qTab === "ideas" || qTab === "saved") setTab("saved");
       else if (qTab === "captions") setTab("captions");
@@ -279,6 +282,7 @@ export function CreativeStudioClient({
   }
 
   const tabs: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
+    { id: "breakdown", label: "Winner Breakdown", icon: <Trophy className="h-3.5 w-3.5" /> },
     { id: "captions", label: "Captions", icon: <FileText className="h-3.5 w-3.5" /> },
     { id: "tos", label: "Text on Screen", icon: <Type className="h-3.5 w-3.5" /> },
     { id: "analyzer", label: "Video Analyzer", icon: <Video className="h-3.5 w-3.5" /> },
@@ -318,7 +322,7 @@ export function CreativeStudioClient({
       <PsPageHeader
         eyebrow="Creative"
         title="AI Creative Studio"
-        description="Persona-grounded, platform-safe captions and on-screen hooks. Sensitive persona sections never reach the model."
+        description="Break down winners into their viral elements, then persona-grounded, platform-safe captions and on-screen hooks. Sensitive persona sections never reach the model."
         icon={Sparkles}
       />
 
@@ -410,7 +414,7 @@ export function CreativeStudioClient({
             type="button"
             onClick={() => {
               setTab(t.id);
-              if (t.id !== "saved" && t.id !== "analyzer") setOutputs([]);
+              if (t.id !== "saved" && t.id !== "analyzer" && t.id !== "breakdown") setOutputs([]);
               setError(null);
             }}
             className={cn(
@@ -426,7 +430,22 @@ export function CreativeStudioClient({
         ))}
       </div>
 
-      {tab === "analyzer" ? (
+      {tab === "breakdown" ? (
+        <div className={cn(VA_CARD, "p-4 md:p-6")}>
+          <CreativeStudioWinnerBreakdown
+            modelId={modelId}
+            modelName={modelName}
+            onUseForCaptions={(ctx) => {
+              setIdeaContext(ctx);
+              setTab("captions");
+            }}
+            onUseForTos={(ctx) => {
+              setIdeaContext(ctx);
+              setTab("tos");
+            }}
+          />
+        </div>
+      ) : tab === "analyzer" ? (
         <div className={cn(VA_CARD, "p-4 md:p-6")}>
           <CreativeStudioVideoAnalyzer
             modelId={modelId}
