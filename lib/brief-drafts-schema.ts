@@ -24,6 +24,10 @@ export type DraftRecordingVariation = {
 export type DraftRecording = {
   title: string;
   concept_why: string;
+  /** Wardrobe picks by number (0 = none / not in wardrobe). One each for the whole brief. */
+  outfit_number: number;
+  location_number: number;
+  prop_numbers: number[];
   setup_camera: string;
   setup_framing: string;
   setup_location: string;
@@ -134,6 +138,9 @@ export const BRIEF_DRAFTS_TOOL = {
             required: [
               "title",
               "concept_why",
+              "outfit_number",
+              "location_number",
+              "prop_numbers",
               "setup_camera",
               "setup_framing",
               "setup_location",
@@ -154,10 +161,32 @@ export const BRIEF_DRAFTS_TOOL = {
                 description:
                   "THE CONCEPT & WHY IT WORKS: what the video is; why viewers love it (shares / tags / hook); why it works for THIS creator; the vibe and how to deliver it. Multi-line, plain words.",
               },
+              outfit_number: {
+                type: "integer",
+                minimum: 0,
+                description:
+                  "Wardrobe outfit number chosen for the WHOLE brief (one outfit per bunch). 0 if no wardrobe was given.",
+              },
+              location_number: {
+                type: "integer",
+                minimum: 0,
+                description: "Wardrobe location number chosen for the whole brief. 0 if none.",
+              },
+              prop_numbers: {
+                type: "array",
+                items: { type: "integer", minimum: 1 },
+                description: "Wardrobe prop numbers used, if any.",
+              },
               setup_camera: { type: "string" },
               setup_framing: { type: "string" },
-              setup_location: { type: "string" },
-              setup_outfit: { type: "string" },
+              setup_location: {
+                type: "string",
+                description: "Describe the location + how to use it. If chosen from the wardrobe, start with '#<number> <name>'.",
+              },
+              setup_outfit: {
+                type: "string",
+                description: "Describe the outfit + styling (hair, accessories). If chosen from the wardrobe, start with '#<number> <name>'.",
+              },
               setup_light: { type: "string" },
               setup_sound: { type: "string" },
               setup_notes: { type: "string" },
@@ -289,5 +318,6 @@ export const BRIEF_DRAFTS_SYSTEM_PROMPT = [
   "Editable content: there is NO recording — the editor works from existing footage, so recording must be null and raw_files_takes describes what footage to look for.",
   "Creation content: the creator films raw clips only (no music, no text, no filters). Text on screen and sound are added by the editor, so put them in the editing brief, not in the creator's checklist.",
   "Use consistent V1..Vn naming across recording variations, editing videos and posting posts.",
+  "ONE bunch = ONE setup: all variations in a recording brief share the same outfit and the same location (variations differ in lines and action only). When a WARDROBE list is given, choose outfit_number and location_number from it, fitting the concept and respecting rotation (prefer items used longest ago / never) and the agency rules; mention small zero-cost variety only if useful (hair up/down, jacket on/off, different angle).",
   "Always respond with the submit_brief_drafts tool.",
 ].join(" ");

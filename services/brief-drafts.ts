@@ -41,6 +41,7 @@ import {
 import { createPostingBrief, type PostingBriefRegion } from "@/services/posting-briefs";
 import { createRecordingBrief } from "@/services/recording-briefs";
 import { getWinnerBreakdown, type WinnerBreakdownRow } from "@/services/winner-breakdowns";
+import { listWardrobe, wardrobeToPromptText, type WardrobeBundle } from "@/services/model-wardrobe";
 
 const BREAKDOWN_TABLE = "creative_studio_winner_breakdowns";
 
@@ -149,6 +150,11 @@ function sanitizeRecording(v: unknown): DraftRecording | null {
   return {
     title: str(r.title).trim(),
     concept_why: str(r.concept_why).trim(),
+    outfit_number: Math.max(0, Math.round(Number(r.outfit_number) || 0)),
+    location_number: Math.max(0, Math.round(Number(r.location_number) || 0)),
+    prop_numbers: Array.isArray(r.prop_numbers)
+      ? (r.prop_numbers as unknown[]).map((n) => Math.round(Number(n) || 0)).filter((n) => n > 0).slice(0, 10)
+      : [],
     setup_camera: str(r.setup_camera).trim(),
     setup_framing: str(r.setup_framing).trim(),
     setup_location: str(r.setup_location).trim(),
@@ -241,6 +247,7 @@ function buildPrompt(input: {
   variationCount: number;
   paths: { raw: string; edited: string; ready: string };
   accountHandle?: string;
+  wardrobeText?: string;
 }): string {
   const b = input.breakdown;
   const lines: string[] = [];
@@ -262,6 +269,10 @@ function buildPrompt(input: {
   lines.push(`- VA posts from: ${input.paths.ready}. Trials ON. Text on screen must match the edit.`);
   lines.push("- Text on screen, labels and captions: relatable, clever, innuendo instead of explicit wording.");
   lines.push(PLATFORM_SAFE_SOCIAL_RULES.trim());
+  if (input.wardrobeText) {
+    lines.push("");
+    lines.push(input.wardrobeText);
+  }
   lines.push("");
   lines.push("CREATOR PERSONA (allowlisted fields only):");
   lines.push(input.personaText || "(no persona details available)");
@@ -306,6 +317,14 @@ export async function draftBriefsFromBreakdown(input: DraftBriefsInput): Promise
 
   const variationCount = Math.min(6, Math.max(1, Math.round(input.variationCount ?? 3)));
   const now = new Date();
+  const wardrobe: WardrobeBundle =
+    input.contentType === "creation"
+      ? await listWardrobe(input.modelId).catch(() => ({ items: [], rules: "" }))
+      : { items: [], rules: "" };
+  const wardrobeText = wardrobeToPromptText(wardrobe);
+  if (input.contentType === "creation" && !wardrobe.items.some((i) => i.kind === "outfit")) {
+    warnings.push(`${creatorName} has no outfits in her Wardrobe yet — outfit/location were written freely. Add her wardrobe in Persona → Wardrobe so briefs pick real items.`);
+  }
   const paths = housePaths({ creatorName, flow: input.flow, accountHandle: input.accountHandle, now });
 
   const modelName = resolveBreakdownModel();
@@ -320,6 +339,7 @@ export async function draftBriefsFromBreakdown(input: DraftBriefsInput): Promise
       variationCount,
       paths,
       accountHandle: input.accountHandle,
+      wardrobeText,
     }),
     system: BRIEF_DRAFTS_SYSTEM_PROMPT,
     maxTokens: BRIEF_DRAFTS_MAX_TOKENS,
@@ -351,6 +371,16 @@ export async function draftBriefsFromBreakdown(input: DraftBriefsInput): Promise
   /* ---- Recording (creation only) ---- */
   let recordingBriefId: string | null = null;
   if (recording) {
+    const findItem = (kind: "outfit" | "location" | "prop", n: number) =>
+      n > 0 ? wardrobe.items.find((i) => i.kind === kind && i.number === n && i.is_active) ?? null : null;
+    const outfitItem = findItem("outfit", recording.outfit_number);
+    const locationItem = findItem("location", recording.location_number);
+    const propItems = recording.prop_numbers.map((n) => findItem("prop", n)).filter((p) => p != null);
+    const labelFor = (item: { number: number; name: string; tags: string[] } | null, text: string) => {
+      if (!item) return text;
+      const head = `#${item.number} ${item.name}`.trim();
+      return text.startsWith("#") ? text : `${head}${text ? `\n${text}` : ""}`;
+    };
     const rec = await createRecordingBrief(
       {
         title: recording.title || `${baseTitle} — Recording`,
@@ -361,16 +391,18 @@ export async function draftBriefsFromBreakdown(input: DraftBriefsInput): Promise
         concept_why: recording.concept_why,
         setup_camera: recording.setup_camera,
         setup_framing: recording.setup_framing,
-        setup_location: recording.setup_location,
-        setup_outfit: recording.setup_outfit,
+        setup_location: labelFor(locationItem, recording.setup_location),
+        setup_outfit: labelFor(outfitItem, recording.setup_outfit),
         setup_light: recording.setup_light,
         setup_sound: recording.setup_sound,
         setup_notes: [flowTag, recording.setup_notes].filter(Boolean).join("\n"),
         how_to_talk: recording.how_to_talk,
         how_to_act: recording.how_to_act,
-        props: recording.props,
+        props: [propItems.map((p) => `#${p.number} ${p.name}`).join(", "), recording.props].filter(Boolean).join("\n"),
         checklist_before_upload: recording.checklist_before_upload,
         upload_path: paths.raw,
+        outfit_item_id: outfitItem?.id ?? null,
+        location_item_id: locationItem?.id ?? null,
         clip_naming: "V1_take1, V1_take2, V2_take1 … (variation_take)",
         status: "draft",
         variations: recording.variations.map((v, i) => ({

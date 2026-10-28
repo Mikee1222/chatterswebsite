@@ -13,6 +13,7 @@ import {
   getRecordingBriefCapabilities,
 } from "@/lib/recording-briefs-access";
 import { VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
+import { getWardrobeItemsByIds } from "@/services/model-wardrobe";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -52,6 +53,18 @@ export default async function RecordingBriefDetailPage({ params }: Props) {
   const modelName = models.find((m) => m.id === brief.model_id)?.model_name;
   const canManage = await hasPermission(user, PERMISSIONS.RECORDING_BRIEFS_MANAGE);
 
+  const wardrobeItems = await getWardrobeItemsByIds(
+    [brief.outfit_item_id, brief.location_item_id].filter((x): x is string => Boolean(x)),
+  ).catch(() => new Map());
+  const toPhoto = (id: string | null) => {
+    const it = id ? wardrobeItems.get(id) : null;
+    return it ? { number: it.number, name: it.name, url: it.photo_signed_url } : null;
+  };
+  const wardrobePhotos = {
+    outfit: toPhoto(brief.outfit_item_id),
+    location: toPhoto(brief.location_item_id),
+  };
+
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6">
       <div className="mb-4 flex flex-wrap gap-2">
@@ -64,7 +77,12 @@ export default async function RecordingBriefDetailPage({ params }: Props) {
           </Link>
         ) : null}
       </div>
-      <RecordingBriefView brief={brief} modelName={modelName} viewerMode={!canManage} />
+      <RecordingBriefView
+        brief={brief}
+        modelName={modelName}
+        viewerMode={!canManage}
+        wardrobePhotos={wardrobePhotos}
+      />
     </div>
   );
 }

@@ -353,6 +353,14 @@ export function PersonaEditorClient(props: Props) {
           <CompletenessRing value={overall} size={48} />
           <div className="flex flex-wrap items-center gap-2">
             <SaveStatusPill status={saving ? "saving" : saveStatus} />
+            <Link
+              href={ROUTES.personaWardrobe(props.modelId)}
+              className={cn(VA_BTN_SECONDARY, "inline-flex min-h-11 items-center gap-1.5 px-3")}
+              title="Outfits, locations and props — used by Draft briefs"
+            >
+              <Shirt className="h-4 w-4" />
+              Wardrobe
+            </Link>
             <button
               type="button"
               className={cn(VA_BTN_SECONDARY, "inline-flex min-h-11 items-center gap-1.5 px-3")}
