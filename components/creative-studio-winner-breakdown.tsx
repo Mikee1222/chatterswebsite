@@ -42,6 +42,8 @@ import { cn } from "@/lib/utils";
 type Props = {
   modelId: string;
   modelName: string;
+  /** Fill Bunches winner to prefill from (?winner= in the URL). */
+  winnerVideoId?: string | null;
   onUseForCaptions: (ctx: string) => void;
   onUseForTos: (ctx: string) => void;
   /** Optional extra actions rendered next to the result (e.g. Draft briefs). */
@@ -159,9 +161,23 @@ function Chip({ children, tone = "neutral" }: { children: React.ReactNode; tone?
   );
 }
 
+type WinnerContext = {
+  id: string;
+  video_id: string;
+  video_link: string;
+  note: string;
+  reference_model_name: string;
+  views_at_submission: number | null;
+  status: string;
+  video_file_url: string | null;
+  video_file_name: string | null;
+  transcript: string;
+};
+
 export function CreativeStudioWinnerBreakdown({
   modelId,
   modelName,
+  winnerVideoId = null,
   onUseForCaptions,
   onUseForTos,
   renderActions,
@@ -193,6 +209,9 @@ export function CreativeStudioWinnerBreakdown({
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [historyBusy, setHistoryBusy] = React.useState(false);
 
+  const [winner, setWinner] = React.useState<WinnerContext | null>(null);
+  const [winnerNote, setWinnerNote] = React.useState<string | null>(null);
+
   const busy = step === "preparing" || step === "breaking";
 
   const loadHistory = React.useCallback(async () => {
@@ -213,6 +232,59 @@ export function CreativeStudioWinnerBreakdown({
   React.useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  // Prefill from a Fill Bunches winner (?winner=). Tries to fetch an uploaded file; else asks for a drop.
+  const winnerLoadedRef = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!winnerVideoId || winnerLoadedRef.current === winnerVideoId) return;
+    winnerLoadedRef.current = winnerVideoId;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/creative-studio/breakdown/winner-context?winnerId=${encodeURIComponent(winnerVideoId)}`,
+        );
+        const data = (await res.json().catch(() => ({}))) as { winner?: WinnerContext; error?: string };
+        if (cancelled || !data.winner) {
+          if (!cancelled) setWinnerNote(data.error ?? "Could not load that winner.");
+          return;
+        }
+        const w = data.winner;
+        setWinner(w);
+        setSourceUrl(w.video_link ?? "");
+        const noteParts: string[] = [];
+        if (w.reference_model_name) noteParts.push(`Reference account: ${w.reference_model_name}`);
+        if (w.views_at_submission != null) noteParts.push(`Views at submission: ${w.views_at_submission.toLocaleString()}`);
+        if (w.note?.trim()) noteParts.push(`Research note: ${w.note.trim()}`);
+        setNotes(noteParts.join("\n"));
+        if (w.video_file_url) {
+          try {
+            const fileRes = await fetch(w.video_file_url);
+            if (!fileRes.ok) throw new Error("fetch failed");
+            const blob = await fileRes.blob();
+            if (cancelled) return;
+            const file = new File([blob], w.video_file_name || `winner-${w.video_id || w.id}.mp4`, {
+              type: blob.type || "video/mp4",
+            });
+            setWinnerNote(`Loaded winner ${w.video_id || ""} from Fill Bunches.`);
+            await onFile(file);
+            return;
+          } catch {
+            /* fall through to manual drop */
+          }
+        }
+        setWinnerNote(
+          `Winner ${w.video_id || ""} loaded from Fill Bunches. Download the reel from the reference link and drop it here to break it down.`,
+        );
+      } catch {
+        if (!cancelled) setWinnerNote("Could not load that winner.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [winnerVideoId]);
 
   function resetAll() {
     setStep("idle");
@@ -287,6 +359,7 @@ export function CreativeStudioWinnerBreakdown({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           modelId: modelId || null,
+          winnerVideoId: winner?.id ?? winnerVideoId ?? null,
           sourceUrl,
           sourceCaption: caption,
           notes,
@@ -332,7 +405,7 @@ export function CreativeStudioWinnerBreakdown({
 
   async function onFile(f: File | null) {
     if (!f) return;
-    resetAll();
+    resetAll(); // keeps source / caption / notes — they belong to the next run too
     setFile(f);
     if (f.size > MAX_UPLOAD_MB * 1024 * 1024) {
       setSttWarning(
@@ -574,6 +647,12 @@ export function CreativeStudioWinnerBreakdown({
         </div>
       </div>
 
+      {winnerNote && (
+        <div className="flex items-start gap-2 rounded-xl border border-[#D4AF8C]/30 bg-[#D4AF8C]/[0.07] px-3 py-2.5 text-sm text-[#E8D5B5]">
+          <Film className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{winnerNote}</span>
+        </div>
+      )}
       {sttWarning && (
         <div className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-100/90">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

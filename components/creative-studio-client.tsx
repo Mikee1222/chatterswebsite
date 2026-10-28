@@ -92,11 +92,14 @@ export function CreativeStudioClient({
 }: Props) {
   const [modelId, setModelId] = React.useState(models[0]?.id ?? "");
   const [tab, setTab] = React.useState<Tab>("breakdown");
+  const [winnerVideoId, setWinnerVideoId] = React.useState<string | null>(null);
   React.useEffect(() => {
     try {
       const sp = new URLSearchParams(window.location.search);
       const qModel = sp.get("model")?.trim() ?? "";
       const qTab = sp.get("tab")?.trim();
+      const qWinner = sp.get("winner")?.trim();
+      if (qWinner) setWinnerVideoId(qWinner);
       if (qModel && models.some((m) => m.id === qModel)) setModelId(qModel);
       if (qTab === "breakdown" || qTab === "winner") setTab("breakdown");
       else if (qTab === "video" || qTab === "analyzer") setTab("analyzer");
@@ -439,6 +442,7 @@ export function CreativeStudioClient({
           <CreativeStudioWinnerBreakdown
             modelId={modelId}
             modelName={modelName}
+            winnerVideoId={winnerVideoId}
             onUseForCaptions={(ctx) => {
               setIdeaContext(ctx);
               setTab("captions");
