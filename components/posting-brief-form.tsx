@@ -288,6 +288,7 @@ export function PostingBriefForm({
   const buildInput = (): PostingBriefInput => ({
     title,
     model_id: modelId,
+    editing_brief_id: initial?.editing_brief_id ?? null,
     account_handle: accountHandle,
     account_type: accountType,
     region,
@@ -329,6 +330,7 @@ export function PostingBriefForm({
     timing_notes: timingNotes,
     final_checklist: checklistRaw.split("\n").filter((l) => l.trim().length > 0),
     status: initial?.status ?? "active",
+    editing_brief_id: initial?.editing_brief_id ?? null,
     created_by: initial?.created_by ?? "",
     created_at: initial?.created_at ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),

@@ -24,6 +24,7 @@ import type { PersonaListSummary } from "@/lib/persona-types";
 import { COMPLETE_THRESHOLD, formatRelativeShort } from "@/lib/persona-completeness";
 import { CreativeStudioVideoAnalyzer } from "@/components/creative-studio-video-analyzer";
 import { CreativeStudioWinnerBreakdown } from "@/components/creative-studio-winner-breakdown";
+import { CreativeStudioDraftBriefs } from "@/components/creative-studio-draft-briefs";
 import {
   CompletenessRing,
   ModelAvatar,
@@ -66,6 +67,8 @@ type Props = {
   canPushBrief: boolean;
   personaMeta: PersonaMeta[];
   canViewPersonas: boolean;
+  /** Which brief modules the user can create drafts in (Winner Breakdown → Draft briefs). */
+  briefPerms?: { editing: boolean; recording: boolean; posting: boolean };
 };
 
 const PLATFORMS: Array<{
@@ -85,6 +88,7 @@ export function CreativeStudioClient({
   canPushBrief,
   personaMeta,
   canViewPersonas,
+  briefPerms = { editing: false, recording: false, posting: false },
 }: Props) {
   const [modelId, setModelId] = React.useState(models[0]?.id ?? "");
   const [tab, setTab] = React.useState<Tab>("breakdown");
@@ -443,6 +447,14 @@ export function CreativeStudioClient({
               setIdeaContext(ctx);
               setTab("tos");
             }}
+            renderActions={({ id }) => (
+              <CreativeStudioDraftBriefs
+                breakdownId={id}
+                models={models}
+                defaultModelId={modelId}
+                perms={briefPerms}
+              />
+            )}
           />
         </div>
       ) : tab === "analyzer" ? (

@@ -22,7 +22,9 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const status = (url.searchParams.get("status") ?? "active") as PostingBriefStatus | "all";
+  const requestedStatus = (url.searchParams.get("status") ?? "active") as PostingBriefStatus | "all";
+  // Drafts are a manage-only stage: view-only users (VAs) never see them.
+  const status: PostingBriefStatus | "all" = canManage ? requestedStatus : "active";
   const modelId = url.searchParams.get("model_id") ?? undefined;
   const account = url.searchParams.get("account") ?? undefined;
   const priority = (url.searchParams.get("priority") ?? "all") as PostingBriefPriority | "all";

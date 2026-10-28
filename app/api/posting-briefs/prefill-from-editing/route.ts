@@ -73,6 +73,7 @@ export async function GET(req: Request) {
       ? editing.final_check.split("\n").filter(Boolean)
       : [],
     status: "active",
+    editing_brief_id: editing.id,
     created_by: "",
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),

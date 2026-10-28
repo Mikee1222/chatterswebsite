@@ -47,3 +47,20 @@ END $$;
 
 COMMENT ON TABLE public.creative_studio_winner_breakdowns IS
   'Creative Studio Winner Breakdowns: transcript + viral-element JSON per analysed video (service-role only).';
+
+-- Draft sets generated from a breakdown (links to the created briefs).
+ALTER TABLE public.creative_studio_winner_breakdowns
+  ADD COLUMN IF NOT EXISTS draft_sets jsonb NOT NULL DEFAULT '[]'::jsonb;
+
+-- Posting briefs gain a Draft stage (CD prepares → MM/CD publishes → VAs see it)
+-- and a link back to the editing brief they came from (FLOW strip).
+ALTER TABLE public.posting_briefs
+  DROP CONSTRAINT IF EXISTS posting_briefs_status_check;
+ALTER TABLE public.posting_briefs
+  ADD CONSTRAINT posting_briefs_status_check
+  CHECK (status IN ('draft', 'active', 'archived'));
+ALTER TABLE public.posting_briefs
+  ADD COLUMN IF NOT EXISTS editing_brief_id uuid;
+CREATE INDEX IF NOT EXISTS posting_briefs_editing_brief_idx
+  ON public.posting_briefs (editing_brief_id)
+  WHERE editing_brief_id IS NOT NULL;

@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, Copy, Plus, RotateCcw } from "lucide-react";
+import { Archive, Copy, Plus, RotateCcw, Send } from "lucide-react";
 import { PostingBriefView } from "@/components/posting-brief-view";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -46,7 +46,7 @@ export function PostingBriefsClient({
   const router = useRouter();
   const { addToast } = useToast();
   const [briefs, setBriefs] = React.useState(initialBriefs);
-  const [status, setStatus] = React.useState<"active" | "archived" | "all">("active");
+  const [status, setStatus] = React.useState<"active" | "draft" | "archived" | "all">("active");
   const [modelFilter, setModelFilter] = React.useState("");
   const [accountFilter, setAccountFilter] = React.useState("");
   const [urgentOnly, setUrgentOnly] = React.useState(false);
@@ -137,7 +137,7 @@ export function PostingBriefsClient({
     };
   }, [briefs]);
 
-  const setStatusFor = async (id: string, next: "active" | "archived") => {
+  const setStatusFor = async (id: string, next: "active" | "archived", from?: string) => {
     setBusyId(id);
     try {
       const res = await fetch(`/api/posting-briefs/${encodeURIComponent(id)}`, {
@@ -147,11 +147,16 @@ export function PostingBriefsClient({
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error || "Failed");
+      const published = next === "active" && from === "draft";
       addToast(
         winnerVideoLocalToast(
           `pb-status-${Date.now()}`,
-          next === "archived" ? "Archived" : "Restored",
-          next === "archived" ? "Brief archived" : "Brief set to active",
+          next === "archived" ? "Archived" : published ? "Published" : "Restored",
+          next === "archived"
+            ? "Brief archived"
+            : published
+              ? "Brief published — assigned VAs notified"
+              : "Brief set to active",
           "normal",
         ),
       );
@@ -232,6 +237,7 @@ export function PostingBriefsClient({
           className={cn(VA_FILTER_INPUT, "min-h-11")}
         >
           <option value="active">Active</option>
+          {canManage ? <option value="draft">Draft</option> : null}
           <option value="archived">Archived</option>
           <option value="all">All</option>
         </select>
@@ -351,6 +357,7 @@ export function PostingBriefsClient({
         <div className="flex gap-3 overflow-x-auto pb-2">
           {(
             [
+              { id: "draft", label: "Draft" },
               { id: "active", label: "Active" },
               { id: "archived", label: "Archived" },
             ] as const
@@ -434,6 +441,20 @@ export function PostingBriefsClient({
                       >
                         <Archive className="h-4 w-4" />
                         Archive
+                      </button>
+                    ) : selected.status === "draft" ? (
+                      <button
+                        type="button"
+                        disabled={busyId === selected.id}
+                        onClick={() => void setStatusFor(selected.id, "active", "draft")}
+                        className={cn(
+                          VA_BTN_PRIMARY,
+                          "inline-flex min-h-11 items-center gap-2 px-4",
+                        )}
+                        title="Make it visible to the assigned VAs and notify them"
+                      >
+                        <Send className="h-4 w-4" />
+                        Publish
                       </button>
                     ) : (
                       <button
