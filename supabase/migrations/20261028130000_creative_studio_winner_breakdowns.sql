@@ -54,8 +54,24 @@ ALTER TABLE public.creative_studio_winner_breakdowns
 
 -- Posting briefs gain a Draft stage (CD prepares → MM/CD publishes → VAs see it)
 -- and a link back to the editing brief they came from (FLOW strip).
-ALTER TABLE public.posting_briefs
-  DROP CONSTRAINT IF EXISTS posting_briefs_status_check;
+-- Widen posting_briefs.status with 'draft'. Existing rows are 'active' | 'archived',
+-- which the new CHECK still accepts. Drop whatever CHECK currently covers the column
+-- (auto-named posting_briefs_status_check in 20261016220000, but resolved by column to be safe).
+DO $$
+DECLARE c record;
+BEGIN
+  FOR c IN
+    SELECT con.conname
+    FROM pg_constraint con
+    JOIN pg_class rel ON rel.oid = con.conrelid
+    JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+    JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attnum = ANY (con.conkey)
+    WHERE con.contype = 'c' AND nsp.nspname = 'public'
+      AND rel.relname = 'posting_briefs' AND att.attname = 'status'
+  LOOP
+    EXECUTE format('ALTER TABLE public.posting_briefs DROP CONSTRAINT %I', c.conname);
+  END LOOP;
+END $$;
 ALTER TABLE public.posting_briefs
   ADD CONSTRAINT posting_briefs_status_check
   CHECK (status IN ('draft', 'active', 'archived'));
