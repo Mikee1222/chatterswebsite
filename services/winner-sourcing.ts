@@ -2468,12 +2468,18 @@ export async function decideQueueItem(input: {
     if (current.decision !== "urgent") {
       const sub = await getWinnerSubmission(current.winner_submission_id);
       if (sub?.model_id) {
-        const { getCycleSettings } = await import("@/services/content-cycles");
-        const settings = await getCycleSettings(sub.model_id);
+        // Read the cap directly (services/content-cycles is server-only and this
+        // module is also imported by client components for helpers).
+        const { data: cfg } = await sb
+          .from("content_cycle_settings")
+          .select("urgent_slots_per_month")
+          .eq("model_id", sub.model_id)
+          .maybeSingle();
+        const cap = Number((cfg as { urgent_slots_per_month?: unknown } | null)?.urgent_slots_per_month ?? 2) || 2;
         const used = await countUrgentUsedThisMonth(sub.model_id);
-        if (used >= settings.urgent_slots_per_month) {
+        if (used >= cap) {
           throw new Error(
-            `No urgent slots left this month for ${sub.model_name || "this model"} (${used}/${settings.urgent_slots_per_month} used). Send it to the next bunch instead.`,
+            `No urgent slots left this month for ${sub.model_name || "this model"} (${used}/${cap} used). Send it to the next bunch instead.`,
           );
         }
       }

@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
+import { compressImageForUpload } from "@/lib/client-image-compress";
 import type { WardrobeItem, WardrobeKind } from "@/services/model-wardrobe";
 import {
   ModelAvatar,
@@ -109,8 +110,10 @@ function ItemForm({
     setUploading(true);
     setError(null);
     try {
-      const res = await uploadFileToSupabaseStorage(file, "wardrobe-photo", { itemId: modelId });
-      setDraft((d) => ({ ...d, photo_url: res.sbUrl, photo_preview: URL.createObjectURL(file) }));
+      // Downscale to 1280px JPEG on the device before upload (storage + egress).
+      const compact = await compressImageForUpload(file);
+      const res = await uploadFileToSupabaseStorage(compact, "wardrobe-photo", { itemId: modelId });
+      setDraft((d) => ({ ...d, photo_url: res.sbUrl, photo_preview: URL.createObjectURL(compact) }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
