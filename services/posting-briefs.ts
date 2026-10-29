@@ -11,6 +11,8 @@ import {
   NOTIFICATION_PRIORITY,
 } from "@/lib/notification-types";
 import { getAccountsByModel, getAccountsByVA } from "@/services/marketing";
+import { PERMISSIONS } from "@/lib/permissions";
+import { listUsersWithPermission } from "@/services/users";
 import type { NotificationPriority } from "@/types";
 
 export type PostingBriefAccountType = "main" | "secondary";
@@ -230,7 +232,13 @@ async function notifyAssignedVas(params: {
   actorUserId?: string;
 }): Promise<void> {
   const { brief, event, actorUserId } = params;
-  const vaIds = await getAssignedVaIdsForModel(brief.model_id);
+  // Assigned VAs for the model + everyone who manages posting (Marketing Manager),
+  // so the person running the posters always knows when a brief goes live.
+  const [assigned, managers] = await Promise.all([
+    getAssignedVaIdsForModel(brief.model_id),
+    listUsersWithPermission(PERMISSIONS.POSTING_BRIEFS_MANAGE).catch(() => []),
+  ]);
+  const vaIds = [...new Set([...assigned, ...managers.map((u) => u.id)])];
   if (!vaIds.length) return;
 
   const isUrgent = brief.priority === "urgent";
