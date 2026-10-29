@@ -14,6 +14,7 @@ export const WINNER_SUBMISSION_SOURCES = [
   "va_submitted",
   "researcher_submitted",
   "auto_detected",
+  "posted_24h",
 ] as const;
 export type WinnerSubmissionSource = (typeof WINNER_SUBMISSION_SOURCES)[number];
 
@@ -21,13 +22,57 @@ export const WINNER_SUBMISSION_SOURCE_LABELS: Record<WinnerSubmissionSource, str
   auto_detected: "Auto-detected",
   va_submitted: "VA Submitted",
   researcher_submitted: "Researcher Submitted",
+  posted_24h: "24h check (our post)",
 };
 
 export const BUNCH_STATUSES = ["open", "closed"] as const;
 export type BunchStatus = (typeof BUNCH_STATUSES)[number];
 
-export const SLOT_SOURCES = ["from_winner", "researcher_submitted"] as const;
+export const SLOT_SOURCES = ["from_winner", "researcher_submitted", "experimental"] as const;
 export type SlotSource = (typeof SLOT_SOURCES)[number];
+
+/** Content Flow v1.1 — Proven (researcher) vs Experimental (Head of Marketing) bunches. */
+export const BUNCH_KINDS = ["proven", "experimental"] as const;
+export type BunchKind = (typeof BUNCH_KINDS)[number];
+export const BUNCH_KIND_LABELS: Record<BunchKind, string> = {
+  proven: "Proven",
+  experimental: "Experimental",
+};
+export const DEFAULT_BUNCH_TARGET: Record<BunchKind, number> = { proven: 30, experimental: 15 };
+
+/** Where an experimental idea came from. */
+export const SLOT_ORIGINS = ["", "trend", "risky", "seen", "own_idea", "recreation"] as const;
+export type SlotOrigin = (typeof SLOT_ORIGINS)[number];
+export const SLOT_ORIGIN_LABELS: Record<SlotOrigin, string> = {
+  "": "—",
+  trend: "Trend",
+  risky: "Risky",
+  seen: "Seen it",
+  own_idea: "Own idea",
+  recreation: "Recreation",
+};
+
+export const QUEUE_LANES = ["urgent", "next_bunch"] as const;
+export type QueueLane = (typeof QUEUE_LANES)[number];
+export const QUEUE_DECISIONS = ["pending", "grid", "urgent", "next_bunch", "no"] as const;
+export type QueueDecision = (typeof QUEUE_DECISIONS)[number];
+/** A concept lives at most this many recreation generations. */
+export const MAX_RECREATION_GENERATION = 2;
+
+export function coerceBunchKind(raw: unknown): BunchKind {
+  return raw === "experimental" ? "experimental" : "proven";
+}
+export function coerceSlotOrigin(raw: unknown): SlotOrigin {
+  const s = String(raw ?? "").trim();
+  return (SLOT_ORIGINS as readonly string[]).includes(s) ? (s as SlotOrigin) : "";
+}
+export function coerceQueueLane(raw: unknown): QueueLane {
+  return raw === "urgent" ? "urgent" : "next_bunch";
+}
+export function coerceQueueDecision(raw: unknown): QueueDecision {
+  const s = String(raw ?? "").trim();
+  return (QUEUE_DECISIONS as readonly string[]).includes(s) ? (s as QueueDecision) : "pending";
+}
 
 export type ModelWinnerThresholds = {
   model_id: string;

@@ -4,6 +4,16 @@
  * Approved + Needs Script rows on `winner_videos` when slots are assigned.
  */
 
+import {
+  coerceBunchKind,
+  coerceQueueDecision,
+  coerceQueueLane,
+  coerceSlotOrigin,
+  type BunchKind,
+  type QueueDecision,
+  type QueueLane,
+  type SlotOrigin,
+} from "@/lib/winner-sourcing-helpers";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { coerceScriptStatus, type ScriptStatus } from "@/lib/creative-scripts-helpers";
 import { coerceEditingStatus } from "@/lib/editing-helpers";
@@ -51,6 +61,9 @@ export type VideoBunch = {
   model_id: string;
   model_name: string;
   target_video_count: number;
+  /** proven (researcher) | experimental (Head of Marketing). */
+  kind: BunchKind;
+  cycle_id: string | null;
   created_by_id: string;
   created_by_name: string;
   status: BunchStatus;
@@ -128,6 +141,19 @@ export type RecreationQueueItem = {
   bunch_id: string | null;
   required_recreate_count: number;
   created_at: string;
+  /** urgent = play now (Urgent flow); next_bunch = wait for the next cycle's Proven bunch. */
+  lane: QueueLane;
+  /** HoM decision: grid (trial outlier → same file to grid) · urgent · next_bunch · no. */
+  decision: QueueDecision;
+  /** 1 = first recreation of this concept, 2 = second (max). */
+  generation: number;
+  /** grid | trial — which feed the outlier came from ('' when unknown). */
+  feed: string;
+  grid_posting_brief_id: string | null;
+  grid_posted_at: string | null;
+  urgent_used_at: string | null;
+  decided_by: string;
+  decided_at: string | null;
   submission?: WinnerSubmission;
   bunch_name?: string;
 };
@@ -142,6 +168,10 @@ export type RecreateVideoSlot = {
   video_link: string;
   video_type: SlotVideoType | "";
   video_type_other: string;
+  /** Experimental ideas: trend | risky | seen | own_idea; recreation slots: recreation. */
+  origin: SlotOrigin;
+  /** Recreation generation (0 = from outside, 1–2 = recreated from our own outlier). */
+  generation: number;
   status: ScriptStatus;
   assigned_creative_id: string;
   assigned_creative_name: string;
@@ -164,6 +194,8 @@ function mapBunch(row: Record<string, unknown>): VideoBunch {
     model_id: String(row.model_id ?? ""),
     model_name: String(row.model_name ?? ""),
     target_video_count: Number(row.target_video_count) || 30,
+    kind: coerceBunchKind(row.kind),
+    cycle_id: row.cycle_id ? String(row.cycle_id) : null,
     created_by_id: String(row.created_by_id ?? ""),
     created_by_name: String(row.created_by_name ?? ""),
     status: coerceBunchStatus(row.status),
@@ -272,6 +304,15 @@ function mapQueueItem(row: Record<string, unknown>): RecreationQueueItem {
     bunch_id: row.bunch_id ? String(row.bunch_id) : null,
     required_recreate_count: Number(row.required_recreate_count) || 0,
     created_at: String(row.created_at ?? ""),
+    lane: coerceQueueLane(row.lane),
+    decision: coerceQueueDecision(row.decision),
+    generation: Math.max(1, Number(row.generation) || 1),
+    feed: String(row.feed ?? ""),
+    grid_posting_brief_id: row.grid_posting_brief_id ? String(row.grid_posting_brief_id) : null,
+    grid_posted_at: row.grid_posted_at ? String(row.grid_posted_at) : null,
+    urgent_used_at: row.urgent_used_at ? String(row.urgent_used_at) : null,
+    decided_by: String(row.decided_by ?? ""),
+    decided_at: row.decided_at ? String(row.decided_at) : null,
   };
 }
 
@@ -286,6 +327,8 @@ function mapSlot(row: Record<string, unknown>): RecreateVideoSlot {
     video_link: String(row.video_link ?? ""),
     video_type: coerceSlotVideoType(row.video_type),
     video_type_other: String(row.video_type_other ?? ""),
+    origin: coerceSlotOrigin(row.origin),
+    generation: Math.max(0, Number(row.generation) || 0),
     status: coerceScriptStatus(row.status),
     assigned_creative_id: String(row.assigned_creative_id ?? ""),
     assigned_creative_name: String(row.assigned_creative_name ?? ""),
@@ -319,6 +362,11 @@ export async function createWinnerSubmission(input: {
     super_winner_threshold_views: number;
   } | null;
   skipNotify?: boolean;
+  /** Relative (24h) outliers: tier decided by the multiple, not by absolute view thresholds. */
+  tierOverride?: WinnerTier;
+  posting_brief_post_id?: string | null;
+  feed?: "grid" | "trial" | "";
+  outlier_multiple?: number | null;
 }): Promise<WinnerSubmission> {
   const viewCount = Math.round(Number(input.view_count));
   let thresholds = input.thresholds ?? null;
@@ -330,7 +378,7 @@ export async function createWinnerSubmission(input: {
       thresholds = null;
     }
   }
-  const tier = tierFromViewCount(viewCount, thresholds);
+  const tier = input.tierOverride ?? tierFromViewCount(viewCount, thresholds);
   if (!tier) {
     const min =
       thresholds?.winner_threshold_views ??
@@ -382,6 +430,9 @@ export async function createWinnerSubmission(input: {
       },
       winner_threshold_at_classification: winnerThreshold,
       super_winner_threshold_at_classification: superThreshold,
+      posting_brief_post_id: input.posting_brief_post_id ?? null,
+      feed: input.feed ?? "",
+      outlier_multiple: input.outlier_multiple ?? null,
     })
     .select("*")
     .single();
@@ -742,6 +793,7 @@ function recreateCountForTier(
 
 export async function addSubmissionToRecreationQueue(
   submissionId: string,
+  opts?: { lane?: QueueLane; generation?: number; feed?: string },
 ): Promise<RecreationQueueItem> {
   const submission = await getWinnerSubmission(submissionId);
   if (!submission) throw new Error("Submission not found");
@@ -759,6 +811,9 @@ export async function addSubmissionToRecreationQueue(
     .insert({
       winner_submission_id: submissionId,
       required_recreate_count: count,
+      lane: opts?.lane ?? "next_bunch",
+      generation: Math.max(1, opts?.generation ?? 1),
+      feed: opts?.feed ?? "",
     })
     .select("*")
     .single();
@@ -844,7 +899,11 @@ export async function assignQueueItemToBunch(
 
   const { error: upErr } = await sb
     .from("recreation_queue_items")
-    .update({ bunch_id: bunchId })
+    .update({
+      bunch_id: bunchId,
+      decision: "next_bunch",
+      decided_at: new Date().toISOString(),
+    })
     .eq("id", queueItemId);
   if (upErr) throw new Error(upErr.message);
 
@@ -862,6 +921,8 @@ export async function assignQueueItemToBunch(
     video_type: "",
     status: "Pending Review",
     winner_submission_id: submission.id,
+    origin: "recreation",
+    generation: item.generation,
     // Inherit bunch creative (denormalized); scripts work items spawned below if present.
     assigned_creative_id: creativeId || null,
     assigned_creative_name: creativeName,
@@ -916,6 +977,8 @@ export async function createVideoBunch(input: {
   target_video_count: number;
   created_by_id: string;
   created_by_name: string;
+  kind?: BunchKind;
+  cycle_id?: string | null;
 }): Promise<VideoBunch> {
   const name = input.name.trim();
   if (!name) throw new Error("Bunch name is required");
@@ -933,6 +996,8 @@ export async function createVideoBunch(input: {
       created_by_id: input.created_by_id.trim(),
       created_by_name: input.created_by_name.trim(),
       status: "open",
+      kind: input.kind ?? "proven",
+      cycle_id: input.cycle_id ?? null,
     })
     .select("*")
     .single();
@@ -942,10 +1007,16 @@ export async function createVideoBunch(input: {
 
 export async function listVideoBunches(filters?: {
   status?: BunchStatus;
+  kind?: BunchKind;
+  model_id?: string;
+  cycle_id?: string;
 }): Promise<VideoBunch[]> {
   const sb = getSupabaseServiceClient();
   let q = sb.from("video_bunches").select("*").order("created_at", { ascending: false });
   if (filters?.status) q = q.eq("status", filters.status);
+  if (filters?.kind) q = q.eq("kind", filters.kind);
+  if (filters?.model_id) q = q.eq("model_id", filters.model_id);
+  if (filters?.cycle_id) q = q.eq("cycle_id", filters.cycle_id);
   const { data, error } = await q;
   if (error) throw new Error(`listVideoBunches: ${error.message}`);
   const bunches = (data ?? []).map((r) => mapBunch(r as Record<string, unknown>));
@@ -2295,4 +2366,124 @@ export async function syncAdminInstructionsForWinnerVideo(
     .from("recreate_video_slots")
     .update({ admin_instructions: adminInstructions.trim(), updated_at: new Date().toISOString() })
     .eq("winner_video_id", winnerVideoId);
+}
+
+
+// ── Content Flow v1.1: experimental slots + queue decisions ──────────────────
+
+/**
+ * Head of Marketing adds an idea straight into an Experimental bunch (no approval step):
+ * a trend, something risky, something seen, or an idea from their head.
+ */
+export async function createExperimentalSlot(input: {
+  bunch_id: string;
+  description: string;
+  video_link?: string;
+  origin: SlotOrigin;
+  video_type?: SlotVideoType | "";
+  video_type_other?: string;
+  admin_instructions?: string;
+}): Promise<RecreateVideoSlot> {
+  const bunch = await getVideoBunch(input.bunch_id);
+  if (!bunch) throw new Error("Bunch not found");
+  if (bunch.kind !== "experimental") throw new Error("Not an experimental bunch");
+  if (bunch.status !== "open") throw new Error("Bunch is closed");
+  if ((bunch.remaining_count ?? 0) < 1) throw new Error("Bunch has no remaining capacity");
+  const description = input.description.trim();
+  if (!description) throw new Error("Describe the idea");
+
+  const sb = getSupabaseServiceClient();
+  const existing = await listSlotsForBunch(bunch.id);
+  const seq = existing.reduce((m, s) => Math.max(m, s.sequence_number), 0) + 1;
+  const creativeId = bunch.assigned_creative_id.trim();
+  const creativeName = bunch.assigned_creative_name.trim();
+
+  const { data, error } = await sb
+    .from("recreate_video_slots")
+    .insert({
+      bunch_id: bunch.id,
+      source: "experimental",
+      sequence_number: seq,
+      description,
+      admin_instructions: (input.admin_instructions ?? "").trim(),
+      video_link: (input.video_link ?? "").trim(),
+      video_type: input.video_type ?? "",
+      video_type_other: input.video_type === "other" ? (input.video_type_other ?? "").trim() : "",
+      origin: input.origin || "own_idea",
+      generation: 0,
+      status: "Pending Review",
+      assigned_creative_id: creativeId || null,
+      assigned_creative_name: creativeName,
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(`createExperimentalSlot: ${error.message}`);
+  let slot = mapSlot(data as Record<string, unknown>);
+  if (creativeId && creativeName) {
+    slot = await assignCreativeToSlot({
+      slot_id: slot.id,
+      assigned_creative_id: creativeId,
+      assigned_creative_name: creativeName,
+    });
+  }
+  return slot;
+}
+
+/** Record the HoM decision on a queue item. `next_bunch` is recorded by assignQueueItemToBunch. */
+export async function decideQueueItem(input: {
+  queue_item_id: string;
+  decision: Exclude<QueueDecision, "pending" | "next_bunch">;
+  actor_id: string;
+  grid_posting_brief_id?: string | null;
+}): Promise<RecreationQueueItem> {
+  const sb = getSupabaseServiceClient();
+  const { data: row, error: readErr } = await sb
+    .from("recreation_queue_items")
+    .select("*")
+    .eq("id", input.queue_item_id)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message);
+  if (!row) throw new Error("Queue item not found");
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    decision: input.decision,
+    decided_by: input.actor_id,
+    decided_at: now,
+  };
+  if (input.decision === "grid") {
+    patch.grid_posting_brief_id = input.grid_posting_brief_id ?? null;
+    patch.grid_posted_at = now;
+  }
+  if (input.decision === "urgent") {
+    patch.lane = "urgent";
+    patch.urgent_used_at = now;
+  }
+  const { data, error } = await sb
+    .from("recreation_queue_items")
+    .update(patch)
+    .eq("id", input.queue_item_id)
+    .select("*")
+    .single();
+  if (error) throw new Error(`decideQueueItem: ${error.message}`);
+  const item = mapQueueItem(data as Record<string, unknown>);
+  const submission = await getWinnerSubmission(item.winner_submission_id);
+  return { ...item, submission: submission ?? undefined };
+}
+
+/** Urgent slots used this calendar month for a model (one per queue item decided "urgent"). */
+export async function countUrgentUsedThisMonth(modelId: string, at = new Date()): Promise<number> {
+  const sb = getSupabaseServiceClient();
+  const start = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)).toISOString();
+  const end = new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1)).toISOString();
+  const { data: subs } = await sb.from("winner_submissions").select("id").eq("model_id", modelId);
+  const ids = (subs ?? []).map((r) => String((r as { id: string }).id));
+  if (!ids.length) return 0;
+  const { count } = await sb
+    .from("recreation_queue_items")
+    .select("id", { count: "exact", head: true })
+    .in("winner_submission_id", ids)
+    .eq("decision", "urgent")
+    .gte("urgent_used_at", start)
+    .lt("urgent_used_at", end);
+  return count ?? 0;
 }

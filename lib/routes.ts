@@ -136,6 +136,7 @@ export const ROUTES = {
     winnerVideosHub: "/admin/winner-videos-hub",
     /** Dedicated video bunches flagship (assign creative/filmer, filters, pagination). */
     bunches: "/admin/bunches",
+    contentCycles: "/admin/content-cycles",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
     challenges: "/admin/challenges",

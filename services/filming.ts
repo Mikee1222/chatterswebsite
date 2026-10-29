@@ -328,6 +328,8 @@ export async function setSlotFilmed(input: {
     video_link: String(updated.video_link ?? ""),
     video_type: (updated.video_type as RecreateVideoSlot["video_type"]) || "",
     video_type_other: String(updated.video_type_other ?? ""),
+    origin: (String(updated.origin ?? "") as RecreateVideoSlot["origin"]) || "",
+    generation: Number(updated.generation) || 0,
     status: (updated.status as RecreateVideoSlot["status"]) || "Approved",
     assigned_creative_id: String(updated.assigned_creative_id ?? ""),
     assigned_creative_name: String(updated.assigned_creative_name ?? ""),

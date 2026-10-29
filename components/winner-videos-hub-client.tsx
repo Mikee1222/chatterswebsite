@@ -214,6 +214,7 @@ function SourceBadge({ source }: { source: WinnerSubmissionSource }) {
     auto_detected: "border-sky-400/35 bg-sky-500/12 text-sky-200",
     va_submitted: "border-pink-400/35 bg-pink-500/12 text-pink-200",
     researcher_submitted: "border-violet-400/35 bg-violet-500/12 text-violet-200",
+    posted_24h: "border-emerald-400/35 bg-emerald-500/12 text-emerald-200",
   };
   return (
     <span className={cn(VA_STATUS_BADGE, styles[source])}>
@@ -844,6 +845,7 @@ export function WinnerVideosHubClient({
       auto_detected: 0,
       va_submitted: 0,
       researcher_submitted: 0,
+      posted_24h: 0,
     };
     const models = new Set<string>();
     let winnerN = 0;
