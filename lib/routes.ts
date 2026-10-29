@@ -235,6 +235,7 @@ export const ROUTES = {
   /** Model Personas — structured profile per model (permission-gated). */
   personas: "/personas",
   persona: (modelId: string) => `/personas/${encodeURIComponent(modelId)}`,
+  personaWardrobe: (modelId: string) => `/personas/${encodeURIComponent(modelId)}/wardrobe`,
   /** AI Creative Studio — captions / text-on-screen / video analyzer. */
   creativeStudio: "/creative-studio",
   /** Posting briefs — Creative Director manage / Marketing Executive view (permission-gated). */

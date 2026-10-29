@@ -11,6 +11,8 @@ import {
   NOTIFICATION_PRIORITY,
 } from "@/lib/notification-types";
 import { getAccountsByModel, getAccountsByVA } from "@/services/marketing";
+import { PERMISSIONS } from "@/lib/permissions";
+import { listUsersWithPermission } from "@/services/users";
 import type { NotificationPriority } from "@/types";
 
 export type PostingBriefAccountType = "main" | "secondary";
@@ -22,7 +24,8 @@ export type PostingBriefContentType =
   | "Carousel"
   | "Other";
 export type PostingBriefPriority = "normal" | "urgent";
-export type PostingBriefStatus = "active" | "archived";
+/** draft = prepared by the CD, invisible to VAs until published (active). */
+export type PostingBriefStatus = "draft" | "active" | "archived";
 
 export type PostingBriefPost = {
   id: string;
@@ -55,6 +58,8 @@ export type PostingBrief = {
   timing_notes: string;
   final_checklist: string[];
   status: PostingBriefStatus;
+  /** Editing brief this posting brief was prepared from (FLOW strip). */
+  editing_brief_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -86,6 +91,7 @@ export type PostingBriefInput = {
   timing_notes?: string;
   final_checklist?: string[];
   status?: PostingBriefStatus;
+  editing_brief_id?: string | null;
   posts?: PostingBriefPostInput[];
   created_by?: string;
 };
@@ -159,6 +165,7 @@ function mapBrief(row: Record<string, unknown>, posts: PostingBriefPost[]): Post
     timing_notes: asString(row.timing_notes),
     final_checklist: parseChecklist(row.final_checklist),
     status: (asString(row.status) || "active") as PostingBriefStatus,
+    editing_brief_id: typeof row.editing_brief_id === "string" && row.editing_brief_id ? row.editing_brief_id : null,
     created_by: asString(row.created_by),
     created_at: asString(row.created_at),
     updated_at: asString(row.updated_at),
@@ -225,7 +232,13 @@ async function notifyAssignedVas(params: {
   actorUserId?: string;
 }): Promise<void> {
   const { brief, event, actorUserId } = params;
-  const vaIds = await getAssignedVaIdsForModel(brief.model_id);
+  // Assigned VAs for the model + everyone who manages posting (Marketing Manager),
+  // so the person running the posters always knows when a brief goes live.
+  const [assigned, managers] = await Promise.all([
+    getAssignedVaIdsForModel(brief.model_id),
+    listUsersWithPermission(PERMISSIONS.POSTING_BRIEFS_MANAGE).catch(() => []),
+  ]);
+  const vaIds = [...new Set([...assigned, ...managers.map((u) => u.id)])];
   if (!vaIds.length) return;
 
   const isUrgent = brief.priority === "urgent";
@@ -366,6 +379,7 @@ export async function createPostingBrief(
       timing_notes: input.timing_notes ?? "",
       final_checklist: checklist,
       status: input.status ?? "active",
+      editing_brief_id: input.editing_brief_id ?? null,
       created_by: input.created_by ?? "",
       created_at: now,
       updated_at: now,
@@ -425,6 +439,7 @@ export async function updatePostingBrief(
   if (input.timing_notes !== undefined) patch.timing_notes = input.timing_notes;
   if (input.final_checklist !== undefined) patch.final_checklist = input.final_checklist;
   if (input.status !== undefined) patch.status = input.status;
+  if (input.editing_brief_id !== undefined) patch.editing_brief_id = input.editing_brief_id;
 
   const { data, error } = await sb
     .from("posting_briefs")

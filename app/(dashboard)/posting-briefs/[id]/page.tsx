@@ -36,6 +36,7 @@ export default async function PostingBriefDetailPage({ params }: Props) {
         : [];
     const allowed = new Set([...a, ...b]);
     if (!allowed.has(brief.model_id)) redirect(ROUTES.postingBriefs);
+    if (brief.status === "draft") redirect(ROUTES.postingBriefs);
   }
 
   const model = await getModelById(brief.model_id).catch(() => null);
@@ -59,7 +60,11 @@ export default async function PostingBriefDetailPage({ params }: Props) {
           </Link>
         ) : null}
       </div>
-      <PostingBriefView brief={brief} modelName={model?.model_name} />
+      <PostingBriefView
+        brief={brief}
+        modelName={model?.model_name}
+        editingBriefId={brief.editing_brief_id}
+      />
     </div>
   );
 }

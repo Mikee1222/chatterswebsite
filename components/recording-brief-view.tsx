@@ -38,7 +38,26 @@ type Props = {
   /** Creator read-only layout (section order). */
   viewerMode?: boolean;
   showStickyMeta?: boolean;
+  /** Wardrobe photos for the chosen outfit / location (signed URLs, resolved by the page). */
+  wardrobePhotos?: { outfit?: WardrobePhoto | null; location?: WardrobePhoto | null };
 };
+
+export type WardrobePhoto = { number: number; name: string; url: string };
+
+function WardrobePhotoCard({ label, photo }: { label: string; photo: WardrobePhoto }) {
+  return (
+    <figure className="overflow-hidden rounded-xl border border-[#D4AF8C]/25 bg-black/30">
+      {photo.url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={photo.url} alt="" className="aspect-[3/4] w-full object-cover" />
+      ) : null}
+      <figcaption className="px-3 py-2 text-[11px] text-white/60">
+        <span className="font-semibold uppercase tracking-wider text-[#D4AF8C]/80">{label}</span>{" "}
+        · #{photo.number} {photo.name}
+      </figcaption>
+    </figure>
+  );
+}
 
 const SECTIONS = [
   { id: "rb-refs", label: "References" },
@@ -58,6 +77,7 @@ export function RecordingBriefView({
   className,
   viewerMode,
   showStickyMeta = true,
+  wardrobePhotos,
 }: Props) {
   const checklistLines = (brief.checklist_before_upload || "")
     .split("\n")
@@ -96,6 +116,16 @@ export function RecordingBriefView({
           </SectionCard>
 
           <SectionCard id="rb-setup" icon={Camera} title="Setup">
+            {wardrobePhotos?.outfit || wardrobePhotos?.location ? (
+              <div className="mb-4 grid max-w-md grid-cols-2 gap-3">
+                {wardrobePhotos.outfit ? (
+                  <WardrobePhotoCard label="Outfit" photo={wardrobePhotos.outfit} />
+                ) : null}
+                {wardrobePhotos.location ? (
+                  <WardrobePhotoCard label="Location" photo={wardrobePhotos.location} />
+                ) : null}
+              </div>
+            ) : null}
             <dl className="grid gap-3 sm:grid-cols-2">
               {(
                 [

@@ -17,6 +17,11 @@ export default async function CreativeStudioPage() {
   }
 
   const canPushBrief = await hasPermission(user, PERMISSIONS.POSTING_BRIEFS_MANAGE);
+  const briefPerms = {
+    editing: await hasPermission(user, PERMISSIONS.EDITING_BRIEFS_MANAGE),
+    recording: await hasPermission(user, PERMISSIONS.RECORDING_BRIEFS_MANAGE),
+    posting: canPushBrief,
+  };
   const canViewPersonas =
     (await hasPermission(user, PERMISSIONS.PERSONAS_VIEW)) ||
     (await hasPermission(user, PERMISSIONS.PERSONAS_MANAGE)) ||
@@ -43,6 +48,7 @@ export default async function CreativeStudioPage() {
       }))}
       canPushBrief={canPushBrief}
       canViewPersonas={canViewPersonas}
+      briefPerms={briefPerms}
       personaMeta={summaries.map((s) => ({
         model_id: s.model_id,
         has_birth_date: s.has_birth_date,

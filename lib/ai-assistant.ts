@@ -10,6 +10,15 @@ import "server-only";
 export const AI_ASSISTANT_MODEL = "claude-sonnet-4-6";
 /** Cheaper/faster model for mechanical tasks (captions, translation, stats summaries). */
 export const AI_FAST_MODEL = "claude-haiku-4-5";
+/**
+ * Strongest tier for Winner Breakdown + brief drafting (creative reasoning).
+ * Override with AI_BREAKDOWN_MODEL. Falls back to AI_ASSISTANT_MODEL if the
+ * configured model is not available on this API key.
+ */
+export const AI_BREAKDOWN_MODEL_DEFAULT = "claude-fable-5-1";
+export function resolveBreakdownModel(): string {
+  return process.env.AI_BREAKDOWN_MODEL?.trim() || AI_BREAKDOWN_MODEL_DEFAULT;
+}
 
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 
@@ -323,6 +332,8 @@ export async function callAnthropicVision(options: {
     | { type: "auto" }
     | { type: "any" }
     | { type: "tool"; name: string };
+  /** Retry once with this model if `model` is unknown to the API key (404 not_found). */
+  fallbackModel?: string;
 }): Promise<CallAnthropicVisionResult | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   const label = options.logLabel ?? "ai-assistant-vision";
@@ -380,6 +391,13 @@ export async function callAnthropicVision(options: {
     if (!res.ok) {
       console.error(`[${label}] Anthropic error`, res.status, data?.error?.message ?? data);
       recordUsage(label, model, false);
+      const fallback = options.fallbackModel?.trim();
+      const errType = (data?.error as { type?: string } | undefined)?.type ?? "";
+      const notFound = res.status === 404 || errType === "not_found_error";
+      if (fallback && fallback !== model && notFound) {
+        console.warn(`[${label}] model ${model} unavailable — retrying with ${fallback}`);
+        return callAnthropicVision({ ...options, model: fallback, fallbackModel: undefined });
+      }
       return null;
     }
 
