@@ -14,6 +14,12 @@ import { getAccountsByModel, getAccountsByVA } from "@/services/marketing";
 import { PERMISSIONS } from "@/lib/permissions";
 import { listUsersWithPermission } from "@/services/users";
 import type { NotificationPriority } from "@/types";
+import { getCycleSettings } from "@/services/content-cycles";
+import {
+  addSubmissionToRecreationQueue,
+  createWinnerSubmission,
+} from "@/services/winner-sourcing";
+import { getModelById } from "@/services/modelss";
 
 export type PostingBriefAccountType = "main" | "secondary";
 export type PostingBriefRegion = "USA" | "Greece" | "Global";
@@ -40,9 +46,32 @@ export type PostingBriefPost = {
   posted_url: string | null;
   posted_at: string | null;
   posted_by: string | null;
+  /** grid | trial — Content Flow v1.1: originals → grid, variations → trials. */
+  placement: PostPlacement;
+  /** proven | experimental | recreation | '' */
+  content_source: PostContentSource;
+  /** 24h check by the Account Supervisor. */
+  views_24h: number | null;
+  views_checked_at: string | null;
+  outlier_multiple: number | null;
+  outlier_status: PostOutlierStatus;
   created_at: string;
   updated_at: string;
 };
+
+export type PostPlacement = "grid" | "trial";
+export type PostContentSource = "" | "proven" | "experimental" | "recreation";
+export type PostOutlierStatus = "" | "normal" | "outlier" | "hot";
+
+function coercePlacement(v: unknown): PostPlacement {
+  return v === "trial" ? "trial" : "grid";
+}
+function coerceContentSource(v: unknown): PostContentSource {
+  return v === "proven" || v === "experimental" || v === "recreation" ? v : "";
+}
+function coerceOutlierStatus(v: unknown): PostOutlierStatus {
+  return v === "normal" || v === "outlier" || v === "hot" ? v : "";
+}
 
 export type PostingBrief = {
   id: string;
@@ -73,6 +102,8 @@ export type PostingBrief = {
 export type PostingBriefPostInput = {
   /** Existing post id (edit form). Lets the "posted" fields survive a re-save. */
   id?: string;
+  placement?: PostPlacement;
+  content_source?: PostContentSource;
   video_name?: string;
   text_on_screen?: string | null;
   caption?: string;
@@ -150,6 +181,12 @@ function mapPost(row: Record<string, unknown>): PostingBriefPost {
     posted_url: asNullableString(row.posted_url),
     posted_at: asNullableString(row.posted_at),
     posted_by: asNullableString(row.posted_by),
+    placement: coercePlacement(row.placement),
+    content_source: coerceContentSource(row.content_source),
+    views_24h: row.views_24h == null ? null : Number(row.views_24h),
+    views_checked_at: asNullableString(row.views_checked_at),
+    outlier_multiple: row.outlier_multiple == null ? null : Number(row.outlier_multiple),
+    outlier_status: coerceOutlierStatus(row.outlier_status),
     created_at: asString(row.created_at),
     updated_at: asString(row.updated_at),
   };
@@ -373,6 +410,13 @@ async function replacePosts(
       posted_url: prev?.posted_url ?? null,
       posted_at: prev?.posted_at ?? null,
       posted_by: prev?.posted_by ?? null,
+      placement: p.placement ?? prev?.placement ?? "grid",
+      content_source: p.content_source ?? prev?.content_source ?? "",
+      views_24h: prev?.views_24h ?? null,
+      views_checked_at: prev?.views_checked_at ?? null,
+      views_checked_by: null,
+      outlier_multiple: prev?.outlier_multiple ?? null,
+      outlier_status: prev?.outlier_status ?? "",
       created_at: prev?.created_at || now,
       updated_at: now,
     };
@@ -643,6 +687,196 @@ export async function markPostingBriefPostPosted(params: {
   const post = updated.posts.find((p) => p.id === target.id) ?? target;
   await notifyPostedToCreativeDirector({ brief: updated, post, actorUserId: params.actorUserId });
   return updated;
+}
+
+
+/* ── Content Flow v1.1: 24h check ─────────────────────────────────────────────
+ * Account Supervisor types the 24h views of a posted post. We compare against the
+ * AVERAGE of the latest N (default 9) posted posts of the same model + same feed
+ * (grid or trial). ≥ outlier_multiple → outlier, ≥ hot_multiple → hot.
+ * Outliers become a winner_submission (source posted_24h) and a recreation-queue item
+ * (lane urgent when hot) for the CD/HoM to decide. */
+
+export type Post24hCheckResult = {
+  brief: PostingBrief;
+  post: PostingBriefPost;
+  baseline_avg: number | null;
+  baseline_count: number;
+  multiple: number | null;
+  status: PostOutlierStatus;
+  queued: boolean;
+};
+
+/** Average 24h views of the latest `limit` checked posts of this model + placement (excluding `excludePostId`). */
+export async function getFeedBaseline(params: {
+  modelId: string;
+  placement: PostPlacement;
+  limit: number;
+  excludePostId?: string;
+}): Promise<{ avg: number | null; count: number }> {
+  const sb = getSupabaseServiceClient();
+  const { data: briefRows, error: bErr } = await sb
+    .from("posting_briefs")
+    .select("id")
+    .eq("model_id", params.modelId);
+  if (bErr) throw new Error(bErr.message);
+  const briefIds = (briefRows ?? []).map((r) => String((r as { id: string }).id));
+  if (!briefIds.length) return { avg: null, count: 0 };
+
+  const { data, error } = await sb
+    .from("posting_brief_posts")
+    .select("id, views_24h, posted_at")
+    .in("brief_id", briefIds)
+    .eq("placement", params.placement)
+    .not("views_24h", "is", null)
+    .not("posted_at", "is", null)
+    .order("posted_at", { ascending: false })
+    .limit(Math.max(1, params.limit) + 1);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? [])
+    .filter((r) => String((r as { id: string }).id) !== params.excludePostId)
+    .slice(0, Math.max(1, params.limit));
+  if (!rows.length) return { avg: null, count: 0 };
+  const sum = rows.reduce((acc, r) => acc + Number((r as { views_24h: number }).views_24h ?? 0), 0);
+  return { avg: sum / rows.length, count: rows.length };
+}
+
+export async function recordPost24hViews(params: {
+  briefId: string;
+  postId: string;
+  views: number;
+  actorUserId: string;
+  actorName?: string;
+}): Promise<Post24hCheckResult> {
+  const brief = await getPostingBriefById(params.briefId);
+  if (!brief) throw new Error("Brief not found");
+  const target = brief.posts.find((p) => p.id === params.postId.trim());
+  if (!target) throw new Error("Post not found");
+  if (!target.posted_at) throw new Error("Mark the post as posted first");
+  const views = Math.max(0, Math.round(Number(params.views)));
+  if (!Number.isFinite(views)) throw new Error("Invalid views");
+
+  const settings = await getCycleSettings(brief.model_id);
+  const baseline = await getFeedBaseline({
+    modelId: brief.model_id,
+    placement: target.placement,
+    limit: settings.baseline_posts,
+    excludePostId: target.id,
+  });
+
+  let multiple: number | null = null;
+  let status: PostOutlierStatus = "normal";
+  if (baseline.avg && baseline.avg > 0) {
+    multiple = Math.round((views / baseline.avg) * 100) / 100;
+    if (multiple >= settings.hot_multiple) status = "hot";
+    else if (multiple >= settings.outlier_multiple) status = "outlier";
+  }
+
+  const sb = getSupabaseServiceClient();
+  const now = new Date().toISOString();
+  const { error } = await sb
+    .from("posting_brief_posts")
+    .update({
+      views_24h: views,
+      views_checked_at: now,
+      views_checked_by: params.actorUserId,
+      outlier_multiple: multiple,
+      outlier_status: status,
+      updated_at: now,
+    })
+    .eq("id", target.id)
+    .eq("brief_id", brief.id);
+  if (error) throw new Error(error.message);
+
+  let queued = false;
+  // Only queue once per post (re-typing the number must not duplicate the queue item).
+  if (status !== "normal" && target.outlier_status !== "outlier" && target.outlier_status !== "hot") {
+    const model = await getModelById(brief.model_id).catch(() => null);
+    const generation = target.content_source === "recreation" ? 2 : 1;
+    const submission = await createWinnerSubmission({
+      model_id: brief.model_id,
+      model_name: model?.model_name || brief.model_id,
+      video_link: target.posted_url || `posting-brief:${brief.id}#${target.id}`,
+      view_count: views,
+      submitted_by_id: params.actorUserId,
+      submitted_by_name: params.actorName || "Account Supervisor",
+      source: "posted_24h",
+      caption: target.caption,
+      posted_at: target.posted_at,
+      skipNotify: true,
+      tierOverride: status === "hot" ? "super_winner" : "winner",
+      posting_brief_post_id: target.id,
+      feed: target.placement,
+      outlier_multiple: multiple,
+    });
+    await addSubmissionToRecreationQueue(submission.id, {
+      lane: status === "hot" ? "urgent" : "next_bunch",
+      generation,
+      feed: target.placement,
+    });
+    queued = true;
+    await notifyOutlier({ brief, post: target, status, multiple, views, actorUserId: params.actorUserId });
+  }
+
+  const updated = await getPostingBriefById(brief.id);
+  if (!updated) throw new Error("Brief not found");
+  const post = updated.posts.find((p) => p.id === target.id) ?? target;
+  return {
+    brief: updated,
+    post,
+    baseline_avg: baseline.avg,
+    baseline_count: baseline.count,
+    multiple,
+    status,
+    queued,
+  };
+}
+
+async function notifyOutlier(params: {
+  brief: PostingBrief;
+  post: PostingBriefPost;
+  status: PostOutlierStatus;
+  multiple: number | null;
+  views: number;
+  actorUserId: string;
+}): Promise<void> {
+  const { brief, post, status, multiple, views, actorUserId } = params;
+  const [cds, homs, mms] = await Promise.all([
+    listUsersWithPermission(PERMISSIONS.WINNER_SOURCING_MANAGE).catch(() => []),
+    listUsersWithPermission(PERMISSIONS.EXPERIMENTAL_BUNCH_MANAGE).catch(() => []),
+    listUsersWithPermission(PERMISSIONS.POSTING_BRIEFS_MANAGE).catch(() => []),
+  ]);
+  const ids = new Set([...cds, ...homs, ...mms].map((u) => u.id).filter(Boolean));
+  const index = brief.posts.findIndex((p) => p.id === post.id);
+  const label = post.video_name?.trim() || `Post ${index >= 0 ? index + 1 : "?"}`;
+  const feed = post.placement === "trial" ? "trial" : "grid";
+  const title =
+    status === "hot"
+      ? `🔥 HOT ${multiple ? `×${multiple}` : ""} on ${feed}: ${brief.title}`
+      : `Outlier ${multiple ? `×${multiple}` : ""} on ${feed}: ${brief.title}`;
+  const body =
+    `${label} did ${views.toLocaleString()} views in 24h` +
+    (feed === "trial"
+      ? " — move the same file to the grid, then recreation."
+      : " — added to the recreation queue.") +
+    (status === "hot" ? " Urgent lane." : "");
+  await Promise.all(
+    [...ids]
+      .filter((id) => id !== actorUserId)
+      .map((user_id) =>
+        notify({
+          user_id,
+          event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
+          priority: status === "hot" ? NOTIFICATION_PRIORITY.HIGH : NOTIFICATION_PRIORITY.NORMAL,
+          title,
+          body,
+          entity_type: NOTIFICATION_ENTITY.POSTING_BRIEF,
+          entity_id: brief.id,
+          actor_user_id: actorUserId,
+          _triggerSource: "posting_brief_24h_outlier",
+        }).catch((err) => console.error("[posting_brief_24h_outlier] notify failed", err)),
+      ),
+  );
 }
 
 /** Undo a "posted" mark (wrong link, post removed). No notification. */

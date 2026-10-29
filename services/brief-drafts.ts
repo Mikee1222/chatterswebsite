@@ -56,6 +56,8 @@ export type DraftBriefsInput = {
   userId: string;
   /** Skip the posting brief (caller lacks posting_briefs:manage). */
   skipPosting?: boolean;
+  /** Content Flow v1.1: where the original came from (tags every post of the posting brief). */
+  contentSource?: "" | "proven" | "experimental" | "recreation";
 };
 
 export type DraftBriefsResult = {
@@ -518,7 +520,10 @@ export async function draftBriefsFromBreakdown(input: DraftBriefsInput): Promise
         final_checklist: posting.final_checklist,
         status: "draft",
         editing_brief_id: ed.id,
-        posts: posts.map((p) => ({
+        posts: posts.map((p, i) => ({
+          // Content Flow v1.1: original → grid, variations → trials.
+          placement: i === 0 ? ("grid" as const) : ("trial" as const),
+          content_source: input.contentSource ?? ("" as const),
           video_name: p.video_name,
           text_on_screen: p.text_on_screen || null,
           caption: p.caption,

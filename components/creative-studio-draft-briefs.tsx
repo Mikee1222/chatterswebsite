@@ -95,7 +95,8 @@ export function CreativeStudioDraftBriefs({ breakdownId, models, defaultModelId,
   const [modelId, setModelId] = React.useState(defaultModelId);
   const [contentType, setContentType] = React.useState<DraftContentType | null>(null);
   const [flow, setFlow] = React.useState<DraftFlow>("batch");
-  const [variationCount, setVariationCount] = React.useState(3);
+  const [variationCount, setVariationCount] = React.useState(2);
+  const [contentSource, setContentSource] = React.useState<"" | "proven" | "experimental" | "recreation">("proven");
   const [accountHandle, setAccountHandle] = React.useState("");
   const [region, setRegion] = React.useState<"Greece" | "USA" | "Global">("Greece");
   const [busy, setBusy] = React.useState(false);
@@ -139,6 +140,7 @@ export function CreativeStudioDraftBriefs({ breakdownId, models, defaultModelId,
             variationCount,
             accountHandle: accountHandle.trim() || undefined,
             region,
+            contentSource,
           }),
         },
       );
@@ -279,6 +281,24 @@ export function CreativeStudioDraftBriefs({ breakdownId, models, defaultModelId,
                 value={variationCount}
                 onChange={(e) => setVariationCount(Math.min(6, Math.max(1, Number(e.target.value) || 1)))}
               />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                Source bunch
+              </p>
+              <select
+                className={cn(VA_FILTER_INPUT, "min-h-11 w-full")}
+                value={contentSource}
+                onChange={(e) =>
+                  setContentSource(e.target.value as "" | "proven" | "experimental" | "recreation")
+                }
+                title="Tags the posting brief: original → grid, variations → trials."
+              >
+                <option value="proven">Proven</option>
+                <option value="experimental">Experimental</option>
+                <option value="recreation">Recreation</option>
+                <option value="">—</option>
+              </select>
             </div>
             <div>
               <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">

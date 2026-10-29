@@ -133,6 +133,10 @@ export type WinnerSubmission = {
   } | null;
   winner_threshold_at_classification: number | null;
   super_winner_threshold_at_classification: number | null;
+  /** Content Flow v1.1 — 24h check on our own post. */
+  posting_brief_post_id: string | null;
+  feed: "grid" | "trial" | "";
+  outlier_multiple: number | null;
 };
 
 export type RecreationQueueItem = {
@@ -284,6 +288,9 @@ function mapSubmission(row: Record<string, unknown>): WinnerSubmission {
     clariosuite_media_id: row.clariosuite_media_id
       ? String(row.clariosuite_media_id)
       : null,
+    posting_brief_post_id: row.posting_brief_post_id ? String(row.posting_brief_post_id) : null,
+    feed: row.feed === "grid" || row.feed === "trial" ? row.feed : "",
+    outlier_multiple: row.outlier_multiple != null ? Number(row.outlier_multiple) : null,
     auto_classified_at: row.auto_classified_at ? String(row.auto_classified_at) : null,
     threshold_at_classification: snapshot,
     winner_threshold_at_classification:
@@ -2455,6 +2462,22 @@ export async function decideQueueItem(input: {
     patch.grid_posted_at = now;
   }
   if (input.decision === "urgent") {
+    // Cap: urgent_slots_per_month per model (lost if unused). Re-deciding the same
+    // item as urgent does not consume a second slot.
+    const current = mapQueueItem(row as Record<string, unknown>);
+    if (current.decision !== "urgent") {
+      const sub = await getWinnerSubmission(current.winner_submission_id);
+      if (sub?.model_id) {
+        const { getCycleSettings } = await import("@/services/content-cycles");
+        const settings = await getCycleSettings(sub.model_id);
+        const used = await countUrgentUsedThisMonth(sub.model_id);
+        if (used >= settings.urgent_slots_per_month) {
+          throw new Error(
+            `No urgent slots left this month for ${sub.model_name || "this model"} (${used}/${settings.urgent_slots_per_month} used). Send it to the next bunch instead.`,
+          );
+        }
+      }
+    }
     patch.lane = "urgent";
     patch.urgent_used_at = now;
   }

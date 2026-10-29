@@ -187,6 +187,134 @@ function PostedPanel({
   );
 }
 
+/** 24h check (Content Flow v1.1): Account Supervisor types the 24h views. */
+function ViewsCheckPanel({
+  briefId,
+  post,
+  canEdit,
+  onChange,
+}: {
+  briefId: string;
+  post: PostingBriefPost;
+  canEdit: boolean;
+  onChange?: (brief: PostingBrief) => void;
+}) {
+  const { addToast } = useToast();
+  const [views, setViews] = React.useState<string>(post.views_24h == null ? "" : String(post.views_24h));
+  const [busy, setBusy] = React.useState(false);
+  const inputId = `views-24h-${post.id}`;
+
+  React.useEffect(() => {
+    setViews(post.views_24h == null ? "" : String(post.views_24h));
+  }, [post.views_24h]);
+
+  const submit = async () => {
+    if (!canEdit || busy) return;
+    const n = Number(views.replace(/[^\d]/g, ""));
+    if (!Number.isFinite(n)) return;
+    setBusy(true);
+    try {
+      const res = await fetch(
+        `/api/posting-briefs/${encodeURIComponent(briefId)}/posts/${encodeURIComponent(post.id)}/views`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ views: n }),
+        },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        brief?: PostingBrief;
+        status?: string;
+        multiple?: number | null;
+        baseline_count?: number;
+        queued?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !data.brief) throw new Error(data.error || "Failed");
+      onChange?.(data.brief);
+      const label =
+        data.status === "hot"
+          ? `🔥 HOT ×${data.multiple ?? "?"} — urgent lane`
+          : data.status === "outlier"
+            ? `Outlier ×${data.multiple ?? "?"} — added to recreation queue`
+            : data.baseline_count
+              ? `Normal (×${data.multiple ?? "?"} of the last ${data.baseline_count})`
+              : "Saved — no baseline yet";
+      addToast(winnerVideoLocalToast(`pb-views-${post.id}-${Date.now()}`, "24h check", label, "normal"));
+    } catch (e) {
+      addToast(
+        winnerVideoLocalToast(
+          `pb-views-${post.id}-${Date.now()}`,
+          "Could not save 24h views",
+          e instanceof Error ? e.message : "Try again",
+          "high",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const badge =
+    post.outlier_status === "hot" ? (
+      <span className="rounded-md border border-rose-400/40 bg-rose-400/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-rose-200">
+        🔥 HOT ×{post.outlier_multiple ?? "?"}
+      </span>
+    ) : post.outlier_status === "outlier" ? (
+      <span className="rounded-md border border-amber-400/40 bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.1em] text-amber-200">
+        OUTLIER ×{post.outlier_multiple ?? "?"}
+      </span>
+    ) : post.outlier_status === "normal" ? (
+      <span className="rounded-md border border-white/15 bg-white/[0.04] px-1.5 py-0.5 text-[10px] tracking-[0.1em] text-white/50">
+        NORMAL{post.outlier_multiple != null ? ` ×${post.outlier_multiple}` : ""}
+      </span>
+    ) : null;
+
+  if (!canEdit) {
+    return post.views_24h != null ? (
+      <p className="mt-2 flex items-center gap-2 text-xs text-white/55">
+        24h views: <span className="font-semibold text-white/80">{post.views_24h.toLocaleString()}</span>
+        {badge}
+      </p>
+    ) : null;
+  }
+
+  return (
+    <form
+      className="mt-2 flex flex-wrap items-center gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <label htmlFor={inputId} className="text-xs text-white/55">
+        24h views
+      </label>
+      <input
+        id={inputId}
+        type="text"
+        inputMode="numeric"
+        value={views}
+        onChange={(e) => setViews(e.target.value)}
+        placeholder="e.g. 12400"
+        className={cn(VA_FILTER_INPUT, "w-32")}
+        disabled={busy}
+      />
+      <button
+        type="submit"
+        disabled={busy || !views.trim()}
+        className={cn(VA_BTN_SECONDARY, "min-h-10 whitespace-nowrap px-3 py-2 text-xs")}
+      >
+        {busy ? "Checking…" : post.views_24h == null ? "Check" : "Update"}
+      </button>
+      {badge}
+      {post.views_checked_at ? (
+        <span className="text-[11px] text-white/35">checked {formatPostedAt(post.views_checked_at)}</span>
+      ) : null}
+    </form>
+  );
+}
+
 const SECTIONS = [
   { id: "pb-video", label: "Video" },
   { id: "pb-posts", label: "Posts" },
@@ -219,6 +347,21 @@ function PostCard({
       <div className="mb-3 flex items-center justify-between gap-2">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
           Post {index + 1}
+          <span
+            className={cn(
+              "ml-2 rounded-md border px-1.5 py-0.5 text-[10px] tracking-[0.1em]",
+              post.placement === "trial"
+                ? "border-sky-400/30 bg-sky-400/10 text-sky-200"
+                : "border-[#D4AF8C]/30 bg-[#D4AF8C]/10 text-[#D4AF8C]",
+            )}
+          >
+            {post.placement === "trial" ? "TRIAL" : "GRID"}
+          </span>
+          {post.content_source ? (
+            <span className="ml-1 rounded-md border border-white/15 bg-white/[0.04] px-1.5 py-0.5 text-[10px] tracking-[0.1em] text-white/50">
+              {post.content_source.toUpperCase()}
+            </span>
+          ) : null}
           {post.posted_at ? (
             <span className="ml-2 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-1.5 py-0.5 text-[10px] tracking-[0.1em] text-emerald-300">
               POSTED
@@ -261,6 +404,14 @@ function PostCard({
         canEdit={canMarkPosted}
         onChange={onBriefChange}
       />
+      {post.posted_at ? (
+        <ViewsCheckPanel
+          briefId={briefId}
+          post={post}
+          canEdit={canMarkPosted}
+          onChange={onBriefChange}
+        />
+      ) : null}
     </div>
   );
 }

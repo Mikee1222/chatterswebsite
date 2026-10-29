@@ -44,6 +44,7 @@ export async function POST(req: Request, ctx: Ctx) {
     variationCount?: number;
     accountHandle?: string;
     region?: string;
+    contentSource?: string;
   };
 
   const modelId = body.modelId?.trim();
@@ -80,6 +81,12 @@ export async function POST(req: Request, ctx: Ctx) {
       region,
       userId: session.airtableUserId ?? session.id,
       skipPosting: !canPosting,
+      contentSource:
+        body.contentSource === "proven" ||
+        body.contentSource === "experimental" ||
+        body.contentSource === "recreation"
+          ? body.contentSource
+          : "",
     });
     return Response.json({ set: result.set, warnings: result.warnings });
   } catch (err) {

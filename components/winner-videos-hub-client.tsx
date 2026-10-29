@@ -680,6 +680,40 @@ export function WinnerVideosHubClient({
     }
   }
 
+  async function decideQueue(queueItemId: string, decision: "grid" | "urgent" | "no") {
+    setBusyId(queueItemId);
+    try {
+      const res = await fetch(`/api/winner-sourcing/queue/${queueItemId}/decide`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Decision failed", data.error || "Error", "high"),
+        );
+        return;
+      }
+      addToast(
+        winnerVideoLocalToast(
+          `ws-dec-${Date.now()}`,
+          decision === "grid" ? "Moved to grid" : decision === "urgent" ? "Urgent lane" : "Dropped",
+          decision === "grid"
+            ? "Post the same file to the grid, then assign it to a bunch for recreation."
+            : decision === "urgent"
+              ? "Assign it to an open bunch now — one urgent slot used this month."
+              : "Item kept for the record, no recreation.",
+          "normal",
+        ),
+      );
+      await refreshAll();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function assignQueueItem(queueItemId: string, bunchId: string) {
     setBusyId(queueItemId);
     try {
@@ -1196,6 +1230,7 @@ export function WinnerVideosHubClient({
                 setCollapsedModels((p) => ({ ...p, [id]: !p[id] }))
               }
               onAssign={(qid, bid) => void assignQueueItem(qid, bid)}
+              onDecide={(qid, d) => void decideQueue(qid, d)}
             />
           ) : null}
           {tab === "settings" ? (
@@ -1880,6 +1915,7 @@ function QueuePanel({
   collapsedModels,
   onToggleModel,
   onAssign,
+  onDecide,
 }: {
   items: RecreationQueueItem[];
   bunches: VideoBunch[];
@@ -1888,6 +1924,7 @@ function QueuePanel({
   collapsedModels: Record<string, boolean>;
   onToggleModel: (modelId: string) => void;
   onAssign: (queueItemId: string, bunchId: string) => void;
+  onDecide?: (queueItemId: string, decision: "grid" | "urgent" | "no") => void;
 }) {
   if (!items.length) {
     return (
@@ -1935,6 +1972,31 @@ function QueuePanel({
                 <span className={cn(VA_STATUS_BADGE, "border-pink-500/30 bg-pink-500/10 text-pink-200")}>
                   {item.required_recreate_count} recreates
                 </span>
+                {item.lane === "urgent" ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-rose-400/40 bg-rose-400/15 text-rose-200")}>
+                    🔥 Urgent
+                  </span>
+                ) : null}
+                {item.feed ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-white/15 bg-white/[0.04] text-white/60")}>
+                    {item.feed === "trial" ? "Trial outlier" : "Grid outlier"}
+                    {sub?.outlier_multiple != null ? ` ×${sub.outlier_multiple}` : ""}
+                  </span>
+                ) : null}
+                {item.generation > 1 ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-amber-400/30 bg-amber-400/10 text-amber-200")}>
+                    Gen {item.generation}
+                  </span>
+                ) : null}
+                {item.decision === "grid" ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-emerald-400/30 bg-emerald-400/10 text-emerald-200")}>
+                    Moved to grid
+                  </span>
+                ) : item.decision === "no" ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-white/10 bg-white/[0.03] text-white/40")}>
+                    Dropped
+                  </span>
+                ) : null}
               </div>
               {sub?.view_count != null ? (
                 <p className="text-xs text-[#B8B4B8]/55">
@@ -1969,11 +2031,48 @@ function QueuePanel({
             </div>
           </div>
           {!item.bunch_id ? (
-            <BunchAssignPicker
-              bunches={bunches}
-              busy={busyId === item.id}
-              onAssign={(bunchId) => onAssign(item.id, bunchId)}
-            />
+            <div className="flex flex-col items-end gap-2">
+              {onDecide && item.decision !== "no" ? (
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  {item.feed === "trial" && item.decision !== "grid" ? (
+                    <button
+                      type="button"
+                      disabled={busyId === item.id}
+                      onClick={() => onDecide(item.id, "grid")}
+                      className={cn(VA_BTN_SECONDARY, "min-h-9 px-3 py-1.5 text-xs")}
+                      title="Trial outlier: post the same file to the grid first"
+                    >
+                      → Grid
+                    </button>
+                  ) : null}
+                  {item.lane !== "urgent" ? (
+                    <button
+                      type="button"
+                      disabled={busyId === item.id}
+                      onClick={() => onDecide(item.id, "urgent")}
+                      className={cn(VA_BTN_SECONDARY, "min-h-9 border-rose-400/30 px-3 py-1.5 text-xs text-rose-200")}
+                      title="Recreate now — uses one urgent slot this month"
+                    >
+                      Urgent
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => onDecide(item.id, "no")}
+                    className={cn(VA_BTN_SECONDARY, "min-h-9 px-3 py-1.5 text-xs text-white/50")}
+                    title="Drop — do not recreate"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : null}
+              <BunchAssignPicker
+                bunches={bunches}
+                busy={busyId === item.id}
+                onAssign={(bunchId) => onAssign(item.id, bunchId)}
+              />
+            </div>
           ) : null}
         </div>
       </li>
