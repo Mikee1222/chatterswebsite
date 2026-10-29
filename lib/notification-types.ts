@@ -120,6 +120,7 @@ export const NOTIFICATION_EVENT = {
   BUNCH_ICLOUD_ORGANIZED: "bunch_icloud_organized" as const,
   POSTING_BRIEF_PUBLISHED: "posting_brief_published" as const,
   POSTING_BRIEF_UPDATED: "posting_brief_updated" as const,
+  POSTING_BRIEF_POSTED: "posting_brief_posted" as const,
   RECORDING_BRIEF_PUBLISHED: "recording_brief_published" as const,
   RECORDING_BRIEF_UPDATED: "recording_brief_updated" as const,
   RECORDING_BRIEF_REMINDER: "recording_brief_reminder" as const,

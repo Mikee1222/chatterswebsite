@@ -36,6 +36,10 @@ export type PostingBriefPost = {
   caption: string;
   pinned_comment: string | null;
   notes: string | null;
+  /** Live post URL once the Marketing Executive marks the post as posted. */
+  posted_url: string | null;
+  posted_at: string | null;
+  posted_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -67,6 +71,8 @@ export type PostingBrief = {
 };
 
 export type PostingBriefPostInput = {
+  /** Existing post id (edit form). Lets the "posted" fields survive a re-save. */
+  id?: string;
   video_name?: string;
   text_on_screen?: string | null;
   caption?: string;
@@ -141,9 +147,23 @@ function mapPost(row: Record<string, unknown>): PostingBriefPost {
     caption: asString(row.caption),
     pinned_comment: asNullableString(row.pinned_comment),
     notes: asNullableString(row.notes),
+    posted_url: asNullableString(row.posted_url),
+    posted_at: asNullableString(row.posted_at),
+    posted_by: asNullableString(row.posted_by),
     created_at: asString(row.created_at),
     updated_at: asString(row.updated_at),
   };
+}
+
+/** How many of a brief's posts have been marked as posted. */
+export function postedSummary(brief: Pick<PostingBrief, "posts">): {
+  posted: number;
+  total: number;
+  allPosted: boolean;
+} {
+  const total = brief.posts.length;
+  const posted = brief.posts.filter((p) => !!p.posted_at).length;
+  return { posted, total, allPosted: total > 0 && posted === total };
 }
 
 function mapBrief(row: Record<string, unknown>, posts: PostingBriefPost[]): PostingBrief {
@@ -324,23 +344,39 @@ async function replacePosts(
   posts: PostingBriefPostInput[],
 ): Promise<PostingBriefPost[]> {
   const sb = getSupabaseServiceClient();
+
+  // Posts are replaced wholesale on every save. Keep the "posted" stage of
+  // rows the form sent back with their existing id, so a CD edit after the
+  // VA posted does not wipe the live links.
+  const existingMap = await loadPostsForBriefIds([briefId]);
+  const existingById = new Map(
+    (existingMap.get(briefId) ?? []).map((p) => [p.id, p] as const),
+  );
+
   const { error: delErr } = await sb.from("posting_brief_posts").delete().eq("brief_id", briefId);
   if (delErr) throw new Error(delErr.message);
 
   if (!posts.length) return [];
 
   const now = new Date().toISOString();
-  const rows = posts.map((p, i) => ({
-    brief_id: briefId,
-    position: i,
-    video_name: p.video_name ?? "",
-    text_on_screen: p.text_on_screen ?? null,
-    caption: p.caption ?? "",
-    pinned_comment: p.pinned_comment ?? null,
-    notes: p.notes ?? null,
-    created_at: now,
-    updated_at: now,
-  }));
+  const rows = posts.map((p, i) => {
+    const prev = p.id ? existingById.get(p.id) : undefined;
+    return {
+      ...(prev ? { id: prev.id } : {}),
+      brief_id: briefId,
+      position: i,
+      video_name: p.video_name ?? "",
+      text_on_screen: p.text_on_screen ?? null,
+      caption: p.caption ?? "",
+      pinned_comment: p.pinned_comment ?? null,
+      notes: p.notes ?? null,
+      posted_url: prev?.posted_url ?? null,
+      posted_at: prev?.posted_at ?? null,
+      posted_by: prev?.posted_by ?? null,
+      created_at: prev?.created_at || now,
+      updated_at: now,
+    };
+  });
 
   const { data, error } = await sb.from("posting_brief_posts").insert(rows).select("*");
   if (error) throw new Error(error.message);
@@ -507,6 +543,7 @@ export async function duplicatePostingBrief(
       status: "active",
       created_by: createdBy,
       posts: source.posts.map((p) => ({
+        // No id on purpose: a duplicate starts unposted.
         video_name: p.video_name,
         text_on_screen: p.text_on_screen,
         caption: p.caption,
@@ -516,4 +553,117 @@ export async function duplicatePostingBrief(
     },
     { notify: true, actorUserId: opts?.actorUserId },
   );
+}
+
+async function notifyPostedToCreativeDirector(params: {
+  brief: PostingBrief;
+  post: PostingBriefPost;
+  actorUserId?: string;
+}): Promise<void> {
+  const { brief, post, actorUserId } = params;
+  const holders = await listUsersWithPermission(PERMISSIONS.POSTING_BRIEFS_MANAGE).catch(
+    () => [],
+  );
+  const ids = new Set(holders.map((u) => u.id).filter(Boolean));
+  if (brief.created_by) ids.add(brief.created_by);
+
+  const { posted, total } = postedSummary(brief);
+  const index = brief.posts.findIndex((p) => p.id === post.id);
+  const label = post.video_name?.trim() || `Post ${index >= 0 ? index + 1 : "?"}`;
+  const handle = brief.account_handle?.trim() || "account";
+  const title =
+    posted === total && total > 0
+      ? `All posts up: ${brief.title}`
+      : `Posted ${posted}/${total}: ${brief.title}`;
+  const body = `${label} is live on ${handle}${post.posted_url ? ` — ${post.posted_url}` : ""}`;
+
+  await Promise.all(
+    [...ids]
+      .filter((id) => id && id !== actorUserId)
+      .map((user_id) =>
+        notify({
+          user_id,
+          event_type: NOTIFICATION_EVENT.POSTING_BRIEF_POSTED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title,
+          body,
+          entity_type: NOTIFICATION_ENTITY.POSTING_BRIEF,
+          entity_id: brief.id,
+          actor_user_id: actorUserId,
+          _triggerSource: "posting_brief_posted",
+        }).catch((err) => console.error("[posting_brief_posted] notify failed", err)),
+      ),
+  );
+}
+
+function normalizePostedUrl(raw: string): string {
+  const v = raw.trim();
+  if (!v) throw new Error("Post link is required");
+  const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    throw new Error("Post link is not a valid URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Post link must be an http(s) URL");
+  }
+  if (withScheme.length > 2048) throw new Error("Post link is too long");
+  return parsed.toString();
+}
+
+/**
+ * Marketing Executive marks one post block of a brief as posted (live link).
+ * Notifies the Creative Director / posting_briefs:manage holders.
+ */
+export async function markPostingBriefPostPosted(params: {
+  briefId: string;
+  postId: string;
+  url: string;
+  actorUserId: string;
+}): Promise<PostingBrief> {
+  const brief = await getPostingBriefById(params.briefId);
+  if (!brief) throw new Error("Brief not found");
+  const target = brief.posts.find((p) => p.id === params.postId.trim());
+  if (!target) throw new Error("Post not found");
+
+  const url = normalizePostedUrl(params.url);
+  const sb = getSupabaseServiceClient();
+  const now = new Date().toISOString();
+  const { error } = await sb
+    .from("posting_brief_posts")
+    .update({ posted_url: url, posted_at: now, posted_by: params.actorUserId, updated_at: now })
+    .eq("id", target.id)
+    .eq("brief_id", brief.id);
+  if (error) throw new Error(error.message);
+
+  const updated = await getPostingBriefById(brief.id);
+  if (!updated) throw new Error("Brief not found");
+  const post = updated.posts.find((p) => p.id === target.id) ?? target;
+  await notifyPostedToCreativeDirector({ brief: updated, post, actorUserId: params.actorUserId });
+  return updated;
+}
+
+/** Undo a "posted" mark (wrong link, post removed). No notification. */
+export async function clearPostingBriefPostPosted(params: {
+  briefId: string;
+  postId: string;
+}): Promise<PostingBrief> {
+  const brief = await getPostingBriefById(params.briefId);
+  if (!brief) throw new Error("Brief not found");
+  const target = brief.posts.find((p) => p.id === params.postId.trim());
+  if (!target) throw new Error("Post not found");
+
+  const sb = getSupabaseServiceClient();
+  const { error } = await sb
+    .from("posting_brief_posts")
+    .update({ posted_url: null, posted_at: null, posted_by: null, updated_at: new Date().toISOString() })
+    .eq("id", target.id)
+    .eq("brief_id", brief.id);
+  if (error) throw new Error(error.message);
+
+  const updated = await getPostingBriefById(brief.id);
+  if (!updated) throw new Error("Brief not found");
+  return updated;
 }

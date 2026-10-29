@@ -10,7 +10,7 @@ import {
   getPostingBriefById,
 } from "@/services/posting-briefs";
 import { getModelById } from "@/services/modelss";
-import { PostingBriefView } from "@/components/posting-brief-view";
+import { PostingBriefDetail } from "@/components/posting-brief-detail";
 import { VA_BTN_PRIMARY, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
@@ -60,7 +60,7 @@ export default async function PostingBriefDetailPage({ params }: Props) {
           </Link>
         ) : null}
       </div>
-      <PostingBriefView
+      <PostingBriefDetail
         brief={brief}
         modelName={model?.model_name}
         editingBriefId={brief.editing_brief_id}
