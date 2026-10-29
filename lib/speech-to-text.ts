@@ -4,6 +4,9 @@
  *   - OPENAI_API_KEY → api.openai.com, model whisper-1 (override: STT_MODEL)
  *   - GROQ_API_KEY   → api.groq.com,   model whisper-large-v3-turbo (override: STT_MODEL)
  * The video/audio file is streamed straight to the provider and never stored.
+ * Approved provider (owner, 2026-10-29): Groq whisper-large-v3-turbo (set GROQ_API_KEY,
+ * optionally STT_PROVIDER=groq). Transcripts are never written to logs; every call
+ * writes one ai_usage_logs row (feature stt_groq / stt_openai).
  */
 
 import "server-only";
@@ -19,6 +22,15 @@ export type SttProvider = {
   apiKey: string;
   model: string;
 };
+
+/** One ai_usage_logs row per transcription call (same table as the Anthropic calls). */
+function recordSttUsage(provider: SttProvider, ok: boolean): void {
+  void import("@/services/ai-usage-log")
+    .then(({ logAiUsage }) =>
+      logAiUsage({ featureKey: `stt_${provider.name}`, model: provider.model, ok }),
+    )
+    .catch(() => null);
+}
 
 export function resolveSttProvider(): SttProvider | null {
   const forced = process.env.STT_PROVIDER?.trim().toLowerCase();
@@ -88,18 +100,27 @@ export async function transcribeMedia(input: {
   // OpenAI supports timestamp granularities; Groq ignores unknown fields.
   form.append("timestamp_granularities[]", "segment");
 
-  const res = await fetch(provider.url, {
-    method: "POST",
-    headers: { authorization: `Bearer ${provider.apiKey}` },
-    body: form,
-  });
+  let res: Response;
+  try {
+    res = await fetch(provider.url, {
+      method: "POST",
+      headers: { authorization: `Bearer ${provider.apiKey}` },
+      body: form,
+    });
+  } catch (err) {
+    recordSttUsage(provider, false);
+    throw err;
+  }
 
   const data = (await res.json().catch(() => ({}))) as VerboseJson;
   if (!res.ok) {
     const msg = data?.error?.message ?? `HTTP ${res.status}`;
+    // Never log the audio or the transcript — status + provider message only.
     console.error(`[stt:${provider.name}] transcription failed`, res.status, msg);
+    recordSttUsage(provider, false);
     throw new Error(`STT_FAILED: ${msg}`);
   }
+  recordSttUsage(provider, true);
 
   const segments: TranscriptSegment[] = (data.segments ?? [])
     .map((s) => ({

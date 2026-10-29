@@ -182,7 +182,8 @@ export const DIRECT_UPLOAD_PURPOSE_CONFIG: Record<
   },
   "wardrobe-photo": {
     bucket: ATTACHMENTS_BUCKET,
-    maxBytes: 8 * 1024 * 1024,
+    // Client downscales to 1280px JPEG first (lib/client-image-compress.ts); 2MB is the hard cap.
+    maxBytes: 2 * 1024 * 1024,
     kind: "image",
     permissions: [PERMISSIONS.PERSONAS_MANAGE, PERMISSIONS.PERSONAS_EDIT_OWN],
     requiresItemId: true,
