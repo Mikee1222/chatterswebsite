@@ -187,7 +187,7 @@ function PostedPanel({
   );
 }
 
-/** 24h check (Content Flow v1.1): Account Supervisor types the 24h views. */
+/** Trial check (Content Flow v1.1): Account Supervisor types the trial views (no IG API for trials). Grid is automatic. */
 function ViewsCheckPanel({
   briefId,
   post,
@@ -288,7 +288,7 @@ function ViewsCheckPanel({
       }}
     >
       <label htmlFor={inputId} className="text-xs text-white/55">
-        24h views
+        Trial views
       </label>
       <input
         id={inputId}
@@ -404,7 +404,7 @@ function PostCard({
         canEdit={canMarkPosted}
         onChange={onBriefChange}
       />
-      {post.posted_at ? (
+      {post.posted_at && post.placement === "trial" ? (
         <ViewsCheckPanel
           briefId={briefId}
           post={post}

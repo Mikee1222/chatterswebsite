@@ -39,6 +39,8 @@ export type ContentCycleSettings = {
   outlier_multiple: number;
   hot_multiple: number;
   baseline_posts: number;
+  /** Grid outlier scan window (days) for the ClarioSuite auto-detect. */
+  outlier_scan_days: number;
 };
 
 export const DEFAULT_CYCLE_SETTINGS: Omit<ContentCycleSettings, "model_id"> = {
@@ -50,6 +52,7 @@ export const DEFAULT_CYCLE_SETTINGS: Omit<ContentCycleSettings, "model_id"> = {
   outlier_multiple: 2.5,
   hot_multiple: 10,
   baseline_posts: 9,
+  outlier_scan_days: 20,
 };
 
 export type ContentCycle = {
@@ -149,6 +152,7 @@ export async function getCycleSettings(modelId: string): Promise<ContentCycleSet
     outlier_multiple: num(r.outlier_multiple, DEFAULT_CYCLE_SETTINGS.outlier_multiple),
     hot_multiple: num(r.hot_multiple, DEFAULT_CYCLE_SETTINGS.hot_multiple),
     baseline_posts: num(r.baseline_posts, DEFAULT_CYCLE_SETTINGS.baseline_posts),
+    outlier_scan_days: num(r.outlier_scan_days, DEFAULT_CYCLE_SETTINGS.outlier_scan_days),
   };
 }
 

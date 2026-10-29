@@ -2,17 +2,15 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import {
-  getAssignedModelIdsForUser,
-  getPostingBriefById,
-  recordPost24hViews,
-} from "@/services/posting-briefs";
+import { getAssignedModelIdsForUser, getPostingBriefById } from "@/services/posting-briefs";
+import { saveTrialViews } from "@/services/trial-check";
 
 type Ctx = { params: Promise<{ id: string; postId: string }> };
 
 /**
- * 24h check (Content Flow v1.1). Same access as marking a post as posted:
- * posting_briefs:manage, or posting_briefs:view for an assigned model.
+ * Trial check for ONE post from the posting brief page (Content Flow v1.1).
+ * Grid posts are checked automatically by the ClarioSuite auto-detect.
+ * Same access as marking a post as posted.
  */
 export async function POST(req: Request, ctx: Ctx) {
   const { id, postId } = await ctx.params;
@@ -46,15 +44,32 @@ export async function POST(req: Request, ctx: Ctx) {
     return NextResponse.json({ error: "views must be a number ≥ 0" }, { status: 400 });
   }
 
+  const post = brief.posts.find((p) => p.id === postId);
+  if (!post) return NextResponse.json({ error: "Post not found" }, { status: 404 });
+  if (post.placement !== "trial") {
+    return NextResponse.json(
+      { error: "Grid posts are checked automatically from Instagram — only trial posts are typed by hand." },
+      { status: 400 },
+    );
+  }
+  if (!post.posted_at) return NextResponse.json({ error: "Mark the post as posted first" }, { status: 400 });
+
   try {
-    const result = await recordPost24hViews({
-      briefId: id,
-      postId,
-      views,
+    const result = await saveTrialViews({
+      entries: [{ post_id: postId, views }],
       actorUserId,
       actorName: session.fullName || session.email || undefined,
     });
-    return NextResponse.json(result);
+    const updated = await getPostingBriefById(id);
+    const updatedPost = updated?.posts.find((p) => p.id === postId);
+    const acct = result.accounts[0];
+    return NextResponse.json({
+      brief: updated,
+      status: updatedPost?.outlier_status ?? "",
+      multiple: updatedPost?.outlier_multiple ?? null,
+      baseline_count: acct?.baseline_count ?? 0,
+      queued: result.newOutliers.some((o) => o.post_id === postId),
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed";
     const status = msg === "Brief not found" || msg === "Post not found" ? 404 : 400;

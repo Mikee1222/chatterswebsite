@@ -182,6 +182,7 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
                 ["outlier_multiple", "Outlier ≥ × average"],
                 ["hot_multiple", "Hot ≥ × average"],
                 ["baseline_posts", "Average of last N posts"],
+                ["outlier_scan_days", "Scan last N days"],
               ] as Array<[keyof ContentCycleSettings, string]>
             ).map(([key, label]) => (
               <div key={key}>

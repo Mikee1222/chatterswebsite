@@ -22,7 +22,7 @@ export const WINNER_SUBMISSION_SOURCE_LABELS: Record<WinnerSubmissionSource, str
   auto_detected: "Auto-detected",
   va_submitted: "VA Submitted",
   researcher_submitted: "Researcher Submitted",
-  posted_24h: "24h check (our post)",
+  posted_24h: "Trial check (our post)",
 };
 
 export const BUNCH_STATUSES = ["open", "closed"] as const;

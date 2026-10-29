@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
+import { TrialCheckPanel } from "@/components/trial-check-panel";
 import { CountUp, LuxuryStatCard, StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { FilterBar, FilterChip } from "@/components/manager-review-ui";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -120,7 +121,7 @@ export type HubCreativeOption = {
 /** @deprecated Filmer assign lives on /admin/bunches */
 export type HubFilmerOption = HubCreativeOption;
 
-type TabId = "winners" | "super" | "queue" | "settings";
+type TabId = "winners" | "super" | "queue" | "trials" | "settings";
 type DateRangeId = "all" | "7d" | "30d" | "90d";
 type AssignFilter = "all" | "unassigned" | "assigned";
 
@@ -128,6 +129,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "winners", label: "Winners" },
   { id: "super", label: "Super Winners" },
   { id: "queue", label: "Recreation Queue" },
+  { id: "trials", label: "Trial Check" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -145,7 +147,7 @@ const SOURCE_FILTER_OPTIONS: { id: WinnerSubmissionSource | ""; label: string }[
   { id: "researcher_submitted", label: "Researcher Submitted" },
 ];
 
-const THRESHOLD_TOOLTIP = `Default view thresholds: Winner ≥ ${WINNER_VIEW_THRESHOLD.toLocaleString()} · Super Winner ≥ ${SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()}. Per-model ClarioSuite thresholds are configured in Settings when auto-detection is enabled.`;
+const THRESHOLD_TOOLTIP = `Outlier rule: ≥2.5× the average of the account's latest 9 Reels = Winner, ≥10× = Super Winner (per-model in Content Cycles). Absolute fallback: Winner ≥ ${WINNER_VIEW_THRESHOLD.toLocaleString()} · Super Winner ≥ ${SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()}.`;
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
@@ -940,7 +942,7 @@ export function WinnerVideosHubClient({
     });
   }
 
-  const showSubmissionFilters = tab === "winners" || tab === "super" || tab === "queue";
+  const showSubmissionFilters = tab === "winners" || tab === "super" || tab === "queue" || tab === "trials";
 
   return (
     <div className="space-y-6">
@@ -1233,6 +1235,9 @@ export function WinnerVideosHubClient({
               onDecide={(qid, d) => void decideQueue(qid, d)}
             />
           ) : null}
+          {tab === "trials" ? (
+            <TrialCheckPanel modelFilter={modelFilter} onChanged={() => void refreshAll()} />
+          ) : null}
           {tab === "settings" ? (
             <SettingsPanel
               config={recreateConfig}
@@ -1477,6 +1482,19 @@ function WinnerCard({
         <div className="flex flex-wrap items-center gap-1.5">
           <TierBadge tier={s.tier} prominent={superTier} />
           <SourceBadge source={s.source} />
+          {s.outlier_multiple != null ? (
+            <span
+              className={cn(
+                VA_STATUS_BADGE,
+                superTier
+                  ? "border-rose-400/40 bg-rose-400/15 text-rose-200"
+                  : "border-amber-400/35 bg-amber-400/12 text-amber-200",
+              )}
+              title={`${s.feed === "trial" ? "Trial" : "Grid"} outlier — ${s.outlier_multiple}× the average of the account's latest posts`}
+            >
+              ×{s.outlier_multiple} {s.feed === "trial" ? "trial" : "grid"}
+            </span>
+          ) : null}
           {assigned ? (
             <span className={cn(VA_STATUS_BADGE, "border-emerald-500/35 bg-emerald-500/12 text-emerald-200")}>
               Assigned
@@ -1719,6 +1737,15 @@ function SettingsPanel({
               {SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()}. Per-model overrides apply to ClarioSuite
               auto-detection and VA submits. Changing a threshold never reclassifies videos already in
               the hub.
+            </p>
+            <p className="mt-2 max-w-2xl text-sm text-[#B8B4B8]/65">
+              <span className="text-white/85">Outlier rule (Content Flow v1.1):</span> every night each account&apos;s
+              grid Reels of the last 20 days are compared to the average of its latest 9 Reels — ≥2.5× becomes a
+              Winner, ≥10× a Super Winner, whatever the absolute numbers. Multiples and window are set per model in{" "}
+              <Link href={ROUTES.admin.contentCycles} className="text-[#FF1493] hover:underline">
+                Content Cycles → Caps &amp; rules
+              </Link>
+              . Trials have no Instagram API — use the Trial Check tab.
             </p>
           </div>
         </div>
@@ -2045,7 +2072,7 @@ function QueuePanel({
                       → Grid
                     </button>
                   ) : null}
-                  {item.lane !== "urgent" ? (
+                  {item.decision !== "urgent" ? (
                     <button
                       type="button"
                       disabled={busyId === item.id}

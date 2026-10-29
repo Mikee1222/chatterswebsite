@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS public.content_cycle_settings (
   outlier_multiple numeric NOT NULL DEFAULT 2.5,
   hot_multiple numeric NOT NULL DEFAULT 10,
   baseline_posts integer NOT NULL DEFAULT 9,
+  outlier_scan_days integer NOT NULL DEFAULT 20,
   updated_by text NOT NULL DEFAULT '',
   updated_at timestamptz NOT NULL DEFAULT now()
 );

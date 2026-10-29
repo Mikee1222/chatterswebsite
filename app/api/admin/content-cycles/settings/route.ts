@@ -31,6 +31,7 @@ export async function PATCH(req: Request) {
     outlier_multiple?: number;
     hot_multiple?: number;
     baseline_posts?: number;
+    outlier_scan_days?: number;
   };
   const modelId = body.model_id?.trim();
   if (!modelId) return NextResponse.json({ error: "model_id required" }, { status: 400 });
