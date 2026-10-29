@@ -548,6 +548,14 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
   },
   {
+    href: ROUTES.admin.bunches,
+    label: "Experimental Bunch",
+    iconKey: "Sparkles",
+    navSection: "CONTENT PIPELINE",
+    requiresPermission: PERMISSIONS.EXPERIMENTAL_BUNCH_MANAGE,
+    hiddenIfPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
+  },
+  {
     href: ROUTES.admin.contentCycles,
     label: "Content Cycles",
     iconKey: "CalendarDays",

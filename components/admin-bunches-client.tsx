@@ -54,8 +54,13 @@ import {
   isBunchIcloudOutstanding,
 } from "@/lib/icloud-helpers";
 import {
+  BUNCH_KIND_LABELS,
+  DEFAULT_BUNCH_TARGET,
+  SLOT_ORIGIN_LABELS,
   SLOT_VIDEO_TYPES,
   SLOT_VIDEO_TYPE_LABELS,
+  type BunchKind,
+  type SlotOrigin,
   type SlotVideoType,
 } from "@/lib/winner-sourcing-helpers";
 import { ROUTES } from "@/lib/routes";
@@ -197,6 +202,13 @@ export function AdminBunchesClient({
   const [bunchName, setBunchName] = React.useState("");
   const [bunchModelId, setBunchModelId] = React.useState("");
   const [bunchTarget, setBunchTarget] = React.useState("30");
+  const [bunchKind, setBunchKind] = React.useState<BunchKind>("proven");
+  const [ideaOpen, setIdeaOpen] = React.useState(false);
+  const [ideaText, setIdeaText] = React.useState("");
+  const [ideaLink, setIdeaLink] = React.useState("");
+  const [ideaOrigin, setIdeaOrigin] = React.useState<SlotOrigin>("own_idea");
+  const [ideaType, setIdeaType] = React.useState<SlotVideoType | "">("");
+  const [kindFilter, setKindFilter] = React.useState<"all" | BunchKind>("all");
 
   const [showAssignPicker, setShowAssignPicker] = React.useState(false);
   const [showFilmerPicker, setShowFilmerPicker] = React.useState(false);
@@ -414,6 +426,7 @@ export function AdminBunchesClient({
           model_id: model.model_id,
           model_name: model.model_name,
           target_video_count: Number(bunchTarget) || 30,
+          kind: bunchKind,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -428,8 +441,43 @@ export function AdminBunchesClient({
       setBunchName("");
       setBunchModelId("");
       setBunchTarget("30");
+      setBunchKind("proven");
       await refreshAll();
       if (data.bunch?.id) await loadBunchSlots(data.bunch.id);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function addExperimentalIdea(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedBunch || selectedBunch.kind !== "experimental") return;
+    setBusyId("add-idea");
+    try {
+      const res = await fetch(
+        `/api/winner-sourcing/bunches/${encodeURIComponent(selectedBunch.id)}/experimental-slot`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            description: ideaText,
+            video_link: ideaLink,
+            origin: ideaOrigin,
+            video_type: ideaType,
+          }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(winnerVideoLocalToast(`ws-err-${Date.now()}`, "Add failed", data.error || "Error", "high"));
+        return;
+      }
+      addToast(winnerVideoLocalToast(`ws-idea-${Date.now()}`, "Idea added", "Added to the experimental bunch", "normal"));
+      setIdeaText("");
+      setIdeaLink("");
+      await loadBunchSlots(selectedBunch.id);
+      await refreshAll();
     } finally {
       setBusyId(null);
     }
@@ -862,6 +910,7 @@ export function AdminBunchesClient({
     const q = search.trim().toLowerCase();
     return bunches.filter((b) => {
       if (statusFilter !== "all" && b.status !== statusFilter) return false;
+      if (kindFilter !== "all" && b.kind !== kindFilter) return false;
       if (modelFilter !== "all" && b.model_id !== modelFilter) return false;
       if (stageFilter !== "all" && getBunchPipelineStageIndex(b) !== stageFilter) return false;
       if (creativeFilter !== "all") {
@@ -907,6 +956,7 @@ export function AdminBunchesClient({
     search,
     modelFilter,
     statusFilter,
+    kindFilter,
     stageFilter,
     creativeFilter,
     filmerFilter,
@@ -921,6 +971,7 @@ export function AdminBunchesClient({
     search,
     modelFilter,
     statusFilter,
+    kindFilter,
     stageFilter,
     creativeFilter,
     filmerFilter,
@@ -1149,6 +1200,23 @@ export function AdminBunchesClient({
             </label>
             <label className="space-y-1.5">
               <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">
+                Kind
+              </span>
+              <select
+                className={cn(VA_FILTER_INPUT, "w-full")}
+                value={bunchKind}
+                onChange={(e) => {
+                  const k = e.target.value as BunchKind;
+                  setBunchKind(k);
+                  setBunchTarget(String(DEFAULT_BUNCH_TARGET[k]));
+                }}
+              >
+                <option value="proven">Proven — researcher fills it (viral for others)</option>
+                <option value="experimental">Experimental — Head of Marketing fills it (trends, risky, own ideas)</option>
+              </select>
+            </label>
+            <label className="space-y-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">
                 Target video count
               </span>
               <input
@@ -1199,6 +1267,15 @@ export function AdminBunchesClient({
               <option value="all">All status</option>
               <option value="open">Open</option>
               <option value="closed">Closed</option>
+            </select>
+            <select
+              value={kindFilter}
+              onChange={(e) => setKindFilter(e.target.value as "all" | BunchKind)}
+              className={cn(VA_FILTER_INPUT, "min-w-[8rem]")}
+            >
+              <option value="all">Proven + Experimental</option>
+              <option value="proven">Proven</option>
+              <option value="experimental">Experimental</option>
             </select>
             <select
               value={modelFilter}
@@ -1416,7 +1493,19 @@ export function AdminBunchesClient({
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-white">{b.name}</p>
+                          <p className="flex items-center gap-2 truncate font-medium text-white">
+                            <span className="truncate">{b.name}</span>
+                            <span
+                              className={cn(
+                                "shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider",
+                                b.kind === "experimental"
+                                  ? "border-[#FF1493]/40 bg-[#FF1493]/12 text-[#FFB6DE]"
+                                  : "border-[#D4AF8C]/35 bg-[#D4AF8C]/10 text-[#E8D5B5]",
+                              )}
+                            >
+                              {BUNCH_KIND_LABELS[b.kind]}
+                            </span>
+                          </p>
                           <p className="mt-0.5 text-xs text-[#B8B4B8]/55">
                             {b.model_name} · {b.status}
                             <span className="text-[#B8B4B8]/35">
@@ -1519,6 +1608,62 @@ export function AdminBunchesClient({
             </div>
           ) : (
             <div className="space-y-4">
+              {selectedBunch.kind === "experimental" ? (
+                <div className="rounded-xl border border-[#FF1493]/25 bg-[#FF1493]/[0.05] p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-white/70">
+                      <span className="font-semibold text-[#FFB6DE]">Experimental bunch</span> — the Head of
+                      Marketing adds ideas here: trends, something risky, something seen, own ideas. Originals go to the
+                      grid, variations to trials.
+                    </p>
+                    <button
+                      type="button"
+                      className={cn(VA_BTN_PRIMARY, "min-h-9 px-3 text-xs")}
+                      onClick={() => setIdeaOpen((o) => !o)}
+                      disabled={(selectedBunch.remaining_count ?? 0) < 1}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" /> Add idea
+                    </button>
+                  </div>
+                  {ideaOpen ? (
+                    <form onSubmit={(e) => void addExperimentalIdea(e)} className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <textarea
+                        className={cn(VA_FILTER_INPUT, "min-h-[64px] w-full resize-y sm:col-span-2")}
+                        placeholder="The idea — what the video is, the hook, why it could work"
+                        value={ideaText}
+                        onChange={(e) => setIdeaText(e.target.value)}
+                        required
+                      />
+                      <input
+                        className={cn(VA_FILTER_INPUT, "w-full")}
+                        placeholder="Reference link (optional)"
+                        value={ideaLink}
+                        onChange={(e) => setIdeaLink(e.target.value)}
+                      />
+                      <select className={cn(VA_FILTER_INPUT, "w-full")} value={ideaOrigin} onChange={(e) => setIdeaOrigin(e.target.value as SlotOrigin)}>
+                        <option value="trend">Trend</option>
+                        <option value="risky">Risky</option>
+                        <option value="seen">Seen it</option>
+                        <option value="own_idea">Own idea</option>
+                      </select>
+                      <select className={cn(VA_FILTER_INPUT, "w-full")} value={ideaType} onChange={(e) => setIdeaType(e.target.value as SlotVideoType | "")}>
+                        <option value="">Video type (optional)</option>
+                        {SLOT_VIDEO_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {SLOT_VIDEO_TYPE_LABELS[t]}
+                          </option>
+                        ))}
+                      </select>
+                      <div>
+                        <button type="submit" className={cn(VA_BTN_PRIMARY, "min-h-10 px-4 text-xs")} disabled={busyId === "add-idea"}>
+                          {busyId === "add-idea" ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                          Add to bunch
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold text-white">{selectedBunch.name}</h3>
@@ -1970,7 +2115,11 @@ export function AdminBunchesClient({
                             </span>
                           ) : null}
                           <span className="text-[10px] uppercase tracking-wider text-[#B8B4B8]/40">
-                            {slot.source === "from_winner" ? "from winner" : "researcher"}
+                            {slot.source === "from_winner"
+                              ? `recreation${slot.generation ? ` · gen ${slot.generation}` : ""}`
+                              : slot.source === "experimental"
+                                ? `experimental · ${SLOT_ORIGIN_LABELS[slot.origin] ?? slot.origin}`
+                                : "researcher"}
                           </span>
                           <button
                             type="button"
