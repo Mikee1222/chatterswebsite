@@ -40,6 +40,9 @@ export const BUNCH_KIND_LABELS: Record<BunchKind, string> = {
 };
 export const DEFAULT_BUNCH_TARGET: Record<BunchKind, number> = { proven: 30, experimental: 15 };
 
+/** Content Flow v1.1 daily posting rhythm per model (grid = 2 proven + 1 experimental originals). */
+export const DAILY_POSTING_TARGET = { grid_proven: 2, grid_experimental: 1, grid: 3, trials: 6 } as const;
+
 /** Where an experimental idea came from. */
 export const SLOT_ORIGINS = ["", "trend", "risky", "seen", "own_idea", "recreation"] as const;
 export type SlotOrigin = (typeof SLOT_ORIGINS)[number];

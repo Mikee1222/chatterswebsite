@@ -10,6 +10,27 @@ import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { PostingBrief } from "@/services/posting-briefs";
+import { DAILY_POSTING_TARGET } from "@/lib/winner-sourcing-helpers";
+
+/** Posts marked posted today (local day), per placement/source — the VA's daily rhythm. */
+function todayPostingCounts(briefs: PostingBrief[], modelId: string) {
+  const today = new Date().toDateString();
+  const c = { grid: 0, grid_proven: 0, grid_experimental: 0, trials: 0, outliers: 0 };
+  for (const b of briefs) {
+    if (modelId && b.model_id !== modelId) continue;
+    for (const p of b.posts) {
+      if (!p.posted_at || new Date(p.posted_at).toDateString() !== today) continue;
+      if (p.placement === "trial") c.trials += 1;
+      else {
+        c.grid += 1;
+        if (p.content_source === "proven") c.grid_proven += 1;
+        if (p.content_source === "experimental") c.grid_experimental += 1;
+      }
+      if (p.outlier_status === "outlier" || p.outlier_status === "hot") c.outliers += 1;
+    }
+  }
+  return c;
+}
 
 function postingProgressHint(b: PostingBrief): string {
   const total = b.posts.length;
@@ -126,6 +147,8 @@ export function PostingBriefsClient({
     }
     return list;
   }, [briefs, search, sortMode]);
+
+  const today = React.useMemo(() => todayPostingCounts(briefs, modelFilter), [briefs, modelFilter]);
 
   const stats = React.useMemo(() => {
     const base = computeBriefListStats(
@@ -321,6 +344,24 @@ export function PostingBriefsClient({
             value: filtered.length,
             accent: "emerald",
             tooltip: "Briefs matching current filters",
+          },
+          {
+            label: `Grid today / ${DAILY_POSTING_TARGET.grid}`,
+            value: today.grid,
+            accent: "champagne",
+            tooltip: `Originals posted to the grid today${modelFilter ? "" : " (all models — pick a model for the per-model rhythm)"}: ${today.grid_proven} proven / ${DAILY_POSTING_TARGET.grid_proven}, ${today.grid_experimental} experimental / ${DAILY_POSTING_TARGET.grid_experimental}`,
+          },
+          {
+            label: `Trials today / ${DAILY_POSTING_TARGET.trials}`,
+            value: today.trials,
+            accent: "pink",
+            tooltip: "Variations posted to trials today (2 per original)",
+          },
+          {
+            label: "Outliers today",
+            value: today.outliers,
+            accent: "emerald",
+            tooltip: "Posts whose 24h check came back ≥ 2.5× the feed average",
           },
         ]}
       />
