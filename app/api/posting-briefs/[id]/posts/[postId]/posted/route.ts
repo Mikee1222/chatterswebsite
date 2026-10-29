@@ -18,7 +18,7 @@ type Ctx = { params: Promise<{ id: string; postId: string }> };
 async function resolveAccess(
   id: string,
 ): Promise<
-  | { ok: true; actorUserId: string }
+  | { ok: true; actorUserId: string; canManage: boolean; sessionId: string }
   | { ok: false; status: 401 | 403 | 404; error: string }
 > {
   const session = await getSessionFromCookies();
@@ -39,7 +39,7 @@ async function resolveAccess(
       return { ok: false, status: 403, error: "Forbidden" };
     }
   }
-  return { ok: true, actorUserId };
+  return { ok: true, actorUserId, canManage, sessionId: session.id };
 }
 
 export async function POST(req: Request, ctx: Ctx) {
@@ -74,6 +74,19 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   const { id, postId } = await ctx.params;
   const access = await resolveAccess(id);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
+
+  // Undo is allowed only to the user who marked it posted, or to posting_briefs:manage.
+  if (!access.canManage) {
+    const brief = await getPostingBriefById(id);
+    const post = brief?.posts.find((p) => p.id === postId);
+    const mine = post?.posted_by === access.actorUserId || post?.posted_by === access.sessionId;
+    if (!mine) {
+      return NextResponse.json(
+        { error: "Only the person who marked this post as posted (or a posting manager) can undo it." },
+        { status: 403 },
+      );
+    }
+  }
 
   try {
     const brief = await clearPostingBriefPostPosted({ briefId: id, postId });
