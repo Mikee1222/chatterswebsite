@@ -10,6 +10,13 @@ import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { PostingBrief } from "@/services/posting-briefs";
+
+function postingProgressHint(b: PostingBrief): string {
+  const total = b.posts.length;
+  const posted = b.posts.filter((p) => !!p.posted_at).length;
+  const base = `${b.content_type} · ${total} post${total === 1 ? "" : "s"}`;
+  return total && posted ? `${base} · ${posted}/${total} posted` : base;
+}
 import {
   BriefBoardColumn,
   BriefCard,
@@ -367,7 +374,7 @@ export function PostingBriefsClient({
                     modelName={modelNameById[b.model_id]}
                     priority={b.priority}
                     status={b.status}
-                    progressHint={`${b.content_type} · ${b.posts.length} post${b.posts.length === 1 ? "" : "s"}`}
+                    progressHint={postingProgressHint(b)}
                   />
                 ))}
               </BriefBoardColumn>
@@ -394,7 +401,7 @@ export function PostingBriefsClient({
                 }
                 priority={b.priority}
                 status={b.status}
-                progressHint={`${b.content_type} · ${b.posts.length} post${b.posts.length === 1 ? "" : "s"}`}
+                progressHint={postingProgressHint(b)}
               />
             ))}
           </div>
@@ -460,6 +467,9 @@ export function PostingBriefsClient({
                 <PostingBriefView
                   brief={selected}
                   modelName={modelNameById[selected.model_id] || selected.model_id}
+                  onBriefChange={(fresh) =>
+                    setBriefs((prev) => prev.map((b) => (b.id === fresh.id ? fresh : b)))
+                  }
                 />
               </div>
             ) : (

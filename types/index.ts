@@ -1186,6 +1186,7 @@ export type NotificationEventType =
   | "bunch_icloud_organized"
   | "posting_brief_published"
   | "posting_brief_updated"
+  | "posting_brief_posted"
   | "recording_brief_published"
   | "recording_brief_updated"
   | "recording_brief_reminder"
