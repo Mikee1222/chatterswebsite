@@ -7,6 +7,8 @@
  *   ≥ outlier_multiple (2.5×) → Winner · ≥ hot_multiple (10×) → Super Winner
  * There are no absolute view thresholds in the auto-detect any more (owner decision,
  * 2026-10-31): a Winner is defined only relative to the account's own average.
+ * Posts younger than 24h are excluded from both the baseline and the candidates —
+ * their views are still accumulating and would drag the average down.
  *
  * Classification is one-time permanent per media_id:
  * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
@@ -48,6 +50,8 @@ export type WinnerAutoDetectResult = {
   skippedBelowThreshold: number;
   /** Reels older than the scan window (not candidates, only part of the baseline). */
   skippedOutsideWindow: number;
+  /** Reels younger than 24h — views still accumulating; re-checked on the next sync. */
+  skippedTooFresh: number;
   skippedNoPermalink: number;
   skippedDuplicateLink: number;
   errors: Array<{ media_id: string; message: string }>;
@@ -168,6 +172,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     skippedNotVideo: 0,
     skippedBelowThreshold: 0,
     skippedOutsideWindow: 0,
+    skippedTooFresh: 0,
     skippedNoPermalink: 0,
     skippedDuplicateLink: 0,
     errors: [],
@@ -209,11 +214,16 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     hot: number;
   };
   const baselineByAccount = new Map<string, Baseline>();
+  const now = Date.now();
+  const MATURE_MS = 24 * 60 * 60 * 1000;
+  const isMature = (p: TopPostCandidate) =>
+    !!p.posted_at && Number.isFinite(Date.parse(p.posted_at)) && now - Date.parse(p.posted_at) >= MATURE_MS;
   for (const [key, list] of byAccount) {
     const modelId = (list[0]?.model_record_id || list[0]?.model_stable_id || "").trim();
     const s = await settingsFor(modelId);
-    const latest = [...list]
-      .filter((p) => p.posted_at)
+    // Latest N Reels that are at least 24h old (views still accumulating before that).
+    const latest = list
+      .filter(isMature)
       .sort((a, b) => Date.parse(b.posted_at!) - Date.parse(a.posted_at!))
       .slice(0, Math.max(1, s.baseline_posts));
     const withViews = latest.filter((p) => p.views > 0);
@@ -228,8 +238,6 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       hot: s.hot_multiple,
     });
   }
-  const now = Date.now();
-
   for (const post of posts) {
     if (!post.media_id) continue;
 
@@ -267,7 +275,12 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     // window; needs a baseline of at least 3 Reels with views.
     const postedMs = post.posted_at ? Date.parse(post.posted_at) : NaN;
     const scanDays = baseline?.scanDays ?? 20;
-    const insideWindow = !Number.isFinite(postedMs) || now - postedMs <= scanDays * 86_400_000;
+    // Candidates: at least 24h old (views matured) and inside the scan window.
+    if (!isMature(post)) {
+      result.skippedTooFresh += 1;
+      continue;
+    }
+    const insideWindow = now - postedMs <= scanDays * 86_400_000;
     let multiple: number | null = null;
     let relativeTier: WinnerTier | null = null;
     if (!insideWindow) {
