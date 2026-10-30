@@ -41,12 +41,6 @@ export type ContentCycleSettings = {
   baseline_posts: number;
   /** Grid outlier scan window (days) for the ClarioSuite auto-detect. */
   outlier_scan_days: number;
-  /**
-   * Opt-in: when false (default) the ClarioSuite auto-detect keeps the absolute
-   * per-model thresholds only. When true, Reels ≥ outlier_multiple × the account's
-   * latest-N average also become Winners (≥ hot_multiple → Super Winners).
-   */
-  relative_outliers_enabled: boolean;
 };
 
 export const DEFAULT_CYCLE_SETTINGS: Omit<ContentCycleSettings, "model_id"> = {
@@ -59,7 +53,6 @@ export const DEFAULT_CYCLE_SETTINGS: Omit<ContentCycleSettings, "model_id"> = {
   hot_multiple: 10,
   baseline_posts: 9,
   outlier_scan_days: 20,
-  relative_outliers_enabled: false,
 };
 
 export type ContentCycle = {
@@ -160,7 +153,6 @@ export async function getCycleSettings(modelId: string): Promise<ContentCycleSet
     hot_multiple: num(r.hot_multiple, DEFAULT_CYCLE_SETTINGS.hot_multiple),
     baseline_posts: num(r.baseline_posts, DEFAULT_CYCLE_SETTINGS.baseline_posts),
     outlier_scan_days: num(r.outlier_scan_days, DEFAULT_CYCLE_SETTINGS.outlier_scan_days),
-    relative_outliers_enabled: r.relative_outliers_enabled === true,
   };
 }
 

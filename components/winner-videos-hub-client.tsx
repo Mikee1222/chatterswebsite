@@ -147,7 +147,7 @@ const SOURCE_FILTER_OPTIONS: { id: WinnerSubmissionSource | ""; label: string }[
   { id: "researcher_submitted", label: "Researcher Submitted" },
 ];
 
-const THRESHOLD_TOOLTIP = `Default view thresholds: Winner ≥ ${WINNER_VIEW_THRESHOLD.toLocaleString()} · Super Winner ≥ ${SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()}. Optional per-model relative rule (≥2.5× the account's latest-9 average) in Content Cycles → Caps & rules.`;
+const THRESHOLD_TOOLTIP = `Auto-detect: Winner ≥ 2.5× / Super Winner ≥ 10× the account's latest-9 average (Content Cycles → Caps & rules). Manual submits: Winner ≥ ${WINNER_VIEW_THRESHOLD.toLocaleString()} · Super Winner ≥ ${SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()}.`;
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
@@ -1739,9 +1739,10 @@ function SettingsPanel({
               the hub.
             </p>
             <p className="mt-2 max-w-2xl text-sm text-[#B8B4B8]/65">
-              <span className="text-white/85">Outlier rule (Content Flow v1.1, per model):</span> when enabled for a model,
-              a Winner is a grid Reel of the last 20 days ≥2.5× the average of the account&apos;s latest 9 Reels
-              (≥10× Super Winner) and the absolute thresholds above are ignored for it. Enable, multiples and window per model in{" "}
+              <span className="text-white/85">Auto-detect rule (Content Flow v1.1):</span> the nightly ClarioSuite scan
+              uses only the relative rule — a Winner is a grid Reel of the last 20 days ≥2.5× the average of the
+              account&apos;s latest 9 Reels, ≥10× a Super Winner. The absolute thresholds above apply only to manual
+              VA / researcher submits. Multiples and window per model in{" "}
               <Link href={ROUTES.admin.contentCycles} className="text-[#FF1493] hover:underline">
                 Content Cycles → Caps &amp; rules
               </Link>

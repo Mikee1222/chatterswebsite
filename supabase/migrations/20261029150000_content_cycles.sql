@@ -60,8 +60,6 @@ CREATE TABLE IF NOT EXISTS public.content_cycle_settings (
   hot_multiple numeric NOT NULL DEFAULT 10,
   baseline_posts integer NOT NULL DEFAULT 9,
   outlier_scan_days integer NOT NULL DEFAULT 20,
-  -- Opt-in per model: relative (×average) rule in the ClarioSuite auto-detect. Off by default.
-  relative_outliers_enabled boolean NOT NULL DEFAULT false,
   updated_by text NOT NULL DEFAULT '',
   updated_at timestamptz NOT NULL DEFAULT now()
 );

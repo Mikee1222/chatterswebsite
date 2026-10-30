@@ -1,13 +1,12 @@
 /**
  * Auto-detect Winner / Super Winner from already-synced ClarioSuite Instagram posts.
  *
- * Content Flow v1.1 — RELATIVE rule (OPT-IN per model, off by default), per account (ig_user_id):
+ * Content Flow v1.1 — RELATIVE rule, the only rule, per account (ig_user_id):
  *   baseline = average views of the latest N (default 9) grid Reels of that account
  *   every Reel posted in the last `scan_days` (default 20) is compared to the baseline
  *   ≥ outlier_multiple (2.5×) → Winner · ≥ hot_multiple (10×) → Super Winner
- * One rule per model: when content_cycle_settings.relative_outliers_enabled = true the
- * relative rule is THE definition of a winner and the absolute per-model thresholds
- * (100k / 300k) are ignored; when false (default) the legacy absolute thresholds apply.
+ * There are no absolute view thresholds in the auto-detect any more (owner decision,
+ * 2026-10-31): a Winner is defined only relative to the account's own average.
  *
  * Classification is one-time permanent per media_id:
  * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
@@ -18,13 +17,8 @@ import { classifyIgPost } from "@/lib/instagram-insights-ui";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   DEFAULT_MODEL_WINNER_THRESHOLDS,
-  tierFromViewCount,
   type WinnerTier,
 } from "@/lib/winner-sourcing-helpers";
-import {
-  defaultModelWinnerThresholds,
-  listModelWinnerThresholdsMap,
-} from "@/services/model-winner-thresholds";
 import {
   cacheWinnerThumbnailFromUrl,
   needsWinnerThumbnailCache,
@@ -44,8 +38,8 @@ export type WinnerAutoDetectResult = {
     permalink: string;
     views: number;
     tier: WinnerTier;
-    by: "absolute" | "relative" | "both";
     multiple: number | null;
+    baseline_avg: number | null;
   }>;
   scanned: number;
   classified: number;
@@ -164,8 +158,6 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
   modelRecordId?: string;
   /** Report what would be classified without writing anything. */
   dryRun?: boolean;
-  /** Dry run only: evaluate the relative rule for every model regardless of the opt-in flag. */
-  forceRelative?: boolean;
 }): Promise<WinnerAutoDetectResult> {
   const result: WinnerAutoDetectResult = {
     dryRun: opts?.dryRun === true,
@@ -183,11 +175,10 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     thumbnailsCached: 0,
   };
 
-  const [posts, classifiedMedia, existingLinks, thresholdsMap] = await Promise.all([
+  const [posts, classifiedMedia, existingLinks] = await Promise.all([
     loadTopPostCandidates({ modelRecordId: opts?.modelRecordId }),
     loadAlreadyClassifiedMediaIds(),
     loadExistingVideoLinks(),
-    listModelWinnerThresholdsMap(),
   ]);
 
   result.scanned = posts.length;
@@ -216,7 +207,6 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     scanDays: number;
     outlier: number;
     hot: number;
-    enabled: boolean;
   };
   const baselineByAccount = new Map<string, Baseline>();
   for (const [key, list] of byAccount) {
@@ -236,7 +226,6 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       scanDays: s.outlier_scan_days,
       outlier: s.outlier_multiple,
       hot: s.hot_multiple,
-      enabled: s.relative_outliers_enabled || opts?.forceRelative === true,
     });
   }
   const now = Date.now();
@@ -269,36 +258,30 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     const modelId = (post.model_record_id || post.model_stable_id || "").trim();
     if (!modelId) continue;
 
-    const thresholds =
-      thresholdsMap.get(modelId) ??
-      thresholdsMap.get(post.model_stable_id ?? "") ??
-      defaultModelWinnerThresholds(modelId);
 
     const views = Math.round(post.views);
     const accountKey = post.ig_user_id || modelId;
     const baseline = baselineByAccount.get(accountKey);
 
-    // Legacy absolute tier — only for models that have NOT opted into the relative rule.
-    const absoluteTier: WinnerTier | null = baseline?.enabled
-      ? null
-      : tierFromViewCount(views, thresholds);
-
-    // Relative tier (Content Flow v1.1) — the only rule for opted-in models; only Reels
-    // inside the scan window; needs a baseline of at least 3 Reels with views.
+    // Relative tier (Content Flow v1.1) — the only rule; only Reels inside the scan
+    // window; needs a baseline of at least 3 Reels with views.
     const postedMs = post.posted_at ? Date.parse(post.posted_at) : NaN;
     const scanDays = baseline?.scanDays ?? 20;
     const insideWindow = !Number.isFinite(postedMs) || now - postedMs <= scanDays * 86_400_000;
     let multiple: number | null = null;
     let relativeTier: WinnerTier | null = null;
-    if (baseline?.enabled && insideWindow && baseline.avg && baseline.avg > 0 && baseline.count >= 3) {
+    if (!insideWindow) {
+      result.skippedOutsideWindow += 1;
+      continue;
+    }
+    if (baseline?.avg && baseline.avg > 0 && baseline.count >= 3) {
       multiple = Math.round((views / baseline.avg) * 100) / 100;
       if (multiple >= baseline.hot) relativeTier = "super_winner";
       else if (multiple >= baseline.outlier) relativeTier = "winner";
     }
-    const tier: WinnerTier | null = baseline?.enabled ? relativeTier : absoluteTier;
+    const tier: WinnerTier | null = relativeTier;
     if (!tier) {
-      if (baseline?.enabled && !insideWindow) result.skippedOutsideWindow += 1;
-      else result.skippedBelowThreshold += 1;
+      result.skippedBelowThreshold += 1;
       continue;
     }
 
@@ -309,8 +292,8 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         permalink,
         views,
         tier,
-        by: relativeTier ? "relative" : "absolute",
         multiple,
+        baseline_avg: baseline?.avg ?? null,
       });
       result.classified += 1;
       classifiedMedia.add(post.media_id);
@@ -333,13 +316,11 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         thumbnail_url: ephemeralThumb,
         caption: post.caption ?? "",
         posted_at: post.posted_at,
-        thresholds: {
-          winner_threshold_views: thresholds.winner_threshold_views,
-          super_winner_threshold_views: thresholds.super_winner_threshold_views,
-        },
+        // No absolute thresholds: the tier comes from the relative rule (tierOverride).
+        thresholds: null,
         tierOverride: tier,
-        feed: relativeTier ? "grid" : "",
-        outlier_multiple: relativeTier ? multiple : null,
+        feed: "grid",
+        outlier_multiple: multiple,
         skipNotify: false,
       });
 

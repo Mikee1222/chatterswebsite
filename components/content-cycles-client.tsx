@@ -197,21 +197,12 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
               </div>
             ))}
           </div>
-          <label className="mt-3 flex items-start gap-2 text-sm text-white/75">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={settings.relative_outliers_enabled}
-              onChange={(e) => setSettings({ ...settings, relative_outliers_enabled: e.target.checked })}
-            />
-            <span>
-              Outlier rule in the ClarioSuite auto-detect (grid). Off = legacy absolute view thresholds
-              (100k / 300k), as before. On = a Winner is a Reel ≥ {settings.outlier_multiple}× the account&apos;s
-              average of its last {settings.baseline_posts} Reels (≥ {settings.hot_multiple}× Super Winner) — the
-              absolute thresholds are ignored for this model.
-              Preview the impact first: <code className="text-white/60">/api/winner-sourcing/auto-detect-preview?relative=1</code>
-            </span>
-          </label>
+          <p className="mt-3 text-xs text-white/50">
+            Outlier rule (ClarioSuite auto-detect, grid): a Winner is a Reel of the last {settings.outlier_scan_days} days
+            with ≥ {settings.outlier_multiple}× the average views of the account&apos;s latest {settings.baseline_posts} Reels;
+            ≥ {settings.hot_multiple}× is a Super Winner. Same rule for every model — there are no absolute view thresholds.
+            Preview what the next sync would classify: <code className="text-white/60">/api/winner-sourcing/auto-detect-preview</code>
+          </p>
           <div className="mt-3">
             <button type="button" className={cn(VA_BTN_PRIMARY, "min-h-10 px-4 text-xs")} disabled={savingSettings} onClick={() => void saveSettings()}>
               {savingSettings ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}

@@ -32,16 +32,14 @@ export async function PATCH(req: Request) {
     hot_multiple?: number;
     baseline_posts?: number;
     outlier_scan_days?: number;
-    relative_outliers_enabled?: boolean;
   };
   const modelId = body.model_id?.trim();
   if (!modelId) return NextResponse.json({ error: "model_id required" }, { status: 400 });
   const { model_id: _m, ...patch } = body;
   void _m;
-  const clean: Record<string, number | boolean> = {};
+  const clean: Record<string, number> = {};
   for (const [k, v] of Object.entries(patch)) {
     if (typeof v === "number" && Number.isFinite(v)) clean[k] = v;
-    if (k === "relative_outliers_enabled" && typeof v === "boolean") clean[k] = v;
   }
   try {
     const settings = await upsertCycleSettings(modelId, clean, session.airtableUserId ?? session.id);

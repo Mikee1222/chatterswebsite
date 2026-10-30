@@ -8,8 +8,6 @@ import { detectWinnersFromClarioSuitePosts } from "@/services/winner-auto-detect
  * Dry run of the ClarioSuite winner auto-detect — writes nothing.
  * Shows which already-synced posts the next sync would classify, and by which rule.
  *   GET /api/winner-sourcing/auto-detect-preview
- *   GET /api/winner-sourcing/auto-detect-preview?relative=1   → as if every model had the
- *       relative rule enabled (to see the impact before switching it on)
  *   GET /api/winner-sourcing/auto-detect-preview?model_id=…
  */
 export async function GET(req: Request) {
@@ -20,19 +18,18 @@ export async function GET(req: Request) {
   }
   const url = new URL(req.url);
   const modelRecordId = url.searchParams.get("model_id")?.trim() || undefined;
-  const forceRelative = url.searchParams.get("relative") === "1";
   try {
-    const r = await detectWinnersFromClarioSuitePosts({ modelRecordId, dryRun: true, forceRelative });
+    const r = await detectWinnersFromClarioSuitePosts({ modelRecordId, dryRun: true });
     const list = r.wouldClassify ?? [];
-    const byModel: Record<string, { total: number; absolute: number; relative: number; both: number }> = {};
+    const byModel: Record<string, { total: number; winners: number; super_winners: number }> = {};
     for (const w of list) {
-      const m = (byModel[w.model_name] ??= { total: 0, absolute: 0, relative: 0, both: 0 });
+      const m = (byModel[w.model_name] ??= { total: 0, winners: 0, super_winners: 0 });
       m.total += 1;
-      m[w.by] += 1;
+      if (w.tier === "super_winner") m.super_winners += 1;
+      else m.winners += 1;
     }
     return NextResponse.json({
       dry_run: true,
-      relative_forced: forceRelative,
       scanned: r.scanned,
       would_classify: list.length,
       by_model: byModel,
