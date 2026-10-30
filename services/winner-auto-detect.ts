@@ -1,11 +1,12 @@
 /**
  * Auto-detect Winner / Super Winner from already-synced ClarioSuite Instagram posts.
  *
- * Content Flow v1.1 — RELATIVE rule (default), per account (ig_user_id):
+ * Content Flow v1.1 — RELATIVE rule (OPT-IN per model, off by default), per account (ig_user_id):
  *   baseline = average views of the latest N (default 9) grid Reels of that account
  *   every Reel posted in the last `scan_days` (default 20) is compared to the baseline
  *   ≥ outlier_multiple (2.5×) → Winner · ≥ hot_multiple (10×) → Super Winner
- * The absolute per-model thresholds (100k / 300k) still apply as an OR.
+ * The absolute per-model thresholds (100k / 300k) are always applied; the relative rule
+ * is added only when content_cycle_settings.relative_outliers_enabled = true for the model.
  *
  * Classification is one-time permanent per media_id:
  * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
@@ -34,6 +35,17 @@ export const CLARIOSUITE_AUTO_SUBMITTER_ID = "clariosuite_auto";
 export const CLARIOSUITE_AUTO_SUBMITTER_NAME = "ClarioSuite Auto-detect";
 
 export type WinnerAutoDetectResult = {
+  /** true = nothing was written; `wouldClassify` lists what a real run would create. */
+  dryRun?: boolean;
+  wouldClassify?: Array<{
+    model_name: string;
+    media_id: string;
+    permalink: string;
+    views: number;
+    tier: WinnerTier;
+    by: "absolute" | "relative" | "both";
+    multiple: number | null;
+  }>;
   scanned: number;
   classified: number;
   skippedAlreadyClassified: number;
@@ -149,8 +161,14 @@ async function loadTopPostCandidates(opts?: {
  */
 export async function detectWinnersFromClarioSuitePosts(opts?: {
   modelRecordId?: string;
+  /** Report what would be classified without writing anything. */
+  dryRun?: boolean;
+  /** Dry run only: evaluate the relative rule for every model regardless of the opt-in flag. */
+  forceRelative?: boolean;
 }): Promise<WinnerAutoDetectResult> {
   const result: WinnerAutoDetectResult = {
+    dryRun: opts?.dryRun === true,
+    wouldClassify: opts?.dryRun ? [] : undefined,
     scanned: 0,
     classified: 0,
     skippedAlreadyClassified: 0,
@@ -191,7 +209,14 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     settingsByModel.set(modelId, s);
     return s;
   }
-  type Baseline = { avg: number | null; count: number; scanDays: number; outlier: number; hot: number };
+  type Baseline = {
+    avg: number | null;
+    count: number;
+    scanDays: number;
+    outlier: number;
+    hot: number;
+    enabled: boolean;
+  };
   const baselineByAccount = new Map<string, Baseline>();
   for (const [key, list] of byAccount) {
     const modelId = (list[0]?.model_record_id || list[0]?.model_stable_id || "").trim();
@@ -210,6 +235,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       scanDays: s.outlier_scan_days,
       outlier: s.outlier_multiple,
       hot: s.hot_multiple,
+      enabled: s.relative_outliers_enabled || opts?.forceRelative === true,
     });
   }
   const now = Date.now();
@@ -251,30 +277,44 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     const accountKey = post.ig_user_id || modelId;
     const baseline = baselineByAccount.get(accountKey);
 
-    // Scan window: only Reels posted in the last `scan_days` are candidates.
+    // Absolute tier (legacy per-model thresholds) — always on, unchanged behaviour.
+    const absoluteTier: WinnerTier | null = tierFromViewCount(views, thresholds);
+
+    // Relative tier (Content Flow v1.1) — only when the model opted in; only Reels inside
+    // the scan window; needs a baseline of at least 3 Reels with views.
     const postedMs = post.posted_at ? Date.parse(post.posted_at) : NaN;
     const scanDays = baseline?.scanDays ?? 20;
-    if (Number.isFinite(postedMs) && now - postedMs > scanDays * 86_400_000) {
-      result.skippedOutsideWindow += 1;
-      continue;
-    }
-
-    // Relative tier (Content Flow v1.1) — needs a baseline of at least 3 Reels with views.
+    const insideWindow = !Number.isFinite(postedMs) || now - postedMs <= scanDays * 86_400_000;
     let multiple: number | null = null;
     let relativeTier: WinnerTier | null = null;
-    if (baseline?.avg && baseline.avg > 0 && baseline.count >= 3) {
+    if (baseline?.enabled && insideWindow && baseline.avg && baseline.avg > 0 && baseline.count >= 3) {
       multiple = Math.round((views / baseline.avg) * 100) / 100;
       if (multiple >= baseline.hot) relativeTier = "super_winner";
       else if (multiple >= baseline.outlier) relativeTier = "winner";
     }
-    // Absolute tier (legacy per-model thresholds) still applies as an OR.
-    const absoluteTier: WinnerTier | null = tierFromViewCount(views, thresholds);
     const tier: WinnerTier | null =
       relativeTier === "super_winner" || absoluteTier === "super_winner"
         ? "super_winner"
         : relativeTier ?? absoluteTier;
     if (!tier) {
-      result.skippedBelowThreshold += 1;
+      if (baseline?.enabled && !insideWindow) result.skippedOutsideWindow += 1;
+      else result.skippedBelowThreshold += 1;
+      continue;
+    }
+
+    if (opts?.dryRun) {
+      result.wouldClassify!.push({
+        model_name: post.model_name?.trim() || modelId,
+        media_id: post.media_id,
+        permalink,
+        views,
+        tier,
+        by: absoluteTier && relativeTier ? "both" : absoluteTier ? "absolute" : "relative",
+        multiple,
+      });
+      result.classified += 1;
+      classifiedMedia.add(post.media_id);
+      existingLinks.add(linkKey);
       continue;
     }
 
@@ -298,8 +338,8 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
           super_winner_threshold_views: thresholds.super_winner_threshold_views,
         },
         tierOverride: tier,
-        feed: "grid",
-        outlier_multiple: multiple,
+        feed: relativeTier ? "grid" : "",
+        outlier_multiple: relativeTier ? multiple : null,
         skipNotify: false,
       });
 
@@ -330,6 +370,8 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       result.errors.push({ media_id: post.media_id, message });
     }
   }
+
+  if (opts?.dryRun) return result;
 
   // After classify: re-cache any existing winners still pointing at expired IG CDN URLs,
   // using freshly-synced clariosuite_top_posts.image_url from this sync cycle.
