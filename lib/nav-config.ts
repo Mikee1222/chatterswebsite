@@ -548,6 +548,21 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
   },
   {
+    href: ROUTES.admin.bunches,
+    label: "Experimental Bunch",
+    iconKey: "Sparkles",
+    navSection: "CONTENT PIPELINE",
+    requiresPermission: PERMISSIONS.EXPERIMENTAL_BUNCH_MANAGE,
+    hiddenIfPermission: PERMISSIONS.WINNER_SOURCING_MANAGE,
+  },
+  {
+    href: ROUTES.admin.contentCycles,
+    label: "Content Cycles",
+    iconKey: "CalendarDays",
+    navSection: "CONTENT PIPELINE",
+    requiresPermission: PERMISSIONS.CONTENT_CYCLES_MANAGE,
+  },
+  {
     href: ROUTES.admin.sopLibrary,
     label: "SOP Library",
     iconKey: "BookOpen",

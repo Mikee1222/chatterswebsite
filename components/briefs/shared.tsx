@@ -270,6 +270,7 @@ export const EDITING_STATUS_STEPS: StepperStep[] = [
 ];
 
 export const POSTING_STATUS_STEPS: StepperStep[] = [
+  { id: "draft", label: "Draft" },
   { id: "active", label: "Active" },
   { id: "archived", label: "Archived" },
 ];

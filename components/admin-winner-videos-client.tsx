@@ -9,6 +9,7 @@ import {
   Loader2,
   RefreshCw,
   Search,
+  Sparkles,
   Trash2,
   Trophy,
   UserRound,
@@ -1552,6 +1553,15 @@ function ResearchSubmissionCard({
         >
           Reference video <ExternalLink className="h-3.5 w-3.5" aria-hidden />
         </a>
+      ) : null}
+      {video.status !== "Rejected" ? (
+        <Link
+          href={`${ROUTES.creativeStudio}?tab=breakdown&winner=${encodeURIComponent(video.id)}`}
+          className="mt-3 ml-4 inline-flex items-center gap-1.5 text-sm font-medium text-[#D4AF8C] hover:underline"
+          title="Transcript + viral elements + draft briefs in AI Creative Studio"
+        >
+          <Sparkles className="h-3.5 w-3.5" aria-hidden /> Break down in Studio
+        </Link>
       ) : null}
 
       {video.note?.trim() ? (

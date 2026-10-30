@@ -3,13 +3,41 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Archive, Copy, Plus, RotateCcw } from "lucide-react";
+import { Archive, Copy, Plus, RotateCcw, Send } from "lucide-react";
 import { PostingBriefView } from "@/components/posting-brief-view";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { PostingBrief } from "@/services/posting-briefs";
+import { DAILY_POSTING_TARGET } from "@/lib/winner-sourcing-helpers";
+
+/** Posts marked posted today (local day), per placement/source — the VA's daily rhythm. */
+function todayPostingCounts(briefs: PostingBrief[], modelId: string) {
+  const today = new Date().toDateString();
+  const c = { grid: 0, grid_proven: 0, grid_experimental: 0, trials: 0, outliers: 0 };
+  for (const b of briefs) {
+    if (modelId && b.model_id !== modelId) continue;
+    for (const p of b.posts) {
+      if (!p.posted_at || new Date(p.posted_at).toDateString() !== today) continue;
+      if (p.placement === "trial") c.trials += 1;
+      else {
+        c.grid += 1;
+        if (p.content_source === "proven") c.grid_proven += 1;
+        if (p.content_source === "experimental") c.grid_experimental += 1;
+      }
+      if (p.outlier_status === "outlier" || p.outlier_status === "hot") c.outliers += 1;
+    }
+  }
+  return c;
+}
+
+function postingProgressHint(b: PostingBrief): string {
+  const total = b.posts.length;
+  const posted = b.posts.filter((p) => !!p.posted_at).length;
+  const base = `${b.content_type} · ${total} post${total === 1 ? "" : "s"}`;
+  return total && posted ? `${base} · ${posted}/${total} posted` : base;
+}
 import {
   BriefBoardColumn,
   BriefCard,
@@ -46,7 +74,7 @@ export function PostingBriefsClient({
   const router = useRouter();
   const { addToast } = useToast();
   const [briefs, setBriefs] = React.useState(initialBriefs);
-  const [status, setStatus] = React.useState<"active" | "archived" | "all">("active");
+  const [status, setStatus] = React.useState<"active" | "draft" | "archived" | "all">("active");
   const [modelFilter, setModelFilter] = React.useState("");
   const [accountFilter, setAccountFilter] = React.useState("");
   const [urgentOnly, setUrgentOnly] = React.useState(false);
@@ -120,6 +148,8 @@ export function PostingBriefsClient({
     return list;
   }, [briefs, search, sortMode]);
 
+  const today = React.useMemo(() => todayPostingCounts(briefs, modelFilter), [briefs, modelFilter]);
+
   const stats = React.useMemo(() => {
     const base = computeBriefListStats(
       briefs.map((b) => ({
@@ -137,7 +167,7 @@ export function PostingBriefsClient({
     };
   }, [briefs]);
 
-  const setStatusFor = async (id: string, next: "active" | "archived") => {
+  const setStatusFor = async (id: string, next: "active" | "archived", from?: string) => {
     setBusyId(id);
     try {
       const res = await fetch(`/api/posting-briefs/${encodeURIComponent(id)}`, {
@@ -147,11 +177,16 @@ export function PostingBriefsClient({
       });
       const data = (await res.json()) as { error?: string };
       if (!res.ok) throw new Error(data.error || "Failed");
+      const published = next === "active" && from === "draft";
       addToast(
         winnerVideoLocalToast(
           `pb-status-${Date.now()}`,
-          next === "archived" ? "Archived" : "Restored",
-          next === "archived" ? "Brief archived" : "Brief set to active",
+          next === "archived" ? "Archived" : published ? "Published" : "Restored",
+          next === "archived"
+            ? "Brief archived"
+            : published
+              ? "Brief published — assigned VAs notified"
+              : "Brief set to active",
           "normal",
         ),
       );
@@ -232,6 +267,7 @@ export function PostingBriefsClient({
           className={cn(VA_FILTER_INPUT, "min-h-11")}
         >
           <option value="active">Active</option>
+          {canManage ? <option value="draft">Draft</option> : null}
           <option value="archived">Archived</option>
           <option value="all">All</option>
         </select>
@@ -309,6 +345,24 @@ export function PostingBriefsClient({
             accent: "emerald",
             tooltip: "Briefs matching current filters",
           },
+          {
+            label: `Grid today / ${DAILY_POSTING_TARGET.grid}`,
+            value: today.grid,
+            accent: "champagne",
+            tooltip: `Originals posted to the grid today${modelFilter ? "" : " (all models — pick a model for the per-model rhythm)"}: ${today.grid_proven} proven / ${DAILY_POSTING_TARGET.grid_proven}, ${today.grid_experimental} experimental / ${DAILY_POSTING_TARGET.grid_experimental}`,
+          },
+          {
+            label: `Trials today / ${DAILY_POSTING_TARGET.trials}`,
+            value: today.trials,
+            accent: "pink",
+            tooltip: "Variations posted to trials today (2 per original)",
+          },
+          {
+            label: "Outliers today",
+            value: today.outliers,
+            accent: "emerald",
+            tooltip: "Posts whose 24h check came back ≥ 2.5× the feed average",
+          },
         ]}
       />
 
@@ -351,6 +405,7 @@ export function PostingBriefsClient({
         <div className="flex gap-3 overflow-x-auto pb-2">
           {(
             [
+              { id: "draft", label: "Draft" },
               { id: "active", label: "Active" },
               { id: "archived", label: "Archived" },
             ] as const
@@ -367,7 +422,7 @@ export function PostingBriefsClient({
                     modelName={modelNameById[b.model_id]}
                     priority={b.priority}
                     status={b.status}
-                    progressHint={`${b.content_type} · ${b.posts.length} post${b.posts.length === 1 ? "" : "s"}`}
+                    progressHint={postingProgressHint(b)}
                   />
                 ))}
               </BriefBoardColumn>
@@ -394,7 +449,7 @@ export function PostingBriefsClient({
                 }
                 priority={b.priority}
                 status={b.status}
-                progressHint={`${b.content_type} · ${b.posts.length} post${b.posts.length === 1 ? "" : "s"}`}
+                progressHint={postingProgressHint(b)}
               />
             ))}
           </div>
@@ -435,6 +490,20 @@ export function PostingBriefsClient({
                         <Archive className="h-4 w-4" />
                         Archive
                       </button>
+                    ) : selected.status === "draft" ? (
+                      <button
+                        type="button"
+                        disabled={busyId === selected.id}
+                        onClick={() => void setStatusFor(selected.id, "active", "draft")}
+                        className={cn(
+                          VA_BTN_PRIMARY,
+                          "inline-flex min-h-11 items-center gap-2 px-4",
+                        )}
+                        title="Make it visible to the assigned VAs and notify them"
+                      >
+                        <Send className="h-4 w-4" />
+                        Publish
+                      </button>
                     ) : (
                       <button
                         type="button"
@@ -460,6 +529,9 @@ export function PostingBriefsClient({
                 <PostingBriefView
                   brief={selected}
                   modelName={modelNameById[selected.model_id] || selected.model_id}
+                  onBriefChange={(fresh) =>
+                    setBriefs((prev) => prev.map((b) => (b.id === fresh.id ? fresh : b)))
+                  }
                 />
               </div>
             ) : (

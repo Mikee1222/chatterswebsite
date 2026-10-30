@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
+import { TrialCheckPanel } from "@/components/trial-check-panel";
 import { CountUp, LuxuryStatCard, StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { FilterBar, FilterChip } from "@/components/manager-review-ui";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -120,7 +121,7 @@ export type HubCreativeOption = {
 /** @deprecated Filmer assign lives on /admin/bunches */
 export type HubFilmerOption = HubCreativeOption;
 
-type TabId = "winners" | "super" | "queue" | "settings";
+type TabId = "winners" | "super" | "queue" | "trials" | "settings";
 type DateRangeId = "all" | "7d" | "30d" | "90d";
 type AssignFilter = "all" | "unassigned" | "assigned";
 
@@ -128,6 +129,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "winners", label: "Winners" },
   { id: "super", label: "Super Winners" },
   { id: "queue", label: "Recreation Queue" },
+  { id: "trials", label: "Trial Check" },
   { id: "settings", label: "Settings" },
 ];
 
@@ -145,7 +147,7 @@ const SOURCE_FILTER_OPTIONS: { id: WinnerSubmissionSource | ""; label: string }[
   { id: "researcher_submitted", label: "Researcher Submitted" },
 ];
 
-const THRESHOLD_TOOLTIP = `Default view thresholds: Winner ≥ ${WINNER_VIEW_THRESHOLD.toLocaleString()} · Super Winner ≥ ${SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()}. Per-model ClarioSuite thresholds are configured in Settings when auto-detection is enabled.`;
+const THRESHOLD_TOOLTIP = `Auto-detect: Winner ≥ 2.5× / Super Winner ≥ 10× the account's latest-9 average (Content Cycles → Caps & rules). Manual submits: Winner ≥ ${WINNER_VIEW_THRESHOLD.toLocaleString()} · Super Winner ≥ ${SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()}.`;
 
 function formatViews(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
@@ -214,6 +216,7 @@ function SourceBadge({ source }: { source: WinnerSubmissionSource }) {
     auto_detected: "border-sky-400/35 bg-sky-500/12 text-sky-200",
     va_submitted: "border-pink-400/35 bg-pink-500/12 text-pink-200",
     researcher_submitted: "border-violet-400/35 bg-violet-500/12 text-violet-200",
+    posted_24h: "border-emerald-400/35 bg-emerald-500/12 text-emerald-200",
   };
   return (
     <span className={cn(VA_STATUS_BADGE, styles[source])}>
@@ -679,6 +682,40 @@ export function WinnerVideosHubClient({
     }
   }
 
+  async function decideQueue(queueItemId: string, decision: "grid" | "urgent" | "no") {
+    setBusyId(queueItemId);
+    try {
+      const res = await fetch(`/api/winner-sourcing/queue/${queueItemId}/decide`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Decision failed", data.error || "Error", "high"),
+        );
+        return;
+      }
+      addToast(
+        winnerVideoLocalToast(
+          `ws-dec-${Date.now()}`,
+          decision === "grid" ? "Moved to grid" : decision === "urgent" ? "Urgent lane" : "Dropped",
+          decision === "grid"
+            ? "Post the same file to the grid, then assign it to a bunch for recreation."
+            : decision === "urgent"
+              ? "Assign it to an open bunch now — one urgent slot used this month."
+              : "Item kept for the record, no recreation.",
+          "normal",
+        ),
+      );
+      await refreshAll();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function assignQueueItem(queueItemId: string, bunchId: string) {
     setBusyId(queueItemId);
     try {
@@ -844,6 +881,7 @@ export function WinnerVideosHubClient({
       auto_detected: 0,
       va_submitted: 0,
       researcher_submitted: 0,
+      posted_24h: 0,
     };
     const models = new Set<string>();
     let winnerN = 0;
@@ -904,7 +942,7 @@ export function WinnerVideosHubClient({
     });
   }
 
-  const showSubmissionFilters = tab === "winners" || tab === "super" || tab === "queue";
+  const showSubmissionFilters = tab === "winners" || tab === "super" || tab === "queue" || tab === "trials";
 
   return (
     <div className="space-y-6">
@@ -1194,7 +1232,11 @@ export function WinnerVideosHubClient({
                 setCollapsedModels((p) => ({ ...p, [id]: !p[id] }))
               }
               onAssign={(qid, bid) => void assignQueueItem(qid, bid)}
+              onDecide={(qid, d) => void decideQueue(qid, d)}
             />
+          ) : null}
+          {tab === "trials" ? (
+            <TrialCheckPanel modelFilter={modelFilter} onChanged={() => void refreshAll()} />
           ) : null}
           {tab === "settings" ? (
             <SettingsPanel
@@ -1440,6 +1482,19 @@ function WinnerCard({
         <div className="flex flex-wrap items-center gap-1.5">
           <TierBadge tier={s.tier} prominent={superTier} />
           <SourceBadge source={s.source} />
+          {s.outlier_multiple != null ? (
+            <span
+              className={cn(
+                VA_STATUS_BADGE,
+                superTier
+                  ? "border-rose-400/40 bg-rose-400/15 text-rose-200"
+                  : "border-amber-400/35 bg-amber-400/12 text-amber-200",
+              )}
+              title={`${s.feed === "trial" ? "Trial" : "Grid"} outlier — ${s.outlier_multiple}× the average of the account's latest posts`}
+            >
+              ×{s.outlier_multiple} {s.feed === "trial" ? "trial" : "grid"}
+            </span>
+          ) : null}
           {assigned ? (
             <span className={cn(VA_STATUS_BADGE, "border-emerald-500/35 bg-emerald-500/12 text-emerald-200")}>
               Assigned
@@ -1683,6 +1738,16 @@ function SettingsPanel({
               auto-detection and VA submits. Changing a threshold never reclassifies videos already in
               the hub.
             </p>
+            <p className="mt-2 max-w-2xl text-sm text-[#B8B4B8]/65">
+              <span className="text-white/85">Auto-detect rule (Content Flow v1.1):</span> the nightly ClarioSuite scan
+              uses only the relative rule — a Winner is a grid Reel of the last 20 days ≥2.5× the average of the
+              account&apos;s latest 9 Reels, ≥10× a Super Winner. The absolute thresholds above apply only to manual
+              VA / researcher submits. Multiples and window per model in{" "}
+              <Link href={ROUTES.admin.contentCycles} className="text-[#FF1493] hover:underline">
+                Content Cycles → Caps &amp; rules
+              </Link>
+              . Trials have no Instagram API — use the Trial Check tab.
+            </p>
           </div>
         </div>
         <div className="mb-4 grid gap-3 sm:grid-cols-2">
@@ -1878,6 +1943,7 @@ function QueuePanel({
   collapsedModels,
   onToggleModel,
   onAssign,
+  onDecide,
 }: {
   items: RecreationQueueItem[];
   bunches: VideoBunch[];
@@ -1886,6 +1952,7 @@ function QueuePanel({
   collapsedModels: Record<string, boolean>;
   onToggleModel: (modelId: string) => void;
   onAssign: (queueItemId: string, bunchId: string) => void;
+  onDecide?: (queueItemId: string, decision: "grid" | "urgent" | "no") => void;
 }) {
   if (!items.length) {
     return (
@@ -1933,6 +2000,31 @@ function QueuePanel({
                 <span className={cn(VA_STATUS_BADGE, "border-pink-500/30 bg-pink-500/10 text-pink-200")}>
                   {item.required_recreate_count} recreates
                 </span>
+                {item.lane === "urgent" ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-rose-400/40 bg-rose-400/15 text-rose-200")}>
+                    🔥 Urgent
+                  </span>
+                ) : null}
+                {item.feed ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-white/15 bg-white/[0.04] text-white/60")}>
+                    {item.feed === "trial" ? "Trial outlier" : "Grid outlier"}
+                    {sub?.outlier_multiple != null ? ` ×${sub.outlier_multiple}` : ""}
+                  </span>
+                ) : null}
+                {item.generation > 1 ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-amber-400/30 bg-amber-400/10 text-amber-200")}>
+                    Gen {item.generation}
+                  </span>
+                ) : null}
+                {item.decision === "grid" ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-emerald-400/30 bg-emerald-400/10 text-emerald-200")}>
+                    Moved to grid
+                  </span>
+                ) : item.decision === "no" ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-white/10 bg-white/[0.03] text-white/40")}>
+                    Dropped
+                  </span>
+                ) : null}
               </div>
               {sub?.view_count != null ? (
                 <p className="text-xs text-[#B8B4B8]/55">
@@ -1967,11 +2059,48 @@ function QueuePanel({
             </div>
           </div>
           {!item.bunch_id ? (
-            <BunchAssignPicker
-              bunches={bunches}
-              busy={busyId === item.id}
-              onAssign={(bunchId) => onAssign(item.id, bunchId)}
-            />
+            <div className="flex flex-col items-end gap-2">
+              {onDecide && item.decision !== "no" ? (
+                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                  {item.feed === "trial" && item.decision !== "grid" ? (
+                    <button
+                      type="button"
+                      disabled={busyId === item.id}
+                      onClick={() => onDecide(item.id, "grid")}
+                      className={cn(VA_BTN_SECONDARY, "min-h-9 px-3 py-1.5 text-xs")}
+                      title="Trial outlier: post the same file to the grid first"
+                    >
+                      → Grid
+                    </button>
+                  ) : null}
+                  {item.decision !== "urgent" ? (
+                    <button
+                      type="button"
+                      disabled={busyId === item.id}
+                      onClick={() => onDecide(item.id, "urgent")}
+                      className={cn(VA_BTN_SECONDARY, "min-h-9 border-rose-400/30 px-3 py-1.5 text-xs text-rose-200")}
+                      title="Recreate now — uses one urgent slot this month"
+                    >
+                      Urgent
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => onDecide(item.id, "no")}
+                    className={cn(VA_BTN_SECONDARY, "min-h-9 px-3 py-1.5 text-xs text-white/50")}
+                    title="Drop — do not recreate"
+                  >
+                    No
+                  </button>
+                </div>
+              ) : null}
+              <BunchAssignPicker
+                bunches={bunches}
+                busy={busyId === item.id}
+                onAssign={(bunchId) => onAssign(item.id, bunchId)}
+              />
+            </div>
           ) : null}
         </div>
       </li>

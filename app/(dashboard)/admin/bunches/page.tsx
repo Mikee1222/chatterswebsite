@@ -19,7 +19,13 @@ export default async function AdminBunchesPage({
   searchParams?: Promise<{ id?: string }>;
 }) {
   const user = await getSessionFromCookies();
-  await requireAdminRoute(user, PERMISSIONS.WINNER_SOURCING_MANAGE);
+  // Head of Marketing (experimental_bunch:manage) may open Bunches to fill the Experimental bunch.
+  const homOnly = user ? await hasPermission(user, PERMISSIONS.EXPERIMENTAL_BUNCH_MANAGE) : false;
+  if (homOnly) {
+    await requireAdminRoute(user, PERMISSIONS.EXPERIMENTAL_BUNCH_MANAGE);
+  } else {
+    await requireAdminRoute(user, PERMISSIONS.WINNER_SOURCING_MANAGE);
+  }
 
   const params = (await searchParams) ?? {};
   const initialSelectedId = typeof params.id === "string" && params.id.trim() ? params.id.trim() : null;

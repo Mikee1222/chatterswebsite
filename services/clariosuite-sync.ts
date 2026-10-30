@@ -970,6 +970,16 @@ export async function syncClarioSuiteInsights(opts?: {
     });
   }
 
+  // Content Flow v1.1: trials have no IG API — remind supervisors every 3 days.
+  if (!opts?.modelRecordId) {
+    try {
+      const { notifyTrialChecksDue } = await import("@/services/trial-check");
+      await notifyTrialChecksDue({ everyDays: 3 });
+    } catch (err) {
+      logClarioSuiteFailure("trial check reminder", err, {});
+    }
+  }
+
   const wroteAnything =
     result.dailyRowsUpserted > 0 ||
     result.audienceUpserted > 0 ||
