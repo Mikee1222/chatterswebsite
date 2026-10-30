@@ -7,8 +7,9 @@
  *   ≥ outlier_multiple (2.5×) → Winner · ≥ hot_multiple (10×) → Super Winner
  * There are no absolute view thresholds in the auto-detect any more (owner decision,
  * 2026-10-31): a Winner is defined only relative to the account's own average.
- * Posts younger than 24h are excluded from both the baseline and the candidates —
- * their views are still accumulating and would drag the average down.
+ * Posts younger than 24h are excluded from the BASELINE only (views still accumulating
+ * would drag the average down). They are still checked as candidates — a post that
+ * blows up in a few hours is caught on the same sync, and re-checked on later syncs.
  *
  * Classification is one-time permanent per media_id:
  * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
@@ -50,8 +51,6 @@ export type WinnerAutoDetectResult = {
   skippedBelowThreshold: number;
   /** Reels older than the scan window (not candidates, only part of the baseline). */
   skippedOutsideWindow: number;
-  /** Reels younger than 24h — views still accumulating; re-checked on the next sync. */
-  skippedTooFresh: number;
   skippedNoPermalink: number;
   skippedDuplicateLink: number;
   errors: Array<{ media_id: string; message: string }>;
@@ -172,7 +171,6 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     skippedNotVideo: 0,
     skippedBelowThreshold: 0,
     skippedOutsideWindow: 0,
-    skippedTooFresh: 0,
     skippedNoPermalink: 0,
     skippedDuplicateLink: 0,
     errors: [],
@@ -275,12 +273,9 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     // window; needs a baseline of at least 3 Reels with views.
     const postedMs = post.posted_at ? Date.parse(post.posted_at) : NaN;
     const scanDays = baseline?.scanDays ?? 20;
-    // Candidates: at least 24h old (views matured) and inside the scan window.
-    if (!isMature(post)) {
-      result.skippedTooFresh += 1;
-      continue;
-    }
-    const insideWindow = now - postedMs <= scanDays * 86_400_000;
+    // Candidates: everything inside the scan window, fresh posts included (a blow-up in
+    // the first hours must be caught now; unclassified posts are re-checked every sync).
+    const insideWindow = !Number.isFinite(postedMs) || now - postedMs <= scanDays * 86_400_000;
     let multiple: number | null = null;
     let relativeTier: WinnerTier | null = null;
     if (!insideWindow) {

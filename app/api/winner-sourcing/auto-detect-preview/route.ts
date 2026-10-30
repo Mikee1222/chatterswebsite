@@ -38,7 +38,6 @@ export async function GET(req: Request) {
         not_video: r.skippedNotVideo,
         below_threshold: r.skippedBelowThreshold,
         outside_window: r.skippedOutsideWindow,
-        under_24h: r.skippedTooFresh,
         no_permalink: r.skippedNoPermalink,
         duplicate_link: r.skippedDuplicateLink,
       },

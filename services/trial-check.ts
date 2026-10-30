@@ -7,7 +7,7 @@
  * (services/winner-auto-detect.ts) with the same rule.
  *
  * Rule, per model + account + feed=trial (posts younger than 24h are excluded from
- * both the baseline and the check — views are still accumulating):
+ * the baseline only — views still accumulating; they are still checked):
  *   baseline = average views of the latest N (default 9) trial posts that have views
  *   every trial post of the last `scan_days` (default 20) is compared to it
  *   ≥ outlier_multiple → Winner, ≥ hot_multiple → Super Winner
@@ -150,7 +150,7 @@ export async function listTrialCheckAccounts(params: {
     const latest = list.filter((p) => p.views_24h != null && isMature(p)).slice(0, settings.baseline_posts);
     const avg = latest.length ? latest.reduce((a, p) => a + (p.views_24h ?? 0), 0) / latest.length : null;
     const since = Date.now() - settings.outlier_scan_days * 86_400_000;
-    const inWindow = list.filter((p) => Date.parse(p.posted_at) >= since && isMature(p));
+    const inWindow = list.filter((p) => Date.parse(p.posted_at) >= since);
     const lastChecked = list
       .map((p) => p.views_checked_at)
       .filter((v): v is string => !!v)
@@ -224,7 +224,7 @@ export async function saveTrialViews(params: {
     const model = await getModelById(first.model_id).catch(() => null);
 
     for (const p of list) {
-      if (p.views_24h == null || Date.parse(p.posted_at) < since || !isMature(p)) continue;
+      if (p.views_24h == null || Date.parse(p.posted_at) < since) continue;
       let multiple: number | null = null;
       let status: PostOutlierStatus = "normal";
       if (avg && avg > 0 && latest.length >= 3) {
