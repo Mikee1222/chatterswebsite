@@ -5,8 +5,9 @@
  *   baseline = average views of the latest N (default 9) grid Reels of that account
  *   every Reel posted in the last `scan_days` (default 20) is compared to the baseline
  *   ≥ outlier_multiple (2.5×) → Winner · ≥ hot_multiple (10×) → Super Winner
- * The absolute per-model thresholds (100k / 300k) are always applied; the relative rule
- * is added only when content_cycle_settings.relative_outliers_enabled = true for the model.
+ * One rule per model: when content_cycle_settings.relative_outliers_enabled = true the
+ * relative rule is THE definition of a winner and the absolute per-model thresholds
+ * (100k / 300k) are ignored; when false (default) the legacy absolute thresholds apply.
  *
  * Classification is one-time permanent per media_id:
  * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
@@ -277,11 +278,13 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     const accountKey = post.ig_user_id || modelId;
     const baseline = baselineByAccount.get(accountKey);
 
-    // Absolute tier (legacy per-model thresholds) — always on, unchanged behaviour.
-    const absoluteTier: WinnerTier | null = tierFromViewCount(views, thresholds);
+    // Legacy absolute tier — only for models that have NOT opted into the relative rule.
+    const absoluteTier: WinnerTier | null = baseline?.enabled
+      ? null
+      : tierFromViewCount(views, thresholds);
 
-    // Relative tier (Content Flow v1.1) — only when the model opted in; only Reels inside
-    // the scan window; needs a baseline of at least 3 Reels with views.
+    // Relative tier (Content Flow v1.1) — the only rule for opted-in models; only Reels
+    // inside the scan window; needs a baseline of at least 3 Reels with views.
     const postedMs = post.posted_at ? Date.parse(post.posted_at) : NaN;
     const scanDays = baseline?.scanDays ?? 20;
     const insideWindow = !Number.isFinite(postedMs) || now - postedMs <= scanDays * 86_400_000;
@@ -292,10 +295,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       if (multiple >= baseline.hot) relativeTier = "super_winner";
       else if (multiple >= baseline.outlier) relativeTier = "winner";
     }
-    const tier: WinnerTier | null =
-      relativeTier === "super_winner" || absoluteTier === "super_winner"
-        ? "super_winner"
-        : relativeTier ?? absoluteTier;
+    const tier: WinnerTier | null = baseline?.enabled ? relativeTier : absoluteTier;
     if (!tier) {
       if (baseline?.enabled && !insideWindow) result.skippedOutsideWindow += 1;
       else result.skippedBelowThreshold += 1;
@@ -309,7 +309,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         permalink,
         views,
         tier,
-        by: absoluteTier && relativeTier ? "both" : absoluteTier ? "absolute" : "relative",
+        by: relativeTier ? "relative" : "absolute",
         multiple,
       });
       result.classified += 1;

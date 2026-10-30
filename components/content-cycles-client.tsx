@@ -205,9 +205,10 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
               onChange={(e) => setSettings({ ...settings, relative_outliers_enabled: e.target.checked })}
             />
             <span>
-              Relative outlier rule in the ClarioSuite auto-detect (grid). Off = only the absolute view
-              thresholds make Winners, as before. On = Reels ≥ {settings.outlier_multiple}× the account&apos;s
-              average of its last {settings.baseline_posts} also become Winners (≥ {settings.hot_multiple}× Super).
+              Outlier rule in the ClarioSuite auto-detect (grid). Off = legacy absolute view thresholds
+              (100k / 300k), as before. On = a Winner is a Reel ≥ {settings.outlier_multiple}× the account&apos;s
+              average of its last {settings.baseline_posts} Reels (≥ {settings.hot_multiple}× Super Winner) — the
+              absolute thresholds are ignored for this model.
               Preview the impact first: <code className="text-white/60">/api/winner-sourcing/auto-detect-preview?relative=1</code>
             </span>
           </label>
