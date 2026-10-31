@@ -490,8 +490,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "feedback:view": "Προβολή ανατροφοδότησης χρηστών",
   "feedback:manage": "Διαχείριση και απάντηση ανατροφοδότησης",
 
-  "informations:view": "Προβολή mass lists, model tiers και pricing",
-  "informations:manage": "Δημιουργία και επεξεργασία mass lists, model tiers και pricing",
+  "informations:view": "Προβολή mass lists και price menus",
+  "informations:manage": "Δημιουργία και επεξεργασία mass lists και price menus",
 
   "pricing:view": "Προβολή τιμολογίου υπηρεσιών και πακέτων",
   "pricing:manage": "Ρύθμιση τιμών και πακέτων υπηρεσιών",

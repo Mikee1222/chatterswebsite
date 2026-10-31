@@ -121,7 +121,16 @@ function mapPricingSpecial(rec: AirtableRecord<SpecialFields>): PricingSpecial {
 }
 
 export async function getAllPricingRows(): Promise<PricingRow[]> {
-  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingRows();
+  if (isSupabaseBackend()) {
+    // Prefer price_menus compatibility layer; fall back to legacy pricing_rows.
+    try {
+      const rows = await (await import("./price-menus")).getLegacyCompatiblePricingRows(false);
+      if (rows.length) return rows;
+    } catch {
+      /* fall through */
+    }
+    return (await import("./pricing-supabase")).getAllPricingRows();
+  }
   const rows = await listAllRecords<RowFields>(PRICING_ROWS_TABLE, {
     filterByFormula: "{is_active} = TRUE()",
     sort: ROW_SORT,
@@ -131,7 +140,15 @@ export async function getAllPricingRows(): Promise<PricingRow[]> {
 }
 
 export async function getAllPricingRowsAdmin(): Promise<PricingRow[]> {
-  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingRowsAdmin();
+  if (isSupabaseBackend()) {
+    try {
+      const rows = await (await import("./price-menus")).getLegacyCompatiblePricingRows(true);
+      if (rows.length) return rows;
+    } catch {
+      /* fall through */
+    }
+    return (await import("./pricing-supabase")).getAllPricingRowsAdmin();
+  }
   const rows = await listAllRecords<RowFields>(PRICING_ROWS_TABLE, {
     sort: ROW_SORT,
     _caller: "getAllPricingRowsAdmin",
@@ -190,7 +207,15 @@ export async function deletePricingRow(id: string): Promise<void> {
 }
 
 export async function getAllPricingSpecials(): Promise<PricingSpecial[]> {
-  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingSpecials();
+  if (isSupabaseBackend()) {
+    try {
+      const rows = await (await import("./price-menus")).getLegacyCompatibleSpecials(false);
+      if (rows.length) return rows;
+    } catch {
+      /* fall through */
+    }
+    return (await import("./pricing-supabase")).getAllPricingSpecials();
+  }
   const rows = await listAllRecords<SpecialFields>(PRICING_SPECIALS_TABLE, {
     filterByFormula: "{is_active} = TRUE()",
     sort: SPECIAL_SORT,
@@ -200,7 +225,15 @@ export async function getAllPricingSpecials(): Promise<PricingSpecial[]> {
 }
 
 export async function getAllPricingSpecialsAdmin(): Promise<PricingSpecial[]> {
-  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingSpecialsAdmin();
+  if (isSupabaseBackend()) {
+    try {
+      const rows = await (await import("./price-menus")).getLegacyCompatibleSpecials(true);
+      if (rows.length) return rows;
+    } catch {
+      /* fall through */
+    }
+    return (await import("./pricing-supabase")).getAllPricingSpecialsAdmin();
+  }
   const rows = await listAllRecords<SpecialFields>(PRICING_SPECIALS_TABLE, {
     sort: SPECIAL_SORT,
     _caller: "getAllPricingSpecialsAdmin",

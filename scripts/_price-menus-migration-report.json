@@ -1,0 +1,276 @@
+{
+  "greek_menus": [
+    {
+      "name": "High",
+      "rows": 19,
+      "groups": [
+        "high|high",
+        "high|low",
+        "high|medium"
+      ]
+    },
+    {
+      "name": "Medium",
+      "rows": 19,
+      "groups": [
+        "medium|high",
+        "medium|low",
+        "medium|medium"
+      ]
+    },
+    {
+      "name": "Low",
+      "rows": 12,
+      "groups": [
+        "low|high",
+        "low|medium_low"
+      ]
+    }
+  ],
+  "usa_menus": [
+    {
+      "name": "USA - High",
+      "rows": 19
+    },
+    {
+      "name": "USA - Medium",
+      "rows": 19
+    },
+    {
+      "name": "USA - Low",
+      "rows": 12
+    }
+  ],
+  "unparsed_prices": [],
+  "exact_links": [
+    {
+      "legacy_name": "Roxana",
+      "model_ids": [
+        "b570b968-92c9-4ff3-a516-69246ed408cc",
+        "2d4f0dee-7d22-431a-a8ad-aeb6f8fb7373"
+      ],
+      "model_names": [
+        "Roxana",
+        "Roxana"
+      ]
+    },
+    {
+      "legacy_name": "Diana",
+      "model_ids": [
+        "3080a952-8f84-4a57-af58-6a4b2f8d3014"
+      ],
+      "model_names": [
+        "Diana"
+      ]
+    },
+    {
+      "legacy_name": "Frika",
+      "model_ids": [
+        "5a61115c-8c47-433b-ac69-3ec908eec98f"
+      ],
+      "model_names": [
+        "Frika"
+      ]
+    },
+    {
+      "legacy_name": "Eirini",
+      "model_ids": [
+        "a93ae889-26ed-4b67-93d2-2f4022c721ee"
+      ],
+      "model_names": [
+        "Eirini"
+      ]
+    },
+    {
+      "legacy_name": "Lina",
+      "model_ids": [
+        "85b221c7-2514-453d-9541-d6e20b301412"
+      ],
+      "model_names": [
+        "Lina"
+      ]
+    },
+    {
+      "legacy_name": "Silia",
+      "model_ids": [
+        "45d9bd0e-755e-4b47-8789-76d4280e263c"
+      ],
+      "model_names": [
+        "Silia"
+      ]
+    },
+    {
+      "legacy_name": "Antigoni",
+      "model_ids": [
+        "1d5cadf8-ed3b-4f99-8366-2a43ca0fb97b"
+      ],
+      "model_names": [
+        "Antigoni"
+      ]
+    },
+    {
+      "legacy_name": "Chrysa",
+      "model_ids": [
+        "9ad372a5-c9f0-4562-b871-57e8eb56b908"
+      ],
+      "model_names": [
+        "Chrysa"
+      ]
+    },
+    {
+      "legacy_name": "Elisavet",
+      "model_ids": [
+        "5a478375-f69a-4207-ae99-4f08f8428b4b"
+      ],
+      "model_names": [
+        "Elisavet"
+      ]
+    },
+    {
+      "legacy_name": "Stefania",
+      "model_ids": [
+        "e0857b12-20b7-46ae-ad61-407f43336470"
+      ],
+      "model_names": [
+        "Stefania"
+      ]
+    },
+    {
+      "legacy_name": "Gavriela",
+      "model_ids": [
+        "eb6025d0-2038-4f31-80e3-ca6a07d498cf"
+      ],
+      "model_names": [
+        "Gavriela"
+      ]
+    },
+    {
+      "legacy_name": "Katerina K",
+      "model_ids": [
+        "7db39b82-36bb-484b-aba7-d5650b7ae4a7"
+      ],
+      "model_names": [
+        "Katerina K"
+      ]
+    },
+    {
+      "legacy_name": "Stella",
+      "model_ids": [
+        "7965fe36-f36b-448b-9119-1aae487b2eb3"
+      ],
+      "model_names": [
+        "Stella"
+      ]
+    }
+  ],
+  "unmatched_legacy_names": [
+    "Miss Frost",
+    "Lydia Fwtiadou",
+    "Ariandi",
+    "Marilia",
+    "Sofia"
+  ],
+  "fuzzy_suggestions": [
+    {
+      "legacy_name": "Miss Frost",
+      "suggested_model_name": "Frost",
+      "suggested_model_id": "f702ed2b-69cc-4429-9c76-0b10818b9d7f",
+      "distance": 5
+    },
+    {
+      "legacy_name": "Miss Frost",
+      "suggested_model_name": "Elisavet",
+      "suggested_model_id": "5a478375-f69a-4207-ae99-4f08f8428b4b",
+      "distance": 8
+    },
+    {
+      "legacy_name": "Miss Frost",
+      "suggested_model_name": "Stefania",
+      "suggested_model_id": "e0857b12-20b7-46ae-ad61-407f43336470",
+      "distance": 8
+    },
+    {
+      "legacy_name": "Lydia Fwtiadou",
+      "suggested_model_name": "Lydia",
+      "suggested_model_id": "c2c325fb-0851-4cd9-b50a-f14776617afc",
+      "distance": 9
+    },
+    {
+      "legacy_name": "Ariandi",
+      "suggested_model_name": "Ariadni",
+      "suggested_model_id": "64845aab-ad45-4261-a6f5-a518a3cc3e94",
+      "distance": 2
+    },
+    {
+      "legacy_name": "Ariandi",
+      "suggested_model_name": "Maria",
+      "suggested_model_id": "00f46b0d-2130-40d7-a124-2243fcdb958d",
+      "distance": 4
+    },
+    {
+      "legacy_name": "Ariandi",
+      "suggested_model_name": "Eirini",
+      "suggested_model_id": "a93ae889-26ed-4b67-93d2-2f4022c721ee",
+      "distance": 4
+    },
+    {
+      "legacy_name": "Marilia",
+      "suggested_model_name": "Marillia",
+      "suggested_model_id": "e895d0fb-777f-478e-9ee9-739bfc9f6070",
+      "distance": 1
+    },
+    {
+      "legacy_name": "Marilia",
+      "suggested_model_name": "Maria",
+      "suggested_model_id": "00f46b0d-2130-40d7-a124-2243fcdb958d",
+      "distance": 2
+    },
+    {
+      "legacy_name": "Marilia",
+      "suggested_model_name": "Silia",
+      "suggested_model_id": "45d9bd0e-755e-4b47-8789-76d4280e263c",
+      "distance": 3
+    },
+    {
+      "legacy_name": "Sofia",
+      "suggested_model_name": "Silia",
+      "suggested_model_id": "45d9bd0e-755e-4b47-8789-76d4280e263c",
+      "distance": 2
+    },
+    {
+      "legacy_name": "Sofia",
+      "suggested_model_name": "Maria",
+      "suggested_model_id": "00f46b0d-2130-40d7-a124-2243fcdb958d",
+      "distance": 3
+    },
+    {
+      "legacy_name": "Sofia",
+      "suggested_model_name": "Lydia",
+      "suggested_model_id": "c2c325fb-0851-4cd9-b50a-f14776617afc",
+      "distance": 3
+    }
+  ],
+  "untranslated_texts": [],
+  "specials": [
+    {
+      "label": "SexTape",
+      "applies_to_all": true,
+      "model_ids": []
+    },
+    {
+      "label": "Customs",
+      "applies_to_all": true,
+      "model_ids": []
+    },
+    {
+      "label": "Video Calls",
+      "applies_to_all": false,
+      "model_ids": [
+        "85b221c7-2514-453d-9541-d6e20b301412",
+        "3080a952-8f84-4a57-af58-6a4b2f8d3014"
+      ]
+    }
+  ],
+  "legacy_row_count": 50,
+  "migrated_row_count": 50
+}
