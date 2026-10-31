@@ -118,7 +118,8 @@ export async function transcribeMedia(input: {
     // Never log the audio or the transcript — status + provider message only.
     console.error(`[stt:${provider.name}] transcription failed`, res.status, msg);
     recordSttUsage(provider, false);
-    throw new Error(`STT_FAILED: ${msg}`);
+    // Status + provider message only (no audio, no transcript) so the UI can say why.
+    throw new Error(`STT_FAILED:${res.status}: ${msg}`);
   }
   recordSttUsage(provider, true);
 

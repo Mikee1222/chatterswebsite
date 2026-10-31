@@ -68,6 +68,27 @@ export async function POST(req: Request) {
       return Response.json({ error: "Video too large", code: "file_too_large" }, { status: 413 });
     }
     console.error("[creative-studio] transcribe failed", msg);
-    return Response.json({ error: "Transcription failed. Try again or paste the words manually." }, { status: 502 });
+    // Surface the provider's status so an admin can tell "bad key" from "rate limit"
+    // without reading server logs. The provider message never contains the audio.
+    const m = msg.match(/^STT_FAILED:(\d{3}): (.*)$/);
+    const providerStatus = m ? Number(m[1]) : null;
+    const providerMessage = m ? m[2].slice(0, 200) : null;
+    const hint =
+      providerStatus === 401
+        ? "The speech-to-text API key was rejected (401). Check GROQ_API_KEY / OPENAI_API_KEY."
+        : providerStatus === 429
+          ? "Speech-to-text rate limit hit (429). Try again in a minute."
+          : providerStatus === 413
+            ? "The clip is too large for the speech-to-text provider."
+            : null;
+    return Response.json(
+      {
+        error: hint ?? "Transcription failed. Try again or paste the words manually.",
+        code: "stt_failed",
+        provider_status: providerStatus,
+        provider_message: providerMessage,
+      },
+      { status: 502 },
+    );
   }
 }

@@ -28,6 +28,9 @@ const TABLE = "creative_studio_winner_breakdowns";
 
 export const BREAKDOWN_REFUSAL_MESSAGE =
   "This video could not be broken down. Try a different clip or add the caption / a short description and run again.";
+/** API-level failure (no model answer at all) — distinct from a content refusal. */
+export const BREAKDOWN_FAILED_MESSAGE =
+  "The AI call failed (model unavailable or API error) — nothing wrong with the clip. Try again in a minute; if it keeps failing, tell the admin to check the server logs for \"creative_studio_breakdown\".";
 
 export type WinnerBreakdownStatus = "success" | "refused" | "failed";
 
@@ -355,7 +358,7 @@ export async function createWinnerBreakdown(
   const status: WinnerBreakdownStatus = sanitized ? "success" : result ? "refused" : "failed";
   const breakdown: WinnerBreakdownJson = sanitized ?? {
     refusal: true,
-    refusal_message: BREAKDOWN_REFUSAL_MESSAGE,
+    refusal_message: status === "failed" ? BREAKDOWN_FAILED_MESSAGE : BREAKDOWN_REFUSAL_MESSAGE,
   };
   if (sanitized && input.durationSec && !sanitized.duration_sec) {
     sanitized.duration_sec = Math.round(input.durationSec);
