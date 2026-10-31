@@ -30,7 +30,7 @@ export const BREAKDOWN_REFUSAL_MESSAGE =
   "This video could not be broken down. Try a different clip or add the caption / a short description and run again.";
 /** API-level failure (no model answer at all) — distinct from a content refusal. */
 export const BREAKDOWN_FAILED_MESSAGE =
-  "The AI call failed (model unavailable or API error) — nothing wrong with the clip. Try again in a minute; if it keeps failing, tell the admin to check the server logs for \"creative_studio_breakdown\".";
+  "The AI call failed — nothing wrong with the clip. Most likely the API key has no access to the configured model (AI_BREAKDOWN_MODEL) or the API errored. Tell the admin to check the server logs for \"creative_studio_breakdown\".";
 
 export type WinnerBreakdownStatus = "success" | "refused" | "failed";
 
@@ -346,7 +346,10 @@ export async function createWinnerBreakdown(
     maxTokens: WINNER_BREAKDOWN_MAX_TOKENS,
     temperature: 0.3,
     model,
-    fallbackModel: AI_ASSISTANT_MODEL,
+    // Owner decision: the breakdown runs on the configured model only. If the key
+    // cannot use it we fail loudly instead of silently downgrading quality.
+    // Set AI_BREAKDOWN_FALLBACK=sonnet to allow a one-time retry on Sonnet.
+    fallbackModel: process.env.AI_BREAKDOWN_FALLBACK?.trim() === "sonnet" ? AI_ASSISTANT_MODEL : undefined,
     logLabel: "creative_studio_breakdown",
     tools: [WINNER_BREAKDOWN_TOOL as unknown as { name: string; description: string; input_schema: Record<string, unknown> }],
     toolChoice: { type: "tool", name: WINNER_BREAKDOWN_TOOL_NAME },
