@@ -392,10 +392,18 @@ export async function callAnthropicVision(options: {
       console.error(`[${label}] Anthropic error`, res.status, data?.error?.message ?? data);
       recordUsage(label, model, false);
       const fallback = options.fallbackModel?.trim();
-      const errType = (data?.error as { type?: string } | undefined)?.type ?? "";
-      const notFound = res.status === 404 || errType === "not_found_error";
-      if (fallback && fallback !== model && notFound) {
-        console.warn(`[${label}] model ${model} unavailable — retrying with ${fallback}`);
+      const errObj = (data?.error as { type?: string; message?: string } | undefined) ?? {};
+      const errType = errObj.type ?? "";
+      const errMsg = String(errObj.message ?? "").toLowerCase();
+      // The configured model is not usable on this API key: unknown model (404),
+      // no access to it (403 permission_error), or the API rejects the model name (400).
+      const modelUnavailable =
+        res.status === 404 ||
+        errType === "not_found_error" ||
+        errType === "permission_error" ||
+        (res.status === 400 && /model/.test(errMsg));
+      if (fallback && fallback !== model && modelUnavailable) {
+        console.warn(`[${label}] model ${model} unavailable (${res.status} ${errType}) — retrying with ${fallback}`);
         return callAnthropicVision({ ...options, model: fallback, fallbackModel: undefined });
       }
       return null;
