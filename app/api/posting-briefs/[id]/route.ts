@@ -45,6 +45,9 @@ export async function GET(_req: Request, ctx: Ctx) {
     if (!(await canAccessBrief(session, brief.model_id, canManage))) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
+    if (!canManage && brief.status === "draft") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     return NextResponse.json({ brief, canManage });
   } catch (e) {
     return NextResponse.json(
@@ -71,6 +74,18 @@ export async function PATCH(req: Request, ctx: Ctx) {
       body.status &&
       Object.keys(body).length === 1
     ) {
+      // Draft → Active is a publish: notify assigned VAs. Archive / restore stay silent.
+      if (body.status === "active") {
+        const existing = await getPostingBriefById(id);
+        if (existing?.status === "draft") {
+          const brief = await updatePostingBrief(
+            id,
+            { status: "active" },
+            { notify: true, actorUserId: session.airtableUserId ?? session.id },
+          );
+          return NextResponse.json({ brief });
+        }
+      }
       const brief = await setPostingBriefStatus(id, body.status);
       return NextResponse.json({ brief });
     }

@@ -136,6 +136,7 @@ export const ROUTES = {
     winnerVideosHub: "/admin/winner-videos-hub",
     /** Dedicated video bunches flagship (assign creative/filmer, filters, pagination). */
     bunches: "/admin/bunches",
+    contentCycles: "/admin/content-cycles",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
     challenges: "/admin/challenges",
@@ -235,6 +236,7 @@ export const ROUTES = {
   /** Model Personas — structured profile per model (permission-gated). */
   personas: "/personas",
   persona: (modelId: string) => `/personas/${encodeURIComponent(modelId)}`,
+  personaWardrobe: (modelId: string) => `/personas/${encodeURIComponent(modelId)}/wardrobe`,
   /** AI Creative Studio — captions / text-on-screen / video analyzer. */
   creativeStudio: "/creative-studio",
   /** Posting briefs — Creative Director manage / Marketing Executive view (permission-gated). */

@@ -205,8 +205,9 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   bunch_assigned_to_editor: ["admin", "manager", "virtual_assistant", "chatter"],
   bunch_editing_uploaded: ["admin", "manager"],
   bunch_icloud_organized: ["admin", "manager"],
-  posting_brief_published: ["virtual_assistant"],
-  posting_brief_updated: ["virtual_assistant"],
+  posting_brief_published: ["virtual_assistant", "manager"],
+  posting_brief_updated: ["virtual_assistant", "manager"],
+  posting_brief_posted: ["admin", "manager"],
   recording_brief_published: ["model"],
   recording_brief_updated: ["model"],
   recording_brief_reminder: ["model"],
@@ -933,6 +934,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "posting_brief_updated",
       "Posting brief updated",
       "Αποστέλλεται στον VA / Marketing Executive όταν ενημερώνεται ενεργό posting brief για το μοντέλο του"
+    ),
+    eventEntry(
+      "posting_brief_posted",
+      "Posting brief post marked as posted",
+      "Ενημερώνει Creative Director / admin όταν ο Marketing Executive σημειώσει ένα post ως Posted με το link"
     ),
     eventEntry(
       "recording_brief_published",

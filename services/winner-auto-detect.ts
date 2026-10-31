@@ -1,37 +1,56 @@
 /**
  * Auto-detect Winner / Super Winner from already-synced ClarioSuite Instagram posts.
  *
+ * Content Flow v1.1 — RELATIVE rule, the only rule, per account (ig_user_id):
+ *   baseline = average views of the latest N (default 9) grid Reels of that account
+ *   every Reel posted in the last `scan_days` (default 20) is compared to the baseline
+ *   ≥ outlier_multiple (2.5×) → Winner · ≥ hot_multiple (10×) → Super Winner
+ * There are no absolute view thresholds in the auto-detect any more (owner decision,
+ * 2026-10-31): a Winner is defined only relative to the account's own average.
+ * Posts younger than 24h are excluded from the BASELINE only (views still accumulating
+ * would drag the average down). They are still checked as candidates — a post that
+ * blows up in a few hours is caught on the same sync, and re-checked on later syncs.
+ *
  * Classification is one-time permanent per media_id:
  * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
- * - Unclassified posts are rechecked each sync as views grow
+ * - Unclassified posts are rechecked each sync as views grow / the baseline moves
  */
 
 import { classifyIgPost } from "@/lib/instagram-insights-ui";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   DEFAULT_MODEL_WINNER_THRESHOLDS,
-  tierFromViewCount,
   type WinnerTier,
 } from "@/lib/winner-sourcing-helpers";
-import {
-  defaultModelWinnerThresholds,
-  listModelWinnerThresholdsMap,
-} from "@/services/model-winner-thresholds";
 import {
   cacheWinnerThumbnailFromUrl,
   needsWinnerThumbnailCache,
 } from "@/lib/winner-thumbnail-cache";
 import { createWinnerSubmission, type WinnerSubmission } from "@/services/winner-sourcing";
+import { getCycleSettings, type ContentCycleSettings } from "@/services/content-cycles";
 
 export const CLARIOSUITE_AUTO_SUBMITTER_ID = "clariosuite_auto";
 export const CLARIOSUITE_AUTO_SUBMITTER_NAME = "ClarioSuite Auto-detect";
 
 export type WinnerAutoDetectResult = {
+  /** true = nothing was written; `wouldClassify` lists what a real run would create. */
+  dryRun?: boolean;
+  wouldClassify?: Array<{
+    model_name: string;
+    media_id: string;
+    permalink: string;
+    views: number;
+    tier: WinnerTier;
+    multiple: number | null;
+    baseline_avg: number | null;
+  }>;
   scanned: number;
   classified: number;
   skippedAlreadyClassified: number;
   skippedNotVideo: number;
   skippedBelowThreshold: number;
+  /** Reels older than the scan window (not candidates, only part of the baseline). */
+  skippedOutsideWindow: number;
   skippedNoPermalink: number;
   skippedDuplicateLink: number;
   errors: Array<{ media_id: string; message: string }>;
@@ -41,6 +60,7 @@ export type WinnerAutoDetectResult = {
 };
 
 type TopPostCandidate = {
+  ig_user_id: string;
   media_id: string;
   permalink: string | null;
   media_type: string | null;
@@ -106,9 +126,9 @@ async function loadTopPostCandidates(opts?: {
   let q = sb
     .from("clariosuite_top_posts")
     .select(
-      "media_id,permalink,media_type,media_product_type,caption,image_url,views,video_views,posted_at,model_record_id,model_stable_id,model_name",
+      "ig_user_id,media_id,permalink,media_type,media_product_type,caption,image_url,views,video_views,posted_at,model_record_id,model_stable_id,model_name",
     )
-    .order("views", { ascending: false });
+    .order("posted_at", { ascending: false, nullsFirst: false });
   if (opts?.modelRecordId) q = q.eq("model_record_id", opts.modelRecordId);
   const { data, error } = await q;
   if (error) throw new Error(`load top posts: ${error.message}`);
@@ -117,6 +137,7 @@ async function loadTopPostCandidates(opts?: {
     const views = Number(r.views) || 0;
     const videoViews = Number(r.video_views) || 0;
     return {
+      ig_user_id: String(r.ig_user_id ?? ""),
       media_id: String(r.media_id ?? ""),
       permalink: r.permalink != null ? String(r.permalink) : null,
       media_type: r.media_type != null ? String(r.media_type) : null,
@@ -138,13 +159,18 @@ async function loadTopPostCandidates(opts?: {
  */
 export async function detectWinnersFromClarioSuitePosts(opts?: {
   modelRecordId?: string;
+  /** Report what would be classified without writing anything. */
+  dryRun?: boolean;
 }): Promise<WinnerAutoDetectResult> {
   const result: WinnerAutoDetectResult = {
+    dryRun: opts?.dryRun === true,
+    wouldClassify: opts?.dryRun ? [] : undefined,
     scanned: 0,
     classified: 0,
     skippedAlreadyClassified: 0,
     skippedNotVideo: 0,
     skippedBelowThreshold: 0,
+    skippedOutsideWindow: 0,
     skippedNoPermalink: 0,
     skippedDuplicateLink: 0,
     errors: [],
@@ -152,15 +178,64 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     thumbnailsCached: 0,
   };
 
-  const [posts, classifiedMedia, existingLinks, thresholdsMap] = await Promise.all([
+  const [posts, classifiedMedia, existingLinks] = await Promise.all([
     loadTopPostCandidates({ modelRecordId: opts?.modelRecordId }),
     loadAlreadyClassifiedMediaIds(),
     loadExistingVideoLinks(),
-    listModelWinnerThresholdsMap(),
   ]);
 
   result.scanned = posts.length;
 
+  /* ── Relative baseline per account: average of the latest N grid Reels ── */
+  const byAccount = new Map<string, TopPostCandidate[]>();
+  for (const post of posts) {
+    if (!post.media_id || !isVideoCandidate(post)) continue;
+    const key = post.ig_user_id || post.model_record_id || post.model_stable_id || "";
+    if (!key) continue;
+    const list = byAccount.get(key) ?? [];
+    list.push(post);
+    byAccount.set(key, list);
+  }
+  const settingsByModel = new Map<string, ContentCycleSettings>();
+  async function settingsFor(modelId: string): Promise<ContentCycleSettings> {
+    const hit = settingsByModel.get(modelId);
+    if (hit) return hit;
+    const s = await getCycleSettings(modelId);
+    settingsByModel.set(modelId, s);
+    return s;
+  }
+  type Baseline = {
+    avg: number | null;
+    count: number;
+    scanDays: number;
+    outlier: number;
+    hot: number;
+  };
+  const baselineByAccount = new Map<string, Baseline>();
+  const now = Date.now();
+  const MATURE_MS = 24 * 60 * 60 * 1000;
+  const isMature = (p: TopPostCandidate) =>
+    !!p.posted_at && Number.isFinite(Date.parse(p.posted_at)) && now - Date.parse(p.posted_at) >= MATURE_MS;
+  for (const [key, list] of byAccount) {
+    const modelId = (list[0]?.model_record_id || list[0]?.model_stable_id || "").trim();
+    const s = await settingsFor(modelId);
+    // Latest N Reels that are at least 24h old (views still accumulating before that).
+    const latest = list
+      .filter(isMature)
+      .sort((a, b) => Date.parse(b.posted_at!) - Date.parse(a.posted_at!))
+      .slice(0, Math.max(1, s.baseline_posts));
+    const withViews = latest.filter((p) => p.views > 0);
+    const avg = withViews.length
+      ? withViews.reduce((acc, p) => acc + p.views, 0) / withViews.length
+      : null;
+    baselineByAccount.set(key, {
+      avg,
+      count: withViews.length,
+      scanDays: s.outlier_scan_days,
+      outlier: s.outlier_multiple,
+      hot: s.hot_multiple,
+    });
+  }
   for (const post of posts) {
     if (!post.media_id) continue;
 
@@ -189,15 +264,48 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     const modelId = (post.model_record_id || post.model_stable_id || "").trim();
     if (!modelId) continue;
 
-    const thresholds =
-      thresholdsMap.get(modelId) ??
-      thresholdsMap.get(post.model_stable_id ?? "") ??
-      defaultModelWinnerThresholds(modelId);
 
     const views = Math.round(post.views);
-    const tier: WinnerTier | null = tierFromViewCount(views, thresholds);
+    const accountKey = post.ig_user_id || modelId;
+    const baseline = baselineByAccount.get(accountKey);
+
+    // Relative tier (Content Flow v1.1) — the only rule; only Reels inside the scan
+    // window; needs a baseline of at least 3 Reels with views.
+    const postedMs = post.posted_at ? Date.parse(post.posted_at) : NaN;
+    const scanDays = baseline?.scanDays ?? 20;
+    // Candidates: everything inside the scan window, fresh posts included (a blow-up in
+    // the first hours must be caught now; unclassified posts are re-checked every sync).
+    const insideWindow = !Number.isFinite(postedMs) || now - postedMs <= scanDays * 86_400_000;
+    let multiple: number | null = null;
+    let relativeTier: WinnerTier | null = null;
+    if (!insideWindow) {
+      result.skippedOutsideWindow += 1;
+      continue;
+    }
+    if (baseline?.avg && baseline.avg > 0 && baseline.count >= 3) {
+      multiple = Math.round((views / baseline.avg) * 100) / 100;
+      if (multiple >= baseline.hot) relativeTier = "super_winner";
+      else if (multiple >= baseline.outlier) relativeTier = "winner";
+    }
+    const tier: WinnerTier | null = relativeTier;
     if (!tier) {
       result.skippedBelowThreshold += 1;
+      continue;
+    }
+
+    if (opts?.dryRun) {
+      result.wouldClassify!.push({
+        model_name: post.model_name?.trim() || modelId,
+        media_id: post.media_id,
+        permalink,
+        views,
+        tier,
+        multiple,
+        baseline_avg: baseline?.avg ?? null,
+      });
+      result.classified += 1;
+      classifiedMedia.add(post.media_id);
+      existingLinks.add(linkKey);
       continue;
     }
 
@@ -216,10 +324,11 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         thumbnail_url: ephemeralThumb,
         caption: post.caption ?? "",
         posted_at: post.posted_at,
-        thresholds: {
-          winner_threshold_views: thresholds.winner_threshold_views,
-          super_winner_threshold_views: thresholds.super_winner_threshold_views,
-        },
+        // No absolute thresholds: the tier comes from the relative rule (tierOverride).
+        thresholds: null,
+        tierOverride: tier,
+        feed: "grid",
+        outlier_multiple: multiple,
         skipNotify: false,
       });
 
@@ -250,6 +359,8 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       result.errors.push({ media_id: post.media_id, message });
     }
   }
+
+  if (opts?.dryRun) return result;
 
   // After classify: re-cache any existing winners still pointing at expired IG CDN URLs,
   // using freshly-synced clariosuite_top_posts.image_url from this sync cycle.

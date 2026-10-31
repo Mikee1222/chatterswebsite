@@ -11,6 +11,8 @@ import {
   NOTIFICATION_PRIORITY,
 } from "@/lib/notification-types";
 import { getAccountsByModel, getAccountsByVA } from "@/services/marketing";
+import { PERMISSIONS } from "@/lib/permissions";
+import { listUsersWithPermission } from "@/services/users";
 import type { NotificationPriority } from "@/types";
 
 export type PostingBriefAccountType = "main" | "secondary";
@@ -22,7 +24,8 @@ export type PostingBriefContentType =
   | "Carousel"
   | "Other";
 export type PostingBriefPriority = "normal" | "urgent";
-export type PostingBriefStatus = "active" | "archived";
+/** draft = prepared by the CD, invisible to VAs until published (active). */
+export type PostingBriefStatus = "draft" | "active" | "archived";
 
 export type PostingBriefPost = {
   id: string;
@@ -33,9 +36,36 @@ export type PostingBriefPost = {
   caption: string;
   pinned_comment: string | null;
   notes: string | null;
+  /** Live post URL once the Marketing Executive marks the post as posted. */
+  posted_url: string | null;
+  posted_at: string | null;
+  posted_by: string | null;
+  /** grid | trial — Content Flow v1.1: originals → grid, variations → trials. */
+  placement: PostPlacement;
+  /** proven | experimental | recreation | '' */
+  content_source: PostContentSource;
+  /** 24h check by the Account Supervisor. */
+  views_24h: number | null;
+  views_checked_at: string | null;
+  outlier_multiple: number | null;
+  outlier_status: PostOutlierStatus;
   created_at: string;
   updated_at: string;
 };
+
+export type PostPlacement = "grid" | "trial";
+export type PostContentSource = "" | "proven" | "experimental" | "recreation";
+export type PostOutlierStatus = "" | "normal" | "outlier" | "hot";
+
+function coercePlacement(v: unknown): PostPlacement {
+  return v === "trial" ? "trial" : "grid";
+}
+function coerceContentSource(v: unknown): PostContentSource {
+  return v === "proven" || v === "experimental" || v === "recreation" ? v : "";
+}
+function coerceOutlierStatus(v: unknown): PostOutlierStatus {
+  return v === "normal" || v === "outlier" || v === "hot" ? v : "";
+}
 
 export type PostingBrief = {
   id: string;
@@ -55,6 +85,8 @@ export type PostingBrief = {
   timing_notes: string;
   final_checklist: string[];
   status: PostingBriefStatus;
+  /** Editing brief this posting brief was prepared from (FLOW strip). */
+  editing_brief_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -62,6 +94,10 @@ export type PostingBrief = {
 };
 
 export type PostingBriefPostInput = {
+  /** Existing post id (edit form). Lets the "posted" fields survive a re-save. */
+  id?: string;
+  placement?: PostPlacement;
+  content_source?: PostContentSource;
   video_name?: string;
   text_on_screen?: string | null;
   caption?: string;
@@ -86,6 +122,7 @@ export type PostingBriefInput = {
   timing_notes?: string;
   final_checklist?: string[];
   status?: PostingBriefStatus;
+  editing_brief_id?: string | null;
   posts?: PostingBriefPostInput[];
   created_by?: string;
 };
@@ -135,9 +172,29 @@ function mapPost(row: Record<string, unknown>): PostingBriefPost {
     caption: asString(row.caption),
     pinned_comment: asNullableString(row.pinned_comment),
     notes: asNullableString(row.notes),
+    posted_url: asNullableString(row.posted_url),
+    posted_at: asNullableString(row.posted_at),
+    posted_by: asNullableString(row.posted_by),
+    placement: coercePlacement(row.placement),
+    content_source: coerceContentSource(row.content_source),
+    views_24h: row.views_24h == null ? null : Number(row.views_24h),
+    views_checked_at: asNullableString(row.views_checked_at),
+    outlier_multiple: row.outlier_multiple == null ? null : Number(row.outlier_multiple),
+    outlier_status: coerceOutlierStatus(row.outlier_status),
     created_at: asString(row.created_at),
     updated_at: asString(row.updated_at),
   };
+}
+
+/** How many of a brief's posts have been marked as posted. */
+export function postedSummary(brief: Pick<PostingBrief, "posts">): {
+  posted: number;
+  total: number;
+  allPosted: boolean;
+} {
+  const total = brief.posts.length;
+  const posted = brief.posts.filter((p) => !!p.posted_at).length;
+  return { posted, total, allPosted: total > 0 && posted === total };
 }
 
 function mapBrief(row: Record<string, unknown>, posts: PostingBriefPost[]): PostingBrief {
@@ -159,6 +216,7 @@ function mapBrief(row: Record<string, unknown>, posts: PostingBriefPost[]): Post
     timing_notes: asString(row.timing_notes),
     final_checklist: parseChecklist(row.final_checklist),
     status: (asString(row.status) || "active") as PostingBriefStatus,
+    editing_brief_id: typeof row.editing_brief_id === "string" && row.editing_brief_id ? row.editing_brief_id : null,
     created_by: asString(row.created_by),
     created_at: asString(row.created_at),
     updated_at: asString(row.updated_at),
@@ -225,7 +283,13 @@ async function notifyAssignedVas(params: {
   actorUserId?: string;
 }): Promise<void> {
   const { brief, event, actorUserId } = params;
-  const vaIds = await getAssignedVaIdsForModel(brief.model_id);
+  // Assigned VAs for the model + everyone who manages posting (Marketing Manager),
+  // so the person running the posters always knows when a brief goes live.
+  const [assigned, managers] = await Promise.all([
+    getAssignedVaIdsForModel(brief.model_id),
+    listUsersWithPermission(PERMISSIONS.POSTING_BRIEFS_MANAGE).catch(() => []),
+  ]);
+  const vaIds = [...new Set([...assigned, ...managers.map((u) => u.id)])];
   if (!vaIds.length) return;
 
   const isUrgent = brief.priority === "urgent";
@@ -311,23 +375,46 @@ async function replacePosts(
   posts: PostingBriefPostInput[],
 ): Promise<PostingBriefPost[]> {
   const sb = getSupabaseServiceClient();
+
+  // Posts are replaced wholesale on every save. Keep the "posted" stage of
+  // rows the form sent back with their existing id, so a CD edit after the
+  // VA posted does not wipe the live links.
+  const existingMap = await loadPostsForBriefIds([briefId]);
+  const existingById = new Map(
+    (existingMap.get(briefId) ?? []).map((p) => [p.id, p] as const),
+  );
+
   const { error: delErr } = await sb.from("posting_brief_posts").delete().eq("brief_id", briefId);
   if (delErr) throw new Error(delErr.message);
 
   if (!posts.length) return [];
 
   const now = new Date().toISOString();
-  const rows = posts.map((p, i) => ({
-    brief_id: briefId,
-    position: i,
-    video_name: p.video_name ?? "",
-    text_on_screen: p.text_on_screen ?? null,
-    caption: p.caption ?? "",
-    pinned_comment: p.pinned_comment ?? null,
-    notes: p.notes ?? null,
-    created_at: now,
-    updated_at: now,
-  }));
+  const rows = posts.map((p, i) => {
+    const prev = p.id ? existingById.get(p.id) : undefined;
+    return {
+      ...(prev ? { id: prev.id } : {}),
+      brief_id: briefId,
+      position: i,
+      video_name: p.video_name ?? "",
+      text_on_screen: p.text_on_screen ?? null,
+      caption: p.caption ?? "",
+      pinned_comment: p.pinned_comment ?? null,
+      notes: p.notes ?? null,
+      posted_url: prev?.posted_url ?? null,
+      posted_at: prev?.posted_at ?? null,
+      posted_by: prev?.posted_by ?? null,
+      placement: p.placement ?? prev?.placement ?? "grid",
+      content_source: p.content_source ?? prev?.content_source ?? "",
+      views_24h: prev?.views_24h ?? null,
+      views_checked_at: prev?.views_checked_at ?? null,
+      views_checked_by: null,
+      outlier_multiple: prev?.outlier_multiple ?? null,
+      outlier_status: prev?.outlier_status ?? "",
+      created_at: prev?.created_at || now,
+      updated_at: now,
+    };
+  });
 
   const { data, error } = await sb.from("posting_brief_posts").insert(rows).select("*");
   if (error) throw new Error(error.message);
@@ -366,6 +453,7 @@ export async function createPostingBrief(
       timing_notes: input.timing_notes ?? "",
       final_checklist: checklist,
       status: input.status ?? "active",
+      editing_brief_id: input.editing_brief_id ?? null,
       created_by: input.created_by ?? "",
       created_at: now,
       updated_at: now,
@@ -425,6 +513,7 @@ export async function updatePostingBrief(
   if (input.timing_notes !== undefined) patch.timing_notes = input.timing_notes;
   if (input.final_checklist !== undefined) patch.final_checklist = input.final_checklist;
   if (input.status !== undefined) patch.status = input.status;
+  if (input.editing_brief_id !== undefined) patch.editing_brief_id = input.editing_brief_id;
 
   const { data, error } = await sb
     .from("posting_briefs")
@@ -492,6 +581,7 @@ export async function duplicatePostingBrief(
       status: "active",
       created_by: createdBy,
       posts: source.posts.map((p) => ({
+        // No id on purpose: a duplicate starts unposted.
         video_name: p.video_name,
         text_on_screen: p.text_on_screen,
         caption: p.caption,
@@ -501,4 +591,118 @@ export async function duplicatePostingBrief(
     },
     { notify: true, actorUserId: opts?.actorUserId },
   );
+}
+
+async function notifyPostedToCreativeDirector(params: {
+  brief: PostingBrief;
+  post: PostingBriefPost;
+  actorUserId?: string;
+}): Promise<void> {
+  const { brief, post, actorUserId } = params;
+  const holders = await listUsersWithPermission(PERMISSIONS.POSTING_BRIEFS_MANAGE).catch(
+    () => [],
+  );
+  const ids = new Set(holders.map((u) => u.id).filter(Boolean));
+  if (brief.created_by) ids.add(brief.created_by);
+
+  const { posted, total } = postedSummary(brief);
+  const index = brief.posts.findIndex((p) => p.id === post.id);
+  const label = post.video_name?.trim() || `Post ${index >= 0 ? index + 1 : "?"}`;
+  const handle = brief.account_handle?.trim() || "account";
+  const title =
+    posted === total && total > 0
+      ? `All posts up: ${brief.title}`
+      : `Posted ${posted}/${total}: ${brief.title}`;
+  const body = `${label} is live on ${handle}${post.posted_url ? ` — ${post.posted_url}` : ""}`;
+
+  await Promise.all(
+    [...ids]
+      .filter((id) => id && id !== actorUserId)
+      .map((user_id) =>
+        notify({
+          user_id,
+          event_type: NOTIFICATION_EVENT.POSTING_BRIEF_POSTED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title,
+          body,
+          entity_type: NOTIFICATION_ENTITY.POSTING_BRIEF,
+          entity_id: brief.id,
+          actor_user_id: actorUserId,
+          _triggerSource: "posting_brief_posted",
+        }).catch((err) => console.error("[posting_brief_posted] notify failed", err)),
+      ),
+  );
+}
+
+function normalizePostedUrl(raw: string): string {
+  const v = raw.trim();
+  if (!v) throw new Error("Post link is required");
+  const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    throw new Error("Post link is not a valid URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Post link must be an http(s) URL");
+  }
+  if (withScheme.length > 2048) throw new Error("Post link is too long");
+  return parsed.toString();
+}
+
+/**
+ * Marketing Executive marks one post block of a brief as posted (live link).
+ * Notifies the Creative Director / posting_briefs:manage holders.
+ */
+export async function markPostingBriefPostPosted(params: {
+  briefId: string;
+  postId: string;
+  url: string;
+  actorUserId: string;
+}): Promise<PostingBrief> {
+  const brief = await getPostingBriefById(params.briefId);
+  if (!brief) throw new Error("Brief not found");
+  const target = brief.posts.find((p) => p.id === params.postId.trim());
+  if (!target) throw new Error("Post not found");
+
+  const url = normalizePostedUrl(params.url);
+  const sb = getSupabaseServiceClient();
+  const now = new Date().toISOString();
+  const { error } = await sb
+    .from("posting_brief_posts")
+    .update({ posted_url: url, posted_at: now, posted_by: params.actorUserId, updated_at: now })
+    .eq("id", target.id)
+    .eq("brief_id", brief.id);
+  if (error) throw new Error(error.message);
+
+  const updated = await getPostingBriefById(brief.id);
+  if (!updated) throw new Error("Brief not found");
+  const post = updated.posts.find((p) => p.id === target.id) ?? target;
+  await notifyPostedToCreativeDirector({ brief: updated, post, actorUserId: params.actorUserId });
+  return updated;
+}
+
+
+/** Undo a "posted" mark (wrong link, post removed). No notification. */
+export async function clearPostingBriefPostPosted(params: {
+  briefId: string;
+  postId: string;
+}): Promise<PostingBrief> {
+  const brief = await getPostingBriefById(params.briefId);
+  if (!brief) throw new Error("Brief not found");
+  const target = brief.posts.find((p) => p.id === params.postId.trim());
+  if (!target) throw new Error("Post not found");
+
+  const sb = getSupabaseServiceClient();
+  const { error } = await sb
+    .from("posting_brief_posts")
+    .update({ posted_url: null, posted_at: null, posted_by: null, updated_at: new Date().toISOString() })
+    .eq("id", target.id)
+    .eq("brief_id", brief.id);
+  if (error) throw new Error(error.message);
+
+  const updated = await getPostingBriefById(brief.id);
+  if (!updated) throw new Error("Brief not found");
+  return updated;
 }

@@ -24,7 +24,9 @@ export async function GET(
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const canManage = await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE);
-  const canSubmit = await hasPermission(session, PERMISSIONS.WINNER_SOURCING_SUBMIT);
+  const canSubmit =
+    (await hasPermission(session, PERMISSIONS.WINNER_SOURCING_SUBMIT)) ||
+    (await hasPermission(session, PERMISSIONS.EXPERIMENTAL_BUNCH_MANAGE));
   if (!canManage && !canSubmit) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

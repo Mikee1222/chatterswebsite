@@ -284,6 +284,8 @@ export function RecordingBriefForm({
     checklist_before_upload: draft.checklist_before_upload ?? "",
     upload_path: draft.upload_path ?? "",
     clip_naming: draft.clip_naming ?? "",
+    outfit_item_id: initial?.outfit_item_id ?? null,
+    location_item_id: initial?.location_item_id ?? null,
     status: status as RecordingBrief["status"],
     created_by: initial?.created_by ?? "",
     reminder_sent_at: null,

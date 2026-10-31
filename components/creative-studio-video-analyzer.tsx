@@ -8,16 +8,12 @@
 
 import * as React from "react";
 import { AlertTriangle, Film, Loader2 } from "lucide-react";
-import { aHashFromImageData } from "@/lib/video-frame-hash";
+import { MAX_VIDEO_SAMPLE_FRAMES, type VideoSamplingMeta } from "@/lib/video-frame-sampling";
 import {
-  blankReplacementOffsets,
-  clampSeekTime,
-  frameCountForDuration,
-  isTechnicallyBlankImageData,
-  MAX_VIDEO_SAMPLE_FRAMES,
-  sampleTimestamps,
-  type VideoSamplingMeta,
-} from "@/lib/video-frame-sampling";
+  extractFramesAtTimes,
+  sampleVideoFrames,
+  type SampledFrame,
+} from "@/lib/video-frame-extract";
 import {
   manualDescriptionToIdeaContext,
   NEUTRAL_ANALYSIS_REFUSAL_MESSAGE,
@@ -38,14 +34,6 @@ type Props = {
   disabled?: boolean;
 };
 
-type SampledFrame = {
-  jpeg: string;
-  hash: string;
-  timeSec: number;
-  previewUrl: string;
-  byteLength: number;
-};
-
 type PriorMatch = {
   date: string;
   similarity: number;
@@ -53,136 +41,6 @@ type PriorMatch = {
 };
 
 const MAX_SAMPLE_FRAMES = MAX_VIDEO_SAMPLE_FRAMES;
-const MAX_EDGE = 768;
-
-type CaptureResult = {
-  frame: SampledFrame;
-  /** True when ImageData variance was near-uniform (technical blank). */
-  blank: boolean;
-};
-
-async function captureAt(
-  video: HTMLVideoElement,
-  canvas: HTMLCanvasElement,
-  ctx: CanvasRenderingContext2D,
-  timeSec: number,
-): Promise<CaptureResult> {
-  await seek(video, timeSec);
-
-  const vw = video.videoWidth || 720;
-  const vh = video.videoHeight || 1280;
-  const scale = Math.min(1, MAX_EDGE / Math.max(vw, vh));
-  canvas.width = Math.max(1, Math.round(vw * scale));
-  canvas.height = Math.max(1, Math.round(vh * scale));
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
-  const b64 = dataUrl.replace(/^data:image\/\w+;base64,/, "");
-
-  let hash = "";
-  let blank = false;
-  const hashCanvas = document.createElement("canvas");
-  hashCanvas.width = 32;
-  hashCanvas.height = 32;
-  const hctx = hashCanvas.getContext("2d", { willReadFrequently: true });
-  if (hctx) {
-    hctx.drawImage(canvas, 0, 0, 32, 32);
-    const img = hctx.getImageData(0, 0, 32, 32);
-    hash = aHashFromImageData(img);
-    // Technical blank-frame check, not content filter.
-    blank = isTechnicallyBlankImageData(img);
-  }
-
-  return {
-    blank,
-    frame: {
-      jpeg: b64,
-      hash,
-      timeSec,
-      previewUrl: `data:image/jpeg;base64,${b64}`,
-      byteLength: b64.length,
-    },
-  };
-}
-
-async function extractFramesAtTimes(
-  file: File,
-  times: number[],
-  opts?: { replaceBlanks?: boolean },
-): Promise<{
-  frames: SampledFrame[];
-  duration: number;
-  blankFramesReplaced: number;
-  seekTimestamps: number[];
-}> {
-  const url = URL.createObjectURL(file);
-  try {
-    const video = document.createElement("video");
-    video.preload = "auto";
-    video.muted = true;
-    video.playsInline = true;
-    video.src = url;
-
-    await new Promise<void>((resolve, reject) => {
-      video.onloadedmetadata = () => resolve();
-      video.onerror = () => reject(new Error("Could not load video"));
-    });
-
-    const duration =
-      Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    if (!ctx) throw new Error("Canvas unsupported");
-
-    const frames: SampledFrame[] = [];
-    const seekTimestamps: number[] = [];
-    let blankFramesReplaced = 0;
-    const replaceBlanks = opts?.replaceBlanks !== false;
-
-    for (const t of times) {
-      let chosen = await captureAt(video, canvas, ctx, t);
-      let usedTime = t;
-
-      // Technical blank-frame check, not content filter — replace with nearest informative frame.
-      if (replaceBlanks && chosen.blank) {
-        for (const off of blankReplacementOffsets()) {
-          const alt = clampSeekTime(t + off, duration);
-          if (Math.abs(alt - t) < 0.04) continue;
-          const candidate = await captureAt(video, canvas, ctx, alt);
-          if (!candidate.blank) {
-            chosen = candidate;
-            usedTime = alt;
-            blankFramesReplaced += 1;
-            break;
-          }
-        }
-      }
-
-      frames.push({ ...chosen.frame, timeSec: usedTime });
-      seekTimestamps.push(usedTime);
-    }
-
-    return { frames, duration, blankFramesReplaced, seekTimestamps };
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function seek(video: HTMLVideoElement, time: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const onSeeked = () => {
-      video.removeEventListener("seeked", onSeeked);
-      resolve();
-    };
-    video.addEventListener("seeked", onSeeked);
-    video.onerror = () => reject(new Error("Seek failed"));
-    try {
-      video.currentTime = Math.min(Math.max(0, time), (video.duration || 1) - 0.05);
-    } catch (err) {
-      reject(err instanceof Error ? err : new Error("Seek failed"));
-    }
-  });
-}
 
 function formatTs(sec: number): string {
   const s = Math.max(0, sec);
@@ -351,43 +209,11 @@ export function CreativeStudioVideoAnalyzer({
     setSelected(new Set());
     setStatus("Extracting frames in browser…");
     try {
-      // Peek duration via a throwaway extract of timestamps
-      const probeUrl = URL.createObjectURL(file);
-      let dur = 1;
-      try {
-        const video = document.createElement("video");
-        video.preload = "metadata";
-        video.muted = true;
-        video.src = probeUrl;
-        await new Promise<void>((resolve, reject) => {
-          video.onloadedmetadata = () => resolve();
-          video.onerror = () => reject(new Error("Could not load video"));
-        });
-        dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
-      } finally {
-        URL.revokeObjectURL(probeUrl);
-      }
-
-      const count = frameCountForDuration(dur);
-      const times = sampleTimestamps(dur, count);
-      const {
-        frames: sampled,
-        duration: d,
-        blankFramesReplaced,
-        seekTimestamps,
-      } = await extractFramesAtTimes(file, times, { replaceBlanks: true });
+      const { frames: sampled, duration: d, meta } = await sampleVideoFrames(file);
       setDuration(d);
       setFrames(sampled);
       setSelected(new Set(sampled.map((_, i) => i)));
       setScrubTime(0);
-      const meta: VideoSamplingMeta = {
-        duration_sec: d,
-        seek_timestamps_sec: seekTimestamps,
-        frames_requested: count,
-        frames_analysed: sampled.length,
-        frame_byte_lengths: sampled.map((f) => f.byteLength),
-        blank_frames_replaced: blankFramesReplaced,
-      };
       setLastSamplingMeta(meta);
       await runAnalysis(sampled, meta);
     } catch {

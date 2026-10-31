@@ -87,6 +87,10 @@ export const PERMISSIONS = {
   /** Marketing Exec winner/superwinner sourcing + researcher bunch fill (distinct from Research). */
   WINNER_SOURCING_SUBMIT: "winner_sourcing:submit",
   WINNER_SOURCING_MANAGE: "winner_sourcing:manage",
+  /** Head of Marketing: fills the Experimental bunch (trends, risky ideas, own ideas). */
+  EXPERIMENTAL_BUNCH_MANAGE: "experimental_bunch:manage",
+  /** Content cycles (2 per month per model): caps, urgent slots, counters. */
+  CONTENT_CYCLES_MANAGE: "content_cycles:manage",
 
   CREATIVE_SCRIPTS_SUBMIT: "creative_scripts:submit",
   CREATIVE_SCRIPTS_MANAGE: "creative_scripts:manage",
@@ -286,6 +290,8 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   spotcheck: "Spot checks",
   winner_videos: "Winner videos",
   winner_sourcing: "Approved Ideas",
+  experimental_bunch: "Experimental Bunch",
+  content_cycles: "Content Cycles",
   creative_scripts: "Creative scripts",
   filming: "Filming",
   editing: "Editing",
@@ -418,6 +424,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "winner_sourcing:submit": "Υποβολή Winner/Super Winner και συμπλήρωση recreate slots σε bunches",
   "winner_sourcing:manage": "Διαχείριση Approved Ideas hub, queue και video bunches",
+  "experimental_bunch:manage": "Γέμισμα του Experimental bunch (trends, ρίσκο, δικές του ιδέες) — Head of Marketing",
+  "content_cycles:manage": "Κύκλοι περιεχομένου: caps, urgent slots, μετρητές ανά μοντέλο",
 
   "creative_scripts:submit": "Συγγραφή scripts για approved winner videos",
   "creative_scripts:manage": "Έλεγχος, επεξεργασία και έγκριση creative scripts",

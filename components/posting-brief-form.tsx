@@ -67,6 +67,8 @@ function newPostKey(): string {
 function emptyPost(): DraftPost {
   return {
     key: newPostKey(),
+    placement: "grid",
+    content_source: "",
     video_name: "",
     text_on_screen: "",
     caption: "",
@@ -140,6 +142,34 @@ function SortablePostRow({
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
             Post {index + 1}
           </p>
+          <select
+            value={post.placement ?? "grid"}
+            onChange={(e) => onChange({ ...post, placement: e.target.value === "trial" ? "trial" : "grid" })}
+            className={cn(VA_FILTER_INPUT, "h-8 py-0 text-xs")}
+            aria-label="Placement"
+            title="Grid = original goes to the profile grid. Trial = variation goes to trials."
+          >
+            <option value="grid">Grid</option>
+            <option value="trial">Trial</option>
+          </select>
+          <select
+            value={post.content_source ?? ""}
+            onChange={(e) =>
+              onChange({
+                ...post,
+                content_source: (["proven", "experimental", "recreation"].includes(e.target.value)
+                  ? e.target.value
+                  : "") as PostingBriefPostInput["content_source"],
+              })
+            }
+            className={cn(VA_FILTER_INPUT, "h-8 py-0 text-xs")}
+            aria-label="Content source"
+          >
+            <option value="">Source —</option>
+            <option value="proven">Proven</option>
+            <option value="experimental">Experimental</option>
+            <option value="recreation">Recreation</option>
+          </select>
         </div>
         {canRemove ? (
           <button
@@ -251,6 +281,8 @@ export function PostingBriefForm({
     initial?.posts?.length
       ? initial.posts.map((p) => ({
           key: p.id || newPostKey(),
+          placement: p.placement ?? "grid",
+          content_source: p.content_source ?? "",
           video_name: p.video_name,
           text_on_screen: p.text_on_screen ?? "",
           caption: p.caption,
@@ -288,6 +320,7 @@ export function PostingBriefForm({
   const buildInput = (): PostingBriefInput => ({
     title,
     model_id: modelId,
+    editing_brief_id: initial?.editing_brief_id ?? null,
     account_handle: accountHandle,
     account_type: accountType,
     region,
@@ -302,6 +335,10 @@ export function PostingBriefForm({
     timing_notes: timingNotes,
     final_checklist: checklistRaw.split("\n").filter((l) => l.length > 0 || l === ""),
     posts: posts.map((p) => ({
+      // Existing posts keep their id so the "posted" stage survives an edit.
+      ...(initial?.posts?.some((ip) => ip.id === p.key) ? { id: p.key } : {}),
+      placement: p.placement ?? "grid",
+      content_source: p.content_source ?? "",
       video_name: p.video_name ?? "",
       text_on_screen: p.text_on_screen || null,
       caption: p.caption ?? "",
@@ -329,6 +366,7 @@ export function PostingBriefForm({
     timing_notes: timingNotes,
     final_checklist: checklistRaw.split("\n").filter((l) => l.trim().length > 0),
     status: initial?.status ?? "active",
+    editing_brief_id: initial?.editing_brief_id ?? null,
     created_by: initial?.created_by ?? "",
     created_at: initial?.created_at ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -341,6 +379,15 @@ export function PostingBriefForm({
       caption: p.caption ?? "",
       pinned_comment: p.pinned_comment || null,
       notes: p.notes || null,
+      posted_url: null,
+      posted_at: null,
+      posted_by: null,
+      placement: p.placement ?? "grid",
+      content_source: p.content_source ?? "",
+      views_24h: null,
+      views_checked_at: null,
+      outlier_multiple: null,
+      outlier_status: "",
       created_at: "",
       updated_at: "",
     })),

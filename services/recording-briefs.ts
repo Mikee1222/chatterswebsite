@@ -23,6 +23,7 @@ import {
   listUsersWithPermission,
 } from "@/services/users";
 import type { NotificationPriority } from "@/types";
+import { markWardrobeItemsUsed } from "@/services/model-wardrobe";
 
 export type { RecordingBriefStatus };
 export type RecordingBriefPriority = "normal" | "urgent";
@@ -60,6 +61,9 @@ export type RecordingBrief = {
   checklist_before_upload: string;
   upload_path: string;
   clip_naming: string;
+  /** Wardrobe items chosen for this bunch (one outfit + one location). */
+  outfit_item_id: string | null;
+  location_item_id: string | null;
   status: RecordingBriefStatus;
   created_by: string;
   reminder_sent_at: string | null;
@@ -100,6 +104,8 @@ export type RecordingBriefInput = {
   checklist_before_upload?: string;
   upload_path?: string;
   clip_naming?: string;
+  outfit_item_id?: string | null;
+  location_item_id?: string | null;
   status?: RecordingBriefStatus;
   variations?: RecordingBriefVariationInput[];
   created_by?: string;
@@ -193,6 +199,8 @@ function mapBrief(
     checklist_before_upload: asString(row.checklist_before_upload),
     upload_path: asString(row.upload_path),
     clip_naming: asString(row.clip_naming),
+    outfit_item_id: asNullableString(row.outfit_item_id) || null,
+    location_item_id: asNullableString(row.location_item_id) || null,
     status: (asString(row.status) || "draft") as RecordingBriefStatus,
     created_by: asString(row.created_by),
     reminder_sent_at: asNullableString(row.reminder_sent_at),
@@ -414,6 +422,8 @@ function rowFromInput(input: RecordingBriefInput, createdBy?: string): Record<st
     checklist_before_upload: input.checklist_before_upload ?? "",
     upload_path: input.upload_path ?? "",
     clip_naming: input.clip_naming ?? "",
+    outfit_item_id: input.outfit_item_id ?? null,
+    location_item_id: input.location_item_id ?? null,
     status: input.status ?? "draft",
     ...(createdBy != null ? { created_by: createdBy } : {}),
     updated_at: new Date().toISOString(),
@@ -438,6 +448,7 @@ export async function createRecordingBrief(
 
   if (opts?.notify && brief.status === "published") {
     await notifyCreator({ brief, event: "published", actorUserId: opts.actorUserId });
+    await markWardrobeItemsUsed([brief.outfit_item_id, brief.location_item_id], brief.id).catch(() => null);
   }
   return brief;
 }
@@ -476,6 +487,9 @@ export async function updateRecordingBrief(
     checklist_before_upload: input.checklist_before_upload ?? existing.checklist_before_upload,
     upload_path: input.upload_path ?? existing.upload_path,
     clip_naming: input.clip_naming ?? existing.clip_naming,
+    outfit_item_id: input.outfit_item_id !== undefined ? input.outfit_item_id : existing.outfit_item_id,
+    location_item_id:
+      input.location_item_id !== undefined ? input.location_item_id : existing.location_item_id,
     status: input.status ?? existing.status,
     variations: input.variations,
   };
@@ -519,6 +533,9 @@ export async function updateRecordingBrief(
   const editedWhileActive =
     existing.status === "published" && brief.status === "published";
 
+  if (becamePublished) {
+    await markWardrobeItemsUsed([brief.outfit_item_id, brief.location_item_id], brief.id).catch(() => null);
+  }
   if (opts?.notify) {
     if (becamePublished) {
       await notifyCreator({ brief, event: "published", actorUserId: opts.actorUserId });
@@ -577,6 +594,7 @@ export async function transitionRecordingBriefStatus(params: {
 
   if (params.to === "published" && existing.status !== "published") {
     await notifyCreator({ brief, event: "published", actorUserId: params.actorUserId });
+    await markWardrobeItemsUsed([brief.outfit_item_id, brief.location_item_id], brief.id).catch(() => null);
   }
   if (params.to === "uploaded") {
     await notifyManageHolders({ brief, event: "uploaded", actorUserId: params.actorUserId });

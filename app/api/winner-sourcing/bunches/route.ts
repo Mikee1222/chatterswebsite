@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createVideoBunch, listVideoBunches } from "@/services/winner-sourcing";
-import { coerceBunchStatus } from "@/lib/winner-sourcing-helpers";
+import { coerceBunchKind, coerceBunchStatus } from "@/lib/winner-sourcing-helpers";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -11,7 +11,8 @@ export async function GET(req: Request) {
   const canManage = await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE);
   const canReview = await hasPermission(session, PERMISSIONS.WINNER_VIDEOS_MANAGE);
   const canSubmit = await hasPermission(session, PERMISSIONS.WINNER_SOURCING_SUBMIT);
-  if (!canManage && !canReview && !canSubmit) {
+  const canHom = await hasPermission(session, PERMISSIONS.EXPERIMENTAL_BUNCH_MANAGE);
+  if (!canManage && !canReview && !canSubmit && !canHom) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -45,6 +46,7 @@ export async function POST(req: Request) {
       target_video_count: Number(body.target_video_count) || 30,
       created_by_id: session.airtableUserId ?? session.id,
       created_by_name: (session.fullName || session.email || "").trim(),
+      kind: coerceBunchKind(body.kind),
     });
     return NextResponse.json({ bunch });
   } catch (e) {
