@@ -147,15 +147,28 @@ export async function POST(req: Request) {
     }
   }
 
-  const row = await upsertFlagInformed({
-    review_date: date,
-    va_id: vaId,
-    va_name: body.va_name?.trim() || scope.va_name,
-    informed_by: spotCheckManagerId(session),
-    informed_by_name: spotCheckManagerName(session),
-  });
-
-  return NextResponse.json({ informed: row });
+  try {
+    const row = await upsertFlagInformed({
+      review_date: date,
+      va_id: vaId,
+      va_name: body.va_name?.trim() || scope.va_name,
+      informed_by: spotCheckManagerId(session),
+      informed_by_name: spotCheckManagerName(session),
+    });
+    return NextResponse.json({ informed: row });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Could not mark informed";
+    const missing =
+      /daily_review_flag_informed|schema cache|does not exist/i.test(msg);
+    return NextResponse.json(
+      {
+        error: missing
+          ? "Informed tracking table is not applied yet — run migration 20261101180000_daily_review_flag_informed"
+          : msg,
+      },
+      { status: missing ? 503 : 500 },
+    );
+  }
 }
 
 export async function DELETE(req: Request) {
