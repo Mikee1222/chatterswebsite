@@ -37,6 +37,7 @@ export function useDailyReviewFilters(
         window.location.search.includes("platforms=") ||
         window.location.search.includes("item_types=") ||
         window.location.search.includes("evidence=") ||
+        window.location.search.includes("informed=") ||
         window.location.search.includes("q=") ||
         window.location.search.includes("sort=") ||
         window.location.search.includes("preset=");

@@ -28,6 +28,10 @@ const FALLBACK_ROLE_LABELS: Record<string, string> = {
 };
 import { taskMatchesAthensYmd } from "@/lib/va-task-date-filter";
 import {
+  listFlagInformedForDate,
+  type DailyReviewFlagInformed,
+} from "@/services/daily-review-flag-informed";
+import {
   listVerificationsForReview,
   listVerificationsForReviews,
   type DailyReviewItemVerification,
@@ -87,6 +91,12 @@ export interface DailyReviewChecklistTask {
   items: DailyReviewChecklistItem[];
 }
 
+export type DailyReviewVaInformed = {
+  informed_by: string;
+  informed_by_name: string;
+  informed_at: string;
+};
+
 export interface DailyReviewChecklistVa {
   va_id: string;
   va_name: string;
@@ -102,6 +112,8 @@ export interface DailyReviewChecklistVa {
     unverified: number;
     overdue: number;
   };
+  /** Set when a reviewer marked this person informed for the day. */
+  informed: DailyReviewVaInformed | null;
 }
 
 export interface DailyReviewChecklistSummary {
@@ -170,6 +182,7 @@ export interface DailyReviewChecklistVaShared {
     >;
   }>;
   stats: DailyReviewChecklistVa["stats"];
+  informed: DailyReviewVaInformed | null;
 }
 
 function emptySummary(): DailyReviewChecklistSummary {
@@ -440,6 +453,7 @@ function groupByVa(
           unverified: 0,
           overdue: 0,
         },
+        informed: null,
       });
     }
   }
@@ -500,19 +514,33 @@ export async function getDailyReviewChecklistForDate(params: {
     taskId: t.id,
     sourceTaskId: t.virtual_source_task_id ?? null,
   }));
-  const [phasesByTask, verifications] = await Promise.all([
+  const [phasesByTask, verifications, informedRows] = await Promise.all([
     getPhasesForTasksDisplay(phaseSpecs),
     params.reviewId
       ? listVerificationsForReview(params.reviewId).catch(() => [])
       : Promise.resolve([] as DailyReviewItemVerification[]),
+    listFlagInformedForDate(date).catch(() => [] as DailyReviewFlagInformed[]),
   ]);
 
   const nameMap = buildNameMap([], tasks, phasesByTask);
   const verificationByItem = new Map(verifications.map((v) => [v.task_phase_item_id, v]));
   const roleByUserId = await loadRoleMaps(tasks, phasesByTask);
+  const informedByVa = new Map(
+    informedRows.map((r) => [
+      r.va_id,
+      {
+        informed_by: r.informed_by,
+        informed_by_name: r.informed_by_name,
+        informed_at: r.informed_at,
+      } satisfies DailyReviewVaInformed,
+    ]),
+  );
 
   const fullVas = await ensureChecklistScreenshotsSigned(
-    groupByVa(tasks, phasesByTask, nameMap, verificationByItem, roleByUserId),
+    groupByVa(tasks, phasesByTask, nameMap, verificationByItem, roleByUserId).map((va) => ({
+      ...va,
+      informed: informedByVa.get(va.va_id) ?? null,
+    })),
   );
   const facets = buildDailyReviewFacets(fullVas);
   const scope = scopeFromVas(fullVas);
@@ -619,6 +647,7 @@ export async function getAdminDailyReviewChecklistForDate(params: {
       primary_model_name: va.primary_model_name,
       tasks,
       stats: { total_items, va_completed, verified, flagged, unverified, overdue },
+      informed: va.informed ?? null,
     };
   });
 

@@ -5,7 +5,7 @@ import {
   emptyDailyReviewFilters,
   parseDailyReviewFilters,
 } from "@/lib/daily-review-filters";
-import { todayReviewIso } from "@/lib/marketing-reviews-helpers";
+import { spotCheckManagerName, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { getAdminDailyReviewChecklistForDate } from "@/services/daily-review-checklist";
 import { getDailyReviews } from "@/services/marketing-reviews";
 import { AdminDailyReviewClient } from "@/components/admin-daily-review-client";
@@ -55,7 +55,11 @@ export default async function AdminDailyReviewPage({
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <AdminDailyReviewClient initialReviews={reviews} initialChecklist={checklist} />
+      <AdminDailyReviewClient
+        initialReviews={reviews}
+        initialChecklist={checklist}
+        senderFullName={spotCheckManagerName(user!)}
+      />
     </div>
   );
 }

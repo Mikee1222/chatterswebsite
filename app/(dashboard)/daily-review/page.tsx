@@ -88,6 +88,7 @@ export default async function DailyReviewSubmitPage({
         initialSubmissions={mySubmissions}
         initialChecklist={initialChecklist}
         initialReview={todayRow}
+        senderFullName={managerName}
       />
     </div>
   );

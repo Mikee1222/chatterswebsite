@@ -31,8 +31,12 @@ export const DAILY_REVIEW_PRESETS = [
   "flagged",
   "incomplete",
   "missing_screenshots",
+  "not_informed",
 ] as const;
 export type DailyReviewPreset = (typeof DAILY_REVIEW_PRESETS)[number];
+
+export const DAILY_REVIEW_INFORMED = ["not_informed", "informed"] as const;
+export type DailyReviewInformedFilter = (typeof DAILY_REVIEW_INFORMED)[number];
 
 export type DailyReviewFilters = {
   roles: string[];
@@ -44,6 +48,8 @@ export type DailyReviewFilters = {
   platforms: DailyReviewPlatform[];
   item_types: TaskStepType[];
   evidence: DailyReviewEvidenceFilter | "";
+  /** Person-level: flagged people who were / were not marked informed for the day. */
+  informed: DailyReviewInformedFilter | "";
   q: string;
   sort: DailyReviewSort;
   preset: DailyReviewPreset | "";
@@ -70,6 +76,7 @@ export const EMPTY_DAILY_REVIEW_FILTERS: DailyReviewFilters = {
   platforms: [],
   item_types: [],
   evidence: "",
+  informed: "",
   q: "",
   sort: "person",
   preset: "",
@@ -136,7 +143,17 @@ export function inferDailyReviewPlatform(text: string): DailyReviewPlatform | nu
 }
 
 export function emptyDailyReviewFilters(): DailyReviewFilters {
-  return { ...EMPTY_DAILY_REVIEW_FILTERS, roles: [], people: [], models: [], review_status: [], task_state: [], phases: [], platforms: [], item_types: [] };
+  return {
+    ...EMPTY_DAILY_REVIEW_FILTERS,
+    roles: [],
+    people: [],
+    models: [],
+    review_status: [],
+    task_state: [],
+    phases: [],
+    platforms: [],
+    item_types: [],
+  };
 }
 
 export function hasActiveDailyReviewFilters(filters: DailyReviewFilters): boolean {
@@ -150,6 +167,7 @@ export function hasActiveDailyReviewFilters(filters: DailyReviewFilters): boolea
     filters.platforms.length > 0 ||
     filters.item_types.length > 0 ||
     Boolean(filters.evidence) ||
+    Boolean(filters.informed) ||
     Boolean(filters.q.trim()) ||
     Boolean(filters.preset) ||
     filters.sort !== "person"
@@ -185,6 +203,8 @@ export function parseDailyReviewFilters(
     .filter((s): s is TaskStepType => Boolean(s));
   const evidence = asMember(get("evidence").trim(), DAILY_REVIEW_EVIDENCE);
   filters.evidence = evidence ?? "";
+  const informed = asMember(get("informed").trim(), DAILY_REVIEW_INFORMED);
+  filters.informed = informed ?? "";
   filters.q = get("q").trim().slice(0, 200);
   filters.sort = asMember(get("sort").trim(), DAILY_REVIEW_SORTS) ?? "person";
   filters.preset = asMember(get("preset").trim(), DAILY_REVIEW_PRESETS) ?? "";
@@ -208,6 +228,10 @@ export function applyDailyReviewPreset(filters: DailyReviewFilters): DailyReview
     case "missing_screenshots":
       next.evidence = "missing";
       break;
+    case "not_informed":
+      next.review_status = ["flagged"];
+      next.informed = "not_informed";
+      break;
   }
   return next;
 }
@@ -219,6 +243,7 @@ export function serializeDailyReviewFilters(filters: DailyReviewFilters): URLSea
     if (values.length) params.set(key, values.join(","));
   }
   if (filters.evidence) params.set("evidence", filters.evidence);
+  if (filters.informed) params.set("informed", filters.informed);
   if (filters.q.trim()) params.set("q", filters.q.trim());
   if (filters.sort && filters.sort !== "person") params.set("sort", filters.sort);
   if (filters.preset) params.set("preset", filters.preset);
@@ -426,7 +451,7 @@ export function filterDailyReviewVas(
     }
     if (!tasks.length) continue;
     const stats = computeStatsFromTasks(tasks);
-    out.push({
+    const nextVa: DailyReviewChecklistVa = {
       ...va,
       tasks,
       stats: {
@@ -437,9 +462,26 @@ export function filterDailyReviewVas(
         unverified: stats.unverified,
         overdue: stats.overdue,
       },
-    });
+    };
+    if (!vaMatchesInformedFilter(nextVa, effective.informed)) continue;
+    out.push(nextVa);
   }
   return sortVas(out, filters.sort);
+}
+
+function vaMatchesInformedFilter(
+  va: VaLike,
+  informed: DailyReviewInformedFilter | "",
+): boolean {
+  if (!informed) return true;
+  const isInformed = Boolean(
+    "informed" in va && va.informed && (va.informed as { informed_at?: string }).informed_at,
+  );
+  if (informed === "not_informed") {
+    // Only people with flags who have not been marked informed.
+    return va.stats.flagged > 0 && !isInformed;
+  }
+  return isInformed;
 }
 
 export function filterDailyReviewSharedVas(
@@ -472,7 +514,7 @@ export function filterDailyReviewSharedVas(
     }
     if (!tasks.length) continue;
     const stats = computeSharedStats(tasks);
-    out.push({
+    const nextVa: DailyReviewChecklistVaShared = {
       ...va,
       tasks,
       stats: {
@@ -483,7 +525,9 @@ export function filterDailyReviewSharedVas(
         unverified: stats.unverified,
         overdue: stats.overdue,
       },
-    });
+    };
+    if (!vaMatchesInformedFilter(nextVa, effective.informed)) continue;
+    out.push(nextVa);
   }
   return sortVas(out, filters.sort);
 }
@@ -632,6 +676,7 @@ export function writeStoredDailyReviewFilters(
       platforms: filters.platforms,
       item_types: filters.item_types,
       evidence: filters.evidence,
+      informed: filters.informed,
       q: filters.q,
       sort: filters.sort,
       preset: filters.preset,

@@ -36,6 +36,7 @@ const PRESET_LABELS: Record<DailyReviewPreset, string> = {
   flagged: "Flagged",
   incomplete: "Incomplete",
   missing_screenshots: "Missing screenshots",
+  not_informed: "Not informed yet",
 };
 
 const SORT_OPTIONS: CustomSelectOption[] = [
@@ -319,6 +320,13 @@ export function DailyReviewFiltersBar({ filters, facets, onChange, className }: 
       clear: () => patch({ evidence: "" }),
     });
   }
+  if (filters.informed) {
+    chips.push({
+      key: "informed",
+      label: filters.informed === "not_informed" ? "Not informed yet" : "Informed",
+      clear: () => patch({ informed: "" }),
+    });
+  }
   if (filters.q.trim()) {
     chips.push({
       key: "q",
@@ -425,6 +433,20 @@ export function DailyReviewFiltersBar({ filters, facets, onChange, className }: 
         onChange={(vals) => {
           const last = vals[vals.length - 1] as DailyReviewFilters["evidence"] | undefined;
           patch({ evidence: last === "has" || last === "missing" ? last : "" });
+        }}
+      />
+      <MultiCheckDropdown
+        label="Informed"
+        options={[
+          { value: "not_informed", label: "Not informed yet" },
+          { value: "informed", label: "Informed" },
+        ]}
+        selected={filters.informed ? [filters.informed] : []}
+        onChange={(vals) => {
+          const last = vals[vals.length - 1] as DailyReviewFilters["informed"] | undefined;
+          patch({
+            informed: last === "not_informed" || last === "informed" ? last : "",
+          });
         }}
       />
       <div className="min-w-[10rem]">

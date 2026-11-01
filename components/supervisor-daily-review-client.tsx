@@ -5,12 +5,14 @@ import {
   AlertTriangle,
   CalendarCheck,
   Flag,
+  MessageSquare,
   Paperclip,
 } from "lucide-react";
 import {
   DailyReviewChecklistPanel,
   DailyReviewVaSummaryChips,
 } from "@/components/daily-review-checklist-panel";
+import { DailyReviewMessagesForAllPanel } from "@/components/daily-review-flag-message-panel";
 import { DailyReviewFiltersBar } from "@/components/daily-review-filters";
 import {
   ListPagination,
@@ -43,10 +45,13 @@ import { cn } from "@/lib/utils";
 import type {
   DailyReviewChecklistItem,
   DailyReviewChecklistPayload,
+  DailyReviewChecklistVa,
+  DailyReviewChecklistVaShared,
 } from "@/services/daily-review-checklist";
 import type { MarketingDailyReview } from "@/services/marketing-reviews";
 
 const API_BASE = "/api/daily-reviews";
+const INFORMED_API = "/api/daily-reviews/flag-informed";
 const HISTORY_PAGE_SIZE = 12;
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
@@ -70,12 +75,14 @@ type Props = {
   initialSubmissions: MarketingDailyReview[];
   initialChecklist: DailyReviewChecklistPayload;
   initialReview: MarketingDailyReview | null;
+  senderFullName: string;
 };
 
 export function SupervisorDailyReviewClient({
   initialSubmissions,
   initialChecklist,
   initialReview,
+  senderFullName,
 }: Props) {
   const { addToast } = useToast();
   const [myReviews, setMyReviews] = React.useState(initialSubmissions);
@@ -85,6 +92,8 @@ export function SupervisorDailyReviewClient({
   const [loading, setLoading] = React.useState(false);
   const [savingNotes, setSavingNotes] = React.useState(false);
   const [busyItemId, setBusyItemId] = React.useState<string | null>(null);
+  const [markingInformedVaId, setMarkingInformedVaId] = React.useState<string | null>(null);
+  const [messagesForAllOpen, setMessagesForAllOpen] = React.useState(false);
   const [issues, setIssues] = React.useState(initialReview?.issues_found ?? "");
   const [actions, setActions] = React.useState(initialReview?.actions_assigned ?? "");
   const { filters, setFilters } = useDailyReviewFilters(
@@ -157,7 +166,12 @@ export function SupervisorDailyReviewClient({
   reloadHistoryRef.current = reloadHistory;
 
   useSupabaseRealtimeRefresh(
-    ["marketing_daily_reviews", "daily_review_item_verifications", "va_task_phase_items"],
+    [
+      "marketing_daily_reviews",
+      "daily_review_item_verifications",
+      "daily_review_flag_informed",
+      "va_task_phase_items",
+    ],
     () => {
       void reloadHistoryRef.current();
       void loadDate(selectedDateRef.current);
@@ -286,6 +300,34 @@ export function SupervisorDailyReviewClient({
     }
   }
 
+  async function markInformed(va: DailyReviewChecklistVa | DailyReviewChecklistVaShared) {
+    setMarkingInformedVaId(va.va_id);
+    try {
+      const res = await fetch(INFORMED_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: selectedDate,
+          va_id: va.va_id,
+          va_name: va.va_name,
+        }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        addToast(
+          localToast(`dr-inf-${Date.now()}`, "Failed", data.error ?? "Could not mark informed", "high"),
+        );
+        return;
+      }
+      await loadDate(selectedDate);
+      addToast(localToast(`dr-inf-ok-${Date.now()}`, "Informed", `${va.va_name} marked informed.`, "normal"));
+    } finally {
+      setMarkingInformedVaId(null);
+    }
+  }
+
+  const flaggedPeople = checklist.vas.filter((v) => v.stats.flagged > 0).length;
+
   return (
     <div className="mx-auto max-w-4xl space-y-6 md:space-y-8">
       <div>
@@ -371,6 +413,19 @@ export function SupervisorDailyReviewClient({
         onChange={setFilters}
       />
 
+      {flaggedPeople > 0 ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setMessagesForAllOpen(true)}
+            className={cn(VA_BTN_SECONDARY, "inline-flex min-h-10 items-center gap-2 px-3 text-xs")}
+          >
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+            Messages for all ({flaggedPeople})
+          </button>
+        </div>
+      ) : null}
+
       {loading ? (
         <ReviewLoadingState />
       ) : (
@@ -382,6 +437,11 @@ export function SupervisorDailyReviewClient({
             onVerify={(item, va) => void setItemStatus(item, va, "verified")}
             onFlag={(item, va) => void setItemStatus(item, va, "flagged_not_done")}
             onClear={(item) => void clearItem(item)}
+            canMessage
+            reviewDate={selectedDate}
+            senderFullName={senderFullName}
+            markingInformedVaId={markingInformedVaId}
+            onMarkInformed={(va) => void markInformed(va)}
           />
 
           <section className={cn(VA_CARD, "space-y-4 p-4 md:p-5")}>
@@ -484,6 +544,16 @@ export function SupervisorDailyReviewClient({
           {summary.flagged} flagged item{summary.flagged === 1 ? "" : "s"} on this day
         </p>
       ) : null}
+
+      <DailyReviewMessagesForAllPanel
+        open={messagesForAllOpen}
+        onClose={() => setMessagesForAllOpen(false)}
+        vas={checklist.vas}
+        reviewDate={selectedDate}
+        senderFullName={senderFullName}
+        markingVaId={markingInformedVaId}
+        onMarkInformed={(va) => void markInformed(va)}
+      />
     </div>
   );
 }

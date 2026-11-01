@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarCheck,
   Flag,
+  MessageSquare,
   Trophy,
   Users,
 } from "lucide-react";
@@ -12,6 +13,7 @@ import {
   DailyReviewChecklistPanel,
   DailyReviewVaSummaryChips,
 } from "@/components/daily-review-checklist-panel";
+import { DailyReviewMessagesForAllPanel } from "@/components/daily-review-flag-message-panel";
 import { DailyReviewFiltersBar } from "@/components/daily-review-filters";
 import {
   ListPagination,
@@ -42,11 +44,16 @@ import { useDailyReviewFilters } from "@/lib/hooks/use-daily-review-filters";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { formatReviewDate, isoDateDaysAgo, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
-import type { AdminDailyReviewChecklistPayload } from "@/services/daily-review-checklist";
+import type {
+  AdminDailyReviewChecklistPayload,
+  DailyReviewChecklistVa,
+  DailyReviewChecklistVaShared,
+} from "@/services/daily-review-checklist";
 import type { MarketingDailyReview } from "@/services/marketing-reviews";
 import { DailyReviewAiSummary } from "@/components/daily-review-ai-summary";
 
 const API_BASE = "/api/admin/marketing-reviews/daily-reviews";
+const INFORMED_API = "/api/daily-reviews/flag-informed";
 const HISTORY_PAGE_SIZE = 12;
 
 type ViewMode = "team" | "supervisor" | "va";
@@ -71,9 +78,14 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
 type Props = {
   initialReviews: MarketingDailyReview[];
   initialChecklist: AdminDailyReviewChecklistPayload;
+  senderFullName: string;
 };
 
-export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Props) {
+export function AdminDailyReviewClient({
+  initialReviews,
+  initialChecklist,
+  senderFullName,
+}: Props) {
   const { addToast } = useToast();
   const [reviews, setReviews] = React.useState(initialReviews);
   const [selectedDate, setSelectedDate] = React.useState(initialChecklist.date || todayReviewIso());
@@ -84,6 +96,8 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
   const [focusVaId, setFocusVaId] = React.useState("");
   const [filterSupervisor, setFilterSupervisor] = React.useState("");
   const [filterDateRange, setFilterDateRange] = React.useState<"all" | "7d" | "30d">("all");
+  const [markingInformedVaId, setMarkingInformedVaId] = React.useState<string | null>(null);
+  const [messagesForAllOpen, setMessagesForAllOpen] = React.useState(false);
   const { filters, setFilters } = useDailyReviewFilters(
     "manage",
     initialChecklist.filters ?? emptyDailyReviewFilters(),
@@ -159,7 +173,12 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
   reloadHistoryRef.current = reloadHistory;
 
   useSupabaseRealtimeRefresh(
-    ["marketing_daily_reviews", "daily_review_item_verifications", "va_task_phase_items"],
+    [
+      "marketing_daily_reviews",
+      "daily_review_item_verifications",
+      "daily_review_flag_informed",
+      "va_task_phase_items",
+    ],
     () => {
       void reloadHistoryRef.current();
       void loadChecklist(selectedDateRef.current);
@@ -236,6 +255,34 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
     }
     return out;
   }, [checklist.shared_vas]);
+
+  async function markInformed(va: DailyReviewChecklistVa | DailyReviewChecklistVaShared) {
+    setMarkingInformedVaId(va.va_id);
+    try {
+      const res = await fetch(INFORMED_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: selectedDate,
+          va_id: va.va_id,
+          va_name: va.va_name,
+        }),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        addToast(
+          localToast(`adr-inf-${Date.now()}`, "Failed", data.error ?? "Could not mark informed", "high"),
+        );
+        return;
+      }
+      await loadChecklist(selectedDate);
+      addToast(localToast(`adr-inf-ok-${Date.now()}`, "Informed", `${va.va_name} marked informed.`, "normal"));
+    } finally {
+      setMarkingInformedVaId(null);
+    }
+  }
+
+  const flaggedPeople = panelVas.filter((v) => v.stats.flagged > 0).length;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 md:space-y-8">
@@ -465,6 +512,19 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
 
       <DailyReviewVaSummaryChips vas={checklist.shared_vas} />
 
+      {flaggedPeople > 0 && !(viewMode === "supervisor" && !focusSupervisorKey) && !(viewMode === "va" && !focusVaId) ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => setMessagesForAllOpen(true)}
+            className={cn(VA_BTN_SECONDARY, "inline-flex min-h-10 items-center gap-2 px-3 text-xs")}
+          >
+            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
+            Messages for all ({flaggedPeople})
+          </button>
+        </div>
+      ) : null}
+
       {loading ? (
         <ReviewLoadingState />
       ) : viewMode === "supervisor" && !focusSupervisorKey ? (
@@ -485,6 +545,11 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
           checklist={null}
           sharedVas={panelVas as AdminDailyReviewChecklistPayload["shared_vas"]}
           readOnly
+          canMessage
+          reviewDate={selectedDate}
+          senderFullName={senderFullName}
+          markingInformedVaId={markingInformedVaId}
+          onMarkInformed={(va) => void markInformed(va)}
         />
       )}
 
@@ -579,6 +644,16 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
       <p className="text-center text-xs text-[#B8B4B8]/40">
         Checkmarks and flags are supervisor QA overlays — they do not auto-create Mistakes.
       </p>
+
+      <DailyReviewMessagesForAllPanel
+        open={messagesForAllOpen}
+        onClose={() => setMessagesForAllOpen(false)}
+        vas={panelVas as AdminDailyReviewChecklistPayload["shared_vas"]}
+        reviewDate={selectedDate}
+        senderFullName={senderFullName}
+        markingVaId={markingInformedVaId}
+        onMarkInformed={(va) => void markInformed(va)}
+      />
     </div>
   );
 }

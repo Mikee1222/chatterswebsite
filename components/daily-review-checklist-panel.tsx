@@ -3,6 +3,11 @@
 import * as React from "react";
 import { Check, ChevronDown, ClipboardList, Flag, ImageIcon, RotateCcw, X } from "lucide-react";
 import {
+  DailyReviewFlagMessageDraft,
+  DailyReviewMessageButton,
+  DailyReviewMessageSheet,
+} from "@/components/daily-review-flag-message-panel";
+import {
   ReviewEmptyState,
   ReviewSectionHeader,
   VA_BTN_PRIMARY,
@@ -35,6 +40,12 @@ type Props = {
   onFlag?: (item: DailyReviewChecklistItem, va: { va_id: string; va_name: string }) => void;
   onClear?: (item: DailyReviewChecklistItem) => void;
   readOnly?: boolean;
+  /** Same gate as flagging: submit (supervisor) or manage (admin). */
+  canMessage?: boolean;
+  reviewDate?: string;
+  senderFullName?: string;
+  markingInformedVaId?: string | null;
+  onMarkInformed?: (va: DailyReviewChecklistVa | DailyReviewChecklistVaShared) => void;
 };
 
 type ChecklistTaskLike = DailyReviewChecklistTask | DailyReviewChecklistVaShared["tasks"][number];
@@ -416,6 +427,21 @@ function TaskGroup({
   );
 }
 
+function formatInformedBadge(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      day: "numeric",
+      month: "short",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 function VaBlock({
   va,
   mode,
@@ -424,6 +450,11 @@ function VaBlock({
   onVerify,
   onFlag,
   onClear,
+  canMessage,
+  reviewDate,
+  senderFullName,
+  markingInformed,
+  onMarkInformed,
 }: {
   va: DailyReviewChecklistVa | DailyReviewChecklistVaShared;
   mode: Mode;
@@ -432,8 +463,16 @@ function VaBlock({
   onVerify?: Props["onVerify"];
   onFlag?: Props["onFlag"];
   onClear?: Props["onClear"];
+  canMessage?: boolean;
+  reviewDate?: string;
+  senderFullName?: string;
+  markingInformed?: boolean;
+  onMarkInformed?: Props["onMarkInformed"];
 }) {
   const flaggedCount = va.stats.flagged;
+  const [messageOpen, setMessageOpen] = React.useState(false);
+  const showMessage = Boolean(canMessage && flaggedCount > 0 && reviewDate && senderFullName);
+
   return (
     <section
       className={cn(
@@ -443,13 +482,26 @@ function VaBlock({
       )}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <h3 className="text-lg font-semibold text-white">{va.va_name}</h3>
           <p className="mt-0.5 text-xs text-[#B8B4B8]/50">{formatVaBreakdownLine(va)}</p>
+          {va.informed ? (
+            <p className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-sky-500/35 bg-sky-500/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sky-200">
+              Informed · {formatInformedBadge(va.informed.informed_at)}
+            </p>
+          ) : null}
         </div>
-        <span className={VA_MODEL_TAG}>
-          {va.stats.va_completed}/{va.stats.total_items} VA completed
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {showMessage ? (
+            <DailyReviewMessageButton
+              flaggedCount={flaggedCount}
+              onClick={() => setMessageOpen(true)}
+            />
+          ) : null}
+          <span className={VA_MODEL_TAG}>
+            {va.stats.va_completed}/{va.stats.total_items} VA completed
+          </span>
+        </div>
       </div>
       <div className={VA_CHAMPAGNE_DIVIDER} />
       <div className="space-y-3">
@@ -467,6 +519,23 @@ function VaBlock({
           />
         ))}
       </div>
+
+      {showMessage ? (
+        <DailyReviewMessageSheet
+          open={messageOpen}
+          onClose={() => setMessageOpen(false)}
+          title={`Message · ${va.va_name}`}
+        >
+          <DailyReviewFlagMessageDraft
+            va={va}
+            reviewDate={reviewDate!}
+            senderFullName={senderFullName!}
+            informed={va.informed ?? null}
+            marking={markingInformed}
+            onMarkInformed={onMarkInformed ? () => onMarkInformed(va) : undefined}
+          />
+        </DailyReviewMessageSheet>
+      ) : null}
     </section>
   );
 }
@@ -480,6 +549,11 @@ export function DailyReviewChecklistPanel({
   onFlag,
   onClear,
   readOnly,
+  canMessage,
+  reviewDate,
+  senderFullName,
+  markingInformedVaId,
+  onMarkInformed,
 }: Props) {
   const vas = sharedVas ?? checklist?.vas ?? [];
   if (!checklist && !sharedVas) return null;
@@ -494,6 +568,8 @@ export function DailyReviewChecklistPanel({
   }
 
   const flaggedFirst = [...vas].sort((a, b) => b.stats.flagged - a.stats.flagged || a.va_name.localeCompare(b.va_name));
+  const date = reviewDate ?? checklist?.date ?? "";
+  const messagingEnabled = Boolean(canMessage);
 
   return (
     <div className="space-y-4">
@@ -510,6 +586,11 @@ export function DailyReviewChecklistPanel({
           onVerify={onVerify}
           onFlag={onFlag}
           onClear={onClear}
+          canMessage={messagingEnabled}
+          reviewDate={date}
+          senderFullName={senderFullName}
+          markingInformed={markingInformedVaId === va.va_id}
+          onMarkInformed={onMarkInformed}
         />
       ))}
       {mode === "supervisor" && !readOnly ? (
