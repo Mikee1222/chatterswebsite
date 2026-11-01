@@ -11,6 +11,7 @@ import {
   DailyReviewChecklistPanel,
   DailyReviewVaSummaryChips,
 } from "@/components/daily-review-checklist-panel";
+import { DailyReviewFiltersBar } from "@/components/daily-review-filters";
 import {
   ListPagination,
   useClientPagination,
@@ -34,6 +35,8 @@ import {
   VA_MODEL_TAG,
 } from "@/components/manager-review-ui";
 import { useToast } from "@/contexts/toast-context";
+import { dailyReviewFiltersToQueryString, emptyDailyReviewFilters } from "@/lib/daily-review-filters";
+import { useDailyReviewFilters } from "@/lib/hooks/use-daily-review-filters";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { formatReviewDate, isoDateDaysAgo, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
@@ -84,11 +87,18 @@ export function SupervisorDailyReviewClient({
   const [busyItemId, setBusyItemId] = React.useState<string | null>(null);
   const [issues, setIssues] = React.useState(initialReview?.issues_found ?? "");
   const [actions, setActions] = React.useState(initialReview?.actions_assigned ?? "");
+  const { filters, setFilters } = useDailyReviewFilters(
+    "submit",
+    initialChecklist.filters ?? emptyDailyReviewFilters(),
+  );
+  const filtersRef = React.useRef(filters);
+  filtersRef.current = filters;
 
-  async function loadDate(date: string) {
+  async function loadDate(date: string, nextFilters = filtersRef.current) {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/checklist?date=${encodeURIComponent(date)}`);
+      const qs = dailyReviewFiltersToQueryString(nextFilters, date);
+      const res = await fetch(`${API_BASE}/checklist?${qs}`);
       const data = (await res.json()) as {
         checklist?: DailyReviewChecklistPayload;
         review?: MarketingDailyReview | null;
@@ -119,6 +129,23 @@ export function SupervisorDailyReviewClient({
     void loadDate(selectedDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
+
+  const filterHydrated = React.useRef(false);
+  React.useEffect(() => {
+    if (!filterHydrated.current) {
+      filterHydrated.current = true;
+      const ssrFilters = initialChecklist.filters ?? emptyDailyReviewFilters();
+      if (
+        dailyReviewFiltersToQueryString(filters) !==
+        dailyReviewFiltersToQueryString(ssrFilters)
+      ) {
+        void loadDate(selectedDateRef.current, filters);
+      }
+      return;
+    }
+    void loadDate(selectedDateRef.current, filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   async function reloadHistory() {
     const res = await fetch(API_BASE);
@@ -161,7 +188,7 @@ export function SupervisorDailyReviewClient({
     const res = await fetch(`${API_BASE}/checklist`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date: selectedDate }),
+      body: JSON.stringify({ date: selectedDate, filters }),
     });
     const data = (await res.json()) as {
       review?: MarketingDailyReview;
@@ -271,33 +298,42 @@ export function SupervisorDailyReviewClient({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <LuxuryStatCard
-          label="Checklist items"
-          value={<CountUp value={summary.total_items} />}
-          accent="white"
-          tooltip="All phase checklist steps across VA tasks due this Athens day"
-          className="!p-3"
-        />
-        <LuxuryStatCard
           label="Verified"
-          value={<CountUp value={summary.verified} />}
+          value={
+            <span className="tabular-nums">
+              <CountUp value={summary.verified} />
+              <span className="text-sm font-medium text-[#B8B4B8]/45">
+                {" "}
+                / {summary.total_items}
+              </span>
+            </span>
+          }
           accent="champagne"
-          tooltip="Items you marked verified"
+          tooltip="Verified of checklist items in the current filtered set"
           className="!p-3"
         />
         <LuxuryStatCard
           label="Flagged"
           value={<CountUp value={summary.flagged} />}
           accent="amber"
-          tooltip="Items flagged as not done"
+          tooltip="Items flagged as not done (filtered set)"
           className="!p-3"
           glow={summary.flagged > 0}
         />
         <LuxuryStatCard
-          label="Unreviewed"
+          label="Pending"
           value={<CountUp value={summary.unverified} />}
           accent="pink"
-          tooltip="Items still waiting for your verify/flag"
+          tooltip="Items still waiting for your verify/flag (filtered set)"
           className="!p-3"
+        />
+        <LuxuryStatCard
+          label="Overdue"
+          value={<CountUp value={summary.overdue ?? 0} />}
+          accent="white"
+          tooltip="Incomplete items in overdue phases (filtered set)"
+          className="!p-3"
+          glow={(summary.overdue ?? 0) > 0}
         />
       </div>
 
@@ -328,6 +364,12 @@ export function SupervisorDailyReviewClient({
           </button>
         )}
       </section>
+
+      <DailyReviewFiltersBar
+        filters={filters}
+        facets={checklist.facets ?? { roles: [], people: [], models: [], phases: [], platforms: [], item_types: [] }}
+        onChange={setFilters}
+      />
 
       {loading ? (
         <ReviewLoadingState />

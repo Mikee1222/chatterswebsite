@@ -3,7 +3,29 @@
  * VA → task(s) → phase checklist items, with optional verification overlay.
  */
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
+import {
+  buildDailyReviewFacets,
+  emptyDailyReviewFilters,
+  filterDailyReviewSharedVas,
+  filterDailyReviewVas,
+  inferDailyReviewPlatform,
+  scopeFromVas,
+  summarizeFilteredVas,
+  type DailyReviewFilterFacets,
+  type DailyReviewFilters,
+  type DailyReviewPlatform,
+} from "@/lib/daily-review-filters";
 import { toReviewDateKey } from "@/lib/marketing-reviews-helpers";
+import type { TaskStepType } from "@/lib/task-step-types";
+
+const FALLBACK_ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  manager: "Manager",
+  chatter: "Chatters",
+  virtual_assistant: "VAs",
+  model: "Model",
+  client: "Client",
+};
 import { taskMatchesAthensYmd } from "@/lib/va-task-date-filter";
 import {
   listVerificationsForReview,
@@ -15,6 +37,7 @@ import {
   getDailyReviews,
   type MarketingDailyReview,
 } from "@/services/marketing-reviews";
+import { getRoles } from "@/services/roles";
 import { batchSignUrlMap, isSbStorageToken } from "@/lib/supabase-signed-url";
 import {
   getPhasesForTasksDisplay,
@@ -22,6 +45,7 @@ import {
   type PhaseScreenshot,
   type TaskPhase,
 } from "@/services/task-phases";
+import { getUsersByAirtableIds } from "@/services/users";
 import { getAllVaTasks } from "@/services/va-tasks";
 import type { VaTaskRecord } from "@/types";
 
@@ -47,6 +71,11 @@ export interface DailyReviewChecklistItem {
   /** Signed (or https) URLs for VA-uploaded proof screenshots. */
   screenshots: DailyReviewChecklistScreenshot[];
   verification: DailyReviewItemVerification | null;
+  step_type: TaskStepType;
+  platform: DailyReviewPlatform | null;
+  model_id: string;
+  model_name: string;
+  is_overdue: boolean;
 }
 
 export interface DailyReviewChecklistTask {
@@ -61,6 +90,9 @@ export interface DailyReviewChecklistTask {
 export interface DailyReviewChecklistVa {
   va_id: string;
   va_name: string;
+  role: string;
+  role_label: string;
+  primary_model_name: string;
   tasks: DailyReviewChecklistTask[];
   stats: {
     total_items: number;
@@ -68,6 +100,7 @@ export interface DailyReviewChecklistVa {
     verified: number;
     flagged: number;
     unverified: number;
+    overdue: number;
   };
 }
 
@@ -79,6 +112,7 @@ export interface DailyReviewChecklistSummary {
   unverified: number;
   vas_reviewed: number;
   tasks: number;
+  overdue: number;
 }
 
 export interface DailyReviewChecklistPayload {
@@ -87,6 +121,8 @@ export interface DailyReviewChecklistPayload {
   summary: DailyReviewChecklistSummary;
   /** When scoped to one supervisor review — verifications for that review only. */
   review_id: string | null;
+  facets: DailyReviewFilterFacets;
+  filters: DailyReviewFilters;
 }
 
 export interface AdminDailyReviewChecklistPayload {
@@ -111,11 +147,16 @@ export interface AdminDailyReviewChecklistPayload {
       total: number;
     }>;
   };
+  facets: DailyReviewFilterFacets;
+  filters: DailyReviewFilters;
 }
 
 export interface DailyReviewChecklistVaShared {
   va_id: string;
   va_name: string;
+  role: string;
+  role_label: string;
+  primary_model_name: string;
   tasks: Array<{
     task_id: string;
     task_title: string;
@@ -140,7 +181,12 @@ function emptySummary(): DailyReviewChecklistSummary {
     unverified: 0,
     vas_reviewed: 0,
     tasks: 0,
+    overdue: 0,
   };
+}
+
+function emptyFacets(): DailyReviewFilterFacets {
+  return { roles: [], people: [], models: [], phases: [], platforms: [], item_types: [] };
 }
 
 function summarizeVas(vas: DailyReviewChecklistVa[]): DailyReviewChecklistSummary {
@@ -152,6 +198,7 @@ function summarizeVas(vas: DailyReviewChecklistVa[]): DailyReviewChecklistSummar
     summary.verified += va.stats.verified;
     summary.flagged += va.stats.flagged;
     summary.unverified += va.stats.unverified;
+    summary.overdue += va.stats.overdue;
     summary.tasks += va.tasks.length;
   }
   return summary;
@@ -163,6 +210,7 @@ function computeVaStats(tasks: DailyReviewChecklistTask[]): DailyReviewChecklist
   let verified = 0;
   let flagged = 0;
   let unverified = 0;
+  let overdue = 0;
   for (const task of tasks) {
     for (const item of task.items) {
       total_items += 1;
@@ -170,9 +218,10 @@ function computeVaStats(tasks: DailyReviewChecklistTask[]): DailyReviewChecklist
       if (item.verification?.verified_status === "verified") verified += 1;
       else if (item.verification?.verified_status === "flagged_not_done") flagged += 1;
       else unverified += 1;
+      if (item.is_overdue) overdue += 1;
     }
   }
-  return { total_items, va_completed, verified, flagged, unverified };
+  return { total_items, va_completed, verified, flagged, unverified, overdue };
 }
 
 function userDisplayName(u: { full_name?: string | null; email?: string | null; id: string }): string {
@@ -260,6 +309,16 @@ function mapItem(
   const screenshots = (item.screenshot ?? []).filter(
     (s): s is PhaseScreenshot => Boolean(s?.url && typeof s.url === "string"),
   );
+  const model_id =
+    (phase.assigned_model_id || "").trim() || (task.assigned_model_ids[0] ?? "").trim();
+  const model_name =
+    (phase.assigned_model_name || "").trim() || (task.assigned_model_names[0] ?? "").trim() || model_id;
+  const platform =
+    inferDailyReviewPlatform(item.title) ||
+    inferDailyReviewPlatform(phase.title) ||
+    inferDailyReviewPlatform(task.title);
+  const is_overdue =
+    phase.status === "overdue" && item.status !== "completed";
   return {
     item_id: item.id,
     phase_id: phase.phase_id || phase.id,
@@ -277,6 +336,11 @@ function mapItem(
     screenshot_count: screenshots.length,
     screenshots,
     verification: verificationByItem.get(item.id) ?? null,
+    step_type: item.step_type,
+    platform,
+    model_id,
+    model_name,
+    is_overdue,
   };
 }
 
@@ -316,6 +380,7 @@ function groupByVa(
   phasesByTask: Record<string, TaskPhase[]>,
   nameMap: Map<string, string>,
   verificationByItem: Map<string, DailyReviewItemVerification>,
+  roleByUserId: Map<string, { role: string; role_label: string }>,
 ): DailyReviewChecklistVa[] {
   const byVa = new Map<string, DailyReviewChecklistVa>();
 
@@ -338,6 +403,11 @@ function groupByVa(
     if (!items.length) continue;
 
     const { va_id, va_name } = primaryVaForTask(task, phases, nameMap);
+    const roleMeta = roleByUserId.get(va_id) ?? { role: "", role_label: "" };
+    const primary_model_name =
+      items.find((i) => i.model_name)?.model_name ||
+      (task.assigned_model_names[0] ?? "").trim() ||
+      "";
     const checklistTask: DailyReviewChecklistTask = {
       task_id: task.id,
       task_title: task.title,
@@ -351,12 +421,25 @@ function groupByVa(
     if (existing) {
       existing.tasks.push(checklistTask);
       if (!existing.va_name && va_name) existing.va_name = va_name;
+      if (!existing.primary_model_name && primary_model_name) {
+        existing.primary_model_name = primary_model_name;
+      }
     } else {
       byVa.set(va_id, {
         va_id,
         va_name,
+        role: roleMeta.role,
+        role_label: roleMeta.role_label,
+        primary_model_name,
         tasks: [checklistTask],
-        stats: { total_items: 0, va_completed: 0, verified: 0, flagged: 0, unverified: 0 },
+        stats: {
+          total_items: 0,
+          va_completed: 0,
+          verified: 0,
+          flagged: 0,
+          unverified: 0,
+          overdue: 0,
+        },
       });
     }
   }
@@ -370,14 +453,48 @@ function groupByVa(
   return vas;
 }
 
+async function loadRoleMaps(
+  tasks: VaTaskRecord[],
+  phasesByTask: Record<string, TaskPhase[]>,
+): Promise<Map<string, { role: string; role_label: string }>> {
+  const ids = new Set<string>();
+  for (const task of tasks) {
+    for (const id of task.assigned_to_ids) if (id.trim()) ids.add(id.trim());
+    for (const phase of phasesByTask[task.id] ?? []) {
+      if (phase.assigned_va_id?.trim()) ids.add(phase.assigned_va_id.trim());
+    }
+  }
+  const [usersMap, roles] = await Promise.all([
+    getUsersByAirtableIds([...ids]).catch(() => new Map()),
+    getRoles().catch(() => []),
+  ]);
+  const labelBySlug = new Map<string, string>();
+  for (const r of roles) {
+    if (r.role_id) labelBySlug.set(r.role_id, r.label || r.role_id);
+  }
+  const out = new Map<string, { role: string; role_label: string }>();
+  for (const [id, user] of usersMap) {
+    const role = (user.role || "").trim();
+    const role_label =
+      labelBySlug.get(role) || FALLBACK_ROLE_LABELS[role] || role.replace(/_/g, " ");
+    out.set(id, { role, role_label });
+    if (user.id && user.id !== id) out.set(user.id, { role, role_label });
+    if (user.user_id) out.set(user.user_id, { role, role_label });
+  }
+  return out;
+}
+
 /**
  * Checklist audit tree for one Athens day, optionally overlaid with one supervisor's verifications.
+ * Filters narrow the already-allowed day tree only (never expands scope).
  */
 export async function getDailyReviewChecklistForDate(params: {
   date: string;
   reviewId?: string | null;
+  filters?: DailyReviewFilters | null;
 }): Promise<DailyReviewChecklistPayload> {
   const date = toReviewDateKey(params.date) || getTodayYmdAthens();
+  const filters = params.filters ?? emptyDailyReviewFilters();
   const tasks = await loadDayTasks(date);
   const phaseSpecs = tasks.map((t) => ({
     taskId: t.id,
@@ -392,15 +509,21 @@ export async function getDailyReviewChecklistForDate(params: {
 
   const nameMap = buildNameMap([], tasks, phasesByTask);
   const verificationByItem = new Map(verifications.map((v) => [v.task_phase_item_id, v]));
+  const roleByUserId = await loadRoleMaps(tasks, phasesByTask);
 
-  const vas = await ensureChecklistScreenshotsSigned(
-    groupByVa(tasks, phasesByTask, nameMap, verificationByItem),
+  const fullVas = await ensureChecklistScreenshotsSigned(
+    groupByVa(tasks, phasesByTask, nameMap, verificationByItem, roleByUserId),
   );
+  const facets = buildDailyReviewFacets(fullVas);
+  const scope = scopeFromVas(fullVas);
+  const vas = filterDailyReviewVas(fullVas, filters, scope);
   return {
     date,
     vas,
-    summary: summarizeVas(vas),
+    summary: summarizeFilteredVas(vas),
     review_id: params.reviewId ?? null,
+    facets,
+    filters,
   };
 }
 
@@ -409,10 +532,13 @@ export async function getDailyReviewChecklistForDate(params: {
  */
 export async function getAdminDailyReviewChecklistForDate(params: {
   date: string;
+  filters?: DailyReviewFilters | null;
 }): Promise<AdminDailyReviewChecklistPayload> {
   const date = toReviewDateKey(params.date) || getTodayYmdAthens();
+  const filters = params.filters ?? emptyDailyReviewFilters();
+  // Load unfiltered base so facets reflect the full day; then narrow.
   const [base, dayReviews] = await Promise.all([
-    getDailyReviewChecklistForDate({ date }),
+    getDailyReviewChecklistForDate({ date, filters: emptyDailyReviewFilters() }),
     getDailyReviews({ date_from: date, date_to: date }),
   ]);
 
@@ -428,11 +554,13 @@ export async function getAdminDailyReviewChecklistForDate(params: {
     verificationsByReview.set(v.review_id, list);
   }
 
+  const scope = scopeFromVas(base.vas);
+
   const reviews = dayReviews.map((review) => {
     const vMap = new Map(
       (verificationsByReview.get(review.id) ?? []).map((v) => [v.task_phase_item_id, v]),
     );
-    const vas: DailyReviewChecklistVa[] = base.vas.map((va) => {
+    const overlaid: DailyReviewChecklistVa[] = base.vas.map((va) => {
       const tasks = va.tasks.map((task) => ({
         ...task,
         items: task.items.map((item) => ({
@@ -442,7 +570,8 @@ export async function getAdminDailyReviewChecklistForDate(params: {
       }));
       return { ...va, tasks, stats: computeVaStats(tasks) };
     });
-    return { review, vas, summary: summarizeVas(vas) };
+    const vas = filterDailyReviewVas(overlaid, filters, scope);
+    return { review, vas, summary: summarizeFilteredVas(vas) };
   });
 
   const verificationsByItem = new Map<string, DailyReviewItemVerification[]>();
@@ -452,7 +581,7 @@ export async function getAdminDailyReviewChecklistForDate(params: {
     verificationsByItem.set(v.task_phase_item_id, list);
   }
 
-  const shared_vas: DailyReviewChecklistVaShared[] = base.vas.map((va) => {
+  const fullShared: DailyReviewChecklistVaShared[] = base.vas.map((va) => {
     const tasks = va.tasks.map((task) => ({
       task_id: task.task_id,
       task_title: task.task_title,
@@ -471,22 +600,31 @@ export async function getAdminDailyReviewChecklistForDate(params: {
     let verified = 0;
     let total_items = 0;
     let va_completed = 0;
+    let overdue = 0;
     for (const task of tasks) {
       for (const item of task.items) {
         total_items += 1;
         if (item.va_status === "completed") va_completed += 1;
         if (item.verifications.some((v) => v.verified_status === "flagged_not_done")) flagged += 1;
         else if (item.verifications.some((v) => v.verified_status === "verified")) verified += 1;
+        if (item.is_overdue) overdue += 1;
       }
     }
     const unverified = Math.max(0, total_items - verified - flagged);
     return {
       va_id: va.va_id,
       va_name: va.va_name,
+      role: va.role,
+      role_label: va.role_label,
+      primary_model_name: va.primary_model_name,
       tasks,
-      stats: { total_items, va_completed, verified, flagged, unverified },
+      stats: { total_items, va_completed, verified, flagged, unverified, overdue },
     };
   });
+
+  const facets = buildDailyReviewFacets(fullShared);
+  const shared_vas = filterDailyReviewSharedVas(fullShared, filters, scopeFromVas(fullShared));
+  const filteredSummary = summarizeFilteredVas(shared_vas);
 
   const flagCounts = new Map<string, { va_id: string; va_name: string; flagged: number; verified: number }>();
   for (const va of shared_vas) {
@@ -519,13 +657,21 @@ export async function getAdminDailyReviewChecklistForDate(params: {
     supervisorActivity.set(key, entry);
   }
 
+  const filteredItemIds = new Set(
+    shared_vas.flatMap((va) => va.tasks.flatMap((t) => t.items.map((i) => i.item_id))),
+  );
+  const filteredVerifications = allVerifications.filter((v) =>
+    filteredItemIds.has(v.task_phase_item_id),
+  );
+
   const team_summary = {
-    ...base.summary,
-    verified: allVerifications.filter((v) => v.verified_status === "verified").length,
-    flagged: allVerifications.filter((v) => v.verified_status === "flagged_not_done").length,
+    ...filteredSummary,
+    verified: filteredVerifications.filter((v) => v.verified_status === "verified").length,
+    flagged: filteredVerifications.filter((v) => v.verified_status === "flagged_not_done").length,
     unverified: Math.max(
       0,
-      base.summary.total_items - new Set(allVerifications.map((v) => v.task_phase_item_id)).size,
+      filteredSummary.total_items -
+        new Set(filteredVerifications.map((v) => v.task_phase_item_id)).size,
     ),
     supervisors: dayReviews.length,
   };
@@ -543,6 +689,8 @@ export async function getAdminDailyReviewChecklistForDate(params: {
         (a, b) => b.total - a.total || b.verified - a.verified,
       ),
     },
+    facets,
+    filters,
   };
 }
 

@@ -12,6 +12,7 @@ import {
   DailyReviewChecklistPanel,
   DailyReviewVaSummaryChips,
 } from "@/components/daily-review-checklist-panel";
+import { DailyReviewFiltersBar } from "@/components/daily-review-filters";
 import {
   ListPagination,
   useClientPagination,
@@ -36,6 +37,8 @@ import {
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
 import { useToast } from "@/contexts/toast-context";
+import { dailyReviewFiltersToQueryString, emptyDailyReviewFilters } from "@/lib/daily-review-filters";
+import { useDailyReviewFilters } from "@/lib/hooks/use-daily-review-filters";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 import { formatReviewDate, isoDateDaysAgo, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
@@ -81,11 +84,18 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
   const [focusVaId, setFocusVaId] = React.useState("");
   const [filterSupervisor, setFilterSupervisor] = React.useState("");
   const [filterDateRange, setFilterDateRange] = React.useState<"all" | "7d" | "30d">("all");
+  const { filters, setFilters } = useDailyReviewFilters(
+    "manage",
+    initialChecklist.filters ?? emptyDailyReviewFilters(),
+  );
+  const filtersRef = React.useRef(filters);
+  filtersRef.current = filters;
 
-  async function loadChecklist(date: string) {
+  async function loadChecklist(date: string, nextFilters = filtersRef.current) {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/checklist?date=${encodeURIComponent(date)}`);
+      const qs = dailyReviewFiltersToQueryString(nextFilters, date);
+      const res = await fetch(`${API_BASE}/checklist?${qs}`);
       const data = (await res.json()) as {
         checklist?: AdminDailyReviewChecklistPayload;
         error?: string;
@@ -112,6 +122,23 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
     void loadChecklist(selectedDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDate]);
+
+  const filterHydrated = React.useRef(false);
+  React.useEffect(() => {
+    if (!filterHydrated.current) {
+      filterHydrated.current = true;
+      const ssrFilters = initialChecklist.filters ?? emptyDailyReviewFilters();
+      if (
+        dailyReviewFiltersToQueryString(filters) !==
+        dailyReviewFiltersToQueryString(ssrFilters)
+      ) {
+        void loadChecklist(selectedDateRef.current, filters);
+      }
+      return;
+    }
+    void loadChecklist(selectedDateRef.current, filters);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters]);
 
   async function reloadHistory() {
     const params = new URLSearchParams();
@@ -161,11 +188,15 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
   }, [checklist.reviews]);
 
   const focusVaOptions = React.useMemo<CustomSelectOption[]>(() => {
+    const people =
+      checklist.facets?.people?.length
+        ? checklist.facets.people
+        : checklist.shared_vas.map((va) => ({ value: va.va_id, label: va.va_name }));
     return [
       { value: "", label: "Select VA" },
-      ...checklist.shared_vas.map((va) => ({ value: va.va_id, label: va.va_name })),
+      ...people.map((p) => ({ value: p.value, label: p.label })),
     ];
-  }, [checklist.shared_vas]);
+  }, [checklist.facets, checklist.shared_vas]);
 
   const pagination = useClientPagination(reviews, HISTORY_PAGE_SIZE);
   React.useEffect(() => {
@@ -216,28 +247,44 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <LuxuryStatCard
-          label="Items today"
-          value={<CountUp value={team.total_items} />}
-          accent="white"
-          tooltip="Checklist steps across all VA tasks for this Athens day"
-          className="!p-3"
-        />
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-5">
         <LuxuryStatCard
           label="Verified"
-          value={<CountUp value={team.verified} />}
+          value={
+            <span className="tabular-nums">
+              <CountUp value={team.verified} />
+              <span className="text-sm font-medium text-[#B8B4B8]/45">
+                {" "}
+                / {team.total_items}
+              </span>
+            </span>
+          }
           accent="champagne"
-          tooltip="Supervisor verify actions for this day"
+          tooltip="Verify actions vs checklist items in the filtered set"
           className="!p-3"
         />
         <LuxuryStatCard
           label="Flagged"
           value={<CountUp value={team.flagged} />}
           accent="amber"
-          tooltip="Items flagged not done"
+          tooltip="Items flagged not done (filtered set)"
           className="!p-3"
           glow={team.flagged > 0}
+        />
+        <LuxuryStatCard
+          label="Pending"
+          value={<CountUp value={team.unverified} />}
+          accent="pink"
+          tooltip="Items with no supervisor verification yet (filtered set)"
+          className="!p-3"
+        />
+        <LuxuryStatCard
+          label="Overdue"
+          value={<CountUp value={team.overdue ?? 0} />}
+          accent="white"
+          tooltip="Incomplete items in overdue phases (filtered set)"
+          className="!p-3"
+          glow={(team.overdue ?? 0) > 0}
         />
         <LuxuryStatCard
           label="Supervisors"
@@ -300,6 +347,21 @@ export function AdminDailyReviewClient({ initialReviews, initialChecklist }: Pro
           </div>
         ) : null}
       </section>
+
+      <DailyReviewFiltersBar
+        filters={filters}
+        facets={
+          checklist.facets ?? {
+            roles: [],
+            people: [],
+            models: [],
+            phases: [],
+            platforms: [],
+            item_types: [],
+          }
+        }
+        onChange={setFilters}
+      />
 
       {flaggedItems.length > 0 ? (
         <section className={cn(VA_CARD, "space-y-3 border-red-500/30 p-4 md:p-5")}>

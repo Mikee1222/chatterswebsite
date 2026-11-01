@@ -4,6 +4,10 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import {
+  emptyDailyReviewFilters,
+  parseDailyReviewFilters,
+} from "@/lib/daily-review-filters";
+import {
   filterDailyReviewsByManager,
   spotCheckManagerId,
   spotCheckManagerName,
@@ -16,12 +20,21 @@ import {
 } from "@/services/marketing-reviews";
 import { SupervisorDailyReviewClient } from "@/components/supervisor-daily-review-client";
 
-export default async function DailyReviewSubmitPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function DailyReviewSubmitPage({
+  searchParams,
+}: {
+  searchParams?: SearchParams;
+}) {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
   if (!(await hasPermission(user, PERMISSIONS.DAILY_REVIEW_SUBMIT))) {
     redirect(ROUTES.dashboard);
   }
+
+  const params = (await searchParams) ?? {};
+  const filters = parseDailyReviewFilters(params);
 
   const managerName = spotCheckManagerName(user);
   const managerId = spotCheckManagerId(user);
@@ -37,8 +50,18 @@ export default async function DailyReviewSubmitPage() {
       unverified: 0,
       vas_reviewed: 0,
       tasks: 0,
+      overdue: 0,
     },
     review_id: null as string | null,
+    facets: {
+      roles: [],
+      people: [],
+      models: [],
+      phases: [],
+      platforms: [],
+      item_types: [],
+    },
+    filters: emptyDailyReviewFilters(),
   };
 
   const [allReviews, todayBundle] = await Promise.all([
@@ -49,6 +72,7 @@ export default async function DailyReviewSubmitPage() {
         const checklist = await getDailyReviewChecklistForDate({
           date: today,
           reviewId: todayRow?.id ?? null,
+          filters,
         }).catch(() => emptyChecklist);
         return { todayRow, checklist };
       }),
