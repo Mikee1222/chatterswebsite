@@ -1,15 +1,24 @@
 /**
  * Auto-detect Winner / Super Winner from already-synced ClarioSuite Instagram posts.
  *
- * Content Flow v1.1 — RELATIVE rule, the only rule, per account (ig_user_id):
- *   baseline = average views of the latest N (default 9) grid Reels of that account
- *   every Reel posted in the last `scan_days` (default 20) is compared to the baseline
+ * Content Flow v1.1 — RELATIVE rule, the only rule, per account (ig_user_id) AND per
+ * feed (grid | trial), each feed with its own baseline:
+ *   baseline = average views of the latest N (default 9) Reels of that account+feed
+ *   every Reel of that feed posted in the last `scan_days` (default 20) is compared to it
  *   ≥ outlier_multiple (2.5×) → Winner · ≥ hot_multiple (10×) → Super Winner
  * There are no absolute view thresholds in the auto-detect any more (owner decision,
  * 2026-10-31): a Winner is defined only relative to the account's own average.
  * Posts younger than 24h are excluded from the BASELINE only (views still accumulating
  * would drag the average down). They are still checked as candidates — a post that
  * blows up in a few hours is caught on the same sync, and re-checked on later syncs.
+ *
+ * Feed detection (2026-11-02): the ClarioSuite media list DOES include trial reels, but
+ * carries no flag for them. A reel is a TRIAL when its link matches a posting-brief post
+ * with placement = 'trial' (the Marketing Executive pastes the live link when marking
+ * the post as posted). Everything else is GRID. Trial reels never enter the grid
+ * baseline and grid reels never enter the trial one. Matched trial posts also get their
+ * ClarioSuite views written back to posting_brief_posts, so the Trial Check tab reflects
+ * them without manual entry (manual entry stays as the fallback).
  *
  * Classification is one-time permanent per media_id:
  * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
@@ -32,6 +41,8 @@ import { getCycleSettings, type ContentCycleSettings } from "@/services/content-
 export const CLARIOSUITE_AUTO_SUBMITTER_ID = "clariosuite_auto";
 export const CLARIOSUITE_AUTO_SUBMITTER_NAME = "ClarioSuite Auto-detect";
 
+export type WinnerFeed = "grid" | "trial";
+
 export type WinnerAutoDetectResult = {
   /** true = nothing was written; `wouldClassify` lists what a real run would create. */
   dryRun?: boolean;
@@ -39,12 +50,28 @@ export type WinnerAutoDetectResult = {
     model_name: string;
     media_id: string;
     permalink: string;
+    feed: WinnerFeed;
     views: number;
     tier: WinnerTier;
     multiple: number | null;
     baseline_avg: number | null;
   }>;
   scanned: number;
+  /** Reels recognised as trials via a posting-brief link (placement = trial). */
+  trialMatched: number;
+  /** Candidates inside the window with no usable views (0 / insights missing). */
+  skippedNoViews: number;
+  /** Candidates inside the window whose account+feed has fewer than 3 baseline posts. */
+  skippedNoBaseline: number;
+  /** Per account+feed baseline, for diagnostics. */
+  baselines: Array<{
+    model_name: string;
+    ig_user_id: string;
+    feed: WinnerFeed;
+    baseline_avg: number | null;
+    baseline_count: number;
+    candidates: number;
+  }>;
   classified: number;
   skippedAlreadyClassified: number;
   skippedNotVideo: number;
@@ -90,6 +117,86 @@ function isVideoCandidate(post: TopPostCandidate): boolean {
 
 function normalizePermalink(link: string): string {
   return link.trim().replace(/\/+$/, "").toLowerCase();
+}
+
+/**
+ * Instagram shortcode of a post link (`/reel/<code>/`, `/p/<code>/`, `/tv/<code>/`),
+ * case preserved — the same post can be linked as /reel/ or /p/ with the same code.
+ */
+export function instagramShortcode(link: string | null | undefined): string | null {
+  const raw = String(link ?? "").trim();
+  if (!raw) return null;
+  const m = raw.match(/instagram\.com\/(?:[^/]+\/)?(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/i);
+  return m ? m[1] : null;
+}
+
+type TrialLinkRef = { post_id: string; brief_id: string };
+
+/**
+ * Links of posting-brief posts with placement = 'trial' (the only place we learn that a
+ * reel is a trial). Keyed by Instagram shortcode, with the normalized URL as fallback.
+ */
+async function loadTrialLinkIndex(): Promise<Map<string, TrialLinkRef>> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("posting_brief_posts")
+    .select("id, brief_id, posted_url")
+    .eq("placement", "trial")
+    .not("posted_url", "is", null);
+  if (error) throw new Error(`load trial links: ${error.message}`);
+  const index = new Map<string, TrialLinkRef>();
+  for (const row of data ?? []) {
+    const r = row as { id: string; brief_id: string; posted_url: string | null };
+    const url = String(r.posted_url ?? "").trim();
+    if (!url) continue;
+    const ref = { post_id: String(r.id), brief_id: String(r.brief_id) };
+    const code = instagramShortcode(url);
+    if (code) index.set(`code:${code}`, ref);
+    index.set(`url:${normalizePermalink(url)}`, ref);
+  }
+  return index;
+}
+
+function lookupTrial(index: Map<string, TrialLinkRef>, permalink: string | null): TrialLinkRef | null {
+  if (!permalink) return null;
+  const code = instagramShortcode(permalink);
+  if (code) {
+    const hit = index.get(`code:${code}`);
+    if (hit) return hit;
+  }
+  return index.get(`url:${normalizePermalink(permalink)}`) ?? null;
+}
+
+/**
+ * Mirror ClarioSuite views onto the matched trial post so the Trial Check tab shows them
+ * without manual entry. Never writes 0 (insights missing → keep whatever is there).
+ */
+async function writeBackTrialViews(params: {
+  postId: string;
+  views: number;
+  multiple: number | null;
+  tier: WinnerTier | null;
+  hasBaseline: boolean;
+}): Promise<void> {
+  if (params.views <= 0) return;
+  const sb = getSupabaseServiceClient();
+  const status = !params.hasBaseline
+    ? ""
+    : params.tier === "super_winner"
+      ? "hot"
+      : params.tier === "winner"
+        ? "outlier"
+        : "normal";
+  const { error } = await sb
+    .from("posting_brief_posts")
+    .update({
+      views_24h: params.views,
+      views_checked_at: new Date().toISOString(),
+      outlier_multiple: params.multiple,
+      outlier_status: status,
+    })
+    .eq("id", params.postId);
+  if (error) throw new Error(`write back trial views: ${error.message}`);
 }
 
 async function loadAlreadyClassifiedMediaIds(): Promise<Set<string>> {
@@ -166,6 +273,10 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     dryRun: opts?.dryRun === true,
     wouldClassify: opts?.dryRun ? [] : undefined,
     scanned: 0,
+    trialMatched: 0,
+    skippedNoViews: 0,
+    skippedNoBaseline: 0,
+    baselines: [],
     classified: 0,
     skippedAlreadyClassified: 0,
     skippedNotVideo: 0,
@@ -178,20 +289,31 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     thumbnailsCached: 0,
   };
 
-  const [posts, classifiedMedia, existingLinks] = await Promise.all([
+  const [posts, classifiedMedia, existingLinks, trialIndex] = await Promise.all([
     loadTopPostCandidates({ modelRecordId: opts?.modelRecordId }),
     loadAlreadyClassifiedMediaIds(),
     loadExistingVideoLinks(),
+    loadTrialLinkIndex(),
   ]);
 
   result.scanned = posts.length;
 
-  /* ── Relative baseline per account: average of the latest N grid Reels ── */
+  /* ── Feed of every reel: trial when its link is a posting-brief trial post ── */
+  const feedOf = (post: TopPostCandidate): WinnerFeed =>
+    lookupTrial(trialIndex, post.permalink) ? "trial" : "grid";
+  const accountKeyOf = (post: TopPostCandidate) =>
+    post.ig_user_id || post.model_record_id || post.model_stable_id || "";
+  const baselineKey = (accountKey: string, feed: WinnerFeed) => `${accountKey}::${feed}`;
+
+  /* ── Relative baseline per account + feed: average of the latest N Reels ── */
   const byAccount = new Map<string, TopPostCandidate[]>();
   for (const post of posts) {
     if (!post.media_id || !isVideoCandidate(post)) continue;
-    const key = post.ig_user_id || post.model_record_id || post.model_stable_id || "";
-    if (!key) continue;
+    const accountKey = accountKeyOf(post);
+    if (!accountKey) continue;
+    const feed = feedOf(post);
+    if (feed === "trial") result.trialMatched += 1;
+    const key = baselineKey(accountKey, feed);
     const list = byAccount.get(key) ?? [];
     list.push(post);
     byAccount.set(key, list);
@@ -210,6 +332,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     scanDays: number;
     outlier: number;
     hot: number;
+    candidates: number;
   };
   const baselineByAccount = new Map<string, Baseline>();
   const now = Date.now();
@@ -234,6 +357,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       scanDays: s.outlier_scan_days,
       outlier: s.outlier_multiple,
       hot: s.hot_multiple,
+      candidates: 0,
     });
   }
   for (const post of posts) {
@@ -266,8 +390,10 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
 
 
     const views = Math.round(post.views);
-    const accountKey = post.ig_user_id || modelId;
-    const baseline = baselineByAccount.get(accountKey);
+    const feed = feedOf(post);
+    const trialRef = feed === "trial" ? lookupTrial(trialIndex, permalink) : null;
+    const accountKey = accountKeyOf(post) || modelId;
+    const baseline = baselineByAccount.get(baselineKey(accountKey, feed));
 
     // Relative tier (Content Flow v1.1) — the only rule; only Reels inside the scan
     // window; needs a baseline of at least 3 Reels with views.
@@ -282,12 +408,38 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       result.skippedOutsideWindow += 1;
       continue;
     }
-    if (baseline?.avg && baseline.avg > 0 && baseline.count >= 3) {
-      multiple = Math.round((views / baseline.avg) * 100) / 100;
+    if (baseline) baseline.candidates += 1;
+    const baselineAvg = baseline && baseline.avg && baseline.avg > 0 && baseline.count >= 3 ? baseline.avg : null;
+    const hasBaseline = baselineAvg != null && !!baseline;
+    if (baselineAvg != null && baseline) {
+      multiple = Math.round((views / baselineAvg) * 100) / 100;
       if (multiple >= baseline.hot) relativeTier = "super_winner";
       else if (multiple >= baseline.outlier) relativeTier = "winner";
     }
     const tier: WinnerTier | null = relativeTier;
+
+    // Trial post from a posting brief: mirror the ClarioSuite views onto it so the
+    // Trial Check tab shows them (also when it is not an outlier). Dry runs write nothing.
+    if (trialRef && !opts?.dryRun) {
+      try {
+        await writeBackTrialViews({ postId: trialRef.post_id, views, multiple, tier, hasBaseline });
+      } catch (err) {
+        result.errors.push({
+          media_id: post.media_id,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    if (views <= 0) {
+      // ClarioSuite returned no insights for this media (views = 0) — nothing to judge.
+      result.skippedNoViews += 1;
+      continue;
+    }
+    if (!hasBaseline) {
+      result.skippedNoBaseline += 1;
+      continue;
+    }
     if (!tier) {
       result.skippedBelowThreshold += 1;
       continue;
@@ -298,6 +450,7 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         model_name: post.model_name?.trim() || modelId,
         media_id: post.media_id,
         permalink,
+        feed,
         views,
         tier,
         multiple,
@@ -327,8 +480,9 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
         // No absolute thresholds: the tier comes from the relative rule (tierOverride).
         thresholds: null,
         tierOverride: tier,
-        feed: "grid",
+        feed,
         outlier_multiple: multiple,
+        posting_brief_post_id: trialRef?.post_id ?? null,
         skipNotify: false,
       });
 
@@ -359,6 +513,20 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       result.errors.push({ media_id: post.media_id, message });
     }
   }
+
+  for (const [key, b] of baselineByAccount) {
+    const [accountKey, feed] = key.split("::") as [string, WinnerFeed];
+    const sample = byAccount.get(key)?.[0];
+    result.baselines.push({
+      model_name: sample?.model_name?.trim() || sample?.model_record_id || accountKey,
+      ig_user_id: accountKey,
+      feed,
+      baseline_avg: b.avg == null ? null : Math.round(b.avg),
+      baseline_count: b.count,
+      candidates: b.candidates,
+    });
+  }
+  result.baselines.sort((a, b) => a.model_name.localeCompare(b.model_name) || a.feed.localeCompare(b.feed));
 
   if (opts?.dryRun) return result;
 
