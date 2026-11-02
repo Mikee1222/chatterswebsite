@@ -156,9 +156,9 @@ export function TrialCheckPanel({ modelFilter, onChanged }: { modelFilter: strin
               {acct.posts.map((p) => {
                 const badge =
                   p.outlier_status === "hot"
-                    ? <span className={cn(VA_STATUS_BADGE, "border-rose-400/40 bg-rose-400/15 text-rose-200")}>🔥 HOT ×{p.outlier_multiple}</span>
+                    ? <span className={cn(VA_STATUS_BADGE, "border-rose-400/40 bg-rose-400/15 text-rose-200")}>🔥 HOT ×{p.outlier_multiple} trial-grid</span>
                     : p.outlier_status === "outlier"
-                      ? <span className={cn(VA_STATUS_BADGE, "border-amber-400/40 bg-amber-400/15 text-amber-200")}>OUTLIER ×{p.outlier_multiple}</span>
+                      ? <span className={cn(VA_STATUS_BADGE, "border-amber-400/40 bg-amber-400/15 text-amber-200")}>OUTLIER ×{p.outlier_multiple} trial-grid</span>
                       : p.outlier_status === "normal"
                         ? <span className={cn(VA_STATUS_BADGE, "border-white/10 bg-white/[0.03] text-white/40")}>×{p.outlier_multiple ?? "—"}</span>
                         : null;
