@@ -60,7 +60,10 @@ export async function DELETE(
   }
   const { id } = await params;
   try {
-    const impact = await deleteVideoBunch(id);
+    const impact = await deleteVideoBunch(id, {
+      user_id: session.airtableUserId ?? session.id,
+      user_name: (session.fullName || session.email || "").trim(),
+    });
     return NextResponse.json({ ok: true, impact });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed";

@@ -70,7 +70,10 @@ import type {
   VideoBunch,
   VideoBunchDeleteImpact,
 } from "@/services/winner-sourcing";
-import { formatRecreateVideoSlotDeleteDescription } from "@/services/winner-sourcing";
+import {
+  formatRecreateVideoSlotDeleteDescription,
+  formatVideoBunchDeleteDescription,
+} from "@/services/winner-sourcing";
 import type { IcloudFolderEntry, ModelMaterialRunway } from "@/services/icloud";
 import { UploadFolderNamesList } from "@/components/upload-folder-names";
 import { parseUploadFolderNames } from "@/lib/upload-folder-names";
@@ -117,21 +120,6 @@ function ymdFromIso(iso: string | undefined): string | null {
   return `${y}-${m}-${day}`;
 }
 
-function formatBunchDeleteDescription(impact: VideoBunchDeleteImpact | null, loading: boolean): string {
-  if (loading || !impact) return "Checking linked records…";
-  const lines = [
-    `${impact.recreate_video_slots} recreate slot${impact.recreate_video_slots === 1 ? "" : "s"}`,
-    `${impact.winner_videos} script/winner video${impact.winner_videos === 1 ? "" : "s"}`,
-    `${impact.filming_filmed_slots} filmed slot${impact.filming_filmed_slots === 1 ? "" : "s"}`,
-    `${impact.icloud_folder_entries} iCloud folder${impact.icloud_folder_entries === 1 ? "" : "s"}`,
-    `${impact.recreation_queue_items} recreation queue item${impact.recreation_queue_items === 1 ? "" : "s"}`,
-  ];
-  let text = `This will permanently delete “${impact.bunch_name}” and: ${lines.join(", ")}. Deleting cannot be undone.`;
-  if (impact.has_valuable_work) {
-    text += ` Warning: this bunch has valuable in-progress work (${impact.valuable_work_reasons.join("; ")}). Type the bunch name to confirm.`;
-  }
-  return text;
-}
 
 function icloudStageLabel(
   bunch: VideoBunch,
@@ -2193,7 +2181,7 @@ export function AdminBunchesClient({
         onClose={closeDeleteConfirm}
         onConfirm={() => void confirmDeleteBunch()}
         title={deleteTarget ? `Delete “${deleteTarget.name}”?` : "Delete bunch?"}
-        description={formatBunchDeleteDescription(deleteImpact, deleteImpactLoading)}
+        description={formatVideoBunchDeleteDescription(deleteImpact, deleteImpactLoading)}
         confirmLabel="Delete bunch"
         confirmVariant="danger"
         loading={deleteLoading || deleteImpactLoading}

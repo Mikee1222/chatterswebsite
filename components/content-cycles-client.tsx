@@ -7,9 +7,22 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarDays, Loader2, Play, Settings2, Trophy, FlaskConical, Flame } from "lucide-react";
+import {
+  CalendarDays,
+  FlaskConical,
+  Flame,
+  Loader2,
+  Plus,
+  Play,
+  Settings2,
+  Trash2,
+  Trophy,
+} from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import type { ContentCycleWithStats, ContentCycleSettings, CycleStatus } from "@/services/content-cycles";
+import type { VideoBunchDeleteImpact } from "@/services/winner-sourcing";
+import { formatVideoBunchDeleteDescription } from "@/services/winner-sourcing";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CARD, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import { PsPageHeader } from "@/components/personas-studio/shared";
@@ -19,6 +32,8 @@ type ModelOpt = { id: string; model_name: string };
 type Props = {
   models: ModelOpt[];
   initialCycles: ContentCycleWithStats[];
+  /** Same permission as Bunches-page delete (`winner_sourcing:manage`). */
+  canDeleteBunches: boolean;
 };
 
 const STATUS_LABEL: Record<CycleStatus, string> = {
@@ -54,7 +69,14 @@ function fmtDate(d: string): string {
   return `${day}/${m}/${y?.slice(2)}`;
 }
 
-export function ContentCyclesClient({ models, initialCycles }: Props) {
+type DeleteTarget = {
+  cycleId: string;
+  bunchId: string;
+  bunchName: string;
+  kind: "proven" | "experimental";
+};
+
+export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }: Props) {
   const [cycles, setCycles] = React.useState(initialCycles);
   const [modelId, setModelId] = React.useState<string>(models[0]?.id ?? "");
   const [busy, setBusy] = React.useState(false);
@@ -62,6 +84,12 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
   const [settings, setSettings] = React.useState<ContentCycleSettings | null>(null);
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [savingSettings, setSavingSettings] = React.useState(false);
+
+  const [deleteTarget, setDeleteTarget] = React.useState<DeleteTarget | null>(null);
+  const [deleteImpact, setDeleteImpact] = React.useState<VideoBunchDeleteImpact | null>(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = React.useState(false);
+  const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [createBusyKey, setCreateBusyKey] = React.useState<string | null>(null);
 
   const visible = cycles.filter((c) => !modelId || c.model_id === modelId);
 
@@ -132,7 +160,184 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
     }
   }
 
+  function closeDeleteConfirm() {
+    setDeleteTarget(null);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(false);
+  }
+
+  async function openDeleteConfirm(target: DeleteTarget) {
+    if (!canDeleteBunches) return;
+    setDeleteTarget(target);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/content-cycles/${encodeURIComponent(target.cycleId)}/bunches/${encodeURIComponent(target.bunchId)}?delete_impact=1`,
+        { credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        impact?: VideoBunchDeleteImpact;
+        error?: string;
+      };
+      if (!res.ok || !data.impact) {
+        setError(data.error || "Could not load delete impact");
+        closeDeleteConfirm();
+        return;
+      }
+      setDeleteImpact(data.impact);
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  }
+
+  async function confirmDeleteBunch() {
+    if (!deleteTarget || !canDeleteBunches) return;
+    setDeleteLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/content-cycles/${encodeURIComponent(deleteTarget.cycleId)}/bunches/${encodeURIComponent(deleteTarget.bunchId)}`,
+        { method: "DELETE", credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        cycle?: ContentCycleWithStats;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(data.error || "Delete failed");
+        return;
+      }
+      if (data.cycle) {
+        setCycles((list) => list.map((c) => (c.id === data.cycle!.id ? data.cycle! : c)));
+      } else {
+        await reload();
+      }
+      closeDeleteConfirm();
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
+
+  async function createBunch(cycleId: string, kind: "proven" | "experimental") {
+    if (!canDeleteBunches) return;
+    const key = `${cycleId}:${kind}`;
+    setCreateBusyKey(key);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/content-cycles/${encodeURIComponent(cycleId)}/bunches`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ kind }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        cycle?: ContentCycleWithStats;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(data.error || "Could not create bunch");
+        return;
+      }
+      if (data.cycle) {
+        setCycles((list) => list.map((c) => (c.id === data.cycle!.id ? data.cycle! : c)));
+      } else {
+        await reload();
+      }
+    } finally {
+      setCreateBusyKey(null);
+    }
+  }
+
   const modelName = models.find((m) => m.id === modelId)?.model_name ?? "";
+
+  function renderBunchSlot(opts: {
+    cycle: ContentCycleWithStats;
+    kind: "proven" | "experimental";
+    bunchId: string | null;
+    bunchName: string;
+    provided: number;
+    pending: number;
+    cap: number;
+    tone: "gold" | "pink";
+    Icon: typeof Trophy;
+    title: string;
+  }) {
+    const {
+      cycle,
+      kind,
+      bunchId,
+      bunchName,
+      provided,
+      pending,
+      cap,
+      tone,
+      Icon,
+      title,
+    } = opts;
+    const createKey = `${cycle.id}:${kind}`;
+    const creating = createBusyKey === createKey;
+
+    return (
+      <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
+        <p
+          className={cn(
+            "mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider",
+            tone === "gold" ? "text-[#D4AF8C]/80" : "text-[#FF1493]/90",
+          )}
+        >
+          <Icon className="h-3.5 w-3.5" /> {title}
+        </p>
+        <Meter label="Filled" value={provided} max={cap} tone={tone} />
+        <p className="mt-1 text-[11px] text-white/40">{pending} pending review</p>
+        {bunchId ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Link
+              href={`${ROUTES.admin.bunches}?id=${encodeURIComponent(bunchId)}`}
+              className="inline-block text-[12px] text-[#D4AF8C] underline-offset-2 hover:underline"
+            >
+              Open bunch
+            </Link>
+            {canDeleteBunches ? (
+              <button
+                type="button"
+                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 text-[12px] font-medium text-red-200/90 transition hover:bg-red-500/20"
+                aria-label={`Delete ${title}`}
+                title="Delete bunch"
+                onClick={() =>
+                  void openDeleteConfirm({
+                    cycleId: cycle.id,
+                    bunchId,
+                    bunchName: bunchName || title,
+                    kind,
+                  })
+                }
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="mt-2">
+            <p className="text-[12px] text-white/45">No bunch — empty slot</p>
+            {canDeleteBunches ? (
+              <button
+                type="button"
+                className={cn(VA_BTN_SECONDARY, "mt-2 min-h-10 px-3 text-xs")}
+                disabled={creating || (kind === "experimental" && cap < 1)}
+                onClick={() => void createBunch(cycle.id, kind)}
+              >
+                {creating ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
+                Create bunch
+              </button>
+            ) : null}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl">
@@ -221,6 +426,8 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
           {visible.map((c) => {
             const s = c.stats;
             const gridDone = s.posted.grid_proven + s.posted.grid_experimental + s.posted.grid_other;
+            const provenName = c.proven_bunch?.name ?? "Proven bunch";
+            const experimentalName = c.experimental_bunch?.name ?? "Experimental bunch";
             return (
               <div key={c.id} className={cn(VA_CARD, "p-4 md:p-5")}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -259,30 +466,30 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
                 </div>
 
                 <div className="mt-4 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
-                    <p className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#D4AF8C]/80">
-                      <Trophy className="h-3.5 w-3.5" /> Proven bunch
-                    </p>
-                    <Meter label="Filled" value={s.proven.provided} max={s.proven.cap} tone="gold" />
-                    <p className="mt-1 text-[11px] text-white/40">{s.proven.pending} pending review</p>
-                    {c.proven_bunch_id ? (
-                      <Link href={`${ROUTES.admin.bunches}?id=${encodeURIComponent(c.proven_bunch_id)}`} className="mt-2 inline-block text-[12px] text-[#D4AF8C] underline-offset-2 hover:underline">
-                        Open bunch
-                      </Link>
-                    ) : null}
-                  </div>
-                  <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
-                    <p className="mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#FF1493]/90">
-                      <FlaskConical className="h-3.5 w-3.5" /> Experimental bunch
-                    </p>
-                    <Meter label="Filled" value={s.experimental.provided} max={s.experimental.cap} tone="pink" />
-                    <p className="mt-1 text-[11px] text-white/40">{s.experimental.pending} pending review</p>
-                    {c.experimental_bunch_id ? (
-                      <Link href={`${ROUTES.admin.bunches}?id=${encodeURIComponent(c.experimental_bunch_id)}`} className="mt-2 inline-block text-[12px] text-[#D4AF8C] underline-offset-2 hover:underline">
-                        Open bunch
-                      </Link>
-                    ) : null}
-                  </div>
+                  {renderBunchSlot({
+                    cycle: c,
+                    kind: "proven",
+                    bunchId: c.proven_bunch_id,
+                    bunchName: provenName,
+                    provided: s.proven.provided,
+                    pending: s.proven.pending,
+                    cap: s.proven.cap,
+                    tone: "gold",
+                    Icon: Trophy,
+                    title: "Proven bunch",
+                  })}
+                  {renderBunchSlot({
+                    cycle: c,
+                    kind: "experimental",
+                    bunchId: c.experimental_bunch_id,
+                    bunchName: experimentalName,
+                    provided: s.experimental.provided,
+                    pending: s.experimental.pending,
+                    cap: s.experimental.cap,
+                    tone: "pink",
+                    Icon: FlaskConical,
+                    title: "Experimental bunch",
+                  })}
                 </div>
 
                 <div className="mt-4 grid gap-4 sm:grid-cols-3">
@@ -303,6 +510,19 @@ export function ContentCyclesClient({ models, initialCycles }: Props) {
           })}
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={closeDeleteConfirm}
+        onConfirm={() => void confirmDeleteBunch()}
+        title={deleteTarget ? `Delete “${deleteTarget.bunchName}”?` : "Delete bunch?"}
+        description={formatVideoBunchDeleteDescription(deleteImpact, deleteImpactLoading)}
+        confirmLabel="Delete bunch"
+        confirmVariant="danger"
+        loading={deleteLoading || deleteImpactLoading}
+        requireNameConfirmation={Boolean(deleteImpact?.has_valuable_work)}
+        nameToConfirm={deleteImpact?.bunch_name || deleteTarget?.bunchName || ""}
+      />
     </div>
   );
 }

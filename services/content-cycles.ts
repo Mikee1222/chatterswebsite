@@ -12,9 +12,14 @@ import { getModelById } from "@/services/modelss";
 import {
   countUrgentUsedThisMonth,
   createVideoBunch,
+  deleteVideoBunch,
+  getVideoBunch,
   listVideoBunches,
+  type DeleteVideoBunchActor,
   type VideoBunch,
+  type VideoBunchDeleteImpact,
 } from "@/services/winner-sourcing";
+import type { BunchKind } from "@/lib/winner-sourcing-helpers";
 
 const CYCLES = "content_cycles";
 const SETTINGS = "content_cycle_settings";
@@ -399,4 +404,90 @@ export async function getCycleWithStats(cycle: ContentCycle): Promise<ContentCyc
 export async function listCyclesWithStats(modelId?: string | null, limit = 12): Promise<ContentCycleWithStats[]> {
   const cycles = (await listCycles(modelId)).slice(0, limit);
   return Promise.all(cycles.map((c) => getCycleWithStats(c)));
+}
+
+/**
+ * Delete a Proven or Experimental bunch that belongs to this cycle.
+ * Reuses `deleteVideoBunch` (queue items returned to unassigned; cycle FK SET NULL).
+ */
+export async function deleteBunchFromCycle(input: {
+  cycle_id: string;
+  bunch_id: string;
+  actor: DeleteVideoBunchActor;
+}): Promise<{ impact: VideoBunchDeleteImpact; cycle: ContentCycleWithStats }> {
+  const cycle = await getCycle(input.cycle_id);
+  if (!cycle) throw new Error("Cycle not found");
+
+  const bunchId = input.bunch_id.trim();
+  const isProven = cycle.proven_bunch_id === bunchId;
+  const isExperimental = cycle.experimental_bunch_id === bunchId;
+  if (!isProven && !isExperimental) {
+    throw new Error("Bunch does not belong to this cycle");
+  }
+
+  const existing = await getVideoBunch(bunchId);
+  if (!existing) throw new Error("Bunch not found");
+  if (existing.cycle_id && existing.cycle_id !== cycle.id) {
+    throw new Error("Bunch does not belong to this cycle");
+  }
+
+  const impact = await deleteVideoBunch(bunchId, input.actor);
+
+  // FK SET NULL should clear the ref; ensure explicitly if needed.
+  const sb = getSupabaseServiceClient();
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (isProven) patch.proven_bunch_id = null;
+  if (isExperimental) patch.experimental_bunch_id = null;
+  await sb.from(CYCLES).update(patch).eq("id", cycle.id);
+
+  const refreshed = await getCycle(cycle.id);
+  if (!refreshed) throw new Error("Cycle not found after delete");
+  return { impact, cycle: await getCycleWithStats(refreshed) };
+}
+
+/** Recreate a missing Proven or Experimental bunch slot on an existing cycle. */
+export async function createBunchForCycle(input: {
+  cycle_id: string;
+  kind: BunchKind;
+  actor_id: string;
+  actor_name: string;
+}): Promise<ContentCycleWithStats> {
+  const cycle = await getCycle(input.cycle_id);
+  if (!cycle) throw new Error("Cycle not found");
+  const kind = input.kind === "experimental" ? "experimental" : "proven";
+
+  if (kind === "proven" && cycle.proven_bunch_id) {
+    throw new Error("Proven bunch already exists for this cycle");
+  }
+  if (kind === "experimental" && cycle.experimental_bunch_id) {
+    throw new Error("Experimental bunch already exists for this cycle");
+  }
+  if (kind === "experimental" && cycle.experimental_cap < 1) {
+    throw new Error("Experimental cap is 0 — cannot create Experimental bunch");
+  }
+
+  const label = `${cycle.model_name} · Cycle ${cycle.number} (${cycle.start_date} → ${cycle.end_date})`;
+  const cap = kind === "proven" ? cycle.proven_cap : cycle.experimental_cap;
+  const bunch = await createVideoBunch({
+    name: `${label} · ${kind === "proven" ? "Proven" : "Experimental"}`,
+    model_id: cycle.model_id,
+    model_name: cycle.model_name,
+    target_video_count: Math.max(1, cap),
+    created_by_id: input.actor_id,
+    created_by_name: input.actor_name,
+    kind,
+    cycle_id: cycle.id,
+  });
+
+  const sb = getSupabaseServiceClient();
+  const patch =
+    kind === "proven"
+      ? { proven_bunch_id: bunch.id, updated_at: new Date().toISOString() }
+      : { experimental_bunch_id: bunch.id, updated_at: new Date().toISOString() };
+  const { error } = await sb.from(CYCLES).update(patch).eq("id", cycle.id);
+  if (error) throw new Error(`createBunchForCycle: ${error.message}`);
+
+  const refreshed = await getCycle(cycle.id);
+  if (!refreshed) throw new Error("Cycle not found after create");
+  return getCycleWithStats(refreshed);
 }
