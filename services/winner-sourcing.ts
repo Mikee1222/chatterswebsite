@@ -1273,6 +1273,7 @@ export async function getVideoBunchDeleteImpact(
 export function formatVideoBunchDeleteDescription(
   impact: VideoBunchDeleteImpact | null,
   loading: boolean,
+  opts?: { typedConfirmHint?: boolean },
 ): string {
   if (loading || !impact) return "Checking linked records…";
   const statusBits = Object.entries(impact.slots_by_status)
@@ -1297,7 +1298,10 @@ export function formatVideoBunchDeleteDescription(
   }
   let text = `This will permanently delete “${impact.bunch_name}” and: ${lines.join("; ")}. Deleting cannot be undone.`;
   if (impact.has_valuable_work) {
-    text += ` Warning: this bunch has valuable work (${impact.valuable_work_reasons.join("; ")}). Type the bunch name to confirm.`;
+    text += ` Warning: this bunch has valuable work (${impact.valuable_work_reasons.join("; ")}).`;
+    if (opts?.typedConfirmHint !== false) {
+      text += ` Type the bunch name to confirm.`;
+    }
   }
   return text;
 }

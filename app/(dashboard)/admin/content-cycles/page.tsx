@@ -1,5 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission, requireAdminRoute } from "@/lib/rbac";
+import { hasAnyPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { listCyclesWithStats } from "@/services/content-cycles";
@@ -9,8 +9,14 @@ export default async function AdminContentCyclesPage() {
   const user = await getSessionFromCookies();
   await requireAdminRoute(user, PERMISSIONS.CONTENT_CYCLES_MANAGE);
 
+  // Bunches-delete (`winner_sourcing:manage`) and/or content_cycles:manage.
+  // Page already requires the latter, so trash is always visible to anyone who can open it
+  // (incl. admin via ALL_PERMISSIONS defaults — no hardcoded role names).
   const canDeleteBunches = user
-    ? await hasPermission(user, PERMISSIONS.WINNER_SOURCING_MANAGE)
+    ? await hasAnyPermission(user, [
+        PERMISSIONS.WINNER_SOURCING_MANAGE,
+        PERMISSIONS.CONTENT_CYCLES_MANAGE,
+      ])
     : false;
 
   const [models, cycles] = await Promise.all([

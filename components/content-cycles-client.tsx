@@ -32,7 +32,10 @@ type ModelOpt = { id: string; model_name: string };
 type Props = {
   models: ModelOpt[];
   initialCycles: ContentCycleWithStats[];
-  /** Same permission as Bunches-page delete (`winner_sourcing:manage`). */
+  /**
+   * Trash + recreate: `winner_sourcing:manage` (Bunches delete) and/or
+   * `content_cycles:manage` (anyone who can open this page).
+   */
   canDeleteBunches: boolean;
 };
 
@@ -278,17 +281,43 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
     } = opts;
     const createKey = `${cycle.id}:${kind}`;
     const creating = createBusyKey === createKey;
+    const displayName = bunchName || title;
 
     return (
       <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
-        <p
-          className={cn(
-            "mb-2 inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider",
-            tone === "gold" ? "text-[#D4AF8C]/80" : "text-[#FF1493]/90",
-          )}
-        >
-          <Icon className="h-3.5 w-3.5" /> {title}
-        </p>
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <p
+            className={cn(
+              "inline-flex min-w-0 items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider",
+              tone === "gold" ? "text-[#D4AF8C]/80" : "text-[#FF1493]/90",
+            )}
+          >
+            <Icon className="h-3.5 w-3.5 shrink-0" /> <span className="truncate">{title}</span>
+          </p>
+          {bunchId && canDeleteBunches ? (
+            <button
+              type="button"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-300/90 transition hover:border-red-500/50 hover:bg-red-500/25 hover:text-red-200"
+              aria-label={`Delete ${displayName}`}
+              title={`Delete ${displayName}`}
+              onClick={() =>
+                void openDeleteConfirm({
+                  cycleId: cycle.id,
+                  bunchId,
+                  bunchName: displayName,
+                  kind,
+                })
+              }
+            >
+              <Trash2 className="h-4 w-4" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+        {bunchId ? (
+          <p className="mb-2 truncate text-[12px] text-white/70" title={displayName}>
+            {displayName}
+          </p>
+        ) : null}
         <Meter label="Filled" value={provided} max={cap} tone={tone} />
         <p className="mt-1 text-[11px] text-white/40">{pending} pending review</p>
         {bunchId ? (
@@ -299,25 +328,6 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
             >
               Open bunch
             </Link>
-            {canDeleteBunches ? (
-              <button
-                type="button"
-                className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 text-[12px] font-medium text-red-200/90 transition hover:bg-red-500/20"
-                aria-label={`Delete ${title}`}
-                title="Delete bunch"
-                onClick={() =>
-                  void openDeleteConfirm({
-                    cycleId: cycle.id,
-                    bunchId,
-                    bunchName: bunchName || title,
-                    kind,
-                  })
-                }
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete
-              </button>
-            ) : null}
           </div>
         ) : (
           <div className="mt-2">
@@ -325,7 +335,7 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
             {canDeleteBunches ? (
               <button
                 type="button"
-                className={cn(VA_BTN_SECONDARY, "mt-2 min-h-10 px-3 text-xs")}
+                className={cn(VA_BTN_SECONDARY, "mt-2 min-h-11 px-3 text-xs")}
                 disabled={creating || (kind === "experimental" && cap < 1)}
                 onClick={() => void createBunch(cycle.id, kind)}
               >
@@ -469,7 +479,7 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
                   {renderBunchSlot({
                     cycle: c,
                     kind: "proven",
-                    bunchId: c.proven_bunch_id,
+                    bunchId: c.proven_bunch?.id ?? c.proven_bunch_id,
                     bunchName: provenName,
                     provided: s.proven.provided,
                     pending: s.proven.pending,
@@ -481,7 +491,7 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
                   {renderBunchSlot({
                     cycle: c,
                     kind: "experimental",
-                    bunchId: c.experimental_bunch_id,
+                    bunchId: c.experimental_bunch?.id ?? c.experimental_bunch_id,
                     bunchName: experimentalName,
                     provided: s.experimental.provided,
                     pending: s.experimental.pending,
@@ -515,13 +525,14 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
         open={Boolean(deleteTarget)}
         onClose={closeDeleteConfirm}
         onConfirm={() => void confirmDeleteBunch()}
-        title={deleteTarget ? `Delete “${deleteTarget.bunchName}”?` : "Delete bunch?"}
-        description={formatVideoBunchDeleteDescription(deleteImpact, deleteImpactLoading)}
-        confirmLabel="Delete bunch"
+        title={deleteTarget ? `Delete ${deleteTarget.bunchName}?` : "Delete bunch?"}
+        description={formatVideoBunchDeleteDescription(deleteImpact, deleteImpactLoading, {
+          typedConfirmHint: false,
+        })}
+        confirmLabel="Delete"
         confirmVariant="danger"
         loading={deleteLoading || deleteImpactLoading}
-        requireNameConfirmation={Boolean(deleteImpact?.has_valuable_work)}
-        nameToConfirm={deleteImpact?.bunch_name || deleteTarget?.bunchName || ""}
+        requireNameConfirmation={false}
       />
     </div>
   );

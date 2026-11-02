@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
+import { hasAnyPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createBunchForCycle } from "@/services/content-cycles";
 import { coerceBunchKind } from "@/lib/winner-sourcing-helpers";
@@ -11,7 +11,12 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function POST(req: Request, ctx: Ctx) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE))) {
+  if (
+    !(await hasAnyPermission(session, [
+      PERMISSIONS.WINNER_SOURCING_MANAGE,
+      PERMISSIONS.CONTENT_CYCLES_MANAGE,
+    ]))
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
