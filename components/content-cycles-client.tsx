@@ -19,7 +19,13 @@ import {
   Trophy,
 } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
-import type { ContentCycleWithStats, ContentCycleSettings, CycleStatus } from "@/services/content-cycles";
+import type {
+  ContentCycleWithStats,
+  ContentCycleSettings,
+  ContentCycleDeleteImpact,
+  ContentCycleDeleteMode,
+  CycleStatus,
+} from "@/services/content-cycles";
 import type { VideoBunchDeleteImpact } from "@/services/winner-sourcing";
 import { formatVideoBunchDeleteDescription } from "@/services/winner-sourcing";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -37,6 +43,8 @@ type Props = {
    * `content_cycles:manage` (anyone who can open this page).
    */
   canDeleteBunches: boolean;
+  /** Cycle trash: `content_cycles:manage`. */
+  canDeleteCycles: boolean;
 };
 
 const STATUS_LABEL: Record<CycleStatus, string> = {
@@ -79,7 +87,7 @@ type DeleteTarget = {
   kind: "proven" | "experimental";
 };
 
-export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }: Props) {
+export function ContentCyclesClient({ models, initialCycles, canDeleteBunches, canDeleteCycles }: Props) {
   const [cycles, setCycles] = React.useState(initialCycles);
   const [modelId, setModelId] = React.useState<string>(models[0]?.id ?? "");
   const [busy, setBusy] = React.useState(false);
@@ -93,6 +101,12 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
   const [deleteImpactLoading, setDeleteImpactLoading] = React.useState(false);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
   const [createBusyKey, setCreateBusyKey] = React.useState<string | null>(null);
+
+  const [cycleDeleteTarget, setCycleDeleteTarget] = React.useState<ContentCycleWithStats | null>(null);
+  const [cycleDeleteImpact, setCycleDeleteImpact] = React.useState<ContentCycleDeleteImpact | null>(null);
+  const [cycleDeleteImpactLoading, setCycleDeleteImpactLoading] = React.useState(false);
+  const [cycleDeleteLoading, setCycleDeleteLoading] = React.useState(false);
+  const [cycleDeleteMode, setCycleDeleteMode] = React.useState<ContentCycleDeleteMode>("keep_bunches");
 
   const visible = cycles.filter((c) => !modelId || c.model_id === modelId);
 
@@ -250,6 +264,64 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
       }
     } finally {
       setCreateBusyKey(null);
+    }
+  }
+
+  function closeCycleDeleteConfirm() {
+    setCycleDeleteTarget(null);
+    setCycleDeleteImpact(null);
+    setCycleDeleteImpactLoading(false);
+    setCycleDeleteMode("keep_bunches");
+  }
+
+  async function openCycleDeleteConfirm(cycle: ContentCycleWithStats) {
+    if (!canDeleteCycles) return;
+    setCycleDeleteTarget(cycle);
+    setCycleDeleteImpact(null);
+    setCycleDeleteMode("keep_bunches");
+    setCycleDeleteImpactLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/admin/content-cycles/${encodeURIComponent(cycle.id)}?delete_impact=1`,
+        { credentials: "include" },
+      );
+      const data = (await res.json().catch(() => ({}))) as {
+        impact?: ContentCycleDeleteImpact;
+        error?: string;
+      };
+      if (!res.ok || !data.impact) {
+        setError(data.error || "Could not load cycle delete impact");
+        closeCycleDeleteConfirm();
+        return;
+      }
+      setCycleDeleteImpact(data.impact);
+    } finally {
+      setCycleDeleteImpactLoading(false);
+    }
+  }
+
+  async function confirmDeleteCycle() {
+    if (!cycleDeleteTarget || !canDeleteCycles) return;
+    setCycleDeleteLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/content-cycles/${encodeURIComponent(cycleDeleteTarget.id)}`, {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode: cycleDeleteMode }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(data.error || "Delete cycle failed");
+        return;
+      }
+      setCycles((list) => list.filter((c) => c.id !== cycleDeleteTarget.id));
+      closeCycleDeleteConfirm();
+      await reload();
+    } finally {
+      setCycleDeleteLoading(false);
     }
   }
 
@@ -429,7 +501,21 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
 
       {visible.length === 0 ? (
         <div className={cn(VA_CARD, "p-8 text-center text-sm text-white/45")}>
-          No cycles yet for {modelName || "this creator"}. Start the first one — it creates the Proven and Experimental bunches for the current half-month.
+          <p>
+            No cycles yet for {modelName || "this creator"}. Start the first one — it creates the Proven and
+            Experimental bunches for the current half-month.
+          </p>
+          {modelId ? (
+            <button
+              type="button"
+              className={cn(VA_BTN_PRIMARY, "mt-4 min-h-11 px-4")}
+              disabled={busy}
+              onClick={() => void startCycle()}
+            >
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" />}
+              Create cycle
+            </button>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-3">
@@ -472,6 +558,17 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
                     >
                       <Flame className="h-3 w-3" /> Urgent {s.urgent.used}/{s.urgent.total}
                     </span>
+                    {canDeleteCycles ? (
+                      <button
+                        type="button"
+                        className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-300/90 transition hover:border-red-500/50 hover:bg-red-500/25 hover:text-red-200"
+                        aria-label={`Delete cycle ${c.number} for ${c.model_name}`}
+                        title={`Delete cycle ${c.number}`}
+                        onClick={() => void openCycleDeleteConfirm(c)}
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
 
@@ -534,6 +631,133 @@ export function ContentCyclesClient({ models, initialCycles, canDeleteBunches }:
         loading={deleteLoading || deleteImpactLoading}
         requireNameConfirmation={false}
       />
+
+      {cycleDeleteTarget ? (
+        <CycleDeleteDialog
+          cycle={cycleDeleteTarget}
+          impact={cycleDeleteImpact}
+          impactLoading={cycleDeleteImpactLoading}
+          mode={cycleDeleteMode}
+          onModeChange={setCycleDeleteMode}
+          loading={cycleDeleteLoading}
+          onClose={closeCycleDeleteConfirm}
+          onConfirm={() => void confirmDeleteCycle()}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CycleDeleteDialog({
+  cycle,
+  impact,
+  impactLoading,
+  mode,
+  onModeChange,
+  loading,
+  onClose,
+  onConfirm,
+}: {
+  cycle: ContentCycleWithStats;
+  impact: ContentCycleDeleteImpact | null;
+  impactLoading: boolean;
+  mode: ContentCycleDeleteMode;
+  onModeChange: (m: ContentCycleDeleteMode) => void;
+  loading: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const busy = loading || impactLoading;
+  const counts = impact
+    ? `${impact.bunches_linked} bunch${impact.bunches_linked === 1 ? "" : "es"} linked · ${impact.recreate_video_slots} slot${impact.recreate_video_slots === 1 ? "" : "s"} · ${impact.queue_items} queue item${impact.queue_items === 1 ? "" : "s"} · ${impact.wip} WIP`
+    : impactLoading
+      ? "Checking linked records…"
+      : "No linked counts available";
+
+  return (
+    <div
+      className="fixed inset-0 z-[220] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm md:items-center"
+      data-mobile-chrome-hide
+    >
+      <button type="button" className="absolute inset-0" aria-label="Close" onClick={() => !busy && onClose()} />
+      <div
+        className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#1a1a2e] p-6 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cycle-delete-title"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="cycle-delete-title" className="text-lg font-semibold text-white">
+          Delete cycle {cycle.number} for {cycle.model_name}?
+        </h2>
+        <p className="mt-3 text-sm text-white/65">{counts}</p>
+        <fieldset className="mt-4 space-y-2" disabled={busy}>
+          <legend className="sr-only">Delete options</legend>
+          <label
+            className={cn(
+              "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 text-sm transition",
+              mode === "keep_bunches"
+                ? "border-[#D4AF8C]/45 bg-[#D4AF8C]/10 text-white"
+                : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20",
+            )}
+          >
+            <input
+              type="radio"
+              name="cycle-delete-mode"
+              className="mt-1"
+              checked={mode === "keep_bunches"}
+              onChange={() => onModeChange("keep_bunches")}
+            />
+            <span>
+              <span className="font-medium text-white">Delete the cycle only, keep its bunches</span>
+              <span className="mt-0.5 block text-[12px] text-white/50">
+                Default. Bunches stay and are unlinked from this cycle.
+              </span>
+            </span>
+          </label>
+          <label
+            className={cn(
+              "flex cursor-pointer items-start gap-3 rounded-xl border px-3 py-3 text-sm transition",
+              mode === "delete_bunches"
+                ? "border-red-500/40 bg-red-500/10 text-white"
+                : "border-white/10 bg-white/[0.03] text-white/70 hover:border-white/20",
+            )}
+          >
+            <input
+              type="radio"
+              name="cycle-delete-mode"
+              className="mt-1"
+              checked={mode === "delete_bunches"}
+              onChange={() => onModeChange("delete_bunches")}
+            />
+            <span>
+              <span className="font-medium text-white">Delete the cycle and all its bunches</span>
+              <span className="mt-0.5 block text-[12px] text-white/50">
+                Same as bunch trash — queue items return to unassigned pending.
+              </span>
+            </span>
+          </label>
+        </fieldset>
+        <div className="mt-6 flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/10 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className="flex min-h-[44px] min-w-[7rem] items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/20 px-4 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

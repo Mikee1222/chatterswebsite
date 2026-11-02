@@ -1,5 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasAnyPermission, requireAdminRoute } from "@/lib/rbac";
+import { hasAnyPermission, hasPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { listCyclesWithStats } from "@/services/content-cycles";
@@ -18,6 +18,7 @@ export default async function AdminContentCyclesPage() {
         PERMISSIONS.CONTENT_CYCLES_MANAGE,
       ])
     : false;
+  const canDeleteCycles = user ? await hasPermission(user, PERMISSIONS.CONTENT_CYCLES_MANAGE) : false;
 
   const [models, cycles] = await Promise.all([
     listActiveGunzoTeamModelss().catch(() => []),
@@ -30,6 +31,7 @@ export default async function AdminContentCyclesPage() {
         models={models.map((m) => ({ id: m.id, model_name: m.model_name }))}
         initialCycles={cycles}
         canDeleteBunches={canDeleteBunches}
+        canDeleteCycles={canDeleteCycles}
       />
     </div>
   );

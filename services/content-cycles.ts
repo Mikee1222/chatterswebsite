@@ -14,6 +14,7 @@ import {
   createVideoBunch,
   deleteVideoBunch,
   getVideoBunch,
+  getVideoBunchDeleteImpact,
   listVideoBunches,
   type DeleteVideoBunchActor,
   type VideoBunch,
@@ -254,7 +255,8 @@ export async function startNextCycle(input: {
   if (existing.some((c) => c.start_date === window.start)) {
     throw new Error(`A cycle starting ${window.start} already exists for ${modelName}`);
   }
-  const number = (latest?.number ?? 0) + 1;
+  // UNIQUE(model_id, number) — always max+1 so deletes never collide with count/latest+1.
+  const number = existing.reduce((max, c) => Math.max(max, c.number), 0) + 1;
 
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
@@ -443,6 +445,143 @@ export async function deleteBunchFromCycle(input: {
   const refreshed = await getCycle(cycle.id);
   if (!refreshed) throw new Error("Cycle not found after delete");
   return { impact, cycle: await getCycleWithStats(refreshed) };
+}
+
+export type ContentCycleDeleteMode = "keep_bunches" | "delete_bunches";
+
+export type ContentCycleDeleteImpact = {
+  cycle_id: string;
+  cycle_number: number;
+  model_id: string;
+  model_name: string;
+  bunches_linked: number;
+  recreate_video_slots: number;
+  queue_items: number;
+  /** Slots / scripts with progress, filming, editing, or posted briefs across linked bunches. */
+  wip: number;
+  bunch_impacts: VideoBunchDeleteImpact[];
+};
+
+/** Aggregate counts for the cycle-delete confirmation dialog. */
+export async function getCycleDeleteImpact(cycleId: string): Promise<ContentCycleDeleteImpact | null> {
+  const cycle = await getCycle(cycleId);
+  if (!cycle) return null;
+
+  const bunches = await listVideoBunches({ cycle_id: cycle.id }).catch(() => [] as VideoBunch[]);
+  const byId = new Map(bunches.map((b) => [b.id, b]));
+  const ids = new Set<string>();
+  if (cycle.proven_bunch_id) ids.add(cycle.proven_bunch_id);
+  if (cycle.experimental_bunch_id) ids.add(cycle.experimental_bunch_id);
+  for (const b of bunches) ids.add(b.id);
+
+  const bunch_impacts: VideoBunchDeleteImpact[] = [];
+  for (const id of ids) {
+    const impact = await getVideoBunchDeleteImpact(id);
+    if (impact) bunch_impacts.push(impact);
+    else if (!byId.has(id)) {
+      // Stale cycle pointer — still count as a linked bunch for the dialog.
+    }
+  }
+
+  const recreate_video_slots = bunch_impacts.reduce((n, i) => n + i.recreate_video_slots, 0);
+  const queue_items = bunch_impacts.reduce((n, i) => n + i.queue_items_returning, 0);
+  const wip = bunch_impacts.reduce((n, i) => {
+    let piece = i.scripts_with_progress + i.filming_filmed_slots + i.filming_edited_slots + i.linked_posted_briefs;
+    if (i.has_valuable_work && piece === 0) piece = 1;
+    return n + piece;
+  }, 0);
+
+  return {
+    cycle_id: cycle.id,
+    cycle_number: cycle.number,
+    model_id: cycle.model_id,
+    model_name: cycle.model_name,
+    bunches_linked: Math.max(ids.size, bunch_impacts.length),
+    recreate_video_slots,
+    queue_items,
+    wip,
+    bunch_impacts,
+  };
+}
+
+/**
+ * Delete a content cycle.
+ * - keep_bunches (default): bunches stay, cycle_id null; cycle row removed.
+ * - delete_bunches: reuses deleteVideoBunch / delete_video_bunch_atomic per bunch
+ *   (queue items → unassigned pending), then removes the cycle.
+ * Does not touch content_cycle_settings. Posting briefs / 24h outlier checks /
+ * winner_submissions reference model+dates, not cycle_id — no FK cleanup needed.
+ * video_bunches.cycle_id is ON DELETE SET NULL.
+ */
+export async function deleteCycle(input: {
+  cycle_id: string;
+  mode: ContentCycleDeleteMode;
+  actor: DeleteVideoBunchActor;
+}): Promise<{ impact: ContentCycleDeleteImpact; mode: ContentCycleDeleteMode }> {
+  const impact = await getCycleDeleteImpact(input.cycle_id);
+  if (!impact) throw new Error("Cycle not found");
+
+  const deleteBunches = input.mode === "delete_bunches";
+  const sb = getSupabaseServiceClient();
+
+  const { error: rpcError } = await sb.rpc("delete_content_cycle_atomic", {
+    p_cycle_id: input.cycle_id,
+    p_delete_bunches: deleteBunches,
+  });
+
+  if (rpcError) {
+    const missing =
+      /could not find the function|function .* does not exist|PGRST202/i.test(rpcError.message) ||
+      rpcError.code === "PGRST202";
+    if (!missing) throw new Error(`delete_content_cycle_atomic: ${rpcError.message}`);
+
+    // Fallback: ordered steps (same semantics as the RPC). Bunches RPC is also
+    // often absent from PostgREST cache — deleteVideoBunch already has its own fallback.
+    const cycle = await getCycle(input.cycle_id);
+    if (!cycle) throw new Error("Cycle not found");
+    const ids = new Set(impact.bunch_impacts.map((b) => b.bunch_id));
+    if (cycle.proven_bunch_id) ids.add(cycle.proven_bunch_id);
+    if (cycle.experimental_bunch_id) ids.add(cycle.experimental_bunch_id);
+
+    if (deleteBunches) {
+      for (const bunchId of ids) {
+        const still = await getVideoBunch(bunchId);
+        if (still) await deleteVideoBunch(bunchId, input.actor);
+      }
+    } else {
+      await sb.from("video_bunches").update({ cycle_id: null }).eq("cycle_id", input.cycle_id);
+      if (ids.size) {
+        await sb.from("video_bunches").update({ cycle_id: null }).in("id", [...ids]);
+      }
+      await sb
+        .from(CYCLES)
+        .update({
+          proven_bunch_id: null,
+          experimental_bunch_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", input.cycle_id);
+    }
+    const { error: delErr } = await sb.from(CYCLES).delete().eq("id", input.cycle_id);
+    if (delErr) throw new Error(`deleteCycle: ${delErr.message}`);
+  }
+
+  console.info("[content-cycle-delete]", {
+    at: new Date().toISOString(),
+    actor_user_id: input.actor.user_id ?? "",
+    actor_user_name: input.actor.user_name ?? "",
+    cycle_id: impact.cycle_id,
+    cycle_number: impact.cycle_number,
+    model_id: impact.model_id,
+    model_name: impact.model_name,
+    mode: input.mode,
+    bunches_linked: impact.bunches_linked,
+    recreate_video_slots: impact.recreate_video_slots,
+    queue_items: impact.queue_items,
+    wip: impact.wip,
+  });
+
+  return { impact, mode: input.mode };
 }
 
 /** Recreate a missing Proven or Experimental bunch slot on an existing cycle. */
