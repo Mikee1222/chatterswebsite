@@ -40,6 +40,10 @@ export async function GET(req: Request) {
       scanned: r.scanned,
       trial_matched: r.trialMatched,
       would_classify: list.length,
+      // Live ×N: existing winners inside the window re-scored against tonight's baseline.
+      rescored: r.rescored,
+      would_withdraw: r.wouldWithdraw ?? [],
+      kept_below_threshold: r.keptBelowThreshold,
       by_model: byModel,
       // One row per account + feed: the average the candidates were compared against.
       // baseline_count < 3 or no_views > 0 means ClarioSuite insights are missing.

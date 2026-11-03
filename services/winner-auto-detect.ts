@@ -20,9 +20,12 @@
  * ClarioSuite views written back to posting_brief_posts, so the Trial Check tab reflects
  * them without manual entry (manual entry stays as the fallback).
  *
- * Classification is one-time permanent per media_id:
- * - Already-classified posts are never re-evaluated (threshold changes are non-retroactive)
- * - Unclassified posts are rechecked each sync as views grow / the baseline moves
+ * The multiple is LIVE (owner decision, 2026-11-03): every night, every auto-detected
+ * submission still inside the scan window is re-scored against that night's baseline —
+ * view_count, outlier_multiple and tier are updated so all cards of an account compare
+ * to the same average. A submission that falls below outlier_multiple is withdrawn
+ * (deleted) unless it is already in the recreation queue / a bunch — those keep their
+ * place and only get the refreshed ×N. Posts older than the window are left as they are.
  */
 
 import { classifyIgPost } from "@/lib/instagram-insights-ui";
@@ -35,7 +38,12 @@ import {
   cacheWinnerThumbnailFromUrl,
   needsWinnerThumbnailCache,
 } from "@/lib/winner-thumbnail-cache";
-import { createWinnerSubmission, type WinnerSubmission } from "@/services/winner-sourcing";
+import {
+  createWinnerSubmission,
+  deleteWinnerSubmission,
+  getWinnerSubmissionDeleteImpact,
+  type WinnerSubmission,
+} from "@/services/winner-sourcing";
 import { getCycleSettings, type ContentCycleSettings } from "@/services/content-cycles";
 
 export const CLARIOSUITE_AUTO_SUBMITTER_ID = "clariosuite_auto";
@@ -63,6 +71,14 @@ export type WinnerAutoDetectResult = {
   skippedNoViews: number;
   /** Candidates inside the window whose account+feed has fewer than 3 baseline posts. */
   skippedNoBaseline: number;
+  /** Existing auto-detected submissions inside the window re-scored against tonight's baseline. */
+  rescored: number;
+  /** Re-scored submissions that fell below the outlier multiple and were removed. */
+  withdrawn: number;
+  /** Below the multiple but kept because they are queued / in a bunch (×N refreshed only). */
+  keptBelowThreshold: number;
+  /** Dry run: what a real run would withdraw. */
+  wouldWithdraw?: Array<{ model_name: string; media_id: string; views: number; multiple: number | null }>;
   /** Per account+feed baseline, for diagnostics. */
   baselines: Array<{
     model_name: string;
@@ -276,6 +292,10 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
     trialMatched: 0,
     skippedNoViews: 0,
     skippedNoBaseline: 0,
+    rescored: 0,
+    withdrawn: 0,
+    keptBelowThreshold: 0,
+    wouldWithdraw: opts?.dryRun ? [] : undefined,
     baselines: [],
     classified: 0,
     skippedAlreadyClassified: 0,
@@ -360,6 +380,94 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
       candidates: 0,
     });
   }
+  /* ── Live ×N: re-score existing auto-detected submissions against tonight's baseline ── */
+  try {
+    const postByMedia = new Map<string, TopPostCandidate>();
+    for (const post of posts) if (post.media_id) postByMedia.set(post.media_id, post);
+    const sb = getSupabaseServiceClient();
+    let subQ = sb
+      .from("winner_submissions")
+      .select("id, model_id, model_name, clariosuite_media_id, view_count, tier, status, outlier_multiple, feed, posted_at")
+      .eq("source", "auto_detected")
+      .not("clariosuite_media_id", "is", null);
+    if (opts?.modelRecordId) subQ = subQ.eq("model_id", opts.modelRecordId);
+    const { data: subs, error: subErr } = await subQ;
+    if (subErr) throw new Error(`load auto-detected submissions: ${subErr.message}`);
+    for (const row of subs ?? []) {
+      const r = row as {
+        id: string;
+        model_id: string;
+        model_name: string | null;
+        clariosuite_media_id: string;
+        view_count: number | null;
+        tier: string;
+        status: string;
+        outlier_multiple: number | null;
+        feed: string | null;
+        posted_at: string | null;
+      };
+      const post = postByMedia.get(String(r.clariosuite_media_id));
+      if (!post) continue;
+      const postedMs = post.posted_at ? Date.parse(post.posted_at) : NaN;
+      const feed: WinnerFeed = r.feed === "trial" ? "trial" : feedOf(post);
+      const accountKey = accountKeyOf(post);
+      const baseline = baselineByAccount.get(baselineKey(accountKey, feed));
+      const scanDays = baseline?.scanDays ?? 20;
+      if (Number.isFinite(postedMs) && now - postedMs > scanDays * 86_400_000) continue; // outside window: frozen
+      const views = Math.round(post.views);
+      if (views <= 0) continue; // insights missing tonight — leave as is
+      if (!baseline || !baseline.avg || baseline.avg <= 0 || baseline.count < 3) continue;
+      const multiple = Math.round((views / baseline.avg) * 100) / 100;
+      const tier: WinnerTier | null =
+        multiple >= baseline.hot ? "super_winner" : multiple >= baseline.outlier ? "winner" : null;
+      result.rescored += 1;
+      if (!tier) {
+        // Fell below the multiple. Withdraw only when nothing downstream depends on it.
+        // Queued / in a bunch = the team already acted on it → keep, only refresh ×N.
+        const impact = opts?.dryRun || r.status !== "pending" ? null : await getWinnerSubmissionDeleteImpact(r.id);
+        const simple =
+          r.status === "pending" &&
+          (opts?.dryRun ? true : !!impact && impact.is_simple_delete && impact.recreation_queue_items === 0);
+        if (simple) {
+          if (opts?.dryRun) {
+            result.wouldWithdraw!.push({
+              model_name: r.model_name?.trim() || r.model_id,
+              media_id: String(r.clariosuite_media_id),
+              views,
+              multiple,
+            });
+          } else {
+            await deleteWinnerSubmission(r.id);
+            classifiedMedia.delete(String(r.clariosuite_media_id));
+            if (post.permalink) existingLinks.delete(normalizePermalink(post.permalink));
+          }
+          result.withdrawn += 1;
+          continue;
+        }
+        result.keptBelowThreshold += 1;
+      }
+      if (opts?.dryRun) continue;
+      const changed =
+        Math.round(Number(r.view_count ?? 0)) !== views ||
+        Number(r.outlier_multiple ?? -1) !== multiple ||
+        (tier && tier !== r.tier) ||
+        (r.feed || "") !== feed;
+      if (!changed) continue;
+      const { error: upErr } = await sb
+        .from("winner_submissions")
+        .update({
+          view_count: views,
+          outlier_multiple: multiple,
+          feed,
+          ...(tier ? { tier } : {}),
+        })
+        .eq("id", r.id);
+      if (upErr) result.errors.push({ media_id: String(r.clariosuite_media_id), message: `rescore: ${upErr.message}` });
+    }
+  } catch (err) {
+    result.errors.push({ media_id: "rescore", message: err instanceof Error ? err.message : String(err) });
+  }
+
   for (const post of posts) {
     if (!post.media_id) continue;
 

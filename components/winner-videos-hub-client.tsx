@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
-import { TrialCheckPanel } from "@/components/trial-check-panel";
 import { CountUp, LuxuryStatCard, StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { FilterBar, FilterChip } from "@/components/manager-review-ui";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -1251,7 +1250,7 @@ export function WinnerVideosHubClient({
                 <div className="flex items-baseline justify-between gap-3">
                   <h3 className="text-sm font-semibold text-[#F2EFF2]">Trial-grid outliers</h3>
                   <p className="text-xs text-[#B8B4B8]/45">
-                    Same rule as the grid, computed only against the account&apos;s latest trial posts.
+                    Trials are matched by their Posted link and scored every night against the account&apos;s latest 9 trial posts — nothing is typed by hand.
                   </p>
                 </div>
                 <SubmissionGallery
@@ -1272,7 +1271,6 @@ export function WinnerVideosHubClient({
                   onDelete={(s) => void openDeleteConfirm(s)}
                 />
               </section>
-              <TrialCheckPanel modelFilter={modelFilter} onChanged={() => void refreshAll()} />
             </div>
           ) : null}
           {tab === "settings" ? (
