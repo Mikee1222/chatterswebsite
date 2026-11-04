@@ -2,8 +2,8 @@
 
 /**
  * Trial Check — Content Flow v1.1.
- * Instagram exposes no API for trial reels, so the Account Supervisor types the
- * views from the Instagram app here, per account, every ~3 days. The app computes
+ * Trial posts are matched to ClarioSuite by link every night (winner-auto-detect);
+ * the Account Supervisor types views here only as a fallback. The app computes
  * the average of the latest N trials and flags outliers into the Winners Hub + queue.
  * (Grid posts are checked automatically by the ClarioSuite auto-detect.)
  */
@@ -119,8 +119,9 @@ export function TrialCheckPanel({ modelFilter, onChanged }: { modelFilter: strin
   return (
     <div className="space-y-4">
       <p className="text-xs text-[#B8B4B8]/50">
-        Instagram has no API for trial reels, so type the views from the Instagram app (Profile → Trial reels).
-        Grid posts are scanned automatically every night.
+        Trial posts posted from a posting brief (with the live link) are matched to ClarioSuite every night:
+        their views fill in here and outliers go to Winners automatically, same rule as the grid.
+        Type views manually only when ClarioSuite has no insights for a post (views still empty).
       </p>
       {accounts.map((acct) => {
         const key = `${acct.model_id}::${acct.account_handle}`;
@@ -155,9 +156,9 @@ export function TrialCheckPanel({ modelFilter, onChanged }: { modelFilter: strin
               {acct.posts.map((p) => {
                 const badge =
                   p.outlier_status === "hot"
-                    ? <span className={cn(VA_STATUS_BADGE, "border-rose-400/40 bg-rose-400/15 text-rose-200")}>🔥 HOT ×{p.outlier_multiple}</span>
+                    ? <span className={cn(VA_STATUS_BADGE, "border-rose-400/40 bg-rose-400/15 text-rose-200")}>🔥 HOT ×{p.outlier_multiple} trial-grid</span>
                     : p.outlier_status === "outlier"
-                      ? <span className={cn(VA_STATUS_BADGE, "border-amber-400/40 bg-amber-400/15 text-amber-200")}>OUTLIER ×{p.outlier_multiple}</span>
+                      ? <span className={cn(VA_STATUS_BADGE, "border-amber-400/40 bg-amber-400/15 text-amber-200")}>OUTLIER ×{p.outlier_multiple} trial-grid</span>
                       : p.outlier_status === "normal"
                         ? <span className={cn(VA_STATUS_BADGE, "border-white/10 bg-white/[0.03] text-white/40")}>×{p.outlier_multiple ?? "—"}</span>
                         : null;

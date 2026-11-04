@@ -1,10 +1,12 @@
 /**
  * Trial check — Content Flow v1.1.
  *
- * Instagram exposes no API for trial reels (listing or insights), so the
- * Account Supervisor types the views from the Instagram app, in batch, every
- * ~3 days. The grid is handled automatically by the ClarioSuite auto-detect
- * (services/winner-auto-detect.ts) with the same rule.
+ * Manual path: the Account Supervisor types the views from the Instagram app, in
+ * batch, every ~3 days. Automatic path (services/winner-auto-detect.ts): the
+ * ClarioSuite media list does include trial reels; a reel whose link matches a trial
+ * post of a posting brief is treated as the TRIAL feed, gets the same rule with its
+ * own baseline, and its ClarioSuite views are written back onto the post here
+ * (views_24h / outlier_*), so this tab fills itself when ClarioSuite has insights.
  *
  * Rule, per model + account + feed=trial (posts younger than 24h are excluded from
  * the baseline only — views still accumulating; they are still checked):

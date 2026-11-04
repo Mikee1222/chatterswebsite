@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
-import { TrialCheckPanel } from "@/components/trial-check-panel";
 import { CountUp, LuxuryStatCard, StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { FilterBar, FilterChip } from "@/components/manager-review-ui";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -855,6 +854,16 @@ export function WinnerVideosHubClient({
     [supers, modelFilter, sourceFilter, dateRange, assignFilter, searchLc, queueBySubmission],
   );
 
+  // Trial-grid outliers (feed = trial), both tiers — shown as cards on the Trial Check tab.
+  const filteredTrials = React.useMemo(
+    () =>
+      [...winners, ...supers]
+        .filter((s) => s.feed === "trial" && matchesSubmissionFilters(s, "all"))
+        .sort((a, b) => Date.parse(b.posted_at || b.created_at) - Date.parse(a.posted_at || a.created_at)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [winners, supers, modelFilter, sourceFilter, dateRange, assignFilter, searchLc, queueBySubmission],
+  );
+
   const filteredQueue = React.useMemo(() => {
     return queue.filter((item) => {
       const sub = item.submission;
@@ -1186,7 +1195,7 @@ export function WinnerVideosHubClient({
             <SubmissionGallery
               items={filteredWinners}
               empty="No Winner submissions match these filters."
-              emptyHint={`Winners need ≥ ${WINNER_VIEW_THRESHOLD.toLocaleString()} views (below Super).`}
+              emptyHint="Auto-detect: ≥ 2.5× the account's latest-9 average (grid or trial-grid). Manual submits use the view thresholds."
               busyId={busyId}
               recreateCount={recreateConfig.winner_recreate_count}
               openBunches={openBunches}
@@ -1205,7 +1214,7 @@ export function WinnerVideosHubClient({
             <SubmissionGallery
               items={filteredSupers}
               empty="No Super Winner submissions match these filters."
-              emptyHint={`Super Winners need ≥ ${SUPER_WINNER_VIEW_THRESHOLD.toLocaleString()} views.`}
+              emptyHint="Auto-detect: ≥ 10× the account's latest-9 average (grid or trial-grid). Manual submits use the view thresholds."
               busyId={busyId}
               recreateCount={recreateConfig.super_winner_recreate_count}
               openBunches={openBunches}
@@ -1236,7 +1245,33 @@ export function WinnerVideosHubClient({
             />
           ) : null}
           {tab === "trials" ? (
-            <TrialCheckPanel modelFilter={modelFilter} onChanged={() => void refreshAll()} />
+            <div className="space-y-6">
+              <section className="space-y-3">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-[#F2EFF2]">Trial-grid outliers</h3>
+                  <p className="text-xs text-[#B8B4B8]/45">
+                    Trials are matched by their Posted link and scored every night against the account&apos;s latest 9 trial posts — nothing is typed by hand.
+                  </p>
+                </div>
+                <SubmissionGallery
+                  items={filteredTrials}
+                  empty="No trial outliers yet."
+                  emptyHint="A trial becomes an outlier at ≥ 2.5× the average of the account's latest 9 trial posts (≥ 10× = Super Winner)."
+                  busyId={busyId}
+                  recreateCount={recreateConfig.winner_recreate_count}
+                  openBunches={openBunches}
+                  queueBySubmission={queueBySubmission}
+                  groupByModel={groupByModel}
+                  collapsedModels={collapsedModels}
+                  onToggleModel={(id) =>
+                    setCollapsedModels((p) => ({ ...p, [id]: !p[id] }))
+                  }
+                  onAddToQueue={(id) => void addToQueue(id)}
+                  onAssignSubmission={(s, bunchId) => void assignSubmissionToBunch(s, bunchId)}
+                  onDelete={(s) => void openDeleteConfirm(s)}
+                />
+              </section>
+            </div>
           ) : null}
           {tab === "settings" ? (
             <SettingsPanel
@@ -1490,9 +1525,9 @@ function WinnerCard({
                   ? "border-rose-400/40 bg-rose-400/15 text-rose-200"
                   : "border-amber-400/35 bg-amber-400/12 text-amber-200",
               )}
-              title={`${s.feed === "trial" ? "Trial" : "Grid"} outlier — ${s.outlier_multiple}× the average of the account's latest posts`}
+              title={`${s.feed === "trial" ? "Trial-grid" : "Grid"} outlier — ${s.outlier_multiple}× the average of the account's latest ${s.feed === "trial" ? "trial" : "grid"} posts`}
             >
-              ×{s.outlier_multiple} {s.feed === "trial" ? "trial" : "grid"}
+              ×{s.outlier_multiple} {s.feed === "trial" ? "trial-grid" : "grid"}
             </span>
           ) : null}
           {assigned ? (
@@ -2007,7 +2042,7 @@ function QueuePanel({
                 ) : null}
                 {item.feed ? (
                   <span className={cn(VA_STATUS_BADGE, "border-white/15 bg-white/[0.04] text-white/60")}>
-                    {item.feed === "trial" ? "Trial outlier" : "Grid outlier"}
+                    {item.feed === "trial" ? "Trial-grid outlier" : "Grid outlier"}
                     {sub?.outlier_multiple != null ? ` ×${sub.outlier_multiple}` : ""}
                   </span>
                 ) : null}
