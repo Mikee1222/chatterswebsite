@@ -2,8 +2,16 @@
  * Dual-backend rebills CRUD (chatter rebill submissions).
  */
 import { isSupabaseBackend } from "@/lib/data-backend";
-import { createRecord, listAllRecords, updateRecord, getRecord } from "@/lib/airtable-server";
-import { publicId, sbInsert, sbSelectAll, sbSelectByPublicId, sbUpdateByPublicId, type SbRow } from "@/lib/supabase-data";
+import { createRecord, listAllRecords, updateRecord, getRecord, deleteRecord } from "@/lib/airtable-server";
+import {
+  publicId,
+  sbDeleteByPublicId,
+  sbInsert,
+  sbSelectAll,
+  sbSelectByPublicId,
+  sbUpdateByPublicId,
+  type SbRow,
+} from "@/lib/supabase-data";
 
 const TABLE = "rebills";
 
@@ -55,16 +63,17 @@ export async function createRebill(fields: RebillWrite): Promise<{ id: string }>
       sub_username: fields.sub_username,
       sub_name: fields.sub_username,
       sub_type: fields.sub_type ?? "paid",
-      status: fields.status ?? "pending",
+      status: fields.status ?? "verified",
       screenshot: urls,
       date_time: fields.created_at ?? new Date().toISOString(),
       created_at: fields.created_at ?? new Date().toISOString(),
-      checked: false,
+      checked: true,
     });
     return { id: publicId(row) };
   }
   const rec = await createRecord(TABLE, {
     ...fields,
+    status: fields.status ?? "verified",
     screenshot: fields.screenshot?.length ? fields.screenshot : undefined,
   });
   return { id: rec.id };
@@ -133,6 +142,14 @@ export async function updateRebill(
     return;
   }
   await updateRecord(TABLE, id, fields);
+}
+
+export async function deleteRebill(id: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    await sbDeleteByPublicId(TABLE, id);
+    return;
+  }
+  await deleteRecord(TABLE, id);
 }
 
 

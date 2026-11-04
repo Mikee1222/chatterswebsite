@@ -39,12 +39,11 @@ export default async function MyRebillsPage() {
     })
     .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 
-  const allApproved = allRebills.filter(
-    (r) => r.status === "verified" && (r.sub_type || "paid") === "paid"
-  );
+  // Standings count ALL paid rebills regardless of status (incl. null legacy).
+  const allForStandings = allRebills.filter((r) => (r.sub_type || "paid") === "paid");
 
   const standingsMap = new Map<string, { chatter_name: string; count: number; chatter_id: string }>();
-  for (const r of allApproved) {
+  for (const r of allForStandings) {
     const cid = r.chatter_id;
     const cname = r.chatter_name || "Unknown";
     if (!cid) continue;

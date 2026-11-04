@@ -132,7 +132,6 @@ export const NOTIFICATION_EVENT_TYPES = [
   "model_schedule_created",
   // Dedicated submission events (split out from generic system_alert).
   "feedback_submitted",
-  "rebill_submitted",
   "extra_revenue_submitted",
   "expense_submitted",
   "time_off_requested",
@@ -312,7 +311,6 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   rebill_rejected: "rebill_rejected",
   model_schedule_created: "model_schedule_created",
   feedback_submitted: "feedback_submitted",
-  rebill_submitted: "rebill_submitted",
   extra_revenue_submitted: "extra_revenue_submitted",
   expense_submitted: "expense_submitted",
   time_off_requested: "time_off_requested",

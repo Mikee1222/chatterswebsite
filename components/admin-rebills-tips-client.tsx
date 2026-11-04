@@ -8,6 +8,7 @@ import {
   FileText,
   ImageIcon,
   Search,
+  Trash2,
   Trophy,
   XCircle,
 } from "lucide-react";
@@ -55,9 +56,6 @@ type StandingRow = {
   rank: number;
   chatter_id: string;
   chatter_name: string;
-  approved: number;
-  pending: number;
-  rejected: number;
   total: number;
 };
 
@@ -115,10 +113,7 @@ function filterRebillsForStandings(
 }
 
 function computeStandingsFromRebills(rebills: AdminRebillRow[]): StandingRow[] {
-  const map = new Map<
-    string,
-    { chatter_id: string; chatter_name: string; approved: number; pending: number; rejected: number }
-  >();
+  const map = new Map<string, { chatter_id: string; chatter_name: string; total: number }>();
 
   for (const r of rebills) {
     const key = r.chatter_id || r.chatter_name;
@@ -126,22 +121,16 @@ function computeStandingsFromRebills(rebills: AdminRebillRow[]): StandingRow[] {
     const existing = map.get(key) ?? {
       chatter_id: r.chatter_id,
       chatter_name: r.chatter_name,
-      approved: 0,
-      pending: 0,
-      rejected: 0,
+      total: 0,
     };
-    if (r.status === "verified") existing.approved++;
-    else if (r.status === "pending") existing.pending++;
-    else if (r.status === "rejected") existing.rejected++;
+    // Count ALL rebills regardless of status (incl. null legacy mapped to pending).
+    existing.total++;
     map.set(key, existing);
   }
 
   return Array.from(map.values())
-    .map((s) => ({ ...s, total: s.approved + s.pending + s.rejected }))
     .sort(
       (a, b) =>
-        b.approved - a.approved ||
-        b.pending - a.pending ||
         b.total - a.total ||
         a.chatter_name.localeCompare(b.chatter_name)
     )
@@ -156,14 +145,20 @@ function standingsRowHighlight(rank: number): string {
   return "";
 }
 
-function statusDisplayLabel(status: AdminRebillRow["status"]): string {
-  if (status === "verified") return "Approved";
+function statusDisplayLabel(status: AdminRebillRow["status"], kind: "rebills" | "tips" = "tips"): string {
+  if (status === "verified") return kind === "rebills" ? "Logged" : "Approved";
   if (status === "rejected") return "Rejected";
   return "Pending";
 }
 
-function StatusDotBadge({ status }: { status: AdminRebillRow["status"] }) {
-  const label = statusDisplayLabel(status);
+function StatusDotBadge({
+  status,
+  kind = "tips",
+}: {
+  status: AdminRebillRow["status"];
+  kind?: "rebills" | "tips";
+}) {
+  const label = statusDisplayLabel(status, kind);
   const dotClass =
     status === "verified" ? "bg-emerald-400" : status === "rejected" ? "bg-red-400" : "bg-yellow-400";
   const badgeClass =
@@ -462,16 +457,11 @@ export function AdminRebillsTipsClient({
   );
 
   const standingsStats = React.useMemo(() => {
-    const approved = filteredStandingsRebills.filter((r) => r.status === "verified").length;
-    const pending = filteredStandingsRebills.filter((r) => r.status === "pending").length;
-    const rejected = filteredStandingsRebills.filter((r) => r.status === "rejected").length;
     const best = standings[0];
     return {
-      approved,
-      pending,
-      rejected,
+      total: filteredStandingsRebills.length,
       bestName: best?.chatter_name ?? "—",
-      bestCount: best?.approved ?? 0,
+      bestCount: best?.total ?? 0,
     };
   }, [filteredStandingsRebills, standings]);
 
@@ -542,31 +532,36 @@ export function AdminRebillsTipsClient({
     setPatchingId(id);
     const prevR = rebills;
     const prevT = tips;
-    const row = kind === "rebills" ? rebills.find((r) => r.id === id) : tips.find((t) => t.id === id);
     if (kind === "rebills") {
       setRebills((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
     } else {
       setTips((ts) => ts.map((t) => (t.id === id ? { ...t, status } : t)));
     }
     try {
-      const data = await patchRecord(kind === "rebills" ? "rebill" : "tip", id, { status });
-      if (kind === "rebills" && status === "verified") {
-        const pts = Math.max(0, Math.floor(data.points_awarded ?? 0));
-        const name = data.chatter_name?.trim() || row?.chatter_name?.trim() || "chatter";
-        if (pts > 0) {
-          addToast(
-            localToast(
-              `rebill-verified-${id}-${Date.now()}`,
-              `Verified — ${pts} points awarded to ${name}`,
-              "",
-              "normal"
-            )
-          );
-        }
-      }
+      await patchRecord(kind === "rebills" ? "rebill" : "tip", id, { status });
     } catch {
       setRebills(prevR);
       setTips(prevT);
+    } finally {
+      setPatchingId(null);
+    }
+  }
+
+  async function deleteRebillRow(id: string) {
+    if (!window.confirm("Delete this rebill? This cannot be undone.")) return;
+    setPatchingId(id);
+    const prevR = rebills;
+    setRebills((rs) => rs.filter((r) => r.id !== id));
+    try {
+      const res = await fetch(`/api/admin/rebills/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error || "Delete failed");
+      }
+      addToast(localToast(`rebill-deleted-${id}-${Date.now()}`, "Rebill deleted", "", "normal"));
+    } catch {
+      setRebills(prevR);
+      addToast(localToast(`rebill-delete-fail-${Date.now()}`, "Delete failed", "", "high"));
     } finally {
       setPatchingId(null);
     }
@@ -606,7 +601,7 @@ export function AdminRebillsTipsClient({
       <header>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Administration</p>
         <h1 className="mt-2 text-2xl font-semibold text-white">Rebills &amp; Tips</h1>
-        <p className="mt-1 text-sm text-white/55">Review chatter-submitted rebills and missing tips</p>
+        <p className="mt-1 text-sm text-white/55">View chatter rebills and review missing tips</p>
       </header>
 
       <div className="flex gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-1">
@@ -616,6 +611,7 @@ export function AdminRebillsTipsClient({
             setNotesOpenId(null);
             setActiveTab("rebills");
             clearFilters();
+            setStatusFilter("all");
           }}
           className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
             activeTab === "rebills"
@@ -665,23 +661,15 @@ export function AdminRebillsTipsClient({
 
       {activeTab === "standings" ? (
         <div className="space-y-6">
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <section className="grid gap-3 sm:grid-cols-2">
             <div className="glass-card px-4 py-3 text-center">
-              <p className="text-xs uppercase tracking-wide text-white/45">Total Approved</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">{standingsStats.approved}</p>
-            </div>
-            <div className="glass-card px-4 py-3 text-center">
-              <p className="text-xs uppercase tracking-wide text-white/45">Total Pending</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-yellow-400">{standingsStats.pending}</p>
-            </div>
-            <div className="glass-card px-4 py-3 text-center">
-              <p className="text-xs uppercase tracking-wide text-white/45">Total Rejected</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-red-400">{standingsStats.rejected}</p>
+              <p className="text-xs uppercase tracking-wide text-white/45">Total Rebills</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">{standingsStats.total}</p>
             </div>
             <div className="glass-card px-4 py-3 text-center">
               <p className="text-xs uppercase tracking-wide text-white/45">Best Performer</p>
               <p className="mt-1 truncate text-lg font-semibold text-pink-300">{standingsStats.bestName}</p>
-              <p className="text-sm tabular-nums text-white/50">{standingsStats.bestCount} approved</p>
+              <p className="text-sm tabular-nums text-white/50">{standingsStats.bestCount} rebills</p>
             </div>
           </section>
 
@@ -827,7 +815,7 @@ export function AdminRebillsTipsClient({
             </div>
           </section>
 
-          <p className="text-sm text-white/50">Ranked by approved paid rebills (verified status)</p>
+          <p className="text-sm text-white/50">Ranked by paid rebills (all statuses)</p>
 
           {standings.length === 0 ? (
             <p className="glass-card border-dashed py-12 text-center text-sm text-white/45">
@@ -864,17 +852,9 @@ export function AdminRebillsTipsClient({
                                 isFirst ? "text-4xl md:text-5xl" : isSecond ? "text-3xl" : "text-2xl"
                               }`}
                             >
-                              {s.approved}
+                              {s.total}
                             </p>
-                            <p className="text-xs text-white/45">Approved</p>
-                            <div className="mt-2 flex flex-wrap justify-center gap-2 text-xs">
-                              {s.pending > 0 ? (
-                                <span className="text-yellow-400">{s.pending} pending</span>
-                              ) : null}
-                              {s.rejected > 0 ? (
-                                <span className="text-red-400">{s.rejected} rejected</span>
-                              ) : null}
-                            </div>
+                            <p className="text-xs text-white/45">Rebills</p>
                           </div>
                         );
                       })}
@@ -891,13 +871,9 @@ export function AdminRebillsTipsClient({
                           <div className="w-10 flex-shrink-0 text-center">{rankMedal(s.rank)}</div>
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium text-white">{s.chatter_name}</p>
-                            <div className="mt-1 flex flex-wrap gap-2 text-xs">
-                              <span className="text-emerald-400">{s.approved} approved</span>
-                              {s.pending > 0 ? <span className="text-yellow-400">{s.pending} pending</span> : null}
-                              {s.rejected > 0 ? <span className="text-red-400">{s.rejected} rejected</span> : null}
-                            </div>
+                            <p className="mt-1 text-xs text-emerald-400">{s.total} rebills</p>
                           </div>
-                          <p className="text-2xl font-bold tabular-nums text-emerald-400">{s.approved}</p>
+                          <p className="text-2xl font-bold tabular-nums text-emerald-400">{s.total}</p>
                         </div>
                       ))}
                     </div>
@@ -908,15 +884,12 @@ export function AdminRebillsTipsClient({
               <section className="space-y-3">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-white/45">Full Leaderboard</h2>
                 <div className="glass-card overflow-x-auto">
-                  <table className="w-full min-w-[640px] text-left text-sm">
+                  <table className="w-full min-w-[400px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-white/45">
                         <th className="px-4 py-3 font-medium">Rank</th>
                         <th className="px-4 py-3 font-medium">Chatter</th>
-                        <th className="px-4 py-3 text-right font-medium">Approved</th>
-                        <th className="px-4 py-3 text-right font-medium">Pending</th>
-                        <th className="px-4 py-3 text-right font-medium">Rejected</th>
-                        <th className="px-4 py-3 text-right font-medium">Total</th>
+                        <th className="px-4 py-3 text-right font-medium">Rebills</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -928,11 +901,8 @@ export function AdminRebillsTipsClient({
                           <td className="px-4 py-3">{rankMedal(s.rank)}</td>
                           <td className="px-4 py-3 font-medium text-white">{s.chatter_name}</td>
                           <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-400">
-                            {s.approved}
+                            {s.total}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-yellow-400">{s.pending}</td>
-                          <td className="px-4 py-3 text-right tabular-nums text-red-400">{s.rejected}</td>
-                          <td className="px-4 py-3 text-right font-medium tabular-nums text-white">{s.total}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -944,13 +914,22 @@ export function AdminRebillsTipsClient({
         </div>
       ) : (
         <>
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Total", summaries.total],
-          ["Pending", summaries.pending],
-          ["Verified", summaries.verified],
-          ["Rejected", summaries.rejected],
-        ].map(([label, count]) => (
+      <section
+        className={`grid gap-3 sm:grid-cols-2 ${activeTab === "tips" ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}
+      >
+        {(activeTab === "rebills"
+          ? [
+              ["Total", summaries.total],
+              ["Logged", summaries.verified],
+              ["Rejected", summaries.rejected],
+            ]
+          : [
+              ["Total", summaries.total],
+              ["Pending", summaries.pending],
+              ["Verified", summaries.verified],
+              ["Rejected", summaries.rejected],
+            ]
+        ).map(([label, count]) => (
           <div
             key={String(label)}
             className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-center"
@@ -1006,8 +985,8 @@ export function AdminRebillsTipsClient({
             aria-label="Filter by status"
           >
             <option value="all">All status</option>
-            <option value="pending">Pending</option>
-            <option value="verified">Verified</option>
+            {activeTab === "tips" ? <option value="pending">Pending</option> : null}
+            <option value="verified">{activeTab === "rebills" ? "Logged" : "Verified"}</option>
             <option value="rejected">Rejected</option>
           </select>
           <input
@@ -1062,7 +1041,7 @@ export function AdminRebillsTipsClient({
                         <ScreenshotThumb url={r.screenshot?.[0]?.url} />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <StatusDotBadge status={r.status} />
+                            <StatusDotBadge status={r.status} kind="rebills" />
                             <RelativeDate iso={r.created_at} />
                           </div>
                           <p className="mt-2 font-semibold text-white">@{r.sub_username}</p>
@@ -1081,36 +1060,25 @@ export function AdminRebillsTipsClient({
                           </span>
                         </div>
                       </div>
-                      {r.status === "pending" ? (
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            disabled={patchingId === r.id}
-                            onClick={() => void updateStatus(r.id, "verified", "rebills")}
-                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/20 py-2 text-sm font-medium text-green-400 disabled:opacity-50"
-                          >
-                            <CheckCircle2 className="h-4 w-4" aria-hidden />
-                            Verify
-                          </button>
-                          <button
-                            type="button"
-                            disabled={patchingId === r.id}
-                            onClick={() => void updateStatus(r.id, "rejected", "rebills")}
-                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-medium text-red-400 disabled:opacity-50"
-                          >
-                            <XCircle className="h-4 w-4" aria-hidden />
-                            Reject
-                          </button>
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => openNotes(r)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70"
-                      >
-                        <FileText className="h-3.5 w-3.5" aria-hidden />
-                        Notes
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openNotes(r)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs font-medium text-white/70"
+                        >
+                          <FileText className="h-3.5 w-3.5" aria-hidden />
+                          Notes
+                        </button>
+                        <button
+                          type="button"
+                          disabled={patchingId === r.id}
+                          onClick={() => void deleteRebillRow(r.id)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/15 px-3 py-2 text-xs font-medium text-red-400 disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          Delete
+                        </button>
+                      </div>
                       {notesOpenId === r.id ? (
                         <div className="rounded-xl border border-white/10 bg-black/30 p-3">
                           <textarea
@@ -1255,39 +1223,27 @@ export function AdminRebillsTipsClient({
                               </span>
                             </td>
                             <td className="px-4 py-3 align-middle">
-                              <StatusDotBadge status={r.status} />
+                              <StatusDotBadge status={r.status} kind="rebills" />
                             </td>
                             <td className="px-4 py-3 align-middle whitespace-nowrap">
                               <RelativeDate iso={r.created_at} />
                             </td>
                             <td className="px-4 py-3 align-middle">
                               <div className="flex flex-wrap items-center gap-1.5">
-                                {r.status === "pending" ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      disabled={patchingId === r.id}
-                                      onClick={() => void updateStatus(r.id, "verified", "rebills")}
-                                      className="rounded-lg border border-green-500/30 bg-green-500/15 px-2 py-1 text-xs font-medium text-green-400 hover:bg-green-500/25 disabled:opacity-50"
-                                    >
-                                      Verify
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={patchingId === r.id}
-                                      onClick={() => void updateStatus(r.id, "rejected", "rebills")}
-                                      className="rounded-lg border border-red-500/30 bg-red-500/15 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50"
-                                    >
-                                      Reject
-                                    </button>
-                                  </>
-                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => openNotes(r)}
                                   className="rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-medium text-white/60 hover:bg-white/10"
                                 >
                                   Notes
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={patchingId === r.id}
+                                  onClick={() => void deleteRebillRow(r.id)}
+                                  className="rounded-lg border border-red-500/30 bg-red-500/15 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50"
+                                >
+                                  Delete
                                 </button>
                               </div>
                             </td>

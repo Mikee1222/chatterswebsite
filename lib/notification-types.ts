@@ -152,7 +152,6 @@ export const NOTIFICATION_EVENT = {
   MODEL_SCHEDULE_CREATED: "model_schedule_created" as const,
   // Dedicated submission events (split out from generic system_alert)
   FEEDBACK_SUBMITTED: "feedback_submitted" as const,
-  REBILL_SUBMITTED: "rebill_submitted" as const,
   EXTRA_REVENUE_SUBMITTED: "extra_revenue_submitted" as const,
   EXPENSE_SUBMITTED: "expense_submitted" as const,
   TIME_OFF_REQUESTED: "time_off_requested" as const,
@@ -369,7 +368,6 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   rebill_rejected: "normal",
   model_schedule_created: "normal",
   feedback_submitted: "normal",
-  rebill_submitted: "normal",
   extra_revenue_submitted: "normal",
   expense_submitted: "normal",
   time_off_requested: "normal",

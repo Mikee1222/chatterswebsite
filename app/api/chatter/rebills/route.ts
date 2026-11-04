@@ -7,9 +7,12 @@ import {
   attachmentFromSbToken,
   isAllowedDirectScreenshotToken,
 } from "@/lib/direct-storage-upload";
-import { notifyAdmins } from "@/services/notification-service";
-import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { notify } from "@/services/notification-service";
+import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { readRequestFormData } from "@/lib/request-form-data";
+import { awardPoints } from "@/services/points-engine";
+import { getPointsConfig } from "@/services/points-config";
+import { updateChallengeProgress } from "@/services/challenges";
 
 function normalizeSubUsername(raw: string): string {
   let s = raw.trim();
@@ -61,30 +64,44 @@ export async function POST(req: Request) {
   }
 
   const reporterName = session.fullName?.trim() || session.email;
+  const chatterId = session.airtableUserId ?? session.id;
 
-  await createRebill({
+  const created = await createRebill({
     rebill_id: rebillId,
-    chatter_id: session.airtableUserId ?? session.id,
+    chatter_id: chatterId,
     chatter_name: reporterName,
     model_id,
     model_name: model_name || "",
     sub_username,
     sub_type,
-    status: "pending",
+    status: "verified",
     screenshot: attachments.length > 0 ? attachments : undefined,
     created_at: new Date().toISOString(),
   });
 
-  await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.REBILL_SUBMITTED,
-    priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "🔄 New rebill submitted",
-    body: `${reporterName} submitted a rebill for ${model_name || "a model"} — @${sub_username}. Review it in Rebills & Tips.`,
-    entity_type: "rebill",
-    entity_id: rebillId,
-    actor_user_id: session.airtableUserId ?? session.id,
-    actor_name: reporterName,
-  }).catch(() => {});
+  let pointsAwarded = 0;
+  try {
+    const config = await getPointsConfig();
+    const pointsPerRebill = Math.max(0, Math.floor(config.REBILL_VERIFIED));
+    if (pointsPerRebill > 0) {
+      await awardPoints(chatterId, pointsPerRebill, "Rebill logged", "rebill", created.id);
+      pointsAwarded = pointsPerRebill;
+    }
+    await updateChallengeProgress(chatterId, "rebills_verified", 1);
+    const pointsSuffix = pointsPerRebill > 0 ? ` +${pointsPerRebill} pts earned.` : "";
+    await notify({
+      user_id: chatterId,
+      event_type: NOTIFICATION_EVENT.REBILL_VERIFIED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "✅ Rebill logged",
+      body: `Your rebill was recorded.${pointsSuffix}`,
+      entity_type: NOTIFICATION_ENTITY.REBILL,
+      entity_id: created.id,
+      _triggerSource: "chatterRebillCreated",
+    }).catch(() => {});
+  } catch (err) {
+    console.error("[chatter/rebills] points/notify after create failed", err);
+  }
 
-  return NextResponse.json({ success: true, rebill_id: rebillId });
+  return NextResponse.json({ success: true, rebill_id: rebillId, points_awarded: pointsAwarded });
 }

@@ -590,10 +590,6 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "Admins/managers when a user submits feedback (bug/suggestion).",
   },
-  rebill_submitted: {
-    rule: "admin_only",
-    description: "Admins/managers when a chatter submits a rebill for review.",
-  },
   extra_revenue_submitted: {
     rule: "admin_only",
     description: "Admins/managers when a chatter submits extra revenue.",
@@ -767,7 +763,6 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "billing_payment_submitted",
   "model_content_request_created",
   "feedback_submitted",
-  "rebill_submitted",
   "extra_revenue_submitted",
   "expense_submitted",
   "time_off_requested",

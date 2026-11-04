@@ -252,7 +252,6 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   rebill_rejected: ["chatter"],
   model_schedule_created: ["model", "chatter", "virtual_assistant"],
   feedback_submitted: ["admin", "manager"],
-  rebill_submitted: ["admin", "manager"],
   extra_revenue_submitted: ["admin", "manager"],
   expense_submitted: ["admin", "manager"],
   time_off_requested: ["admin", "manager"],
@@ -770,11 +769,6 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "rebill_rejected",
       "Rebill rejected",
       "Αποστέλλεται στον chatter όταν το rebill του απορρίπτεται"
-    ),
-    eventEntry(
-      "rebill_submitted",
-      "Rebill submitted (admin)",
-      "Ενημερώνει τον admin όταν ένας chatter υποβάλλει rebill προς έλεγχο"
     ),
     eventEntry(
       "extra_revenue_submitted",

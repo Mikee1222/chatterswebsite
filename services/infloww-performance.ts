@@ -360,7 +360,7 @@ async function rebillCountsByPublicId(
     for (const row of fallback.data) {
       const id = String(row.chatter_id ?? "").trim();
       if (!id) continue;
-      if (row.status && String(row.status).toLowerCase() === "rejected") continue;
+      // Count all rebills regardless of status (incl. null legacy / pending / rejected).
       out.set(id, (out.get(id) ?? 0) + 1);
     }
     return out;
@@ -368,7 +368,7 @@ async function rebillCountsByPublicId(
   for (const row of data) {
     const id = String(row.chatter_id ?? "").trim();
     if (!id) continue;
-    if (row.status && String(row.status).toLowerCase() === "rejected") continue;
+    // Count all rebills regardless of status (incl. null legacy / pending / rejected).
     out.set(id, (out.get(id) ?? 0) + 1);
   }
   return out;
@@ -411,7 +411,6 @@ async function whaleSuggestionsFromRebills(params: {
   const seen = new Set<string>();
   const out: WhaleCandidateSuggestion[] = [];
   for (const r of rebills) {
-    if (r.status && String(r.status).toLowerCase() === "rejected") continue;
     const chatterId = String(r.chatter_id ?? "").trim();
     if (want && chatterId && !want.has(chatterId)) continue;
     const username = String(r.sub_username || r.sub_name || "").trim();

@@ -62,10 +62,8 @@ export function MyRebillsClient({
           <p className="mt-1 text-xs text-white/50">Total Submitted</p>
         </div>
         <div className="glass-card p-4 text-center">
-          <p className="text-2xl font-bold text-emerald-400">
-            {rebills.filter((r) => r.status === "verified").length}
-          </p>
-          <p className="mt-1 text-xs text-white/50">Approved</p>
+          <p className="text-2xl font-bold text-emerald-400">{rebills.length}</p>
+          <p className="mt-1 text-xs text-white/50">Logged</p>
         </div>
         <div className="glass-card p-4 text-center">
           <p className="text-2xl font-bold text-pink-400">#{myRank ?? "—"}</p>
@@ -102,7 +100,7 @@ export function MyRebillsClient({
       {tab === "rebills" && (
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
-            {(["all", "pending", "verified", "rejected"] as const).map((f) => (
+            {(["all", "verified", "rejected"] as const).map((f) => (
               <button
                 key={f}
                 type="button"
@@ -187,7 +185,7 @@ export function MyRebillsClient({
 
       {tab === "standings" && (
         <div className="space-y-3">
-          <p className="text-sm text-white/50">Ranked by approved paid rebills</p>
+          <p className="text-sm text-white/50">Ranked by paid rebills (all statuses)</p>
           {standings.map((s) => (
             <div
               key={s.chatter_id}
@@ -210,7 +208,7 @@ export function MyRebillsClient({
               </div>
               <div className="text-right">
                 <p className="font-bold text-white">{s.count}</p>
-                <p className="text-xs text-white/40">approved rebills</p>
+                <p className="text-xs text-white/40">rebills</p>
               </div>
             </div>
           ))}

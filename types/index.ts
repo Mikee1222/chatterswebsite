@@ -1224,7 +1224,6 @@ export type NotificationEventType =
   | "sop_academy_signed_off"
   // Dedicated submission events (split out from generic system_alert)
   | "feedback_submitted"
-  | "rebill_submitted"
   | "extra_revenue_submitted"
   | "expense_submitted"
   | "time_off_requested"
