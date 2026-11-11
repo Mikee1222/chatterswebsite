@@ -208,6 +208,8 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   posting_brief_published: ["virtual_assistant", "manager"],
   posting_brief_updated: ["virtual_assistant", "manager"],
   posting_brief_posted: ["admin", "manager"],
+  reupload_requested: ["virtual_assistant", "manager"],
+  reupload_done: ["admin", "manager"],
   recording_brief_published: ["model"],
   recording_brief_updated: ["model"],
   recording_brief_reminder: ["model"],
@@ -933,6 +935,16 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "posting_brief_posted",
       "Posting brief post marked as posted",
       "Ενημερώνει Creative Director / admin όταν ο Marketing Executive σημειώσει ένα post ως Posted με το link"
+    ),
+    eventEntry(
+      "reupload_requested",
+      "Reupload requested",
+      "Αποστέλλεται στον VA / Marketing Executive όταν ο Marketing Manager ζητήσει reupload ενός trial outlier στο main grid"
+    ),
+    eventEntry(
+      "reupload_done",
+      "Reupload done",
+      "Ενημερώνει τον Marketing Manager όταν ο VA καταχωρήσει το νέο link του main grid"
     ),
     eventEntry(
       "recording_brief_published",

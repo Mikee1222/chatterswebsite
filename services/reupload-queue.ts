@@ -96,12 +96,12 @@ export async function notifyReuploadToAssignedVas(input: {
     vaIds.map((user_id) =>
       notify({
         user_id,
-        event_type: NOTIFICATION_EVENT.POSTING_BRIEF_PUBLISHED,
+        event_type: NOTIFICATION_EVENT.REUPLOAD_REQUESTED,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title,
         body,
-        entity_type: NOTIFICATION_ENTITY.POSTING_BRIEF,
-        entity_id: "",
+        entity_type: NOTIFICATION_ENTITY.REUPLOAD,
+        entity_id: input.queue_item_id,
         actor_user_id: input.actor_id,
         _triggerSource: "reupload_queue_notify",
       }).catch((err) => console.error("[reupload_queue_notify] notify failed", err)),
@@ -264,44 +264,37 @@ export async function completeReupload(input: {
   if (newCode && newCode === instagramShortcode(sub.video_link)) {
     throw new Error("That is the trial post's link. Paste the link of the NEW main-grid post.");
   }
-  const { data: dup } = await sb
-    .from("winner_submissions")
-    .select("id")
-    .ilike("video_link", `%/${newCode}%`)
-    .neq("id", sub.id)
-    .limit(1);
-  if (dup?.length) throw new Error("This link is already in the Winners Hub");
-
-  const now = new Date().toISOString();
-  const { error: qErr } = await sb
-    .from("recreation_queue_items")
-    .update({
-      grid_posted_at: now,
-      reupload_url: gridLink,
-      reupload_done_by: input.actor_id,
-      original_trial_link: sub.video_link,
-      original_trial_media_id: sub.clariosuite_media_id ?? null,
-    })
-    .eq("id", input.queue_item_id);
-  if (qErr) {
-    throw new Error(
-      `Could not save the reupload (is migration 20261111170000 applied?): ${qErr.message}`,
+  // Exact shortcode match. ILIKE only narrows the candidates (its wildcards _ and % are
+  // escaped, and a longer code that merely starts with ours is filtered out below).
+  if (newCode) {
+    const escaped = newCode.replace(/[\\%_]/g, (c) => `\\${c}`);
+    const { data: candidates, error: dupErr } = await sb
+      .from("winner_submissions")
+      .select("id, video_link")
+      .ilike("video_link", `%${escaped}%`)
+      .neq("id", sub.id);
+    if (dupErr) throw new Error(`Could not check for duplicates: ${dupErr.message}`);
+    const clash = (candidates ?? []).some(
+      (r) => instagramShortcode(String((r as { video_link?: string }).video_link ?? "")) === newCode,
     );
+    if (clash) throw new Error("This link is already in the Winners Hub");
   }
 
-  // The card is now the grid post: new link, feed = grid, numbers restart from the new post.
-  const { error: sErr } = await sb
-    .from("winner_submissions")
-    .update({
-      video_link: gridLink,
-      feed: "grid",
-      clariosuite_media_id: null,
-      posted_at: now,
-      view_count: 0,
-      outlier_multiple: null,
-    })
-    .eq("id", sub.id);
-  if (sErr) throw new Error(`Could not convert the entry to grid: ${sErr.message}`);
+  // One transaction (migration 20261111190000): the queue item and the hub entry change
+  // together or not at all, so a failure never leaves the item "done" and un-retryable.
+  const { error: rpcErr } = await sb.rpc("complete_reupload_atomic", {
+    p_queue_item_id: input.queue_item_id,
+    p_grid_link: gridLink,
+    p_actor_id: input.actor_id,
+  });
+  if (rpcErr) {
+    const missing = /complete_reupload_atomic|PGRST202|schema cache/i.test(rpcErr.message);
+    throw new Error(
+      missing
+        ? "Could not save the reupload: migration 20261111190000 (complete_reupload_atomic) is not applied yet."
+        : `Could not save the reupload: ${rpcErr.message}`,
+    );
+  }
 
   // Tell the Marketing Manager who sent it (fallback: posting-brief managers).
   const recipients = new Set<string>();
@@ -317,12 +310,12 @@ export async function completeReupload(input: {
       .map((user_id) =>
         notify({
           user_id,
-          event_type: NOTIFICATION_EVENT.POSTING_BRIEF_POSTED,
+          event_type: NOTIFICATION_EVENT.REUPLOAD_DONE,
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: `Reuploaded to main grid: ${sub.model_name || "model"}`,
           body: `The trial outlier is now live on the main grid — ${gridLink}`,
-          entity_type: NOTIFICATION_ENTITY.POSTING_BRIEF,
-          entity_id: "",
+          entity_type: NOTIFICATION_ENTITY.REUPLOAD,
+          entity_id: input.queue_item_id,
           actor_user_id: input.actor_id,
           _triggerSource: "reupload_queue_done",
         }).catch((err) => console.error("[reupload_queue_done] notify failed", err)),
