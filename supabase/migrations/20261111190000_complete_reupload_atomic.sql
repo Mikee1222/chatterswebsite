@@ -62,4 +62,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.complete_reupload_atomic(uuid, text, text) FROM PUBLIC;
+-- Supabase grants EXECUTE to anon/authenticated through default privileges, so
+-- revoking from PUBLIC alone leaves this SECURITY DEFINER function callable by them.
+REVOKE ALL ON FUNCTION public.complete_reupload_atomic(uuid, text, text) FROM anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.complete_reupload_atomic(uuid, text, text) TO service_role;
