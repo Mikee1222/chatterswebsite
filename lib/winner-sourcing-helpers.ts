@@ -59,6 +59,14 @@ export const QUEUE_LANES = ["urgent", "next_bunch"] as const;
 export type QueueLane = (typeof QUEUE_LANES)[number];
 export const QUEUE_DECISIONS = ["pending", "grid", "urgent", "next_bunch", "no"] as const;
 export type QueueDecision = (typeof QUEUE_DECISIONS)[number];
+/**
+ * Reupload queue = queue items routed "grid": a trial-grid outlier whose SAME file
+ * is reuploaded to the main grid (no new shoot). It leaves the reupload queue when
+ * it is moved to the recreation queue (decision back to "pending") or assigned to a bunch.
+ */
+export function isReuploadQueueItem(item: { decision: string; bunch_id?: string | null }): boolean {
+  return item.decision === "grid" && !item.bunch_id;
+}
 /** A concept lives at most this many recreation generations. */
 export const MAX_RECREATION_GENERATION = 2;
 

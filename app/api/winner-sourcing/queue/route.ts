@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   addSubmissionToRecreationQueue,
+  addSubmissionToReuploadQueue,
   listRecreationQueue,
 } from "@/services/winner-sourcing";
 
@@ -23,11 +24,15 @@ export async function POST(req: Request) {
   if (!(await hasPermission(session, PERMISSIONS.WINNER_SOURCING_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const body = (await req.json()) as { winner_submission_id?: string };
+  const body = (await req.json()) as { winner_submission_id?: string; queue?: string };
   const id = String(body.winner_submission_id ?? "").trim();
   if (!id) return NextResponse.json({ error: "winner_submission_id required" }, { status: 400 });
   try {
-    const item = await addSubmissionToRecreationQueue(id);
+    // queue: "reupload" → trial-grid outlier, same file to the main grid.
+    const item =
+      body.queue === "reupload"
+        ? await addSubmissionToReuploadQueue(id, session.airtableUserId ?? session.id)
+        : await addSubmissionToRecreationQueue(id);
     return NextResponse.json({ item });
   } catch (e) {
     return NextResponse.json(

@@ -241,6 +241,7 @@ export const ROUTES = {
   creativeStudio: "/creative-studio",
   /** Posting briefs — Creative Director manage / Marketing Executive view (permission-gated). */
   postingBriefs: "/posting-briefs",
+  reuploads: "/reuploads",
   postingBriefNew: "/posting-briefs/new",
   postingBrief: (id: string) => `/posting-briefs/${encodeURIComponent(id)}`,
   postingBriefEdit: (id: string) => `/posting-briefs/${encodeURIComponent(id)}/edit`,

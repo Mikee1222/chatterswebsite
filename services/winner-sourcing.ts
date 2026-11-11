@@ -155,6 +155,10 @@ export type RecreationQueueItem = {
   feed: string;
   grid_posting_brief_id: string | null;
   grid_posted_at: string | null;
+  /** Reupload queue: when the assigned VAs were last notified to reupload (null = never). */
+  reupload_notified_at: string | null;
+  /** Reupload queue: the new MAIN-GRID link the VA submitted (null = not reuploaded yet). */
+  reupload_url: string | null;
   urgent_used_at: string | null;
   decided_by: string;
   decided_at: string | null;
@@ -317,6 +321,8 @@ function mapQueueItem(row: Record<string, unknown>): RecreationQueueItem {
     feed: String(row.feed ?? ""),
     grid_posting_brief_id: row.grid_posting_brief_id ? String(row.grid_posting_brief_id) : null,
     grid_posted_at: row.grid_posted_at ? String(row.grid_posted_at) : null,
+    reupload_notified_at: row.reupload_notified_at ? String(row.reupload_notified_at) : null,
+    reupload_url: row.reupload_url ? String(row.reupload_url) : null,
     urgent_used_at: row.urgent_used_at ? String(row.urgent_used_at) : null,
     decided_by: String(row.decided_by ?? ""),
     decided_at: row.decided_at ? String(row.decided_at) : null,
@@ -833,6 +839,94 @@ export async function addSubmissionToRecreationQueue(
   if (upErr) throw new Error(`update submission status: ${upErr.message}`);
 
   return { ...mapQueueItem(item as Record<string, unknown>), submission };
+}
+
+/**
+ * Reupload queue: a trial-grid outlier whose same file is reuploaded to the main grid.
+ * Stored as a queue item with decision "grid" (grid_posted_at stays null until the
+ * reupload is marked done), so no schema change is needed.
+ */
+export async function addSubmissionToReuploadQueue(
+  submissionId: string,
+  actorId: string,
+): Promise<RecreationQueueItem> {
+  const submission = await getWinnerSubmission(submissionId);
+  if (!submission) throw new Error("Submission not found");
+  if (submission.feed !== "trial") {
+    throw new Error("Only trial-grid outliers go to the reupload queue");
+  }
+  if (submission.status === "queued_for_recreation") {
+    throw new Error("Already in a queue");
+  }
+  const config = await getWinnerSourcingRecreateConfig();
+  const count = recreateCountForTier(submission.tier, config);
+  const sb = getSupabaseServiceClient();
+  const { data: item, error } = await sb
+    .from("recreation_queue_items")
+    .insert({
+      winner_submission_id: submissionId,
+      required_recreate_count: count,
+      lane: "next_bunch",
+      generation: 1,
+      feed: "trial",
+      decision: "grid",
+      decided_by: actorId,
+      decided_at: new Date().toISOString(),
+    })
+    .select("*")
+    .single();
+  if (error) throw new Error(`addSubmissionToReuploadQueue: ${error.message}`);
+  const { error: upErr } = await sb
+    .from("winner_submissions")
+    .update({ status: "queued_for_recreation" })
+    .eq("id", submissionId);
+  if (upErr) throw new Error(`update submission status: ${upErr.message}`);
+  return { ...mapQueueItem(item as Record<string, unknown>), submission };
+}
+
+/**
+ * Reupload-queue actions:
+ *   mark_reuploaded → the file is live on the main grid (stamps grid_posted_at)
+ *   unmark          → undo the stamp
+ *   to_recreation   → move the item to the recreation queue (decision back to "pending")
+ */
+export async function updateReuploadQueueItem(input: {
+  queue_item_id: string;
+  action: "mark_reuploaded" | "unmark" | "to_recreation";
+  actor_id: string;
+}): Promise<RecreationQueueItem> {
+  const sb = getSupabaseServiceClient();
+  const { data: row, error: readErr } = await sb
+    .from("recreation_queue_items")
+    .select("*")
+    .eq("id", input.queue_item_id)
+    .maybeSingle();
+  if (readErr) throw new Error(readErr.message);
+  if (!row) throw new Error("Queue item not found");
+  const current = mapQueueItem(row as Record<string, unknown>);
+  if (current.decision !== "grid" || current.bunch_id) {
+    throw new Error("This item is not in the reupload queue");
+  }
+  if (input.action !== "to_recreation") {
+    // Done is recorded by the VA together with the new grid link (services/reupload-queue).
+    throw new Error("Reuploads are marked done from the Reuploads page, with the new grid link");
+  }
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
+    decision: "pending",
+    decided_by: input.actor_id,
+    decided_at: now,
+  };
+  const { data, error } = await sb
+    .from("recreation_queue_items")
+    .update(patch)
+    .eq("id", input.queue_item_id)
+    .select("*")
+    .single();
+  if (error) throw new Error(`updateReuploadQueueItem: ${error.message}`);
+  const item = mapQueueItem(data as Record<string, unknown>);
+  const submission = await getWinnerSubmission(item.winner_submission_id);
+  return { ...item, submission: submission ?? undefined };
 }
 
 export async function listRecreationQueue(): Promise<RecreationQueueItem[]> {
@@ -2581,8 +2675,9 @@ export async function decideQueueItem(input: {
     decided_at: now,
   };
   if (input.decision === "grid") {
+    // Sends the item to the reupload queue. grid_posted_at is stamped later, when the
+    // reupload is marked done (updateReuploadQueueItem), not at decision time.
     patch.grid_posting_brief_id = input.grid_posting_brief_id ?? null;
-    patch.grid_posted_at = now;
   }
   if (input.decision === "urgent") {
     // Cap: urgent_slots_per_month per model (lost if unused). Re-deciding the same
