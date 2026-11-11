@@ -155,6 +155,8 @@ export type RecreationQueueItem = {
   feed: string;
   grid_posting_brief_id: string | null;
   grid_posted_at: string | null;
+  /** Reupload queue: when the assigned VAs were last notified to reupload (null = never). */
+  reupload_notified_at: string | null;
   urgent_used_at: string | null;
   decided_by: string;
   decided_at: string | null;
@@ -317,6 +319,7 @@ function mapQueueItem(row: Record<string, unknown>): RecreationQueueItem {
     feed: String(row.feed ?? ""),
     grid_posting_brief_id: row.grid_posting_brief_id ? String(row.grid_posting_brief_id) : null,
     grid_posted_at: row.grid_posted_at ? String(row.grid_posted_at) : null,
+    reupload_notified_at: row.reupload_notified_at ? String(row.reupload_notified_at) : null,
     urgent_used_at: row.urgent_used_at ? String(row.urgent_used_at) : null,
     decided_by: String(row.decided_by ?? ""),
     decided_at: row.decided_at ? String(row.decided_at) : null,

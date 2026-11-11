@@ -754,6 +754,37 @@ export function WinnerVideosHubClient({
     }
   }
 
+  async function notifyReuploadVas(queueItemId: string) {
+    setBusyId(queueItemId);
+    try {
+      const res = await fetch(`/api/winner-sourcing/queue/${queueItemId}/reupload`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "notify_vas" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Notify failed", data.error || "Error", "high"),
+        );
+        return;
+      }
+      const n = Number(data.notified) || 0;
+      addToast(
+        winnerVideoLocalToast(
+          `ws-ru-${Date.now()}`,
+          "VAs notified",
+          `${n} assigned VA${n === 1 ? "" : "s"} told to reupload it to the main grid.`,
+          "normal",
+        ),
+      );
+      await refreshAll();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function decideQueue(queueItemId: string, decision: "grid" | "urgent" | "no") {
     setBusyId(queueItemId);
     try {
@@ -1341,6 +1372,7 @@ export function WinnerVideosHubClient({
               }
               onAssign={(qid, bid) => void assignQueueItem(qid, bid)}
               onReupload={(qid, a) => void updateReupload(qid, a)}
+              onNotifyVas={(qid) => void notifyReuploadVas(qid)}
             />
           ) : null}
           {tab === "trials" ? (
@@ -2111,6 +2143,7 @@ function QueuePanel({
   onAssign,
   onDecide,
   onReupload,
+  onNotifyVas,
   mode = "recreation",
 }: {
   items: RecreationQueueItem[];
@@ -2122,6 +2155,7 @@ function QueuePanel({
   onAssign: (queueItemId: string, bunchId: string) => void;
   onDecide?: (queueItemId: string, decision: "grid" | "urgent" | "no") => void;
   onReupload?: (queueItemId: string, action: "mark_reuploaded" | "unmark" | "to_recreation") => void;
+  onNotifyVas?: (queueItemId: string) => void;
   /** reupload = trial-grid outliers whose same file goes to the main grid. */
   mode?: "recreation" | "reupload";
 }) {
@@ -2246,7 +2280,10 @@ function QueuePanel({
                 </p>
               ) : reupload ? (
                 <p className="text-xs text-[#B8B4B8]/50">
-                  Same file → main grid. No new shoot.
+                  Same file → main grid. No new shoot, no posting brief.
+                  {item.reupload_notified_at
+                    ? ` VAs notified ${formatShortDate(item.reupload_notified_at)}.`
+                    : " VAs not notified yet."}
                 </p>
               ) : (
                 <p className="text-xs text-[#B8B4B8]/50">Awaiting bunch assignment</p>
@@ -2255,6 +2292,21 @@ function QueuePanel({
           </div>
           {reupload ? (
             <div className="flex flex-wrap items-center justify-end gap-1.5">
+              {onNotifyVas && !item.grid_posted_at ? (
+                <button
+                  type="button"
+                  disabled={busyId === item.id}
+                  onClick={() => onNotifyVas(item.id)}
+                  className={cn(
+                    VA_BTN_SECONDARY,
+                    "min-h-9 px-3 py-1.5 text-xs",
+                    !item.reupload_notified_at && "border-violet-400/40 text-violet-200",
+                  )}
+                  title="Send a notification to the VAs assigned to this model: reupload this video to the main grid"
+                >
+                  {item.reupload_notified_at ? "Notify VAs again" : "Notify VAs"}
+                </button>
+              ) : null}
               {onReupload ? (
                 <>
                   <button
