@@ -25,6 +25,7 @@ import {
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
 import { StatInfoTooltip } from "@/components/infloww-performance-ui";
+import { CreativeStudioWinnerBreakdown } from "@/components/creative-studio-winner-breakdown";
 import { useToast } from "@/contexts/toast-context";
 import { truncateNote } from "@/lib/winner-videos-copy";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -54,6 +55,8 @@ type Props = {
   initialBunchProgress?: BunchScriptProgress[];
   initialSlotMeta?: SlotScriptMeta[];
   gunzoModels: ModelRecord[];
+  /** creative_studio:use — shows the embedded Winner Breakdown in the script form. */
+  canUseStudio?: boolean;
 };
 
 function resolveModelId(video: WinnerVideoRecord, models: ModelRecord[]): string {
@@ -95,6 +98,7 @@ export function CreativeScriptsQueueClient({
   initialBunchProgress = [],
   initialSlotMeta = [],
   gunzoModels,
+  canUseStudio = false,
 }: Props) {
   const { addToast } = useToast();
   const reduceMotion = useReducedMotion();
@@ -115,6 +119,9 @@ export function CreativeScriptsQueueClient({
   const [scriptBrief, setScriptBrief] = React.useState("");
   const [scriptBriefOpen, setScriptBriefOpen] = React.useState(false);
   const [brainstormText, setBrainstormText] = React.useState<string | null>(null);
+  const [breakdownOpen, setBreakdownOpen] = React.useState(false);
+  const [draftingScript, setDraftingScript] = React.useState(false);
+  const [draftNote, setDraftNote] = React.useState<string | null>(null);
   const [brainstormLoading, setBrainstormLoading] = React.useState(false);
   /** New direct-upload sb:// token; undefined = keep existing. */
   const [briefAttachmentToken, setBriefAttachmentToken] = React.useState<string | undefined>(
@@ -308,6 +315,8 @@ export function CreativeScriptsQueueClient({
       return;
     }
     setActiveId(video.id);
+    setBreakdownOpen(false);
+    setDraftNote(null);
     setModelId(resolveModelId(video, gunzoModels));
     if (isRejected) {
       setScriptText(video.script_text || "");
@@ -333,6 +342,54 @@ export function CreativeScriptsQueueClient({
     setBriefUploadError(null);
     setBrainstormText(null);
     if (briefFileRef.current) briefFileRef.current.value = "";
+  }
+
+  /** Winner Breakdown → script idea block (original [GRID] + 2 variations [TRIAL]). */
+  async function handleDraftFromBreakdown(video: WinnerVideoRecord, breakdownId: string | null) {
+    if (!breakdownId) {
+      addToast(
+        winnerVideoLocalToast(`cs-err-${Date.now()}`, "Breakdown not saved", "Run the breakdown again, then write the script from it.", "high"),
+      );
+      return;
+    }
+    if (!modelId || modelId.startsWith("custom:")) {
+      addToast(
+        winnerVideoLocalToast(`cs-err-${Date.now()}`, "Pick the model first", "Choose a Gunzo-team model so the script is written for her persona.", "high"),
+      );
+      return;
+    }
+    setDraftingScript(true);
+    setDraftNote(null);
+    try {
+      const res = await fetch(`/api/creative-scripts/${encodeURIComponent(video.id)}/draft-from-breakdown`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ breakdownId, modelId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        script_text?: string;
+        text_on_screen?: string;
+        language?: string;
+      };
+      if (!res.ok || !data.script_text) {
+        addToast(
+          winnerVideoLocalToast(`cs-err-${Date.now()}`, "Script not written", data.error || "Error", "high"),
+        );
+        return;
+      }
+      setScriptText(data.script_text);
+      if (data.text_on_screen) {
+        setTextOnScreen(data.text_on_screen);
+        setTextOnScreenOpen(true);
+      }
+      setDraftNote(
+        `AI draft in ${data.language || "the creator's language"}: original [GRID] + 2 variations [TRIAL]. Check it and fix the local slang before you submit.`,
+      );
+    } finally {
+      setDraftingScript(false);
+    }
   }
 
   async function handleBrainstorm(video: WinnerVideoRecord) {
@@ -824,8 +881,68 @@ export function CreativeScriptsQueueClient({
                                           before submitting.
                                         </p>
                                       )}
+                                      {canUseStudio ? (
+                                        <div className="rounded-2xl border border-[#FF1493]/20 bg-[#FF1493]/[0.04] p-3">
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="min-w-0">
+                                              <p className="text-sm font-semibold text-white">
+                                                Write it from the reference video
+                                              </p>
+                                              <p className="mt-0.5 text-xs text-[#B8B4B8]/60">
+                                                Download the reference with any reel downloader, drop the file below, and the
+                                                AI writes the original (grid) and 2 variations (trials) for{" "}
+                                                {modelNameFromSelection(modelId, gunzoModels) || "the model you pick"}.
+                                              </p>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              className={cn(VA_BTN_SECONDARY, "text-xs")}
+                                              onClick={() => setBreakdownOpen((o) => !o)}
+                                              aria-expanded={breakdownOpen}
+                                            >
+                                              {breakdownOpen ? "Hide breakdown" : "Open breakdown"}
+                                            </button>
+                                          </div>
+                                          {breakdownOpen ? (
+                                            !modelId || modelId.startsWith("custom:") ? (
+                                              <p className="mt-3 text-xs text-amber-200/80">
+                                                Pick a Gunzo-team model above first — the script is written for her persona.
+                                              </p>
+                                            ) : (
+                                              <div className="mt-3">
+                                                <CreativeStudioWinnerBreakdown
+                                                  key={`${v.id}:${modelId}`}
+                                                  modelId={modelId}
+                                                  modelName={modelNameFromSelection(modelId, gunzoModels)}
+                                                  winnerVideoId={v.id}
+                                                  renderActions={({ id }) => (
+                                                    <button
+                                                      type="button"
+                                                      className={cn(VA_BTN_PRIMARY, "min-h-11 px-4 text-xs")}
+                                                      disabled={draftingScript}
+                                                      onClick={() => void handleDraftFromBreakdown(v, id)}
+                                                    >
+                                                      {draftingScript ? (
+                                                        <Loader2 className="mr-1.5 inline h-3.5 w-3.5 animate-spin" />
+                                                      ) : null}
+                                                      {scriptText.trim()
+                                                        ? "Replace script with AI draft"
+                                                        : "Write script from this"}
+                                                    </button>
+                                                  )}
+                                                />
+                                              </div>
+                                            )
+                                          ) : null}
+                                        </div>
+                                      ) : null}
                                       <div>
                                         <ReviewFieldLabel>Script</ReviewFieldLabel>
+                                        {draftNote ? (
+                                          <p className="mb-2 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.07] px-3 py-2 text-xs text-emerald-100/90">
+                                            {draftNote}
+                                          </p>
+                                        ) : null}
                                         <ManagerReviewTextarea
                                           value={scriptText}
                                           onChange={(e) => setScriptText(e.target.value)}

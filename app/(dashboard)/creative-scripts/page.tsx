@@ -19,6 +19,7 @@ export default async function CreativeScriptsPage() {
   }
 
   const creativeId = user.airtableUserId ?? user.id;
+  const canUseStudio = await hasPermission(user, PERMISSIONS.CREATIVE_STUDIO_USE);
   const [queue, history, gunzoModels, bunchProgress, slotMeta] = await Promise.all([
     getScriptsQueue(creativeId).catch(() => []),
     getMyScripts(creativeId).catch(() => []),
@@ -35,6 +36,7 @@ export default async function CreativeScriptsPage() {
         initialBunchProgress={bunchProgress}
         initialSlotMeta={slotMeta}
         gunzoModels={gunzoModels}
+        canUseStudio={canUseStudio}
       />
     </div>
   );

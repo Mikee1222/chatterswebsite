@@ -44,8 +44,9 @@ type Props = {
   modelName: string;
   /** Fill Bunches winner to prefill from (?winner= in the URL). */
   winnerVideoId?: string | null;
-  onUseForCaptions: (ctx: string) => void;
-  onUseForTos: (ctx: string) => void;
+  /** Omit both to hide the "Write captions / text on screen from this" actions (embedded use). */
+  onUseForCaptions?: (ctx: string) => void;
+  onUseForTos?: (ctx: string) => void;
   /** Optional extra actions rendered next to the result (e.g. Draft briefs). */
   renderActions?: (ctx: { id: string | null; breakdown: WinnerBreakdownJson }) => React.ReactNode;
 };
@@ -915,22 +916,26 @@ export function CreativeStudioWinnerBreakdown({
           {/* Actions */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             {renderActions?.({ id: resultId, breakdown })}
-            <button
-              type="button"
-              className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 text-xs")}
-              onClick={() => onUseForCaptions(ideaCtx)}
-              disabled={!ideaCtx}
-            >
-              Write captions from this
-            </button>
-            <button
-              type="button"
-              className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 text-xs")}
-              onClick={() => onUseForTos(ideaCtx)}
-              disabled={!ideaCtx}
-            >
-              Write text on screen from this
-            </button>
+            {onUseForCaptions ? (
+              <button
+                type="button"
+                className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 text-xs")}
+                onClick={() => onUseForCaptions(ideaCtx)}
+                disabled={!ideaCtx}
+              >
+                Write captions from this
+              </button>
+            ) : null}
+            {onUseForTos ? (
+              <button
+                type="button"
+                className={cn(VA_BTN_SECONDARY, "min-h-11 px-4 text-xs")}
+                onClick={() => onUseForTos(ideaCtx)}
+                disabled={!ideaCtx}
+              >
+                Write text on screen from this
+              </button>
+            ) : null}
             <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-white/30">
               <Sparkles className="h-3 w-3" />
               {breakdownModel || "AI"}
