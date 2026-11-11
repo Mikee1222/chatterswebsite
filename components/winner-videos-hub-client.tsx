@@ -39,6 +39,7 @@ import {
   TIER_RECREATE_COUNTS,
   WINNER_SUBMISSION_SOURCE_LABELS,
   WINNER_VIEW_THRESHOLD,
+  isReuploadQueueItem,
   tierLabel,
   type WinnerSourcingRecreateConfig,
   type WinnerSubmissionSource,
@@ -120,7 +121,7 @@ export type HubCreativeOption = {
 /** @deprecated Filmer assign lives on /admin/bunches */
 export type HubFilmerOption = HubCreativeOption;
 
-type TabId = "winners" | "super" | "queue" | "trials" | "settings";
+type TabId = "winners" | "super" | "queue" | "reupload" | "trials" | "settings";
 type DateRangeId = "all" | "7d" | "30d" | "90d";
 type AssignFilter = "all" | "unassigned" | "assigned";
 
@@ -128,6 +129,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: "winners", label: "Winners" },
   { id: "super", label: "Super Winners" },
   { id: "queue", label: "Recreation Queue" },
+  { id: "reupload", label: "Reupload Queue" },
   { id: "trials", label: "Trial Check" },
   { id: "settings", label: "Settings" },
 ];
@@ -681,6 +683,77 @@ export function WinnerVideosHubClient({
     }
   }
 
+  async function addToReuploadQueue(submissionId: string) {
+    setBusyId(submissionId);
+    try {
+      const res = await fetch("/api/winner-sourcing/queue", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ winner_submission_id: submissionId, queue: "reupload" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Reupload queue failed", data.error || "Error", "high"),
+        );
+        return;
+      }
+      addToast(
+        winnerVideoLocalToast(
+          `ws-ru-${Date.now()}`,
+          "Added to reupload queue",
+          "Post the same file to the main grid, then mark it reuploaded.",
+          "normal",
+        ),
+      );
+      await refreshAll();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function updateReupload(
+    queueItemId: string,
+    action: "mark_reuploaded" | "unmark" | "to_recreation",
+  ) {
+    setBusyId(queueItemId);
+    try {
+      const res = await fetch(`/api/winner-sourcing/queue/${queueItemId}/reupload`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Update failed", data.error || "Error", "high"),
+        );
+        return;
+      }
+      addToast(
+        winnerVideoLocalToast(
+          `ws-ru-${Date.now()}`,
+          action === "to_recreation"
+            ? "Moved to recreation queue"
+            : action === "mark_reuploaded"
+              ? "Marked as reuploaded"
+              : "Reupload mark removed",
+          action === "to_recreation"
+            ? "Decide Urgent / bunch from the Recreation Queue tab."
+            : action === "mark_reuploaded"
+              ? "The file is on the main grid."
+              : "Back to waiting for reupload.",
+          "normal",
+        ),
+      );
+      await refreshAll();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function decideQueue(queueItemId: string, decision: "grid" | "urgent" | "no") {
     setBusyId(queueItemId);
     try {
@@ -700,9 +773,9 @@ export function WinnerVideosHubClient({
       addToast(
         winnerVideoLocalToast(
           `ws-dec-${Date.now()}`,
-          decision === "grid" ? "Moved to grid" : decision === "urgent" ? "Urgent lane" : "Dropped",
+          decision === "grid" ? "Moved to reupload queue" : decision === "urgent" ? "Urgent lane" : "Dropped",
           decision === "grid"
-            ? "Post the same file to the grid, then assign it to a bunch for recreation."
+            ? "Post the same file to the main grid, then mark it reuploaded."
             : decision === "urgent"
               ? "Assign it to an open bunch now — one urgent slot used this month."
               : "Item kept for the record, no recreation.",
@@ -879,6 +952,15 @@ export function WinnerVideosHubClient({
       return true;
     });
   }, [queue, modelFilter, sourceFilter, dateRange, assignFilter, searchLc]);
+  // Reupload queue = trial-grid outliers routed to the main grid (same file); the rest is recreation.
+  const filteredRecreationQueue = React.useMemo(
+    () => filteredQueue.filter((i) => !isReuploadQueueItem(i)),
+    [filteredQueue],
+  );
+  const filteredReuploadQueue = React.useMemo(
+    () => filteredQueue.filter((i) => isReuploadQueueItem(i)),
+    [filteredQueue],
+  );
 
   const periodItems = React.useMemo(() => {
     return allSubmissions.filter((s) => inDateRange(s.posted_at || s.created_at, dateRange === "all" ? "30d" : dateRange));
@@ -951,7 +1033,7 @@ export function WinnerVideosHubClient({
     });
   }
 
-  const showSubmissionFilters = tab === "winners" || tab === "super" || tab === "queue" || tab === "trials";
+  const showSubmissionFilters = tab === "winners" || tab === "super" || tab === "queue" || tab === "reupload" || tab === "trials";
 
   return (
     <div className="space-y-6">
@@ -1206,6 +1288,7 @@ export function WinnerVideosHubClient({
                 setCollapsedModels((p) => ({ ...p, [id]: !p[id] }))
               }
               onAddToQueue={(id) => void addToQueue(id)}
+              onAddToReupload={(id) => void addToReuploadQueue(id)}
               onAssignSubmission={(s, bunchId) => void assignSubmissionToBunch(s, bunchId)}
               onDelete={(s) => void openDeleteConfirm(s)}
             />
@@ -1225,6 +1308,7 @@ export function WinnerVideosHubClient({
                 setCollapsedModels((p) => ({ ...p, [id]: !p[id] }))
               }
               onAddToQueue={(id) => void addToQueue(id)}
+              onAddToReupload={(id) => void addToReuploadQueue(id)}
               onAssignSubmission={(s, bunchId) => void assignSubmissionToBunch(s, bunchId)}
               onDelete={(s) => void openDeleteConfirm(s)}
               superTier
@@ -1232,7 +1316,7 @@ export function WinnerVideosHubClient({
           ) : null}
           {tab === "queue" ? (
             <QueuePanel
-              items={filteredQueue}
+              items={filteredRecreationQueue}
               bunches={openBunches}
               busyId={busyId}
               groupByModel={groupByModel}
@@ -1242,6 +1326,21 @@ export function WinnerVideosHubClient({
               }
               onAssign={(qid, bid) => void assignQueueItem(qid, bid)}
               onDecide={(qid, d) => void decideQueue(qid, d)}
+            />
+          ) : null}
+          {tab === "reupload" ? (
+            <QueuePanel
+              mode="reupload"
+              items={filteredReuploadQueue}
+              bunches={openBunches}
+              busyId={busyId}
+              groupByModel={groupByModel}
+              collapsedModels={collapsedModels}
+              onToggleModel={(id) =>
+                setCollapsedModels((p) => ({ ...p, [id]: !p[id] }))
+              }
+              onAssign={(qid, bid) => void assignQueueItem(qid, bid)}
+              onReupload={(qid, a) => void updateReupload(qid, a)}
             />
           ) : null}
           {tab === "trials" ? (
@@ -1267,6 +1366,7 @@ export function WinnerVideosHubClient({
                     setCollapsedModels((p) => ({ ...p, [id]: !p[id] }))
                   }
                   onAddToQueue={(id) => void addToQueue(id)}
+              onAddToReupload={(id) => void addToReuploadQueue(id)}
                   onAssignSubmission={(s, bunchId) => void assignSubmissionToBunch(s, bunchId)}
                   onDelete={(s) => void openDeleteConfirm(s)}
                 />
@@ -1326,6 +1426,7 @@ function SubmissionGallery({
   collapsedModels,
   onToggleModel,
   onAddToQueue,
+  onAddToReupload,
   onAssignSubmission,
   onDelete,
   superTier,
@@ -1341,6 +1442,7 @@ function SubmissionGallery({
   collapsedModels: Record<string, boolean>;
   onToggleModel: (modelId: string) => void;
   onAddToQueue: (id: string) => void;
+  onAddToReupload: (id: string) => void;
   onAssignSubmission: (s: WinnerSubmission, bunchId: string) => void;
   onDelete: (s: WinnerSubmission) => void;
   superTier?: boolean;
@@ -1367,6 +1469,7 @@ function SubmissionGallery({
               openBunches={openBunches}
               queueItem={queueBySubmission.get(s.id)}
               onAddToQueue={onAddToQueue}
+                onAddToReupload={onAddToReupload}
               onAssign={(bunchId) => onAssignSubmission(s, bunchId)}
               onDelete={() => onDelete(s)}
               superTier={superTier}
@@ -1436,6 +1539,7 @@ function SubmissionGallery({
                           openBunches={openBunches}
                           queueItem={queueBySubmission.get(s.id)}
                           onAddToQueue={onAddToQueue}
+                onAddToReupload={onAddToReupload}
                           onAssign={(bunchId) => onAssignSubmission(s, bunchId)}
                           onDelete={() => onDelete(s)}
                           superTier={superTier || s.tier === "super_winner"}
@@ -1460,6 +1564,7 @@ function WinnerCard({
   openBunches,
   queueItem,
   onAddToQueue,
+  onAddToReupload,
   onAssign,
   onDelete,
   superTier,
@@ -1470,6 +1575,7 @@ function WinnerCard({
   openBunches: VideoBunch[];
   queueItem?: RecreationQueueItem;
   onAddToQueue: (id: string) => void;
+  onAddToReupload: (id: string) => void;
   onAssign: (bunchId: string) => void;
   onDelete: () => void;
   superTier?: boolean;
@@ -1478,6 +1584,8 @@ function WinnerCard({
   const busy = busyId === s.id || busyId === queueItem?.id;
   const assigned = Boolean(queueItem?.bunch_id);
   const pending = s.status === "pending";
+  const isTrial = s.feed === "trial";
+  const inReupload = queueItem ? isReuploadQueueItem(queueItem) : false;
   const modelBunches =
     openBunches.length > 0
       ? openBunches
@@ -1516,6 +1624,11 @@ function WinnerCard({
 
         <div className="flex flex-wrap items-center gap-1.5">
           <TierBadge tier={s.tier} prominent={superTier} />
+          {isTrial ? (
+            <span className={cn(VA_STATUS_BADGE, "border-violet-400/40 bg-violet-400/15 text-violet-200")}>
+              Trial
+            </span>
+          ) : null}
           <SourceBadge source={s.source} />
           {s.outlier_multiple != null ? (
             <span
@@ -1537,6 +1650,10 @@ function WinnerCard({
           ) : pending ? (
             <span className={cn(VA_STATUS_BADGE, "border-sky-500/35 bg-sky-500/12 text-sky-200")}>
               Pending
+            </span>
+          ) : inReupload ? (
+            <span className={cn(VA_STATUS_BADGE, "border-violet-400/35 bg-violet-400/10 text-violet-200")}>
+              {queueItem?.grid_posted_at ? "Reuploaded" : "Reupload queue"}
             </span>
           ) : (
             <span className={cn(VA_STATUS_BADGE, "border-[#D4AF8C]/35 bg-[#D4AF8C]/10 text-[#D4AF8C]")}>
@@ -1597,6 +1714,20 @@ function WinnerCard({
             >
               {queueItem.bunch_name || "View bunch"} →
             </Link>
+          ) : null}
+          {pending && !assigned && isTrial ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onAddToReupload(s.id)}
+              className={cn(
+                VA_BTN_SECONDARY,
+                "border-violet-400/35 px-3 py-1.5 text-[11px] text-violet-200",
+              )}
+              title="Trial-grid outlier: send it to the reupload queue (same file to the main grid)"
+            >
+              → Reupload Queue
+            </button>
           ) : null}
           {pending && !assigned ? (
             <button
@@ -1979,6 +2110,8 @@ function QueuePanel({
   onToggleModel,
   onAssign,
   onDecide,
+  onReupload,
+  mode = "recreation",
 }: {
   items: RecreationQueueItem[];
   bunches: VideoBunch[];
@@ -1988,13 +2121,23 @@ function QueuePanel({
   onToggleModel: (modelId: string) => void;
   onAssign: (queueItemId: string, bunchId: string) => void;
   onDecide?: (queueItemId: string, decision: "grid" | "urgent" | "no") => void;
+  onReupload?: (queueItemId: string, action: "mark_reuploaded" | "unmark" | "to_recreation") => void;
+  /** reupload = trial-grid outliers whose same file goes to the main grid. */
+  mode?: "recreation" | "reupload";
 }) {
+  const reupload = mode === "reupload";
   if (!items.length) {
     return (
       <div className={cn(VA_CARD, "space-y-3 px-6 py-16 text-center text-sm text-[#B8B4B8]/50")}>
-        <p>Recreation queue is empty — or nothing matches your filters.</p>
+        <p>
+          {reupload
+            ? "Reupload queue is empty — or nothing matches your filters."
+            : "Recreation queue is empty — or nothing matches your filters."}
+        </p>
         <p className="text-xs text-[#B8B4B8]/35">
-          Add Winners or Super Winners from the other tabs, or clear filters.
+          {reupload
+            ? "Send a trial outlier here with “→ Reupload Queue” on its card (Winners, Super Winners or Trial Check)."
+            : "Add Winners or Super Winners from the other tabs, or clear filters."}
         </p>
         <Link href={ROUTES.admin.bunches} className="inline-flex text-[#FF1493] hover:underline">
           Manage bunches →
@@ -2032,9 +2175,16 @@ function QueuePanel({
                 <span className="font-medium text-white">{sub?.model_name ?? "—"}</span>
                 {sub ? <TierBadge tier={sub.tier} prominent={superTier} /> : null}
                 {sub ? <SourceBadge source={sub.source} /> : null}
-                <span className={cn(VA_STATUS_BADGE, "border-pink-500/30 bg-pink-500/10 text-pink-200")}>
-                  {item.required_recreate_count} recreates
-                </span>
+                {reupload || item.feed === "trial" ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-violet-400/40 bg-violet-400/15 text-violet-200")}>
+                    Trial
+                  </span>
+                ) : null}
+                {!reupload ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-pink-500/30 bg-pink-500/10 text-pink-200")}>
+                    {item.required_recreate_count} recreates
+                  </span>
+                ) : null}
                 {item.lane === "urgent" ? (
                   <span className={cn(VA_STATUS_BADGE, "border-rose-400/40 bg-rose-400/15 text-rose-200")}>
                     🔥 Urgent
@@ -2051,10 +2201,16 @@ function QueuePanel({
                     Gen {item.generation}
                   </span>
                 ) : null}
-                {item.decision === "grid" ? (
-                  <span className={cn(VA_STATUS_BADGE, "border-emerald-400/30 bg-emerald-400/10 text-emerald-200")}>
-                    Moved to grid
-                  </span>
+                {reupload ? (
+                  item.grid_posted_at ? (
+                    <span className={cn(VA_STATUS_BADGE, "border-emerald-400/30 bg-emerald-400/10 text-emerald-200")}>
+                      Reuploaded {formatShortDate(item.grid_posted_at)}
+                    </span>
+                  ) : (
+                    <span className={cn(VA_STATUS_BADGE, "border-sky-500/35 bg-sky-500/12 text-sky-200")}>
+                      Waiting for reupload
+                    </span>
+                  )
                 ) : item.decision === "no" ? (
                   <span className={cn(VA_STATUS_BADGE, "border-white/10 bg-white/[0.03] text-white/40")}>
                     Dropped
@@ -2088,12 +2244,49 @@ function QueuePanel({
                     {item.bunch_name || item.bunch_id}
                   </Link>
                 </p>
+              ) : reupload ? (
+                <p className="text-xs text-[#B8B4B8]/50">
+                  Same file → main grid. No new shoot.
+                </p>
               ) : (
                 <p className="text-xs text-[#B8B4B8]/50">Awaiting bunch assignment</p>
               )}
             </div>
           </div>
-          {!item.bunch_id ? (
+          {reupload ? (
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              {onReupload ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => onReupload(item.id, item.grid_posted_at ? "unmark" : "mark_reuploaded")}
+                    className={cn(
+                      VA_BTN_SECONDARY,
+                      "min-h-9 px-3 py-1.5 text-xs",
+                      !item.grid_posted_at && "border-emerald-400/30 text-emerald-200",
+                    )}
+                    title={
+                      item.grid_posted_at
+                        ? "Undo — it is not on the main grid yet"
+                        : "The same file is now live on the main grid"
+                    }
+                  >
+                    {item.grid_posted_at ? "Undo reuploaded" : "Mark reuploaded"}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busyId === item.id}
+                    onClick={() => onReupload(item.id, "to_recreation")}
+                    className={cn(VA_BTN_SECONDARY, "min-h-9 border-pink-500/30 px-3 py-1.5 text-xs text-pink-200")}
+                    title="Move to the recreation queue — shoot new variations"
+                  >
+                    → Recreation Queue
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : !item.bunch_id ? (
             <div className="flex flex-col items-end gap-2">
               {onDecide && item.decision !== "no" ? (
                 <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -2103,9 +2296,9 @@ function QueuePanel({
                       disabled={busyId === item.id}
                       onClick={() => onDecide(item.id, "grid")}
                       className={cn(VA_BTN_SECONDARY, "min-h-9 px-3 py-1.5 text-xs")}
-                      title="Trial outlier: post the same file to the grid first"
+                      title="Trial outlier: send it to the reupload queue (same file to the main grid)"
                     >
-                      → Grid
+                      → Reupload Queue
                     </button>
                   ) : null}
                   {item.decision !== "urgent" ? (
