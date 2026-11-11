@@ -1187,6 +1187,8 @@ export type NotificationEventType =
   | "posting_brief_published"
   | "posting_brief_updated"
   | "posting_brief_posted"
+  | "reupload_requested"
+  | "reupload_done"
   | "recording_brief_published"
   | "recording_brief_updated"
   | "recording_brief_reminder"

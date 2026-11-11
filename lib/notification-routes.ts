@@ -87,6 +87,8 @@ export function getPushTargetPath(
       return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
     case "icloud_organization":
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
+    case "reupload":
+      return ROUTES.reuploads;
     case "posting_brief":
       if (entityId) return ROUTES.postingBrief(entityId);
       return ROUTES.postingBriefs;
@@ -218,6 +220,8 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.bunches : ROUTES.editAssignments;
     case "icloud_organization":
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
+    case "reupload":
+      return ROUTES.reuploads;
     case "posting_brief":
       if (entity_id) return ROUTES.postingBrief(entity_id);
       return ROUTES.postingBriefs;
@@ -377,6 +381,8 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "posting_brief_published":
     case "posting_brief_updated":
     case "posting_brief_posted":
+    case "reupload_requested":
+    case "reupload_done":
     case "recording_brief_published":
     case "recording_brief_updated":
     case "recording_brief_reminder":
