@@ -7,7 +7,11 @@
 
 import "server-only";
 
-import { callAnthropicVision, resolveBreakdownModel } from "@/lib/ai-assistant";
+import {
+  callAnthropicVision,
+  resolveBreakdownModel,
+  type AnthropicCallError,
+} from "@/lib/ai-assistant";
 import { buildPersonaAiContext, PLATFORM_SAFE_SOCIAL_RULES } from "@/lib/persona-ai-context";
 import {
   SCRIPT_IDEA_MAX_TOKENS,
@@ -89,7 +93,11 @@ export async function draftScriptFromBreakdown(input: {
   // Owner rule: Winner Breakdown work runs on the configured breakdown model only —
   // no silent fallback to another model.
   const modelName = resolveBreakdownModel();
+  let apiError: AnthropicCallError | null = null;
   const result = await callAnthropicVision({
+    onError: (e) => {
+      apiError = e;
+    },
     text,
     system: SCRIPT_IDEA_SYSTEM_PROMPT,
     maxTokens: SCRIPT_IDEA_MAX_TOKENS,
@@ -108,8 +116,11 @@ export async function draftScriptFromBreakdown(input: {
 
   const idea = sanitizeScriptIdea(result?.toolInput ?? null);
   if (!idea) {
+    const e = apiError as AnthropicCallError | null;
     throw new Error(
-      `The AI could not write the script (model ${modelName}). Try again; if it keeps failing, the API key may not have access to this model.`,
+      e
+        ? `The AI call failed (model ${e.model}, HTTP ${e.http_status}${e.type ? ` ${e.type}` : ""}): ${e.message || "no message"}`
+        : `The AI returned no usable script (model ${modelName}). Try again.`,
     );
   }
   return {

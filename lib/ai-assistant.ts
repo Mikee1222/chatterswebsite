@@ -1,24 +1,33 @@
 /**
  * Shared Anthropic Messages API helper (server-side only).
- * Default: claude-sonnet-4-6 for complex reasoning.
- * Fast tier: claude-haiku-4-5 for mechanical summaries / captions / translation.
+ * Model names live in lib/ai-models.ts (defaults + env overrides) — never hard-code one here.
  * Never expose ANTHROPIC_API_KEY to the client.
  */
 
 import "server-only";
+import { AI_MODEL_DEFAULTS, resolveAiModel } from "@/lib/ai-models";
 
-export const AI_ASSISTANT_MODEL = "claude-sonnet-4-6";
-/** Cheaper/faster model for mechanical tasks (captions, translation, stats summaries). */
-export const AI_FAST_MODEL = "claude-haiku-4-5";
+/** General reasoning tier. Override: AI_ASSISTANT_MODEL. */
+export const AI_ASSISTANT_MODEL = resolveAiModel("assistant");
+/** Cheaper/faster tier for mechanical tasks (captions, translation, stats summaries). Override: AI_FAST_MODEL. */
+export const AI_FAST_MODEL = resolveAiModel("fast");
 /**
  * Strongest tier for Winner Breakdown + brief drafting (creative reasoning).
- * Override with AI_BREAKDOWN_MODEL. Falls back to AI_ASSISTANT_MODEL if the
- * configured model is not available on this API key.
+ * Override: AI_BREAKDOWN_MODEL.
  */
-export const AI_BREAKDOWN_MODEL_DEFAULT = "claude-fable-5-1";
+export const AI_BREAKDOWN_MODEL_DEFAULT = AI_MODEL_DEFAULTS.breakdown;
 export function resolveBreakdownModel(): string {
-  return process.env.AI_BREAKDOWN_MODEL?.trim() || AI_BREAKDOWN_MODEL_DEFAULT;
+  return resolveAiModel("breakdown");
 }
+
+/** What the Anthropic API answered when a call failed — for logs and failed records. */
+export type AnthropicCallError = {
+  /** HTTP status, or 0 when the request never got a response (network / timeout). */
+  http_status: number;
+  type: string;
+  message: string;
+  model: string;
+};
 
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 
@@ -334,6 +343,8 @@ export async function callAnthropicVision(options: {
     | { type: "tool"; name: string };
   /** Retry once with this model if `model` is unknown to the API key (404 not_found). */
   fallbackModel?: string;
+  /** Called with the API's answer when the call fails (the function still returns null). */
+  onError?: (error: AnthropicCallError) => void;
 }): Promise<CallAnthropicVisionResult | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   const label = options.logLabel ?? "ai-assistant-vision";
@@ -406,6 +417,12 @@ export async function callAnthropicVision(options: {
         console.warn(`[${label}] model ${model} unavailable (${res.status} ${errType}) — retrying with ${fallback}`);
         return callAnthropicVision({ ...options, model: fallback, fallbackModel: undefined });
       }
+      options.onError?.({
+        http_status: res.status,
+        type: errType,
+        message: String(errObj.message ?? "").slice(0, 1000),
+        model,
+      });
       return null;
     }
 
@@ -445,6 +462,12 @@ export async function callAnthropicVision(options: {
   } catch (err) {
     console.error(`[${label}] fetch failed`, err);
     recordUsage(label, model, false);
+    options.onError?.({
+      http_status: 0,
+      type: "network_error",
+      message: (err instanceof Error ? err.message : String(err)).slice(0, 1000),
+      model,
+    });
     return null;
   }
 }

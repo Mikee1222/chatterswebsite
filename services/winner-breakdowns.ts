@@ -9,6 +9,7 @@ import {
   AI_ASSISTANT_MODEL,
   callAnthropicVision,
   resolveBreakdownModel,
+  type AnthropicCallError,
   type AnthropicImageSource,
 } from "@/lib/ai-assistant";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -339,7 +340,11 @@ export async function createWinnerBreakdown(
     model,
   });
 
+  let apiError: AnthropicCallError | null = null;
   const result = await callAnthropicVision({
+    onError: (e) => {
+      apiError = e;
+    },
     text: buildUserText(input),
     images,
     system: WINNER_BREAKDOWN_SYSTEM_PROMPT,
@@ -356,6 +361,10 @@ export async function createWinnerBreakdown(
   });
 
   const usedModel = result?.model ?? model;
+  if (!result && apiError) {
+    const e = apiError as AnthropicCallError;
+    console.error("[creative-studio] winner-breakdown failed", e.http_status, e.type, e.message, e.model);
+  }
   const sanitized = result?.toolInput ? sanitizeBreakdown(result.toolInput) : null;
 
   const status: WinnerBreakdownStatus = sanitized ? "success" : result ? "refused" : "failed";
@@ -397,7 +406,14 @@ export async function createWinnerBreakdown(
       breakdown,
       breakdown_model: usedModel,
       status,
-      raw_model_response: status === "success" ? null : result?.text?.slice(0, 8_000) ?? null,
+      // Failed call: keep what the Anthropic API answered (HTTP status, error type, message,
+      // model) so a failed record explains itself. Refused: keep the model's raw text.
+      raw_model_response:
+        status === "success"
+          ? null
+          : status === "failed"
+            ? JSON.stringify({ anthropic_error: apiError ?? { http_status: null, type: "unknown", message: "No response from the AI call", model } })
+            : result?.text?.slice(0, 8_000) ?? null,
       created_by: input.userId,
     })
     .select("id")
