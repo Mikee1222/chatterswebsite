@@ -985,6 +985,14 @@ const sharedPermissionNavItems: NavItem[] = [
     excludeFromMobileMainTabs: true,
   },
   {
+    href: ROUTES.reuploads,
+    label: "Reuploads",
+    iconKey: "FileText",
+    navSection: "CONTENT PIPELINE",
+    requiresAnyPermission: [PERMISSIONS.POSTING_BRIEFS_VIEW, PERMISSIONS.POSTING_BRIEFS_MANAGE],
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.recordingBriefs,
     label: "Recording Briefs",
     iconKey: "PlayCircle",

@@ -157,6 +157,8 @@ export type RecreationQueueItem = {
   grid_posted_at: string | null;
   /** Reupload queue: when the assigned VAs were last notified to reupload (null = never). */
   reupload_notified_at: string | null;
+  /** Reupload queue: the new MAIN-GRID link the VA submitted (null = not reuploaded yet). */
+  reupload_url: string | null;
   urgent_used_at: string | null;
   decided_by: string;
   decided_at: string | null;
@@ -320,6 +322,7 @@ function mapQueueItem(row: Record<string, unknown>): RecreationQueueItem {
     grid_posting_brief_id: row.grid_posting_brief_id ? String(row.grid_posting_brief_id) : null,
     grid_posted_at: row.grid_posted_at ? String(row.grid_posted_at) : null,
     reupload_notified_at: row.reupload_notified_at ? String(row.reupload_notified_at) : null,
+    reupload_url: row.reupload_url ? String(row.reupload_url) : null,
     urgent_used_at: row.urgent_used_at ? String(row.urgent_used_at) : null,
     decided_by: String(row.decided_by ?? ""),
     decided_at: row.decided_at ? String(row.decided_at) : null,
@@ -904,13 +907,16 @@ export async function updateReuploadQueueItem(input: {
   if (current.decision !== "grid" || current.bunch_id) {
     throw new Error("This item is not in the reupload queue");
   }
+  if (input.action !== "to_recreation") {
+    // Done is recorded by the VA together with the new grid link (services/reupload-queue).
+    throw new Error("Reuploads are marked done from the Reuploads page, with the new grid link");
+  }
   const now = new Date().toISOString();
-  const patch: Record<string, unknown> =
-    input.action === "mark_reuploaded"
-      ? { grid_posted_at: now }
-      : input.action === "unmark"
-        ? { grid_posted_at: null }
-        : { decision: "pending", decided_by: input.actor_id, decided_at: now };
+  const patch: Record<string, unknown> = {
+    decision: "pending",
+    decided_by: input.actor_id,
+    decided_at: now,
+  };
   const { data, error } = await sb
     .from("recreation_queue_items")
     .update(patch)

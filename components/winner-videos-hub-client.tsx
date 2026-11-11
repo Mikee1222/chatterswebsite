@@ -2209,7 +2209,11 @@ function QueuePanel({
                 <span className="font-medium text-white">{sub?.model_name ?? "—"}</span>
                 {sub ? <TierBadge tier={sub.tier} prominent={superTier} /> : null}
                 {sub ? <SourceBadge source={sub.source} /> : null}
-                {reupload || item.feed === "trial" ? (
+                {item.grid_posted_at ? (
+                  <span className={cn(VA_STATUS_BADGE, "border-emerald-400/35 bg-emerald-400/12 text-emerald-200")}>
+                    Grid
+                  </span>
+                ) : reupload || item.feed === "trial" ? (
                   <span className={cn(VA_STATUS_BADGE, "border-violet-400/40 bg-violet-400/15 text-violet-200")}>
                     Trial
                   </span>
@@ -2226,7 +2230,11 @@ function QueuePanel({
                 ) : null}
                 {item.feed ? (
                   <span className={cn(VA_STATUS_BADGE, "border-white/15 bg-white/[0.04] text-white/60")}>
-                    {item.feed === "trial" ? "Trial-grid outlier" : "Grid outlier"}
+                    {item.grid_posted_at
+                      ? "Reuploaded to grid"
+                      : item.feed === "trial"
+                        ? "Trial-grid outlier"
+                        : "Grid outlier"}
                     {sub?.outlier_multiple != null ? ` ×${sub.outlier_multiple}` : ""}
                   </span>
                 ) : null}
@@ -2242,7 +2250,7 @@ function QueuePanel({
                     </span>
                   ) : (
                     <span className={cn(VA_STATUS_BADGE, "border-sky-500/35 bg-sky-500/12 text-sky-200")}>
-                      Waiting for reupload
+                      {item.reupload_notified_at ? "Sent to VAs" : "Waiting for reupload"}
                     </span>
                   )
                 ) : item.decision === "no" ? (
@@ -2280,10 +2288,13 @@ function QueuePanel({
                 </p>
               ) : reupload ? (
                 <p className="text-xs text-[#B8B4B8]/50">
-                  Same file → main grid. No new shoot, no posting brief.
-                  {item.reupload_notified_at
-                    ? ` VAs notified ${formatShortDate(item.reupload_notified_at)}.`
-                    : " VAs not notified yet."}
+                  {item.grid_posted_at
+                    ? "Live on the main grid. Scored against the grid baseline at the next sync — move it to the Recreation Queue if it hits again."
+                    : `Same file → main grid. No new shoot, no posting brief.${
+                        item.reupload_notified_at
+                          ? ` VAs notified ${formatShortDate(item.reupload_notified_at)} — waiting for their link.`
+                          : " VAs not notified yet."
+                      }`}
                 </p>
               ) : (
                 <p className="text-xs text-[#B8B4B8]/50">Awaiting bunch assignment</p>
@@ -2309,23 +2320,6 @@ function QueuePanel({
               ) : null}
               {onReupload ? (
                 <>
-                  <button
-                    type="button"
-                    disabled={busyId === item.id}
-                    onClick={() => onReupload(item.id, item.grid_posted_at ? "unmark" : "mark_reuploaded")}
-                    className={cn(
-                      VA_BTN_SECONDARY,
-                      "min-h-9 px-3 py-1.5 text-xs",
-                      !item.grid_posted_at && "border-emerald-400/30 text-emerald-200",
-                    )}
-                    title={
-                      item.grid_posted_at
-                        ? "Undo — it is not on the main grid yet"
-                        : "The same file is now live on the main grid"
-                    }
-                  >
-                    {item.grid_posted_at ? "Undo reuploaded" : "Mark reuploaded"}
-                  </button>
                   <button
                     type="button"
                     disabled={busyId === item.id}

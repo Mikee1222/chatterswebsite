@@ -318,6 +318,56 @@ export async function detectWinnersFromClarioSuitePosts(opts?: {
 
   result.scanned = posts.length;
 
+  /* ── Reuploads (trial outlier → same file on the main grid) ──
+   * a) The old trial post of a reuploaded entry must never be re-detected as a new outlier.
+   * b) A reuploaded entry has a new grid link and no media id yet: adopt the matching
+   *    ClarioSuite post so the live re-score below measures it against the GRID baseline. */
+  try {
+    const sbR = getSupabaseServiceClient();
+    const { data: reups, error: reupErr } = await sbR
+      .from("recreation_queue_items")
+      .select("original_trial_media_id")
+      .not("original_trial_media_id", "is", null);
+    // Column comes with migration 20261111170000 — before it is applied there is nothing to do.
+    if (!reupErr) {
+      for (const row of reups ?? []) {
+        const mid = String((row as { original_trial_media_id?: string }).original_trial_media_id ?? "").trim();
+        if (mid) classifiedMedia.add(mid);
+      }
+    }
+    const { data: orphans } = await sbR
+      .from("winner_submissions")
+      .select("id, video_link")
+      .eq("source", "auto_detected")
+      .eq("feed", "grid")
+      .is("clariosuite_media_id", null);
+    if (orphans?.length) {
+      const postByCode = new Map<string, TopPostCandidate>();
+      for (const post of posts) {
+        const code = instagramShortcode(post.permalink);
+        if (code && post.media_id) postByCode.set(code, post);
+      }
+      for (const row of orphans) {
+        const o = row as { id: string; video_link: string | null };
+        const code = instagramShortcode(o.video_link);
+        const post = code ? postByCode.get(code) : undefined;
+        if (!post || classifiedMedia.has(post.media_id)) continue;
+        classifiedMedia.add(post.media_id);
+        if (opts?.dryRun) continue;
+        const { error: adoptErr } = await sbR
+          .from("winner_submissions")
+          .update({
+            clariosuite_media_id: post.media_id,
+            ...(post.posted_at ? { posted_at: post.posted_at } : {}),
+          })
+          .eq("id", o.id);
+        if (adoptErr) result.errors.push({ media_id: post.media_id, message: `adopt reupload: ${adoptErr.message}` });
+      }
+    }
+  } catch (err) {
+    result.errors.push({ media_id: "reupload", message: err instanceof Error ? err.message : String(err) });
+  }
+
   /* ── Feed of every reel: trial when its link is a posting-brief trial post ── */
   const feedOf = (post: TopPostCandidate): WinnerFeed =>
     lookupTrial(trialIndex, post.permalink) ? "trial" : "grid";
