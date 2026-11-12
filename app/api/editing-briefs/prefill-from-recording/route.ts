@@ -41,6 +41,7 @@ export async function GET(req: Request) {
 
   const brief: EditingBrief = {
     id: "prefill",
+    winner_video_id: null,
     title: recording.title ? `Edit: ${recording.title}` : "Edit brief",
     model_id: recording.model_id,
     reference_links: recording.reference_links,

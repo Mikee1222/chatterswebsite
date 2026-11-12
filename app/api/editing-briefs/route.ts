@@ -10,6 +10,7 @@ import {
   type EditingBriefStatus,
 } from "@/services/editing-briefs";
 import { sessionUserIds } from "@/lib/editing-briefs-access";
+import { isSlotRecordingBriefApproved } from "@/services/brief-slot-links";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -73,6 +74,9 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as EditingBriefInput;
   try {
+    // A brief written for a bunch slot stays draft until that slot's recording brief is approved.
+    const slotId = String(body.winner_video_id ?? "").trim();
+    if (slotId && !(await isSlotRecordingBriefApproved(slotId))) body.status = "draft";
     const brief = await createEditingBrief(
       {
         ...body,

@@ -15,6 +15,16 @@ export default function NewPostingBriefPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromEditing = searchParams.get("from_editing");
+  const fromSlot = searchParams.get("from_slot");
+  const slot = fromSlot
+    ? {
+        id: fromSlot,
+        modelId: searchParams.get("model") ?? undefined,
+        title: searchParams.get("title") ?? undefined,
+        code: searchParams.get("code") ?? undefined,
+        kind: searchParams.get("kind") === "experimental" ? ("experimental" as const) : ("proven" as const),
+      }
+    : null;
   const [models, setModels] = React.useState<{ id: string; model_name: string }[]>([]);
   const [suggestions, setSuggestions] = React.useState<Record<string, AccountSuggestion[]>>({});
   const [initial, setInitial] = React.useState<PostingBrief | null>(null);
@@ -98,6 +108,7 @@ export default function NewPostingBriefPage() {
           models={models}
           accountSuggestionsByModel={suggestions}
           initial={initial}
+          slot={slot}
           onSubmit={onSubmit}
           onCancel={() => router.push(ROUTES.postingBriefs)}
         />

@@ -7,6 +7,7 @@ import {
   rejectCreativeScript,
   saveCreativeScriptText,
 } from "@/services/winner-videos";
+import { activateBriefsForSlot } from "@/services/brief-slot-links";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -40,7 +41,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         script_brief,
         reviewed_by_name: reviewerName,
       });
-      return NextResponse.json({ video });
+      // The recording brief is approved: the idea's draft editing / posting briefs go live.
+      const briefs = await activateBriefsForSlot(id, session.airtableUserId ?? session.id).catch(
+        () => null,
+      );
+      return NextResponse.json({ video, briefs });
     }
 
     if (action === "reject") {

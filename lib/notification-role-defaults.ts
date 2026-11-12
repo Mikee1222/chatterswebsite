@@ -210,6 +210,9 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   posting_brief_posted: ["admin", "manager"],
   reupload_requested: ["virtual_assistant", "manager"],
   reupload_done: ["admin", "manager"],
+  bunch_raw_ready: ["admin", "manager"],
+  bunch_ready_to_post: ["admin", "manager"],
+  posting_brief_post_now: ["virtual_assistant", "manager"],
   recording_brief_published: ["model"],
   recording_brief_updated: ["model"],
   recording_brief_reminder: ["model"],
@@ -940,6 +943,21 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "reupload_requested",
       "Reupload requested",
       "Αποστέλλεται στον VA / Marketing Executive όταν ο Marketing Manager ζητήσει reupload ενός trial outlier στο main grid"
+    ),
+    eventEntry(
+      "bunch_raw_ready",
+      "Raw footage ready",
+      "Ενημερώνει τον editor ότι ο iCloud manager τακτοποίησε το raw υλικό και μπορεί να ξεκινήσει το μοντάζ"
+    ),
+    eventEntry(
+      "bunch_ready_to_post",
+      "Videos ready to post",
+      "Ενημερώνει τον Marketing Manager ότι τα έτοιμα videos είναι στους φακέλους και μπορούν να ανέβουν"
+    ),
+    eventEntry(
+      "posting_brief_post_now",
+      "Post now",
+      "Αποστέλλεται στον VA / Marketing Executive όταν ο Marketing Manager ζητήσει να εκτελεστεί ένα posting brief"
     ),
     eventEntry(
       "reupload_done",

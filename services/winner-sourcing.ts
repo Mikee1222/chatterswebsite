@@ -2419,6 +2419,8 @@ export type SlotScriptMeta = {
   winner_video_id: string;
   bunch_id: string;
   bunch_name: string;
+  /** "proven" | "experimental" — with the slot number it gives the idea code (P03, E02). */
+  bunch_kind: BunchKind;
   sequence_number: number;
   recreate_index: number;
   recreate_total: number;
@@ -2502,6 +2504,20 @@ export async function listSlotScriptMetaForCreative(
   }
   const merged = [...byId.values()];
 
+  // Name and kind of every bunch these slots sit in (not only the ones assigned to this CD).
+  const kindById = new Map<string, BunchKind>();
+  const slotBunchIds = [...new Set(merged.map((s) => s.bunch_id).filter(Boolean))];
+  if (slotBunchIds.length) {
+    const { data: slotBunches } = await sb
+      .from("video_bunches")
+      .select("id, name, kind")
+      .in("id", slotBunchIds);
+    for (const b of (slotBunches ?? []) as { id: string; name?: string; kind?: string }[]) {
+      kindById.set(String(b.id), coerceBunchKind(b.kind));
+      if (!nameById.get(String(b.id))) nameById.set(String(b.id), String(b.name ?? ""));
+    }
+  }
+
   const groups = new Map<string, SlotRowForMeta[]>();
   for (const s of merged) {
     const key = s.winner_submission_id ? `w:${s.winner_submission_id}` : `s:${s.id}`;
@@ -2523,6 +2539,7 @@ export async function listSlotScriptMetaForCreative(
         winner_video_id: wvId,
         bunch_id: s.bunch_id,
         bunch_name: nameById.get(s.bunch_id) || "",
+        bunch_kind: kindById.get(s.bunch_id) ?? "proven",
         sequence_number: s.sequence_number,
         recreate_index: i + 1,
         recreate_total: total,

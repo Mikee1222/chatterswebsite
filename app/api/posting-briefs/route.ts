@@ -10,6 +10,7 @@ import {
   type PostingBriefPriority,
   type PostingBriefStatus,
 } from "@/services/posting-briefs";
+import { isSlotRecordingBriefApproved } from "@/services/brief-slot-links";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -65,12 +66,17 @@ export async function POST(req: Request) {
 
   const body = (await req.json()) as PostingBriefInput;
   try {
+    // A brief written for a bunch slot stays draft until that slot's recording brief is
+    // approved, and never notifies the VAs on creation: the Marketing Manager does that
+    // when the edited videos are in the folder.
+    const slotId = String(body.winner_video_id ?? "").trim();
+    if (slotId) body.status = (await isSlotRecordingBriefApproved(slotId)) ? "active" : "draft";
     const brief = await createPostingBrief(
       {
         ...body,
         created_by: session.airtableUserId ?? session.id,
       },
-      { notify: true, actorUserId: session.airtableUserId ?? session.id },
+      { notify: !slotId, actorUserId: session.airtableUserId ?? session.id },
     );
     return NextResponse.json({ brief }, { status: 201 });
   } catch (e) {

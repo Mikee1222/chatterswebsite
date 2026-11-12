@@ -87,6 +87,8 @@ export type PostingBrief = {
   status: PostingBriefStatus;
   /** Editing brief this posting brief was prepared from (FLOW strip). */
   editing_brief_id: string | null;
+  /** Bunch slot (idea) this brief belongs to — goes live when its recording brief is approved. */
+  winner_video_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -123,6 +125,7 @@ export type PostingBriefInput = {
   final_checklist?: string[];
   status?: PostingBriefStatus;
   editing_brief_id?: string | null;
+  winner_video_id?: string | null;
   posts?: PostingBriefPostInput[];
   created_by?: string;
 };
@@ -217,6 +220,7 @@ function mapBrief(row: Record<string, unknown>, posts: PostingBriefPost[]): Post
     final_checklist: parseChecklist(row.final_checklist),
     status: (asString(row.status) || "active") as PostingBriefStatus,
     editing_brief_id: typeof row.editing_brief_id === "string" && row.editing_brief_id ? row.editing_brief_id : null,
+    winner_video_id: typeof row.winner_video_id === "string" && row.winner_video_id ? row.winner_video_id : null,
     created_by: asString(row.created_by),
     created_at: asString(row.created_at),
     updated_at: asString(row.updated_at),
@@ -454,6 +458,8 @@ export async function createPostingBrief(
       final_checklist: checklist,
       status: input.status ?? "active",
       editing_brief_id: input.editing_brief_id ?? null,
+      // Only sent when set, so briefs without a slot never depend on the column (migration 20261112210000).
+      ...(input.winner_video_id ? { winner_video_id: input.winner_video_id } : {}),
       created_by: input.created_by ?? "",
       created_at: now,
       updated_at: now,
@@ -544,6 +550,44 @@ export async function updatePostingBrief(
   }
 
   return brief;
+}
+
+/**
+ * The Marketing Manager tells the VAs assigned to the brief's model to post now
+ * (the edited videos are in "Videos To Upload"). Returns how many VAs were notified.
+ */
+export async function notifyVasToPostNow(params: {
+  id: string;
+  actorUserId: string;
+}): Promise<{ notified: number }> {
+  const brief = await getPostingBriefById(params.id);
+  if (!brief) throw new Error("Brief not found");
+  if (brief.status !== "active") {
+    throw new Error("This posting brief is not live yet — it goes live when the recording brief is approved");
+  }
+  const vaIds = (await getAssignedVaIdsForModel(brief.model_id)).filter(
+    (id) => id && id !== params.actorUserId,
+  );
+  if (!vaIds.length) {
+    throw new Error("No VA is assigned to this model's social accounts — assign one in Marketing first.");
+  }
+  const pending = brief.posts.filter((p) => !p.posted_url).length;
+  await Promise.all(
+    vaIds.map((user_id) =>
+      notify({
+        user_id,
+        event_type: NOTIFICATION_EVENT.POSTING_BRIEF_POST_NOW,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: `Post now: ${brief.title}`,
+        body: `The videos are in the folder. ${pending} post${pending === 1 ? "" : "s"} to publish${brief.account_handle ? ` on ${brief.account_handle}` : ""}. Press Posted and paste the link for each one.`,
+        entity_type: NOTIFICATION_ENTITY.POSTING_BRIEF,
+        entity_id: brief.id,
+        actor_user_id: params.actorUserId,
+        _triggerSource: "posting_brief_post_now",
+      }).catch((err) => console.error("[posting_brief_post_now] notify failed", err)),
+    ),
+  );
+  return { notified: vaIds.length };
 }
 
 export async function setPostingBriefStatus(

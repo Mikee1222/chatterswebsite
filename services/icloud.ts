@@ -3,6 +3,7 @@
  * Permission-gated (icloud_management:view / manage); no per-bunch assignment.
  */
 
+import { ideaCode, ideaPieces, type IdeaKind, type SortingIdea } from "@/lib/idea-codes";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   bunchReadyForIcloud,
@@ -32,11 +33,16 @@ async function notifyPermissionHolders(params: {
   actor_user_id?: string;
   excludeUserId?: string;
   triggerSource: string;
+  /** Skip users who also hold this permission (they were already notified through it). */
+  exceptPermission?: (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 }): Promise<void> {
   const users = await listUsersWithPermission(params.permission).catch(() => []);
+  const already = params.exceptPermission
+    ? new Set((await listUsersWithPermission(params.exceptPermission).catch(() => [])).map((u) => u.id))
+    : new Set<string>();
   await Promise.all(
     users
-      .filter((u) => u.id && u.id !== params.excludeUserId)
+      .filter((u) => u.id && u.id !== params.excludeUserId && !already.has(u.id))
       .map((u) =>
         notify({
           user_id: u.id,
@@ -286,9 +292,168 @@ export async function markBunchIcloudOrganized(input: {
     excludeUserId: input.actor_user_id,
     triggerSource: "mark_bunch_icloud_organized",
   });
+  // The Marketing Manager now tells the VAs to post (Posting Briefs → Notify VAs).
+  await notifyPermissionHolders({
+    permission: PERMISSIONS.MARKETING_MANAGE,
+    event_type: NOTIFICATION_EVENT.BUNCH_READY_TO_POST,
+    priority: NOTIFICATION_PRIORITY.HIGH,
+    title: "📲 Videos ready to post",
+    body: `The edited videos of “${bunch.name}” (${bunch.model_name}) are in the folders. Open the posting briefs and press “Notify VAs”.`,
+    // Deep link: the posting briefs list, filtered to this bunch (/posting-briefs?bunch=…).
+    entity_type: NOTIFICATION_ENTITY.POSTING_BUNCH,
+    entity_id: bunch.id,
+    actor_user_id: input.actor_user_id,
+    excludeUserId: input.actor_user_id,
+    triggerSource: "mark_bunch_icloud_organized_marketing",
+    exceptPermission: PERMISSIONS.ICLOUD_MANAGEMENT_MANAGE,
+  });
 
   const refreshed = await getVideoBunch(bunch.id);
   return refreshed ?? { ...bunch, icloud_status: "organized" as IcloudStatus, icloud_organized_at: now };
+}
+
+/* ── Raw footage sorting (between filming and editing) ─────────────────────── */
+
+export type RawSortingWork = {
+  bunch_id: string;
+  bunch_name: string;
+  model_name: string;
+  filmer_name: string;
+  editor_name: string;
+  uploaded_at: string | null;
+  upload_folder_names: string;
+  /** Every idea of the bunch with the file names and the folder each one goes to. */
+  ideas: SortingIdea[];
+};
+
+/**
+ * The ideas (slots) of each bunch as a sorting list: code, file names, destination folder.
+ * V1 → Main Grid › Proven or › Experimental (by the bunch kind), V2 / V3 → Trial Grid.
+ */
+export async function listSortingIdeasForBunches(
+  bunchIds: string[],
+): Promise<Map<string, SortingIdea[]>> {
+  const out = new Map<string, SortingIdea[]>();
+  const ids = [...new Set(bunchIds.map((b) => String(b ?? "").trim()).filter(Boolean))];
+  if (!ids.length) return out;
+  const sb = getSupabaseServiceClient();
+  const [{ data: bunches }, { data: slots }] = await Promise.all([
+    sb.from("video_bunches").select("id, kind").in("id", ids),
+    sb
+      .from("recreate_video_slots")
+      .select("bunch_id, sequence_number, description")
+      .in("bunch_id", ids)
+      .order("sequence_number", { ascending: true }),
+  ]);
+  const kindById = new Map<string, IdeaKind>();
+  for (const b of (bunches ?? []) as { id: string; kind?: string }[]) {
+    kindById.set(String(b.id), b.kind === "experimental" ? "experimental" : "proven");
+  }
+  for (const row of (slots ?? []) as {
+    bunch_id: string;
+    sequence_number: number | null;
+    description: string | null;
+  }[]) {
+    const bunchId = String(row.bunch_id);
+    const kind = kindById.get(bunchId) ?? "proven";
+    const sequence = Number(row.sequence_number) || 1;
+    const list = out.get(bunchId) ?? [];
+    list.push({
+      code: ideaCode(kind, sequence),
+      kind,
+      sequence,
+      description: String(row.description ?? "").slice(0, 140),
+      pieces: ideaPieces(kind, sequence),
+    });
+    out.set(bunchId, list);
+  }
+  return out;
+}
+
+/** Bunches whose raw footage is uploaded by the filmer but not yet confirmed as sorted. */
+export async function listRawSortingWork(): Promise<RawSortingWork[]> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("video_bunches")
+    .select("*")
+    .eq("filming_status", "uploaded")
+    .is("raw_sorted_at", null)
+    .order("uploaded_at", { ascending: true });
+  // Column comes with migration 20261112210000 — before it is applied there is nothing to list.
+  if (error) return [];
+  const rows = ((data ?? []) as Record<string, unknown>[])
+    // Bunches already edited belong to the organize step, not here.
+    .filter((r) => String(r.editing_status ?? "") !== "uploaded");
+  const ideasByBunch = await listSortingIdeasForBunches(rows.map((r) => String(r.id))).catch(
+    () => new Map<string, SortingIdea[]>(),
+  );
+  return rows
+    .map((r) => ({
+      bunch_id: String(r.id),
+      bunch_name: String(r.name ?? ""),
+      model_name: String(r.model_name ?? ""),
+      filmer_name: String(r.assigned_filmer_name ?? ""),
+      editor_name: String(r.assigned_editor_name ?? ""),
+      uploaded_at: r.uploaded_at ? String(r.uploaded_at) : null,
+      upload_folder_names: String(r.upload_folder_link ?? ""),
+      ideas: ideasByBunch.get(String(r.id)) ?? [],
+    }));
+}
+
+/** The iCloud manager confirms the raw footage is in the right folders → the editor is told to start. */
+export async function markBunchRawSorted(input: {
+  bunch_id: string;
+  actor_user_id: string;
+  actor_user_name?: string;
+}): Promise<{ notified_editor: boolean }> {
+  const bunch = await getVideoBunch(input.bunch_id);
+  if (!bunch) throw new Error("Bunch not found");
+  if (bunch.filming_status !== "uploaded") {
+    throw new Error("The filmer has not uploaded the footage of this bunch yet");
+  }
+  const now = new Date().toISOString();
+  const sb = getSupabaseServiceClient();
+  const { error } = await sb
+    .from("video_bunches")
+    .update({ raw_sorted_at: now, raw_sorted_by: input.actor_user_id, updated_at: now })
+    .eq("id", bunch.id);
+  if (error) {
+    throw new Error(
+      `Could not mark the raw footage as ready (is migration 20261112210000 applied?): ${error.message}`,
+    );
+  }
+
+  const title = "🎞️ Raw footage ready — start editing";
+  const body = `The raw footage of “${bunch.name}” (${bunch.model_name}) is sorted in the folders. Your editing briefs for it can be executed now.`;
+  const editorId = String(bunch.assigned_editor_id ?? "").trim();
+  if (editorId && editorId !== input.actor_user_id) {
+    await notify({
+      user_id: editorId,
+      event_type: NOTIFICATION_EVENT.BUNCH_RAW_READY,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title,
+      body,
+      entity_type: NOTIFICATION_ENTITY.EDITING_ASSIGNMENT,
+      entity_id: bunch.id,
+      actor_user_id: input.actor_user_id,
+      _triggerSource: "mark_bunch_raw_sorted",
+    }).catch(() => {});
+    return { notified_editor: true };
+  }
+  // No editor assigned to the bunch yet: tell whoever assigns editors.
+  await notifyPermissionHolders({
+    permission: PERMISSIONS.EDITING_MANAGE,
+    event_type: NOTIFICATION_EVENT.BUNCH_RAW_READY,
+    priority: NOTIFICATION_PRIORITY.HIGH,
+    title: "🎞️ Raw footage ready — no editor assigned",
+    body: `The raw footage of “${bunch.name}” (${bunch.model_name}) is sorted, but the bunch has no editor. Assign one so editing can start.`,
+    entity_type: NOTIFICATION_ENTITY.EDITING_ASSIGNMENT,
+    entity_id: bunch.id,
+    actor_user_id: input.actor_user_id,
+    excludeUserId: input.actor_user_id,
+    triggerSource: "mark_bunch_raw_sorted_no_editor",
+  });
+  return { notified_editor: false };
 }
 
 export type ModelMaterialRunway = {
