@@ -37,13 +37,30 @@ export type RecordingBriefCheck = {
   problems: string[];
 };
 
-/** The empty template, prefilled with what the slot already knows. */
-export function buildRecordingBriefTemplate(opts?: { creator?: string; reference?: string }): string {
+/**
+ * The empty template, prefilled with what the slot already knows. With `ideaCode` (P03,
+ * E02 — see lib/idea-codes.ts) the clip names carry the code and the GRID / TRIAL tag,
+ * which is what the iCloud manager sorts by.
+ */
+export function buildRecordingBriefTemplate(opts?: {
+  creator?: string;
+  reference?: string;
+  ideaCode?: string;
+  kind?: "proven" | "experimental";
+}): string {
   const creator = opts?.creator?.trim() || "[CREATOR]";
   const reference = opts?.reference?.trim() || "[REFERENCE LINK]";
+  const code = opts?.ideaCode?.trim() || "";
+  const pre = code ? `${code}_` : "";
+  const v1 = `${pre}V1${code ? "_GRID" : ""}`;
+  const v2 = `${pre}V2${code ? "_TRIAL" : ""}`;
+  const v3 = `${pre}V3${code ? "_TRIAL" : ""}`;
   return [
     '🎬 RECORDING BRIEF — "[NAME OF THE CONCEPT]"',
     `Creator: ${creator}`,
+    ...(code
+      ? [`Idea: ${code} · Source: ${opts?.kind === "experimental" ? "Experimental" : "Proven"}`]
+      : []),
     `Reference: ${reference} (watch it twice before filming)`,
     "",
     "💡 THE CONCEPT & WHY IT WORKS (read first)",
@@ -82,7 +99,10 @@ export function buildRecordingBriefTemplate(opts?: { creator?: string; reference
     "- [N] clips total ([variations] x [takes])",
     "- Same outfit and same place in all clips",
     "- No music, no text, no filters",
-    "- File names: V1_take1, V1_take2, V2_take1, V2_take2, V3_take1, V3_take2",
+    `- File names: ${v1}_take1, ${v1}_take2, ${v2}_take1, ${v2}_take2, ${v3}_take1, ${v3}_take2`,
+    ...(code
+      ? ["- Name every clip EXACTLY like this. The files are sorted into folders by their name."]
+      : []),
     "",
     "📂 UPLOAD",
     "1. Files app → iCloud Drive",

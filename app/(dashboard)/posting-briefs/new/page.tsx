@@ -21,6 +21,8 @@ export default function NewPostingBriefPage() {
         id: fromSlot,
         modelId: searchParams.get("model") ?? undefined,
         title: searchParams.get("title") ?? undefined,
+        code: searchParams.get("code") ?? undefined,
+        kind: searchParams.get("kind") === "experimental" ? ("experimental" as const) : ("proven" as const),
       }
     : null;
   const [models, setModels] = React.useState<{ id: string; model_name: string }[]>([]);

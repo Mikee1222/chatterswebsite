@@ -31,6 +31,7 @@ import {
   buildRecordingBriefTemplate,
   checkRecordingBrief,
 } from "@/lib/recording-brief-template";
+import { ideaCode } from "@/lib/idea-codes";
 import { useToast } from "@/contexts/toast-context";
 import { ROUTES } from "@/lib/routes";
 import { truncateNote } from "@/lib/winner-videos-copy";
@@ -790,7 +791,7 @@ export function CreativeScriptsQueueClient({
                                       </span>
                                     ) : meta ? (
                                       <span className="text-xs text-[#B8B4B8]/45">
-                                        Slot #{meta.sequence_number}
+                                        {ideaCode(meta.bunch_kind, meta.sequence_number)} · Slot #{meta.sequence_number}
                                       </span>
                                     ) : null}
                                   </div>
@@ -971,6 +972,8 @@ export function CreativeScriptsQueueClient({
                                                 buildRecordingBriefTemplate({
                                                   creator: modelNameFromSelection(modelId, gunzoModels),
                                                   reference: videoLink ?? "",
+                                                  ideaCode: meta ? ideaCode(meta.bunch_kind, meta.sequence_number) : "",
+                                                  kind: meta?.bunch_kind,
                                                 }),
                                               );
                                               setBriefWarnedFor(null);
@@ -1001,6 +1004,8 @@ export function CreativeScriptsQueueClient({
                                           placeholder={buildRecordingBriefTemplate({
                                             creator: modelNameFromSelection(modelId, gunzoModels),
                                             reference: videoLink ?? "",
+                                            ideaCode: meta ? ideaCode(meta.bunch_kind, meta.sequence_number) : "",
+                                            kind: meta?.bunch_kind,
                                           })}
                                         />
                                         {briefCheck.isBrief ? (
@@ -1069,7 +1074,9 @@ export function CreativeScriptsQueueClient({
                                           const name = modelNameFromSelection(modelId, gunzoModels);
                                           const label = `${name || "Idea"}${meta?.sequence_number ? ` · Slot #${meta.sequence_number}` : ""}`;
                                           const qs = (prefix: string) =>
-                                            `?from_slot=${encodeURIComponent(v.id)}${linkModel ? `&model=${encodeURIComponent(linkModel)}` : ""}&title=${encodeURIComponent(`${prefix}: ${label}`)}`;
+                                            `?from_slot=${encodeURIComponent(v.id)}${linkModel ? `&model=${encodeURIComponent(linkModel)}` : ""}${
+                                              meta ? `&code=${ideaCode(meta.bunch_kind, meta.sequence_number)}&kind=${meta.bunch_kind}` : ""
+                                            }&title=${encodeURIComponent(`${prefix}: ${label}`)}`;
                                           return (
                                             <div className="mt-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5">
                                               <p className="text-xs font-semibold text-[#F2EFF2]">Briefs for this idea</p>

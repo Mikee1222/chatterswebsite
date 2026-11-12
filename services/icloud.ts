@@ -3,6 +3,7 @@
  * Permission-gated (icloud_management:view / manage); no per-bunch assignment.
  */
 
+import { ideaCode, ideaPieces, type IdeaKind, type SortingIdea } from "@/lib/idea-codes";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   bunchReadyForIcloud,
@@ -320,7 +321,53 @@ export type RawSortingWork = {
   editor_name: string;
   uploaded_at: string | null;
   upload_folder_names: string;
+  /** Every idea of the bunch with the file names and the folder each one goes to. */
+  ideas: SortingIdea[];
 };
+
+/**
+ * The ideas (slots) of each bunch as a sorting list: code, file names, destination folder.
+ * V1 → Main Grid › Proven or › Experimental (by the bunch kind), V2 / V3 → Trial Grid.
+ */
+export async function listSortingIdeasForBunches(
+  bunchIds: string[],
+): Promise<Map<string, SortingIdea[]>> {
+  const out = new Map<string, SortingIdea[]>();
+  const ids = [...new Set(bunchIds.map((b) => String(b ?? "").trim()).filter(Boolean))];
+  if (!ids.length) return out;
+  const sb = getSupabaseServiceClient();
+  const [{ data: bunches }, { data: slots }] = await Promise.all([
+    sb.from("video_bunches").select("id, kind").in("id", ids),
+    sb
+      .from("recreate_video_slots")
+      .select("bunch_id, sequence_number, description")
+      .in("bunch_id", ids)
+      .order("sequence_number", { ascending: true }),
+  ]);
+  const kindById = new Map<string, IdeaKind>();
+  for (const b of (bunches ?? []) as { id: string; kind?: string }[]) {
+    kindById.set(String(b.id), b.kind === "experimental" ? "experimental" : "proven");
+  }
+  for (const row of (slots ?? []) as {
+    bunch_id: string;
+    sequence_number: number | null;
+    description: string | null;
+  }[]) {
+    const bunchId = String(row.bunch_id);
+    const kind = kindById.get(bunchId) ?? "proven";
+    const sequence = Number(row.sequence_number) || 1;
+    const list = out.get(bunchId) ?? [];
+    list.push({
+      code: ideaCode(kind, sequence),
+      kind,
+      sequence,
+      description: String(row.description ?? "").slice(0, 140),
+      pieces: ideaPieces(kind, sequence),
+    });
+    out.set(bunchId, list);
+  }
+  return out;
+}
 
 /** Bunches whose raw footage is uploaded by the filmer but not yet confirmed as sorted. */
 export async function listRawSortingWork(): Promise<RawSortingWork[]> {
@@ -333,9 +380,13 @@ export async function listRawSortingWork(): Promise<RawSortingWork[]> {
     .order("uploaded_at", { ascending: true });
   // Column comes with migration 20261112210000 — before it is applied there is nothing to list.
   if (error) return [];
-  return ((data ?? []) as Record<string, unknown>[])
+  const rows = ((data ?? []) as Record<string, unknown>[])
     // Bunches already edited belong to the organize step, not here.
-    .filter((r) => String(r.editing_status ?? "") !== "uploaded")
+    .filter((r) => String(r.editing_status ?? "") !== "uploaded");
+  const ideasByBunch = await listSortingIdeasForBunches(rows.map((r) => String(r.id))).catch(
+    () => new Map<string, SortingIdea[]>(),
+  );
+  return rows
     .map((r) => ({
       bunch_id: String(r.id),
       bunch_name: String(r.name ?? ""),
@@ -344,6 +395,7 @@ export async function listRawSortingWork(): Promise<RawSortingWork[]> {
       editor_name: String(r.assigned_editor_name ?? ""),
       uploaded_at: r.uploaded_at ? String(r.uploaded_at) : null,
       upload_folder_names: String(r.upload_folder_link ?? ""),
+      ideas: ideasByBunch.get(String(r.id)) ?? [],
     }));
 }
 

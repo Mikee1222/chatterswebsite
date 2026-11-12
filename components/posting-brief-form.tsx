@@ -1,5 +1,6 @@
 "use client";
 
+import { ideaPieces } from "@/lib/idea-codes";
 import * as React from "react";
 import {
   DndContext,
@@ -50,7 +51,14 @@ type Props = {
    * Bunch slot (idea) this brief is written for, from Scripts to Write. The brief is
    * saved as a draft and goes live when the Head of Marketing approves the recording brief.
    */
-  slot?: { id: string; modelId?: string; title?: string } | null;
+  slot?: {
+    id: string;
+    modelId?: string;
+    title?: string;
+    /** Idea code (P03, E02) and bunch kind: the form starts with the 3 videos of the idea. */
+    code?: string;
+    kind?: "proven" | "experimental";
+  } | null;
   submitLabel?: string;
   onSubmit: (input: PostingBriefInput) => Promise<void>;
   onCancel?: () => void;
@@ -298,7 +306,16 @@ export function PostingBriefForm({
           pinned_comment: p.pinned_comment ?? "",
           notes: p.notes ?? "",
         }))
-      : [emptyPost()],
+      : slot?.code
+        ? // One line per video of the idea: the original on the main grid, both variations
+          // on trials. Names match the recording brief and the iCloud folders.
+          ideaPieces(slot.kind, Number(slot.code.replace(/\D/g, "")) || 1).map((piece) => ({
+            ...emptyPost(),
+            placement: piece.placement,
+            content_source: slot.kind === "experimental" ? "experimental" : "proven",
+            video_name: piece.file,
+          }))
+        : [emptyPost()],
   );
   const [showPreview, setShowPreview] = React.useState(false);
   const [saving, setSaving] = React.useState(false);

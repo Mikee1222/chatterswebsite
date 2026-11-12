@@ -6,6 +6,7 @@ import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { VA_CARD, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { RawSortingWork } from "@/services/icloud";
+import { IcloudSortingGuide } from "@/components/icloud-sorting-guide";
 
 function shortDate(iso: string | null): string {
   if (!iso) return "—";
@@ -22,6 +23,8 @@ export function IcloudRawSortingPanel({ initialWork }: { initialWork: RawSorting
   const { addToast } = useToast();
   const [work, setWork] = React.useState(initialWork);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  /** Bunches whose every idea is ticked in the sorting list. */
+  const [allPlaced, setAllPlaced] = React.useState<Record<string, boolean>>({});
 
   async function rawReady(w: RawSortingWork) {
     setBusyId(w.bunch_id);
@@ -66,8 +69,9 @@ export function IcloudRawSortingPanel({ initialWork }: { initialWork: RawSorting
         {work.map((w) => (
           <li
             key={w.bunch_id}
-            className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5"
+            className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5"
           >
+           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-white">
                 {w.model_name || "—"} · {w.bunch_name || "Bunch"}
@@ -90,12 +94,25 @@ export function IcloudRawSortingPanel({ initialWork }: { initialWork: RawSorting
             </span>
             <button
               type="button"
-              disabled={busyId === w.bunch_id}
+              disabled={busyId === w.bunch_id || (w.ideas.length > 0 && !allPlaced[w.bunch_id])}
+              title={
+                w.ideas.length > 0 && !allPlaced[w.bunch_id]
+                  ? "Tick every idea in the list below first"
+                  : "Tells the editor the raw footage is ready"
+              }
               onClick={() => void rawReady(w)}
               className="min-h-10 rounded-xl bg-gradient-to-br from-[#e91e8c] via-[#db2777] to-[#c026d3] px-4 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
             >
               {busyId === w.bunch_id ? "Saving…" : "Raw ready"}
             </button>
+           </div>
+            <IcloudSortingGuide
+              ideas={w.ideas}
+              suffixHint="Raw clips have the same name plus _take1, _take2. Tick an idea when all its clips are in their folders."
+              onAllChecked={(ok) =>
+                setAllPlaced((p) => (p[w.bunch_id] === ok ? p : { ...p, [w.bunch_id]: ok }))
+              }
+            />
           </li>
         ))}
       </ul>
