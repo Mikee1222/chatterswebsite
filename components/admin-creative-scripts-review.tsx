@@ -108,10 +108,42 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
         credentials: "include",
         body: JSON.stringify(body),
       });
-      const data = (await res.json()) as { video?: WinnerVideoRecord; error?: string };
+      const data = (await res.json()) as {
+        video?: WinnerVideoRecord;
+        error?: string;
+        briefs?: {
+          editing_published: number;
+          posting_activated: number;
+          skipped: { kind: string; title: string; reason: string }[];
+        } | null;
+      };
       if (!res.ok) {
         addToast(winnerVideoLocalToast(`acs-err-${Date.now()}`, "Update failed", data.error ?? "Could not update", "high"));
         return false;
+      }
+      // Approving a recording brief makes the idea's draft editing / posting briefs live.
+      if (body.action === "approve" && data.briefs) {
+        const live = data.briefs.editing_published + data.briefs.posting_activated;
+        if (live > 0) {
+          addToast(
+            winnerVideoLocalToast(
+              `acs-live-${Date.now()}`,
+              "Briefs are live",
+              `${data.briefs.editing_published} editing and ${data.briefs.posting_activated} posting brief(s) for this idea went live.`,
+              "normal",
+            ),
+          );
+        }
+        for (const sk of data.briefs.skipped) {
+          addToast(
+            winnerVideoLocalToast(
+              `acs-skip-${Date.now()}-${sk.title}`,
+              `${sk.kind === "editing" ? "Editing" : "Posting"} brief still draft`,
+              `${sk.title || "Untitled"}: ${sk.reason}`,
+              "high",
+            ),
+          );
+        }
       }
       if (body.action === "approve" || body.action === "reject") {
         setScripts((prev) => prev.filter((s) => s.id !== id));

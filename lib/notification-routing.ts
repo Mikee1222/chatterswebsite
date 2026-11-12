@@ -468,6 +468,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "VAs / Marketing Executives assigned to the model's social accounts when the Marketing Manager presses Notify VAs on a reupload-queue item.",
   },
+  bunch_raw_ready: {
+    rule: "assigned_party_only",
+    description: "The editor assigned to the bunch (fallback: editing:manage holders) when the iCloud manager confirms the raw footage is sorted.",
+  },
+  bunch_ready_to_post: {
+    rule: "assigned_party_only",
+    description: "marketing:manage holders (the Marketing Manager) when the iCloud manager marks a bunch organized: the edited videos are in the folders and ready to post.",
+  },
+  posting_brief_post_now: {
+    rule: "assigned_party_only",
+    description: "VAs / Marketing Executives assigned to the model's social accounts when the Marketing Manager presses Notify VAs on a posting brief.",
+  },
   reupload_done: {
     rule: "assigned_party_only",
     description: "The Marketing Manager who sent the reupload (fallback: posting_briefs:manage holders) when a VA submits the new main-grid link.",

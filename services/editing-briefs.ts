@@ -56,6 +56,8 @@ export type EditingBrief = {
   deadline_at: string | null;
   deliverables_count: number;
   recording_brief_id: string | null;
+  /** Bunch slot (idea) this brief belongs to — goes live when its recording brief is approved. */
+  winner_video_id: string | null;
   assigned_editor_id: string;
   concept: string;
   raw_footage_path: string;
@@ -101,6 +103,7 @@ export type EditingBriefInput = {
   deadline_at?: string | null;
   deliverables_count?: number;
   recording_brief_id?: string | null;
+  winner_video_id?: string | null;
   assigned_editor_id?: string;
   concept?: string;
   raw_footage_path?: string;
@@ -224,6 +227,7 @@ function mapBrief(row: Record<string, unknown>, videos: EditingBriefVideo[]): Ed
         ? row.deliverables_count
         : Number(row.deliverables_count) || 1,
     recording_brief_id: asNullableString(row.recording_brief_id),
+    winner_video_id: asNullableString(row.winner_video_id),
     assigned_editor_id: asString(row.assigned_editor_id),
     concept: asString(row.concept),
     raw_footage_path: asString(row.raw_footage_path),
@@ -472,6 +476,8 @@ function rowFromInput(input: EditingBriefInput, createdBy?: string): Record<stri
     final_check: input.final_check ?? "",
     status: input.status ?? "draft",
     reviewer_comment: input.reviewer_comment ?? "",
+    // Only sent when set, so briefs without a slot never depend on the column (migration 20261112210000).
+    ...(input.winner_video_id ? { winner_video_id: input.winner_video_id } : {}),
     ...(createdBy != null ? { created_by: createdBy } : {}),
     updated_at: new Date().toISOString(),
   };

@@ -46,6 +46,11 @@ type Props = {
   models: PostingBriefFormModelOption[];
   accountSuggestionsByModel: Record<string, AccountSuggestion[]>;
   initial?: PostingBrief | null;
+  /**
+   * Bunch slot (idea) this brief is written for, from Scripts to Write. The brief is
+   * saved as a draft and goes live when the Head of Marketing approves the recording brief.
+   */
+  slot?: { id: string; modelId?: string; title?: string } | null;
   submitLabel?: string;
   onSubmit: (input: PostingBriefInput) => Promise<void>;
   onCancel?: () => void;
@@ -246,12 +251,16 @@ export function PostingBriefForm({
   models,
   accountSuggestionsByModel,
   initial,
+  slot,
   submitLabel = "Publish brief",
   onSubmit,
   onCancel,
 }: Props) {
-  const [title, setTitle] = React.useState(initial?.title ?? "");
-  const [modelId, setModelId] = React.useState(initial?.model_id ?? "");
+  const slotId = initial?.winner_video_id ?? slot?.id ?? null;
+  const [title, setTitle] = React.useState(initial?.title ?? slot?.title ?? "");
+  const [modelId, setModelId] = React.useState(
+    initial?.model_id ?? (slot?.modelId && models.some((m) => m.id === slot.modelId) ? slot.modelId : "") ?? "",
+  );
   const [accountHandle, setAccountHandle] = React.useState(initial?.account_handle ?? "");
   const [accountType, setAccountType] = React.useState<PostingBriefAccountType>(
     initial?.account_type ?? "main",
@@ -321,6 +330,7 @@ export function PostingBriefForm({
     title,
     model_id: modelId,
     editing_brief_id: initial?.editing_brief_id ?? null,
+    winner_video_id: slotId,
     account_handle: accountHandle,
     account_type: accountType,
     region,
@@ -367,6 +377,7 @@ export function PostingBriefForm({
     final_checklist: checklistRaw.split("\n").filter((l) => l.trim().length > 0),
     status: initial?.status ?? "active",
     editing_brief_id: initial?.editing_brief_id ?? null,
+    winner_video_id: slotId,
     created_by: initial?.created_by ?? "",
     created_at: initial?.created_at ?? new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -419,6 +430,12 @@ export function PostingBriefForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6 pb-28 md:pb-6">
+      {slotId ? (
+        <p className="rounded-xl border border-violet-400/25 bg-violet-400/[0.07] px-3 py-2 text-xs text-violet-100/90 md:col-span-2">
+          Linked to an idea from Scripts to Write. It is saved as a draft and goes live automatically when
+          the Head of Marketing approves that idea&apos;s recording brief.
+        </p>
+      ) : null}
       <div className="grid gap-4 md:grid-cols-2">
         <div className="md:col-span-2">
           <FieldLabel>Title</FieldLabel>

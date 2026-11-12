@@ -383,6 +383,9 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "posting_brief_posted":
     case "reupload_requested":
     case "reupload_done":
+    case "bunch_raw_ready":
+    case "bunch_ready_to_post":
+    case "posting_brief_post_now":
     case "recording_brief_published":
     case "recording_brief_updated":
     case "recording_brief_reminder":

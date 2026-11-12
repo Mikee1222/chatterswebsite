@@ -11,6 +11,7 @@ import {
 } from "@/services/posting-briefs";
 import { getModelById } from "@/services/modelss";
 import { PostingBriefDetail } from "@/components/posting-brief-detail";
+import { PostingNotifyVasButton } from "@/components/posting-notify-vas-button";
 import { VA_BTN_PRIMARY, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +24,8 @@ export default async function PostingBriefDetailPage({ params }: Props) {
   const canManage = await hasPermission(user, PERMISSIONS.POSTING_BRIEFS_MANAGE);
   const canView = await hasPermission(user, PERMISSIONS.POSTING_BRIEFS_VIEW);
   if (!canManage && !canView) redirect(ROUTES.dashboard);
+  // Marketing Manager: tells the VAs to post once the edited videos are in the folder.
+  const canNotifyVas = canManage || (await hasPermission(user, PERMISSIONS.MARKETING_MANAGE));
 
   const { id } = await params;
   const brief = await getPostingBriefById(id).catch(() => null);
@@ -58,6 +61,18 @@ export default async function PostingBriefDetailPage({ params }: Props) {
           >
             Edit
           </Link>
+        ) : null}
+        {canNotifyVas ? (
+          <PostingNotifyVasButton
+            briefId={brief.id}
+            disabledReason={
+              brief.status === "draft"
+                ? "Still a draft — it goes live when the recording brief is approved"
+                : brief.status === "archived"
+                  ? "This brief is archived"
+                  : undefined
+            }
+          />
         ) : null}
       </div>
       <PostingBriefDetail

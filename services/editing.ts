@@ -34,11 +34,16 @@ async function notifyPermissionHolders(params: {
   actor_user_id?: string;
   excludeUserId?: string;
   triggerSource: string;
+  /** Skip users who also hold this permission (they were already notified through it). */
+  exceptPermission?: (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 }): Promise<void> {
   const users = await listUsersWithPermission(params.permission).catch(() => []);
+  const already = params.exceptPermission
+    ? new Set((await listUsersWithPermission(params.exceptPermission).catch(() => [])).map((u) => u.id))
+    : new Set<string>();
   await Promise.all(
     users
-      .filter((u) => u.id && u.id !== params.excludeUserId)
+      .filter((u) => u.id && u.id !== params.excludeUserId && !already.has(u.id))
       .map((u) =>
         notify({
           user_id: u.id,
@@ -419,6 +424,20 @@ export async function submitBunchEditedUpload(input: {
     actor_user_id: input.actor_user_id,
     excludeUserId: input.actor_user_id,
     triggerSource: "submit_bunch_edited_upload",
+  });
+  // The iCloud manager moves the finished videos to the folder the VAs post from.
+  await notifyPermissionHolders({
+    permission: PERMISSIONS.ICLOUD_MANAGEMENT_MANAGE,
+    event_type: NOTIFICATION_EVENT.BUNCH_EDITING_UPLOADED,
+    priority: NOTIFICATION_PRIORITY.HIGH,
+    title: "✂️ Edited videos uploaded — organize them",
+    body: `${input.actor_user_name || bunch.assigned_editor_name || "An editor"} uploaded the edited videos of “${bunch.name}” (${bunch.model_name}). Move them to Videos To Upload and mark the bunch organized.`,
+    entity_type: NOTIFICATION_ENTITY.ICLOUD_ORGANIZATION,
+    entity_id: bunch.id,
+    actor_user_id: input.actor_user_id,
+    excludeUserId: input.actor_user_id,
+    triggerSource: "submit_bunch_edited_upload_icloud",
+    exceptPermission: PERMISSIONS.EDITING_MANAGE,
   });
 
   const refreshed = await getVideoBunch(bunch.id);

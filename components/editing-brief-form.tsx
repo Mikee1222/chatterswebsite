@@ -49,6 +49,11 @@ type Props = {
   editors: EditorOption[];
   recordingBriefOptions?: RecordingBriefOption[];
   initial?: EditingBrief | null;
+  /**
+   * Bunch slot (idea) this brief is written for, from Scripts to Write. The brief is
+   * saved as a draft and goes live when the Head of Marketing approves the recording brief.
+   */
+  slot?: { id: string; modelId?: string; title?: string } | null;
   submitLabel?: string;
   onSubmit: (input: EditingBriefInput) => Promise<void>;
   onCancel?: () => void;
@@ -141,12 +146,16 @@ export function EditingBriefForm({
   editors,
   recordingBriefOptions = [],
   initial,
+  slot,
   submitLabel = "Save",
   onSubmit,
   onCancel,
 }: Props) {
-  const [title, setTitle] = React.useState(initial?.title ?? "");
-  const [modelId, setModelId] = React.useState(initial?.model_id ?? models[0]?.id ?? "");
+  const slotId = initial?.winner_video_id ?? slot?.id ?? null;
+  const [title, setTitle] = React.useState(initial?.title ?? slot?.title ?? "");
+  const [modelId, setModelId] = React.useState(
+    initial?.model_id ?? (slot?.modelId && models.some((m) => m.id === slot.modelId) ? slot.modelId : models[0]?.id) ?? "",
+  );
   const [linksText, setLinksText] = React.useState((initial?.reference_links ?? []).join("\n"));
   const [priority, setPriority] = React.useState<EditingBriefPriority>(
     initial?.priority ?? "normal",
@@ -219,6 +228,7 @@ export function EditingBriefForm({
     deadline_local_greece: deadlineLocal.trim() || null,
     deliverables_count: deliverables,
     recording_brief_id: recordingBriefId.trim() || null,
+    winner_video_id: slotId,
     assigned_editor_id: editorId,
     concept,
     raw_footage_path: rawPath,
@@ -261,6 +271,7 @@ export function EditingBriefForm({
       : null,
     deliverables_count: deliverables,
     recording_brief_id: recordingBriefId || null,
+    winner_video_id: slotId,
     assigned_editor_id: editorId,
     concept,
     raw_footage_path: rawPath,
@@ -375,6 +386,13 @@ export function EditingBriefForm({
       {error ? (
         <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
           {error}
+        </p>
+      ) : null}
+      {slotId ? (
+        <p className="rounded-xl border border-violet-400/25 bg-violet-400/[0.07] px-3 py-2 text-xs text-violet-100/90">
+          Linked to an idea from Scripts to Write. It is saved as a draft and goes live automatically when
+          the Head of Marketing approves that idea&apos;s recording brief. Assign the editor now: a brief
+          without an editor cannot go live.
         </p>
       ) : null}
 

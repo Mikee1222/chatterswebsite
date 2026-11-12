@@ -18,6 +18,14 @@ export default function NewEditingBriefPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromRecording = searchParams.get("from_recording");
+  const fromSlot = searchParams.get("from_slot");
+  const slot = fromSlot
+    ? {
+        id: fromSlot,
+        modelId: searchParams.get("model") ?? undefined,
+        title: searchParams.get("title") ?? undefined,
+      }
+    : null;
 
   const [models, setModels] = React.useState<ModelOption[]>([]);
   const [editors, setEditors] = React.useState<EditorOption[]>([]);
@@ -94,6 +102,7 @@ export default function NewEditingBriefPage() {
         editors={editors}
         recordingBriefOptions={recordingBriefs}
         initial={initial}
+        slot={slot}
         onSubmit={onSubmit}
         onCancel={() => router.push(ROUTES.editingBriefs)}
       />

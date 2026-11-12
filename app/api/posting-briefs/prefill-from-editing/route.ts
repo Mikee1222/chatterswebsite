@@ -73,6 +73,8 @@ export async function GET(req: Request) {
 
   const brief: PostingBrief = {
     id: "prefill",
+    // Same idea as the editing brief: both go live with its recording brief.
+    winner_video_id: editing.winner_video_id ?? null,
     title: editing.title ? `Post: ${editing.title}` : "Posting brief",
     model_id: editing.model_id,
     account_handle: "",

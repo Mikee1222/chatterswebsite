@@ -32,6 +32,7 @@ import {
   checkRecordingBrief,
 } from "@/lib/recording-brief-template";
 import { useToast } from "@/contexts/toast-context";
+import { ROUTES } from "@/lib/routes";
 import { truncateNote } from "@/lib/winner-videos-copy";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
@@ -1063,6 +1064,41 @@ export function CreativeScriptsQueueClient({
                                             )}
                                           </div>
                                         ) : null}
+                                        {(() => {
+                                          const linkModel = modelId && !modelId.startsWith("custom:") ? modelId : "";
+                                          const name = modelNameFromSelection(modelId, gunzoModels);
+                                          const label = `${name || "Idea"}${meta?.sequence_number ? ` · Slot #${meta.sequence_number}` : ""}`;
+                                          const qs = (prefix: string) =>
+                                            `?from_slot=${encodeURIComponent(v.id)}${linkModel ? `&model=${encodeURIComponent(linkModel)}` : ""}&title=${encodeURIComponent(`${prefix}: ${label}`)}`;
+                                          return (
+                                            <div className="mt-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5">
+                                              <p className="text-xs font-semibold text-[#F2EFF2]">Briefs for this idea</p>
+                                              <p className="mt-0.5 text-xs text-[#B8B4B8]/60">
+                                                Written here they stay drafts, and go live together when the Head of
+                                                Marketing approves this recording brief. Editing brief only if the idea
+                                                needs editing; posting brief always (one line per video, tagged grid or trial).
+                                              </p>
+                                              <div className="mt-2 flex flex-wrap gap-2">
+                                                <a
+                                                  href={`${ROUTES.editingBriefNew}${qs("Edit")}`}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  className={cn(VA_BTN_SECONDARY, "text-xs")}
+                                                >
+                                                  + Editing brief
+                                                </a>
+                                                <a
+                                                  href={`${ROUTES.postingBriefNew}${qs("Post")}`}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  className={cn(VA_BTN_SECONDARY, "text-xs")}
+                                                >
+                                                  + Posting brief
+                                                </a>
+                                              </div>
+                                            </div>
+                                          );
+                                        })()}
                                         <div className="mt-2 flex flex-wrap items-center gap-2">
                                           <button
                                             type="button"

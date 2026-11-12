@@ -35,11 +35,16 @@ async function notifyPermissionHolders(params: {
   actor_user_id?: string;
   excludeUserId?: string;
   triggerSource: string;
+  /** Skip users who also hold this permission (they were already notified through it). */
+  exceptPermission?: (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 }): Promise<void> {
   const users = await listUsersWithPermission(params.permission).catch(() => []);
+  const already = params.exceptPermission
+    ? new Set((await listUsersWithPermission(params.exceptPermission).catch(() => [])).map((u) => u.id))
+    : new Set<string>();
   await Promise.all(
     users
-      .filter((u) => u.id && u.id !== params.excludeUserId)
+      .filter((u) => u.id && u.id !== params.excludeUserId && !already.has(u.id))
       .map((u) =>
         notify({
           user_id: u.id,
@@ -395,6 +400,20 @@ export async function submitBunchUpload(input: {
     actor_user_id: input.actor_user_id,
     excludeUserId: input.actor_user_id,
     triggerSource: "submit_bunch_upload",
+  });
+  // The iCloud manager sorts the raw footage into the right folders before the editor starts.
+  await notifyPermissionHolders({
+    permission: PERMISSIONS.ICLOUD_MANAGEMENT_MANAGE,
+    event_type: NOTIFICATION_EVENT.BUNCH_FILMING_UPLOADED,
+    priority: NOTIFICATION_PRIORITY.HIGH,
+    title: "📁 Raw footage uploaded — sort it",
+    body: `${input.actor_user_name || bunch.assigned_filmer_name || "A filmer"} uploaded the raw footage of “${bunch.name}” (${bunch.model_name}). Sort it into the folders, then press “Raw ready” in iCloud Organization.`,
+    entity_type: NOTIFICATION_ENTITY.ICLOUD_ORGANIZATION,
+    entity_id: bunch.id,
+    actor_user_id: input.actor_user_id,
+    excludeUserId: input.actor_user_id,
+    triggerSource: "submit_bunch_upload_icloud",
+    exceptPermission: PERMISSIONS.FILMING_MANAGE,
   });
 
   const refreshed = await getVideoBunch(bunch.id);
