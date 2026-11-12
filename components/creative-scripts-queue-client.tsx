@@ -26,6 +26,11 @@ import {
 } from "@/components/manager-review-ui";
 import { StatInfoTooltip } from "@/components/infloww-performance-ui";
 import { CreativeStudioWinnerBreakdown } from "@/components/creative-studio-winner-breakdown";
+import {
+  RECORDING_BRIEF_SECTIONS,
+  buildRecordingBriefTemplate,
+  checkRecordingBrief,
+} from "@/lib/recording-brief-template";
 import { useToast } from "@/contexts/toast-context";
 import { truncateNote } from "@/lib/winner-videos-copy";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
@@ -122,6 +127,9 @@ export function CreativeScriptsQueueClient({
   const [breakdownOpen, setBreakdownOpen] = React.useState(false);
   const [draftingScript, setDraftingScript] = React.useState(false);
   const [draftNote, setDraftNote] = React.useState<string | null>(null);
+  /** Set when Submit was pressed once on an incomplete recording brief (second press sends it). */
+  const [briefWarnedFor, setBriefWarnedFor] = React.useState<string | null>(null);
+  const briefCheck = React.useMemo(() => checkRecordingBrief(scriptText), [scriptText]);
   const [brainstormLoading, setBrainstormLoading] = React.useState(false);
   /** New direct-upload sb:// token; undefined = keep existing. */
   const [briefAttachmentToken, setBriefAttachmentToken] = React.useState<string | undefined>(
@@ -317,6 +325,7 @@ export function CreativeScriptsQueueClient({
     setActiveId(video.id);
     setBreakdownOpen(false);
     setDraftNote(null);
+    setBriefWarnedFor(null);
     setModelId(resolveModelId(video, gunzoModels));
     if (isRejected) {
       setScriptText(video.script_text || "");
@@ -479,6 +488,20 @@ export function CreativeScriptsQueueClient({
           `cs-up-${Date.now()}`,
           "Upload in progress",
           "Wait for the brief file to finish uploading.",
+          "high",
+        ),
+      );
+      return;
+    }
+
+    // A recording brief with gaps: say what is missing once, send on the second press.
+    if (briefCheck.isBrief && briefCheck.problems.length && briefWarnedFor !== video.id) {
+      setBriefWarnedFor(video.id);
+      addToast(
+        winnerVideoLocalToast(
+          `cs-brief-${Date.now()}`,
+          "Recording brief is incomplete",
+          `${briefCheck.problems.join(" · ")}. Fix it, or press Submit again to send it as it is.`,
           "high",
         ),
       );
@@ -937,7 +960,34 @@ export function CreativeScriptsQueueClient({
                                         </div>
                                       ) : null}
                                       <div>
-                                        <ReviewFieldLabel>Script</ReviewFieldLabel>
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                          <ReviewFieldLabel>Recording brief</ReviewFieldLabel>
+                                          <button
+                                            type="button"
+                                            className={cn(VA_BTN_SECONDARY, "text-xs")}
+                                            onClick={() => {
+                                              setScriptText(
+                                                buildRecordingBriefTemplate({
+                                                  creator: modelNameFromSelection(modelId, gunzoModels),
+                                                  reference: videoLink ?? "",
+                                                }),
+                                              );
+                                              setBriefWarnedFor(null);
+                                            }}
+                                            title={
+                                              scriptText.trim()
+                                                ? "Replaces what is in the box with the empty template"
+                                                : "Fills the box with the recording brief template"
+                                            }
+                                          >
+                                            {scriptText.trim() ? "Reset to template" : "Insert template"}
+                                          </button>
+                                        </div>
+                                        <p className="mb-2 text-xs text-[#B8B4B8]/60">
+                                          Paste the recording brief you wrote with Claude, or start from the
+                                          template. One idea = V1 original (main grid) + V2 and V3 (trials).
+                                          Text-on-screen ideas that need no filming can stay a plain script.
+                                        </p>
                                         {draftNote ? (
                                           <p className="mb-2 rounded-xl border border-emerald-400/25 bg-emerald-400/[0.07] px-3 py-2 text-xs text-emerald-100/90">
                                             {draftNote}
@@ -946,9 +996,73 @@ export function CreativeScriptsQueueClient({
                                         <ManagerReviewTextarea
                                           value={scriptText}
                                           onChange={(e) => setScriptText(e.target.value)}
-                                          rows={10}
-                                          placeholder="Write the full script here (or Text on Screen)…"
+                                          rows={16}
+                                          placeholder={buildRecordingBriefTemplate({
+                                            creator: modelNameFromSelection(modelId, gunzoModels),
+                                            reference: videoLink ?? "",
+                                          })}
                                         />
+                                        {briefCheck.isBrief ? (
+                                          <div className="mt-2 space-y-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2.5">
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[#B8B4B8]/60">
+                                                Sections
+                                              </span>
+                                              {RECORDING_BRIEF_SECTIONS.map((sec) => {
+                                                const ok = briefCheck.sections[sec.key];
+                                                return (
+                                                  <span
+                                                    key={sec.key}
+                                                    className={cn(
+                                                      "rounded-full border px-2 py-0.5 text-[11px]",
+                                                      ok
+                                                        ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+                                                        : "border-amber-400/35 bg-amber-400/10 text-amber-200",
+                                                    )}
+                                                  >
+                                                    {ok ? "✓" : "Missing:"} {sec.label}
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-[#B8B4B8]/60">
+                                                Takes
+                                              </span>
+                                              {([1, 2, 3] as const).map((n) => {
+                                                const take = briefCheck.takes.find((t) => t.number === n);
+                                                const tag = take?.placement;
+                                                return (
+                                                  <span
+                                                    key={n}
+                                                    className={cn(
+                                                      "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                                                      tag === "grid"
+                                                        ? "border-emerald-400/35 bg-emerald-400/12 text-emerald-200"
+                                                        : tag === "trial"
+                                                          ? "border-violet-400/40 bg-violet-400/15 text-violet-200"
+                                                          : "border-amber-400/35 bg-amber-400/10 text-amber-200",
+                                                    )}
+                                                  >
+                                                    V{n} · {tag === "grid" ? "Main grid" : tag === "trial" ? "Trial" : take ? "no tag" : "missing"}
+                                                  </span>
+                                                );
+                                              })}
+                                            </div>
+                                            {briefCheck.problems.length ? (
+                                              <ul className="list-disc space-y-0.5 pl-5 text-xs text-amber-200/90">
+                                                {briefCheck.problems.map((pr) => (
+                                                  <li key={pr}>{pr}</li>
+                                                ))}
+                                              </ul>
+                                            ) : (
+                                              <p className="text-xs text-emerald-200/80">
+                                                Complete. The Head of Marketing reviews it next; after approval the
+                                                filmer sees it on Shoot Assignments.
+                                              </p>
+                                            )}
+                                          </div>
+                                        ) : null}
                                         <div className="mt-2 flex flex-wrap items-center gap-2">
                                           <button
                                             type="button"

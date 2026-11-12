@@ -121,10 +121,12 @@ export function scriptIdeaToText(idea: ScriptIdeaJson): string {
     for (const m of idea.must_keep) out.push(`• ${m}`);
   }
   if (idea.how_to_act) out.push("", "🗣 HOW TO ACT", idea.how_to_act);
-  out.push("", `📝 ORIGINAL — [${SCRIPT_TAKE_PLACEMENT.original}]`, idea.original.script);
+  // Same take headings as the recording brief template (lib/recording-brief-template.ts),
+  // so the form's checker reads the tags of an AI draft too.
+  out.push("", "📝 VARIATIONS", "", "V1 — ORIGINAL (main grid)", idea.original.script);
   idea.variations.forEach((v, i) => {
-    out.push("", `📝 VARIATION ${i + 1} — [${SCRIPT_TAKE_PLACEMENT.variation}]`);
-    if (v.angle) out.push(`What changes: ${v.angle}`);
+    out.push("", `V${i + 2} — VARIATION (trial)`);
+    if (v.angle) out.push(`What changes visually: ${v.angle}`);
     out.push(v.script);
   });
   return out.join("\n").trim();
