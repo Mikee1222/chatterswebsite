@@ -19,7 +19,14 @@ function shortDate(iso: string | null): string {
  * Step between filming and editing: the filmer uploaded the raw footage, the iCloud manager
  * sorts it into the right folders and presses "Raw ready" → the editor is told to start.
  */
-export function IcloudRawSortingPanel({ initialWork }: { initialWork: RawSortingWork[] }) {
+export function IcloudRawSortingPanel({
+  initialWork,
+  canManage,
+}: {
+  initialWork: RawSortingWork[];
+  /** icloud_management:manage — only they can press "Raw ready" (view holders read the list). */
+  canManage: boolean;
+}) {
   const { addToast } = useToast();
   const [work, setWork] = React.useState(initialWork);
   const [busyId, setBusyId] = React.useState<string | null>(null);
@@ -94,9 +101,13 @@ export function IcloudRawSortingPanel({ initialWork }: { initialWork: RawSorting
             </span>
             <button
               type="button"
-              disabled={busyId === w.bunch_id || (w.ideas.length > 0 && !allPlaced[w.bunch_id])}
+              disabled={
+                !canManage || busyId === w.bunch_id || (w.ideas.length > 0 && !allPlaced[w.bunch_id])
+              }
               title={
-                w.ideas.length > 0 && !allPlaced[w.bunch_id]
+                !canManage
+                  ? "Only the iCloud manager can mark raw footage ready"
+                  : w.ideas.length > 0 && !allPlaced[w.bunch_id]
                   ? "Tick every idea in the list below first"
                   : "Tells the editor the raw footage is ready"
               }

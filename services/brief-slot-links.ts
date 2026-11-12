@@ -9,6 +9,10 @@
  *        → the slot's draft posting brief becomes active (VAs can open it; they are told
  *          to post later, when the Marketing Manager presses "Notify VAs")
  *
+ * A brief that cannot go live at approval time (e.g. an editing brief with no editor) stays
+ * a draft. Once fixed, a manager opens it and presses "Publish now", which runs the same
+ * activation again (POST /api/creative-scripts/[id]/activate-briefs).
+ *
  * Server-only.
  */
 
@@ -41,17 +45,17 @@ export type SlotBriefActivation = {
 export async function activateBriefsForSlot(
   winnerVideoId: string,
   actorUserId: string,
+  /** Limit to the brief kinds the caller may publish (the manual "Publish now" retry). */
+  kinds: ("editing" | "posting")[] = ["editing", "posting"],
 ): Promise<SlotBriefActivation> {
   const out: SlotBriefActivation = { editing_published: 0, posting_activated: 0, skipped: [] };
   const id = String(winnerVideoId ?? "").trim();
   if (!id) return out;
   const sb = getSupabaseServiceClient();
 
-  const { data: editing, error: eErr } = await sb
-    .from("editing_briefs")
-    .select("id, title")
-    .eq("winner_video_id", id)
-    .eq("status", "draft");
+  const { data: editing, error: eErr } = kinds.includes("editing")
+    ? await sb.from("editing_briefs").select("id, title").eq("winner_video_id", id).eq("status", "draft")
+    : { data: [], error: null };
   // eErr here usually means migration 20261112210000 is not applied yet: nothing is linked.
   if (!eErr) {
     for (const row of (editing ?? []) as { id: string; title: string | null }[]) {
@@ -74,11 +78,9 @@ export async function activateBriefsForSlot(
     }
   }
 
-  const { data: posting, error: pErr } = await sb
-    .from("posting_briefs")
-    .select("id, title")
-    .eq("winner_video_id", id)
-    .eq("status", "draft");
+  const { data: posting, error: pErr } = kinds.includes("posting")
+    ? await sb.from("posting_briefs").select("id, title").eq("winner_video_id", id).eq("status", "draft")
+    : { data: [], error: null };
   if (!pErr) {
     for (const row of (posting ?? []) as { id: string; title: string | null }[]) {
       try {

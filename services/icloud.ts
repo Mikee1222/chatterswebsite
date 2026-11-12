@@ -299,8 +299,9 @@ export async function markBunchIcloudOrganized(input: {
     priority: NOTIFICATION_PRIORITY.HIGH,
     title: "📲 Videos ready to post",
     body: `The edited videos of “${bunch.name}” (${bunch.model_name}) are in the folders. Open the posting briefs and press “Notify VAs”.`,
-    entity_type: NOTIFICATION_ENTITY.POSTING_BRIEF,
-    entity_id: "",
+    // Deep link: the posting briefs list, filtered to this bunch (/posting-briefs?bunch=…).
+    entity_type: NOTIFICATION_ENTITY.POSTING_BUNCH,
+    entity_id: bunch.id,
     actor_user_id: input.actor_user_id,
     excludeUserId: input.actor_user_id,
     triggerSource: "mark_bunch_icloud_organized_marketing",

@@ -428,6 +428,8 @@ export const NOTIFICATION_ENTITY = {
   CONTENT_QUALITY: "content_quality",
   POSTING_BRIEF: "posting_brief",
   REUPLOAD: "reupload",
+  /** entity_id = video bunch id; opens the posting briefs of that bunch. */
+  POSTING_BUNCH: "posting_bunch",
   RECORDING_BRIEF: "recording_brief",
   EDITING_BRIEF: "editing_brief",
 } as const;

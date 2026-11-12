@@ -8,9 +8,10 @@ import { markBunchRawSorted } from "@/services/icloud";
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const canView = await hasPermission(session, PERMISSIONS.ICLOUD_MANAGEMENT_VIEW);
-  const canManage = await hasPermission(session, PERMISSIONS.ICLOUD_MANAGEMENT_MANAGE);
-  if (!canView && !canManage) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Writes raw_sorted_at and notifies the editor: manage only (view holders can read the list).
+  if (!(await hasPermission(session, PERMISSIONS.ICLOUD_MANAGEMENT_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { id } = await ctx.params;
   try {

@@ -14,6 +14,8 @@ import { PostingBriefDetail } from "@/components/posting-brief-detail";
 import { PostingNotifyVasButton } from "@/components/posting-notify-vas-button";
 import { VA_BTN_PRIMARY, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
+import { isSlotRecordingBriefApproved } from "@/services/brief-slot-links";
+import { SlotBriefPublishNow } from "@/components/slot-brief-publish-now";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -43,6 +45,12 @@ export default async function PostingBriefDetailPage({ params }: Props) {
   }
 
   const model = await getModelById(brief.model_id).catch(() => null);
+  // Draft although the idea's recording brief is approved → offer "Publish now".
+  const stuckDraft =
+    canManage &&
+    brief.status === "draft" &&
+    Boolean(brief.winner_video_id) &&
+    (await isSlotRecordingBriefApproved(brief.winner_video_id as string));
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6">
@@ -67,7 +75,9 @@ export default async function PostingBriefDetailPage({ params }: Props) {
             briefId={brief.id}
             disabledReason={
               brief.status === "draft"
-                ? "Still a draft — it goes live when the recording brief is approved"
+                ? stuckDraft
+                  ? "Still a draft — press Publish now first"
+                  : "Still a draft — it goes live when the recording brief is approved"
                 : brief.status === "archived"
                   ? "This brief is archived"
                   : undefined
@@ -75,6 +85,13 @@ export default async function PostingBriefDetailPage({ params }: Props) {
           />
         ) : null}
       </div>
+      {stuckDraft ? (
+        <SlotBriefPublishNow
+          winnerVideoId={brief.winner_video_id as string}
+          briefId={brief.id}
+          kind="posting"
+        />
+      ) : null}
       <PostingBriefDetail
         brief={brief}
         modelName={model?.model_name}

@@ -9,8 +9,11 @@ import {
 } from "@/services/posting-briefs";
 import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { PostingBriefsClient } from "@/components/posting-briefs-client";
+import { getVideoBunch, listSlotsForBunch } from "@/services/winner-sourcing";
 
-export default async function PostingBriefsPage() {
+type Props = { searchParams: Promise<{ bunch?: string }> };
+
+export default async function PostingBriefsPage({ searchParams }: Props) {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
 
@@ -33,6 +36,23 @@ export default async function PostingBriefsPage() {
     listActiveGunzoTeamModelss().catch(() => []),
   ]);
 
+  // ?bunch=<id> (the "Videos ready to post" notification): only that bunch's posting briefs.
+  const bunchId = String((await searchParams).bunch ?? "").trim();
+  let bunchFilter: { id: string; name: string; slotIds: string[] } | null = null;
+  if (bunchId) {
+    const [bunch, slots] = await Promise.all([
+      getVideoBunch(bunchId).catch(() => null),
+      listSlotsForBunch(bunchId).catch(() => []),
+    ]);
+    if (bunch) {
+      bunchFilter = {
+        id: bunch.id,
+        name: bunch.name,
+        slotIds: slots.map((s) => s.winner_video_id).filter((v): v is string => Boolean(v)),
+      };
+    }
+  }
+
   const modelNameById: Record<string, string> = {};
   for (const m of models) {
     modelNameById[m.id] = m.model_name;
@@ -45,6 +65,7 @@ export default async function PostingBriefsPage() {
         canManage={canManage}
         models={models.map((m) => ({ id: m.id, model_name: m.model_name }))}
         modelNameById={modelNameById}
+        bunchFilter={bunchFilter}
       />
     </div>
   );

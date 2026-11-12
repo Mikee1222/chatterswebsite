@@ -41,7 +41,7 @@ export default async function IcloudOrganizationPage() {
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <IcloudRawSortingPanel initialWork={rawWork} />
+      <IcloudRawSortingPanel initialWork={rawWork} canManage={canManage} />
       <IcloudEditedSortingPanel bunches={editedBunches} />
       <IcloudOrganizationClient
         initialWork={overview.work}

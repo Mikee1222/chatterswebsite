@@ -14,6 +14,8 @@ import {
   sessionUserIds,
 } from "@/lib/editing-briefs-access";
 import { VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
+import { isSlotRecordingBriefApproved } from "@/services/brief-slot-links";
+import { SlotBriefPublishNow } from "@/components/slot-brief-publish-now";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -50,6 +52,12 @@ export default async function EditingBriefDetailPage({ params }: Props) {
   const modelName = models.find((m) => m.id === brief.model_id)?.model_name;
   const editorName = editors.find((e) => e.id === brief.assigned_editor_id)?.full_name;
   const canManage = await hasPermission(user, PERMISSIONS.EDITING_BRIEFS_MANAGE);
+  // Draft although the idea's recording brief is approved → offer "Publish now".
+  const stuckDraft =
+    canManage &&
+    brief.status === "draft" &&
+    Boolean(brief.winner_video_id) &&
+    (await isSlotRecordingBriefApproved(brief.winner_video_id as string));
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 py-6 md:px-6">
@@ -63,6 +71,13 @@ export default async function EditingBriefDetailPage({ params }: Props) {
           </Link>
         ) : null}
       </div>
+      {stuckDraft ? (
+        <SlotBriefPublishNow
+          winnerVideoId={brief.winner_video_id as string}
+          briefId={brief.id}
+          kind="editing"
+        />
+      ) : null}
       <EditingBriefView brief={brief} modelName={modelName} editorName={editorName ?? undefined} />
     </div>
   );

@@ -61,6 +61,8 @@ type Props = {
   canManage: boolean;
   models: ModelOption[];
   modelNameById: Record<string, string>;
+  /** Opened from a "Videos ready to post" notification: show only this bunch's briefs. */
+  bunchFilter?: { id: string; name: string; slotIds: string[] } | null;
 };
 
 type SortMode = "urgency" | "title" | "account";
@@ -70,6 +72,7 @@ export function PostingBriefsClient({
   canManage,
   models,
   modelNameById,
+  bunchFilter = null,
 }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
@@ -86,6 +89,7 @@ export function PostingBriefsClient({
     initialBriefs[0]?.id ?? null,
   );
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [bunch, setBunch] = React.useState(bunchFilter);
 
   const selected = briefs.find((b) => b.id === selectedId) ?? null;
 
@@ -126,6 +130,10 @@ export function PostingBriefsClient({
 
   const filtered = React.useMemo(() => {
     let list = briefs;
+    if (bunch) {
+      const ids = new Set(bunch.slotIds);
+      list = list.filter((b) => Boolean(b.winner_video_id) && ids.has(b.winner_video_id as string));
+    }
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -146,7 +154,7 @@ export function PostingBriefsClient({
       );
     }
     return list;
-  }, [briefs, search, sortMode]);
+  }, [briefs, search, sortMode, bunch]);
 
   const today = React.useMemo(() => todayPostingCounts(briefs, modelFilter), [briefs, modelFilter]);
 
@@ -232,6 +240,16 @@ export function PostingBriefsClient({
   };
 
   const chips = [
+    bunch
+      ? {
+          key: "bunch",
+          label: `Bunch: ${bunch.name}`,
+          clear: () => {
+            setBunch(null);
+            router.replace(ROUTES.postingBriefs);
+          },
+        }
+      : null,
     modelFilter
       ? {
           key: "model",

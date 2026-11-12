@@ -89,6 +89,8 @@ export function getPushTargetPath(
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
     case "reupload":
       return ROUTES.reuploads;
+    case "posting_bunch":
+      return entityId ? ROUTES.postingBriefsForBunch(entityId) : ROUTES.postingBriefs;
     case "posting_brief":
       if (entityId) return ROUTES.postingBrief(entityId);
       return ROUTES.postingBriefs;
@@ -222,6 +224,8 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.bunches : ROUTES.icloudOrganization;
     case "reupload":
       return ROUTES.reuploads;
+    case "posting_bunch":
+      return ROUTES.postingBriefsForBunch(entity_id);
     case "posting_brief":
       if (entity_id) return ROUTES.postingBrief(entity_id);
       return ROUTES.postingBriefs;
