@@ -11,6 +11,7 @@
 
 import "server-only";
 
+import { resolveAiModel } from "@/lib/ai-models";
 import type { TranscriptSegment } from "@/lib/winner-breakdown-schema";
 
 /** Provider hard limit for whisper-1 / groq free tier. */
@@ -36,7 +37,6 @@ export function resolveSttProvider(): SttProvider | null {
   const forced = process.env.STT_PROVIDER?.trim().toLowerCase();
   const openaiKey = process.env.OPENAI_API_KEY?.trim();
   const groqKey = process.env.GROQ_API_KEY?.trim();
-  const override = process.env.STT_MODEL?.trim();
 
   const useGroq = forced === "groq" ? Boolean(groqKey) : forced === "openai" ? false : !openaiKey && Boolean(groqKey);
   if (useGroq && groqKey) {
@@ -44,7 +44,7 @@ export function resolveSttProvider(): SttProvider | null {
       name: "groq",
       url: "https://api.groq.com/openai/v1/audio/transcriptions",
       apiKey: groqKey,
-      model: override || "whisper-large-v3-turbo",
+      model: resolveAiModel("sttGroq"),
     };
   }
   if (openaiKey) {
@@ -52,7 +52,7 @@ export function resolveSttProvider(): SttProvider | null {
       name: "openai",
       url: "https://api.openai.com/v1/audio/transcriptions",
       apiKey: openaiKey,
-      model: override || "whisper-1",
+      model: resolveAiModel("sttOpenai"),
     };
   }
   return null;
