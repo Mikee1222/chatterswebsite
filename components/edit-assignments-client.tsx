@@ -442,17 +442,15 @@ export function EditAssignmentsClient({
                                         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#FFB6DE]">
                                           <Scissors className="h-3.5 w-3.5" /> Editing brief
                                         </span>
-                                        {slot.editing_brief.can_open ? (
-                                          <a
-                                            href={ROUTES.editingBrief(slot.editing_brief.id)}
-                                            className={cn(
-                                              VA_BTN_PRIMARY,
-                                              "inline-flex min-h-[30px] items-center gap-1 px-2.5 py-1 text-[11px]",
-                                            )}
-                                          >
-                                            Open <ExternalLink className="h-3 w-3" />
-                                          </a>
-                                        ) : null}
+                                        <a
+                                          href={ROUTES.editingBrief(slot.editing_brief.id)}
+                                          className={cn(
+                                            VA_BTN_PRIMARY,
+                                            "inline-flex min-h-[30px] items-center gap-1 px-2.5 py-1 text-[11px]",
+                                          )}
+                                        >
+                                          Open <ExternalLink className="h-3 w-3" />
+                                        </a>
                                       </div>
                                       {slot.editing_brief.concept?.trim() ? (
                                         <p className="whitespace-pre-wrap text-[13px] text-white/80">
@@ -490,18 +488,12 @@ export function EditAssignmentsClient({
                                           {slot.editing_brief.cut_rules}
                                         </p>
                                       ) : null}
-                                      {slot.editing_brief.can_open ? (
-                                        <a
-                                          href={ROUTES.editingBrief(slot.editing_brief.id)}
-                                          className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#FF1493]/90 hover:underline"
-                                        >
-                                          Full editing brief <ExternalLink className="h-3 w-3" />
-                                        </a>
-                                      ) : (
-                                        <p className="mt-2 text-[11px] text-white/40">
-                                          Το πλήρες brief είναι ανατεθειμένο σε άλλον editor.
-                                        </p>
-                                      )}
+                                      <a
+                                        href={ROUTES.editingBrief(slot.editing_brief.id)}
+                                        className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#FF1493]/90 hover:underline"
+                                      >
+                                        Full editing brief <ExternalLink className="h-3 w-3" />
+                                      </a>
                                     </div>
                                   ) : (
                                     <>

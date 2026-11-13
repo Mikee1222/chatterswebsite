@@ -65,8 +65,6 @@ async function notifyPermissionHolders(params: {
 export type SlotEditingBrief = {
   id: string;
   status: string;
-  /** True when the current editor may open the full brief (it is assigned to them). */
-  can_open: boolean;
   deadline_at: string | null;
   deliverables_count: number;
   concept: string;
@@ -149,10 +147,7 @@ function emptyEditReason(counts: EditSlotStatusCounts): string | null {
   return `${parts.join(", ")}. ${next}`;
 }
 
-async function enrichSlotsWithScripts(
-  slots: RecreateVideoSlot[],
-  editorIdentityIds: Set<string>,
-): Promise<EditSlotDetail[]> {
+async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<EditSlotDetail[]> {
   const approved = slots.filter((s) => s.status === "Approved" && Boolean(s.winner_video_id));
   const videos = await Promise.all(
     approved.map(async (s) => {
@@ -185,7 +180,6 @@ async function enrichSlotsWithScripts(
           ? {
               id: b.id,
               status: b.status,
-              can_open: editorIdentityIds.has(String(b.assigned_editor_id)),
               deadline_at: b.deadline_at,
               deliverables_count: b.deliverables_count,
               concept: b.concept,
@@ -237,7 +231,7 @@ export async function listEditAssignmentsForEditor(editorId: string): Promise<Ed
     const slots = await listSlotsForBunch(bunch.id);
     const progress = editingProgress(slots);
     const slot_counts = countSlotStatuses(slots);
-    const enriched = await enrichSlotsWithScripts(slots, new Set(identityIds));
+    const enriched = await enrichSlotsWithScripts(slots);
     results.push({
       bunch: { ...bunch, ...progress },
       slots: enriched,

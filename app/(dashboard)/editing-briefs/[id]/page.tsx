@@ -15,6 +15,7 @@ import {
 } from "@/lib/editing-briefs-access";
 import { VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { isSlotRecordingBriefApproved } from "@/services/brief-slot-links";
+import { getBunchEditorIdForWinnerVideo } from "@/services/winner-sourcing";
 import { SlotBriefPublishNow } from "@/components/slot-brief-publish-now";
 
 type Props = { params: Promise<{ id: string }> };
@@ -31,9 +32,15 @@ export default async function EditingBriefDetailPage({ params }: Props) {
   if (!brief) notFound();
 
   const userIds = sessionUserIds(user);
-  const ok = userIds.some((uid) =>
+  let ok = userIds.some((uid) =>
     canAccessEditingBrief(caps, brief.assigned_editor_id, uid),
   );
+  // The editor assigned to the bunch this brief belongs to can open it too, even when the
+  // brief's own assigned editor is someone else (they work this bunch from the Editor tab).
+  if (!ok && caps.includes("view_assigned") && brief.winner_video_id) {
+    const bunchEditorId = await getBunchEditorIdForWinnerVideo(brief.winner_video_id);
+    if (bunchEditorId && userIds.some((uid) => uid.trim() === bunchEditorId)) ok = true;
+  }
   if (!ok) redirect(ROUTES.dashboard);
 
   if (
