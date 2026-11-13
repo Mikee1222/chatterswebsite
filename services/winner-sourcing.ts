@@ -15,6 +15,34 @@ import {
   type SlotOrigin,
 } from "@/lib/winner-sourcing-helpers";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
+
+/**
+ * The editor assigned to the bunch that owns a given winner video (slot), if any.
+ * Used so the editor working a bunch can open the editing brief linked to its slot,
+ * even when that brief's own assigned editor is someone else.
+ */
+export async function getBunchEditorIdForWinnerVideo(
+  winnerVideoId: string,
+): Promise<string | null> {
+  const id = winnerVideoId.trim();
+  if (!id) return null;
+  const sb = getSupabaseServiceClient();
+  const { data: slot } = await sb
+    .from("recreate_video_slots")
+    .select("bunch_id")
+    .eq("winner_video_id", id)
+    .limit(1)
+    .maybeSingle();
+  const bunchId = slot?.bunch_id ? String(slot.bunch_id) : "";
+  if (!bunchId) return null;
+  const { data: bunch } = await sb
+    .from("video_bunches")
+    .select("assigned_editor_id")
+    .eq("id", bunchId)
+    .maybeSingle();
+  const editorId = bunch?.assigned_editor_id ? String(bunch.assigned_editor_id).trim() : "";
+  return editorId || null;
+}
 import { coerceScriptStatus, type ScriptStatus } from "@/lib/creative-scripts-helpers";
 import { coerceEditingStatus } from "@/lib/editing-helpers";
 import { coerceFilmingStatus } from "@/lib/filming-helpers";
