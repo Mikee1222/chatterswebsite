@@ -17,6 +17,7 @@ import {
   type VideoBunch,
 } from "@/services/winner-sourcing";
 import { getWinnerVideoById, type WinnerVideoRecord } from "@/services/winner-videos";
+import { getEditingBriefForWinnerVideo } from "@/services/editing-briefs";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -60,7 +61,22 @@ async function notifyPermissionHolders(params: {
   );
 }
 
+/** Compact editing-brief summary shown on the editor's slot, with its id to open the full brief. */
+export type SlotEditingBrief = {
+  id: string;
+  status: string;
+  deadline_at: string | null;
+  deliverables_count: number;
+  concept: string;
+  cut_rules: string;
+  raw_files_takes: string;
+  upload_path_finals: string;
+  outputs: string[];
+};
+
 export type EditSlotDetail = RecreateVideoSlot & {
+  /** The live editing brief for this idea, shown where the editor works (null until it goes live). */
+  editing_brief: SlotEditingBrief | null;
   script_text: string;
   text_on_screen_suggestion: string;
   script_brief: string;
@@ -141,12 +157,36 @@ async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<EditS
   );
   const bySlot = new Map<string, WinnerVideoRecord | null>(videos);
 
+  const briefEntries = await Promise.all(
+    approved.map(async (s) => {
+      const b = s.winner_video_id
+        ? await getEditingBriefForWinnerVideo(s.winner_video_id).catch(() => null)
+        : null;
+      return [s.id, b] as const;
+    }),
+  );
+  const briefBySlot = new Map(briefEntries);
+
   return slots
     .filter((s) => s.status === "Approved")
     .map((s) => {
       const v = bySlot.get(s.id) ?? null;
+      const b = briefBySlot.get(s.id) ?? null;
       return {
         ...s,
+        editing_brief: b
+          ? {
+              id: b.id,
+              status: b.status,
+              deadline_at: b.deadline_at,
+              deliverables_count: b.deliverables_count,
+              concept: b.concept,
+              cut_rules: b.cut_rules,
+              raw_files_takes: b.raw_files_takes,
+              upload_path_finals: b.upload_path_finals,
+              outputs: (b.videos ?? []).map((x) => x.output_name).filter(Boolean),
+            }
+          : null,
         script_text: v?.script_text ?? "",
         text_on_screen_suggestion: v?.text_on_screen_suggestion ?? "",
         script_brief: v?.script_brief ?? "",

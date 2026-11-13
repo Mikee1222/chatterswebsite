@@ -437,6 +437,31 @@ export async function listEditingBriefs(
   return sortBriefs(rows.map((r) => mapBrief(r, vids.get(asString(r.id)) ?? [])));
 }
 
+/**
+ * The live editing brief linked to a bunch slot (its winner video), if any.
+ * Drafts are excluded: a brief appears here only once it has gone live
+ * (published on recording-brief approval, or further along).
+ */
+export async function getEditingBriefForWinnerVideo(
+  winnerVideoId: string,
+): Promise<EditingBrief | null> {
+  const id = winnerVideoId.trim();
+  if (!id) return null;
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("editing_briefs")
+    .select("*")
+    .eq("winner_video_id", id)
+    .in("status", ["published", "delivered", "changes_needed", "approved"])
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Record<string, unknown>[];
+  if (!rows.length) return null;
+  const vids = await loadVideos(rows.map((r) => asString(r.id)));
+  return mapBrief(rows[0], vids.get(asString(rows[0].id)) ?? []);
+}
+
 export async function getEditingBriefById(id: string): Promise<EditingBrief | null> {
   const bid = id.trim();
   if (!bid) return null;
