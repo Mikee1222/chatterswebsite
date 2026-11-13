@@ -10,6 +10,7 @@ import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { listUsersWithPermission } from "@/services/users";
 import {
   canAccessEditingBrief,
+  canViewEditingBriefAsBunchEditor,
   getEditingBriefCapabilities,
   sessionUserIds,
 } from "@/lib/editing-briefs-access";
@@ -37,9 +38,10 @@ export default async function EditingBriefDetailPage({ params }: Props) {
   );
   // The editor assigned to the bunch this brief belongs to can open it too, even when the
   // brief's own assigned editor is someone else (they work this bunch from the Editor tab).
+  // Read-only — the same rule the read API applies, so the two never diverge.
   if (!ok && caps.includes("view_assigned") && brief.winner_video_id) {
     const bunchEditorId = await getBunchEditorIdForWinnerVideo(brief.winner_video_id);
-    if (bunchEditorId && userIds.some((uid) => uid.trim() === bunchEditorId)) ok = true;
+    if (canViewEditingBriefAsBunchEditor(caps, userIds, bunchEditorId)) ok = true;
   }
   if (!ok) redirect(ROUTES.dashboard);
 

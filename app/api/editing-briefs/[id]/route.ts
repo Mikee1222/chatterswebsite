@@ -11,9 +11,11 @@ import {
 } from "@/services/editing-briefs";
 import {
   canAccessEditingBrief,
+  canViewEditingBriefAsBunchEditor,
   getEditingBriefCapabilities,
   sessionUserIds,
 } from "@/lib/editing-briefs-access";
+import { getBunchEditorIdForWinnerVideo } from "@/services/winner-sourcing";
 import { BriefTransitionError } from "@/lib/brief-status-transitions";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -31,9 +33,14 @@ export async function GET(_req: Request, ctx: Ctx) {
     if (!brief) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
     const userIds = sessionUserIds(session);
-    const assignedOk = userIds.some((uid) =>
+    let assignedOk = userIds.some((uid) =>
       canAccessEditingBrief(caps, brief.assigned_editor_id, uid),
     );
+    // Same read rule as the brief page: the bunch's own editor may view it too (read-only).
+    if (!assignedOk && caps.includes("view_assigned") && brief.winner_video_id) {
+      const bunchEditorId = await getBunchEditorIdForWinnerVideo(brief.winner_video_id);
+      if (canViewEditingBriefAsBunchEditor(caps, userIds, bunchEditorId)) assignedOk = true;
+    }
     if (!assignedOk) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
