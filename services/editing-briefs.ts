@@ -438,28 +438,35 @@ export async function listEditingBriefs(
 }
 
 /**
- * The live editing brief linked to a bunch slot (its winner video), if any.
- * Drafts are excluded: a brief appears here only once it has gone live
- * (published on recording-brief approval, or further along).
+ * The live editing brief for each of several bunch slots (their winner videos), in one pass.
+ * Drafts are excluded: a brief appears only once it has gone live (published on
+ * recording-brief approval, or further along). One SELECT and one video load for the whole
+ * set; when a slot has more than one live brief, the most recently updated wins.
  */
-export async function getEditingBriefForWinnerVideo(
-  winnerVideoId: string,
-): Promise<EditingBrief | null> {
-  const id = winnerVideoId.trim();
-  if (!id) return null;
+export async function getEditingBriefsForWinnerVideos(
+  winnerVideoIds: string[],
+): Promise<Map<string, EditingBrief>> {
+  const byWinner = new Map<string, EditingBrief>();
+  const ids = Array.from(new Set(winnerVideoIds.map((v) => v.trim()).filter(Boolean)));
+  if (!ids.length) return byWinner;
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from("editing_briefs")
     .select("*")
-    .eq("winner_video_id", id)
+    .in("winner_video_id", ids)
     .in("status", ["published", "delivered", "changes_needed", "approved"])
-    .order("updated_at", { ascending: false })
-    .limit(1);
+    .order("updated_at", { ascending: false });
   if (error) throw new Error(error.message);
   const rows = (data ?? []) as Record<string, unknown>[];
-  if (!rows.length) return null;
+  if (!rows.length) return byWinner;
   const vids = await loadVideos(rows.map((r) => asString(r.id)));
-  return mapBrief(rows[0], vids.get(asString(rows[0].id)) ?? []);
+  // rows are newest-first, so the first brief seen per winner video is the one to keep.
+  for (const row of rows) {
+    const winner = asString(row.winner_video_id);
+    if (!winner || byWinner.has(winner)) continue;
+    byWinner.set(winner, mapBrief(row, vids.get(asString(row.id)) ?? []));
+  }
+  return byWinner;
 }
 
 export async function getEditingBriefById(id: string): Promise<EditingBrief | null> {

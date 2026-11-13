@@ -19,6 +19,7 @@ import {
 } from "@/components/content-pipeline-ui";
 import { UploadFolderNamesFields, UploadFolderNamesList } from "@/components/upload-folder-names";
 import {
+  AttachmentLinks,
   FilterBar,
   FilterChip,
   ReviewEmptyState,
@@ -441,15 +442,17 @@ export function EditAssignmentsClient({
                                         <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-[#FFB6DE]">
                                           <Scissors className="h-3.5 w-3.5" /> Editing brief
                                         </span>
-                                        <a
-                                          href={ROUTES.editingBrief(slot.editing_brief.id)}
-                                          className={cn(
-                                            VA_BTN_PRIMARY,
-                                            "inline-flex min-h-[30px] items-center gap-1 px-2.5 py-1 text-[11px]",
-                                          )}
-                                        >
-                                          Open <ExternalLink className="h-3 w-3" />
-                                        </a>
+                                        {slot.editing_brief.can_open ? (
+                                          <a
+                                            href={ROUTES.editingBrief(slot.editing_brief.id)}
+                                            className={cn(
+                                              VA_BTN_PRIMARY,
+                                              "inline-flex min-h-[30px] items-center gap-1 px-2.5 py-1 text-[11px]",
+                                            )}
+                                          >
+                                            Open <ExternalLink className="h-3 w-3" />
+                                          </a>
+                                        ) : null}
                                       </div>
                                       {slot.editing_brief.concept?.trim() ? (
                                         <p className="whitespace-pre-wrap text-[13px] text-white/80">
@@ -487,20 +490,58 @@ export function EditAssignmentsClient({
                                           {slot.editing_brief.cut_rules}
                                         </p>
                                       ) : null}
-                                      <a
-                                        href={ROUTES.editingBrief(slot.editing_brief.id)}
-                                        className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#FF1493]/90 hover:underline"
-                                      >
-                                        Full editing brief <ExternalLink className="h-3 w-3" />
-                                      </a>
+                                      {slot.editing_brief.can_open ? (
+                                        <a
+                                          href={ROUTES.editingBrief(slot.editing_brief.id)}
+                                          className="mt-2 inline-flex items-center gap-1 text-[11px] text-[#FF1493]/90 hover:underline"
+                                        >
+                                          Full editing brief <ExternalLink className="h-3 w-3" />
+                                        </a>
+                                      ) : (
+                                        <p className="mt-2 text-[11px] text-white/40">
+                                          Το πλήρες brief είναι ανατεθειμένο σε άλλον editor.
+                                        </p>
+                                      )}
                                     </div>
                                   ) : (
-                                    <SlotChecklistSection title="Editing brief">
-                                      <p className="text-white/45">
-                                        Δεν υπάρχει ακόμα. Εμφανίζεται μόλις ο Head of Marketing
-                                        εγκρίνει το recording brief αυτής της ιδέας.
-                                      </p>
-                                    </SlotChecklistSection>
+                                    <>
+                                      <SlotChecklistSection title="Script">
+                                        <p className="whitespace-pre-wrap">
+                                          {slot.script_text?.trim() || "—"}
+                                        </p>
+                                      </SlotChecklistSection>
+                                      {slot.text_on_screen_suggestion?.trim() ? (
+                                        <SlotChecklistSection title="Text on Screen">
+                                          <p className="whitespace-pre-wrap">
+                                            {slot.text_on_screen_suggestion}
+                                          </p>
+                                        </SlotChecklistSection>
+                                      ) : null}
+                                      {slot.script_brief?.trim() ||
+                                      slot.script_brief_attachment_url?.trim() ? (
+                                        <SlotChecklistSection title="Brief">
+                                          {slot.script_brief?.trim() ? (
+                                            <p className="whitespace-pre-wrap">
+                                              {slot.script_brief}
+                                            </p>
+                                          ) : null}
+                                          {slot.script_brief_attachment_url?.trim() ? (
+                                            <div className="mt-2">
+                                              <AttachmentLinks
+                                                attachments={[
+                                                  {
+                                                    url: slot.script_brief_attachment_url,
+                                                    filename:
+                                                      slot.script_brief_attachment_filename ||
+                                                      "Brief attachment",
+                                                  },
+                                                ]}
+                                              />
+                                            </div>
+                                          ) : null}
+                                        </SlotChecklistSection>
+                                      ) : null}
+                                    </>
                                   )}
                                 </div>
                               ) : null}
