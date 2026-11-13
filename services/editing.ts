@@ -17,6 +17,7 @@ import {
   type VideoBunch,
 } from "@/services/winner-sourcing";
 import { getWinnerVideoById, type WinnerVideoRecord } from "@/services/winner-videos";
+import { getEditingBriefsForWinnerVideos, type EditingBrief } from "@/services/editing-briefs";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -60,7 +61,24 @@ async function notifyPermissionHolders(params: {
   );
 }
 
+/** Compact editing-brief summary shown on the editor's slot, with its id to open the full brief. */
+export type SlotEditingBrief = {
+  id: string;
+  status: string;
+  /** True when the current editor may open the full brief (it is assigned to them). */
+  can_open: boolean;
+  deadline_at: string | null;
+  deliverables_count: number;
+  concept: string;
+  cut_rules: string;
+  raw_files_takes: string;
+  upload_path_finals: string;
+  outputs: string[];
+};
+
 export type EditSlotDetail = RecreateVideoSlot & {
+  /** The live editing brief for this idea, shown where the editor works (null until it goes live). */
+  editing_brief: SlotEditingBrief | null;
   script_text: string;
   text_on_screen_suggestion: string;
   script_brief: string;
@@ -131,7 +149,10 @@ function emptyEditReason(counts: EditSlotStatusCounts): string | null {
   return `${parts.join(", ")}. ${next}`;
 }
 
-async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<EditSlotDetail[]> {
+async function enrichSlotsWithScripts(
+  slots: RecreateVideoSlot[],
+  editorIdentityIds: Set<string>,
+): Promise<EditSlotDetail[]> {
   const approved = slots.filter((s) => s.status === "Approved" && Boolean(s.winner_video_id));
   const videos = await Promise.all(
     approved.map(async (s) => {
@@ -141,12 +162,39 @@ async function enrichSlotsWithScripts(slots: RecreateVideoSlot[]): Promise<EditS
   );
   const bySlot = new Map<string, WinnerVideoRecord | null>(videos);
 
+  // One batched load for every approved slot's live editing brief (keyed by winner video),
+  // instead of a query per slot. A failure degrades to the recording-brief fallback, logged.
+  const winnerIds = approved
+    .map((s) => s.winner_video_id)
+    .filter((v): v is string => Boolean(v));
+  let briefByWinner = new Map<string, EditingBrief>();
+  try {
+    briefByWinner = await getEditingBriefsForWinnerVideos(winnerIds);
+  } catch (err) {
+    console.error("enrichSlotsWithScripts: failed to load editing briefs", err);
+  }
+
   return slots
     .filter((s) => s.status === "Approved")
     .map((s) => {
       const v = bySlot.get(s.id) ?? null;
+      const b = s.winner_video_id ? briefByWinner.get(s.winner_video_id) ?? null : null;
       return {
         ...s,
+        editing_brief: b
+          ? {
+              id: b.id,
+              status: b.status,
+              can_open: editorIdentityIds.has(String(b.assigned_editor_id)),
+              deadline_at: b.deadline_at,
+              deliverables_count: b.deliverables_count,
+              concept: b.concept,
+              cut_rules: b.cut_rules,
+              raw_files_takes: b.raw_files_takes,
+              upload_path_finals: b.upload_path_finals,
+              outputs: (b.videos ?? []).map((x) => x.output_name).filter(Boolean),
+            }
+          : null,
         script_text: v?.script_text ?? "",
         text_on_screen_suggestion: v?.text_on_screen_suggestion ?? "",
         script_brief: v?.script_brief ?? "",
@@ -189,7 +237,7 @@ export async function listEditAssignmentsForEditor(editorId: string): Promise<Ed
     const slots = await listSlotsForBunch(bunch.id);
     const progress = editingProgress(slots);
     const slot_counts = countSlotStatuses(slots);
-    const enriched = await enrichSlotsWithScripts(slots);
+    const enriched = await enrichSlotsWithScripts(slots, new Set(identityIds));
     results.push({
       bunch: { ...bunch, ...progress },
       slots: enriched,

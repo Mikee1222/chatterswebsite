@@ -437,6 +437,38 @@ export async function listEditingBriefs(
   return sortBriefs(rows.map((r) => mapBrief(r, vids.get(asString(r.id)) ?? [])));
 }
 
+/**
+ * The live editing brief for each of several bunch slots (their winner videos), in one pass.
+ * Drafts are excluded: a brief appears only once it has gone live (published on
+ * recording-brief approval, or further along). One SELECT and one video load for the whole
+ * set; when a slot has more than one live brief, the most recently updated wins.
+ */
+export async function getEditingBriefsForWinnerVideos(
+  winnerVideoIds: string[],
+): Promise<Map<string, EditingBrief>> {
+  const byWinner = new Map<string, EditingBrief>();
+  const ids = Array.from(new Set(winnerVideoIds.map((v) => v.trim()).filter(Boolean)));
+  if (!ids.length) return byWinner;
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("editing_briefs")
+    .select("*")
+    .in("winner_video_id", ids)
+    .in("status", ["published", "delivered", "changes_needed", "approved"])
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(error.message);
+  const rows = (data ?? []) as Record<string, unknown>[];
+  if (!rows.length) return byWinner;
+  const vids = await loadVideos(rows.map((r) => asString(r.id)));
+  // rows are newest-first, so the first brief seen per winner video is the one to keep.
+  for (const row of rows) {
+    const winner = asString(row.winner_video_id);
+    if (!winner || byWinner.has(winner)) continue;
+    byWinner.set(winner, mapBrief(row, vids.get(asString(row.id)) ?? []));
+  }
+  return byWinner;
+}
+
 export async function getEditingBriefById(id: string): Promise<EditingBrief | null> {
   const bid = id.trim();
   if (!bid) return null;
