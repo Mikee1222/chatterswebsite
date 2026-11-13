@@ -144,9 +144,20 @@ type Props = {
   chatters: ChatterOption[];
   models: ModelOption[];
   reasons: ReasonOption[];
+  /** Prefill from active mistake shift (model on shift). */
+  initialModelId?: string;
+  /** Prefill chatter when occupancy on that model is tracked. */
+  initialChatterId?: string;
 };
 
-export function VaMistakesClient({ initialMistakes, chatters, models, reasons }: Props) {
+export function VaMistakesClient({
+  initialMistakes,
+  chatters,
+  models,
+  reasons,
+  initialModelId,
+  initialChatterId,
+}: Props) {
   const { addToast } = useToast();
   const isSupabase = useIsSupabaseBackend();
   const [mainTab, setMainTab] = React.useState<"submit" | "submitted">("submit");
@@ -158,10 +169,22 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
   }, [initialMistakes]);
 
   const [subUsername, setSubUsername] = React.useState("");
-  const [chatterId, setChatterId] = React.useState("");
-  const [chatterName, setChatterName] = React.useState("");
-  const [modelId, setModelId] = React.useState("");
-  const [modelName, setModelName] = React.useState("");
+  const [chatterId, setChatterId] = React.useState(() => {
+    const id = (initialChatterId ?? "").trim();
+    return id && chatters.some((c) => c.id === id) ? id : "";
+  });
+  const [chatterName, setChatterName] = React.useState(() => {
+    const id = (initialChatterId ?? "").trim();
+    return chatters.find((c) => c.id === id)?.name ?? "";
+  });
+  const [modelId, setModelId] = React.useState(() => {
+    const id = (initialModelId ?? "").trim();
+    return id && models.some((m) => m.id === id) ? id : "";
+  });
+  const [modelName, setModelName] = React.useState(() => {
+    const id = (initialModelId ?? "").trim();
+    return models.find((m) => m.id === id)?.model_name ?? "";
+  });
   const [mistakeLocal, setMistakeLocal] = React.useState(() => getNowDatetimeLocalAthens());
   const [reasonId, setReasonId] = React.useState("");
   const [screenshot, setScreenshot] = React.useState<File | null>(null);

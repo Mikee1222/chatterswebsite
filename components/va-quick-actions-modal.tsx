@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
-import { CalendarCheck, Coins, FilePlus2, Play, Plus, X, AlertTriangle } from "lucide-react";
+import { AlertCircle, CalendarCheck, Coins, FilePlus2, Play, Plus, X, AlertTriangle } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
@@ -24,6 +24,7 @@ type VaQuickAction = {
   Icon: React.ComponentType<{ className?: string }>;
 };
 
+/** Base VA quick actions (mistake shift first). "Add a mistake" is injected by `getVaQuickActions`. */
 export const VA_QUICK_ACTIONS: VaQuickAction[] = [
   { href: ROUTES.va.shift, label: "Start mistake shift", Icon: Play },
   { href: ROUTES.va.contentAssignments, label: "Assign content to model", Icon: FilePlus2 },
@@ -31,10 +32,42 @@ export const VA_QUICK_ACTIONS: VaQuickAction[] = [
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", Icon: Coins },
 ];
 
-/** Quick actions minus the mistake shift entry when the VA lacks the mistakes:view permission. */
-function getVaQuickActions(canMistakeShift: boolean): VaQuickAction[] {
-  if (canMistakeShift) return VA_QUICK_ACTIONS;
-  return VA_QUICK_ACTIONS.filter((a) => a.href !== ROUTES.va.shift);
+const ADD_MISTAKE_ACTION: VaQuickAction = {
+  href: ROUTES.va.mistakes,
+  label: "Add a mistake",
+  Icon: AlertCircle,
+};
+
+/**
+ * Builds the VA + menu list.
+ * - Start mistake shift: when `canMistakeShift` (mistakes:view today).
+ * - Add a mistake: when `canSubmitMistake` (mistakes:submit OR legacy mistakes:view).
+ * - With active mistake shift: Add a mistake is first.
+ * - Without: Start mistake shift first (if shown), then Add a mistake below it.
+ */
+export function getVaQuickActions(opts: {
+  canMistakeShift: boolean;
+  canSubmitMistake: boolean;
+  hasActiveMistakeShift?: boolean;
+}): VaQuickAction[] {
+  const { canMistakeShift, canSubmitMistake, hasActiveMistakeShift = false } = opts;
+  const base = canMistakeShift
+    ? [...VA_QUICK_ACTIONS]
+    : VA_QUICK_ACTIONS.filter((a) => a.href !== ROUTES.va.shift);
+
+  if (!canSubmitMistake) return base;
+
+  if (hasActiveMistakeShift) {
+    return [ADD_MISTAKE_ACTION, ...base];
+  }
+
+  const startIdx = base.findIndex((a) => a.href === ROUTES.va.shift);
+  if (startIdx >= 0) {
+    const next = [...base];
+    next.splice(startIdx + 1, 0, ADD_MISTAKE_ACTION);
+    return next;
+  }
+  return [ADD_MISTAKE_ACTION, ...base];
 }
 
 export type VaQuickActionsModalProps = {
@@ -44,15 +77,26 @@ export type VaQuickActionsModalProps = {
   onReportShadowban?: () => void;
   /** When false, the "Start mistake shift" action is hidden (missing mistakes:view). */
   canMistakeShift?: boolean;
+  /** When false, "Add a mistake" is hidden (missing mistakes:submit and legacy mistakes:view). */
+  canSubmitMistake?: boolean;
+  /** When true with canSubmitMistake, "Add a mistake" is listed first. */
+  hasActiveMistakeShift?: boolean;
 };
 
 /**
  * Virtual assistant quick actions as a mobile bottom sheet: spring slide-up, blurred backdrop,
  * swipe-down / backdrop / ESC to close — matches chatter `QuickActionsModal`.
  */
-export function VaQuickActionsModal({ open, onClose, onReportShadowban, canMistakeShift = true }: VaQuickActionsModalProps) {
+export function VaQuickActionsModal({
+  open,
+  onClose,
+  onReportShadowban,
+  canMistakeShift = true,
+  canSubmitMistake = false,
+  hasActiveMistakeShift = false,
+}: VaQuickActionsModalProps) {
   const dragControls = useDragControls();
-  const quickActions = getVaQuickActions(canMistakeShift);
+  const quickActions = getVaQuickActions({ canMistakeShift, canSubmitMistake, hasActiveMistakeShift });
 
   React.useEffect(() => {
     if (typeof document === "undefined" || !open) return;
@@ -193,6 +237,10 @@ type VaFloatingActionButtonProps = {
   user: SessionUser;
   /** When false, the "Start mistake shift" action is hidden (missing mistakes:view). */
   canMistakeShift?: boolean;
+  /** When false, "Add a mistake" is hidden. */
+  canSubmitMistake?: boolean;
+  /** Active mistake shift → "Add a mistake" listed first. */
+  hasActiveMistakeShift?: boolean;
 };
 
 /**
@@ -200,9 +248,14 @@ type VaFloatingActionButtonProps = {
  * - Mobile: `VaQuickActionsModal` bottom sheet.
  * - Desktop: compact menu above the button (matches `ModelQuickActionsFab`).
  */
-export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloatingActionButtonProps) {
+export function VaFloatingActionButton({
+  user,
+  canMistakeShift = true,
+  canSubmitMistake = false,
+  hasActiveMistakeShift = false,
+}: VaFloatingActionButtonProps) {
   const { open, setOpen, requestClose, toggleOpen, showFabChrome } = useQuickActionsFabOpen();
-  const quickActions = getVaQuickActions(canMistakeShift);
+  const quickActions = getVaQuickActions({ canMistakeShift, canSubmitMistake, hasActiveMistakeShift });
   const [shadowbanModalOpen, setShadowbanModalOpen] = React.useState(false);
   const [vaAccounts, setVaAccounts] = React.useState<SocialAccount[]>([]);
 
@@ -252,6 +305,8 @@ export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloat
           onClose={requestClose}
           onReportShadowban={openShadowbanReport}
           canMistakeShift={canMistakeShift}
+          canSubmitMistake={canSubmitMistake}
+          hasActiveMistakeShift={hasActiveMistakeShift}
         />
 
         {showFabChrome ? (
@@ -296,7 +351,7 @@ export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloat
                     <Link
                       href={href}
                       onClick={requestClose}
-                      className="flex items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
+                      className="flex min-h-[44px] items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
                     >
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400">
                         <Icon className="h-4 w-4" />
@@ -309,7 +364,7 @@ export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloat
                   <button
                     type="button"
                     onClick={openShadowbanReport}
-                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                    className="flex w-full min-h-[44px] items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
                   >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
                       <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden />

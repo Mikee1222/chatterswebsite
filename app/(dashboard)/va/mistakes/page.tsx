@@ -1,13 +1,18 @@
 import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
+import { hasAnyPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { listActiveModelsForAssignment } from "@/services/modelss";
 import { filterActiveUsersForAssignment } from "@/lib/assignment-filters";
 import { listAllUsers } from "@/services/users";
+import {
+  getActiveShiftByStaff,
+  getActiveShiftModels,
+  getChatterIdsFromOpenShiftModels,
+} from "@/services/shifts";
 import {
   getMistakeReasons,
   getMistakesByVA,
@@ -19,7 +24,10 @@ import { VaMistakesClient } from "@/components/va-mistakes-client";
 export default async function VaMistakesPage() {
   const session = await getSessionFromCookies();
   if (!session) redirect(ROUTES.dashboard);
-  if (!(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
+  // mistakes:submit (new) OR mistakes:view (legacy submit gate) — no access loss.
+  if (
+    !(await hasAnyPermission(session, [PERMISSIONS.MISTAKES_SUBMIT, PERMISSIONS.MISTAKES_VIEW]))
+  ) {
     redirect(ROUTES.dashboard);
   }
 
@@ -52,6 +60,20 @@ export default async function VaMistakesPage() {
     }))
     .sort((a, b) => a.model_name.localeCompare(b.model_name));
 
+  let initialModelId = "";
+  let initialChatterId = "";
+  const activeShift = await getActiveShiftByStaff(vaId, "virtual_assistant").catch(() => null);
+  if (activeShift && activeShift.shift_type === "mistakes") {
+    const shiftModels = await getActiveShiftModels(activeShift.id).catch(() => []);
+    const firstModel = shiftModels.find((sm) => sm.model_id?.trim());
+    if (firstModel?.model_id) {
+      initialModelId = firstModel.model_id.trim();
+      const occupying = await getChatterIdsFromOpenShiftModels(initialModelId).catch(() => []);
+      const tracked = occupying.find((id) => id.trim() && id.trim() !== vaId);
+      if (tracked) initialChatterId = tracked.trim();
+    }
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
       <VaMistakesClient
@@ -59,6 +81,8 @@ export default async function VaMistakesPage() {
         chatters={chatters}
         models={modelOptions}
         reasons={reasons}
+        initialModelId={initialModelId || undefined}
+        initialChatterId={initialChatterId || undefined}
       />
     </div>
   );

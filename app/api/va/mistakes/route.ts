@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
+import { hasAnyPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { notifyByRoleConfig } from "@/services/notification-service";
@@ -15,10 +16,15 @@ import {
   uploadMistakeScreenshot,
 } from "@/services/chatter-mistakes";
 
+/** mistakes:submit (new) OR mistakes:view (legacy) — no access loss for current submitters. */
+async function canAccessVaMistakeSubmit(session: NonNullable<Awaited<ReturnType<typeof getSessionFromCookies>>>) {
+  return hasAnyPermission(session, [PERMISSIONS.MISTAKES_SUBMIT, PERMISSIONS.MISTAKES_VIEW]);
+}
+
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "mistakes:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await canAccessVaMistakeSubmit(session))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.mistakes);
   if (blocked) return blocked;
   const vaId = (session.airtableUserId ?? session.id)?.trim();
@@ -46,7 +52,7 @@ const postSchema = z.object({
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "mistakes:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await canAccessVaMistakeSubmit(session))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.mistakes);
   if (blocked) return blocked;
   const vaId = (session.airtableUserId ?? session.id)?.trim();

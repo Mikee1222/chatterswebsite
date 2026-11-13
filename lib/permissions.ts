@@ -20,6 +20,8 @@ export const PERMISSIONS = {
   MISTAKES_VIEW: "mistakes:view",
   MISTAKES_MANAGE: "mistakes:manage",
   MISTAKES_REASONS_MANAGE: "mistakes:reasons-manage",
+  /** Opt-in: submit mistakes from the + menu and /va/mistakes form. */
+  MISTAKES_SUBMIT: "mistakes:submit",
 
   CHALLENGES_VIEW: "challenges:view",
   CHALLENGES_MANAGE: "challenges:manage",
@@ -365,6 +367,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "mistakes:view": "Προβολή σφαλμάτων και μητρώου λαθών",
   "mistakes:manage": "Καταχώρηση και διαχείριση σφαλμάτων χειριστών",
   "mistakes:reasons-manage": "Διαχείριση αιτιών και κατηγοριών σφαλμάτων",
+  "mistakes:submit": "Lets this role add a mistake from the + menu and the mistakes form.",
 
   "challenges:view": "Προβολή προκλήσεων και προόδου συμμετεχόντων",
   "challenges:manage": "Δημιουργία και διαχείριση προκλήσεων",
@@ -535,6 +538,15 @@ export type PermissionGroup = {
   permissions: Permission[];
 };
 
+/**
+ * True when the permission set may open the VA mistakes submit form / "+" item.
+ * Accepts mistakes:submit (new) or mistakes:view (legacy submit gate) so current
+ * access is preserved.
+ */
+export function permissionsAllowMistakeSubmit(perms: readonly Permission[]): boolean {
+  return perms.includes(PERMISSIONS.MISTAKES_SUBMIT) || perms.includes(PERMISSIONS.MISTAKES_VIEW);
+}
+
 /** Group all permissions by resource prefix for the roles editor UI. */
 export function getPermissionGroups(): PermissionGroup[] {
   const byCategory = new Map<string, Permission[]>();
@@ -613,6 +625,8 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.VA_TASKS_VIEW,
   // VA mistakes submission + mistake shift feature (Mistakes nav item, /va/mistakes, /va-shift).
   PERMISSIONS.MISTAKES_VIEW,
+  // Explicit submit grant for + menu / form (also seedable on custom roles without view).
+  PERMISSIONS.MISTAKES_SUBMIT,
   // Baseline for VA informations access — core reference data, not toggleable off.
   PERMISSIONS.INFORMATIONS_VIEW,
   PERMISSIONS.MARKETING_VIEW,

@@ -427,6 +427,13 @@ export function MobileAppShell({
           <VaFloatingActionButton
             user={user}
             canMistakeShift={userPermissions.includes(PERMISSIONS.MISTAKES_VIEW)}
+            canSubmitMistake={
+              userPermissions.includes(PERMISSIONS.MISTAKES_SUBMIT) ||
+              userPermissions.includes(PERMISSIONS.MISTAKES_VIEW)
+            }
+            hasActiveMistakeShift={Boolean(
+              activeShift && activeShift.shift_type === "mistakes"
+            )}
           />
         ) : (
           <MobileFab user={user} />

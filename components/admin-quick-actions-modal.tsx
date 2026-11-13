@@ -148,7 +148,17 @@ function buildAdminQuickActions(
     },
   ];
 
-  return items.filter((i) => !i.permission || can(i.permission));
+  const filtered = items.filter((i) => !i.permission || can(i.permission));
+  // Custom / non-VA roles with mistakes:submit get "Add a mistake" → existing VA form.
+  // (VA FAB uses submit OR legacy mistakes:view; Start mistake shift stays view-gated.)
+  if (can(PERMISSIONS.MISTAKES_SUBMIT)) {
+    filtered.push({
+      href: ROUTES.va.mistakes,
+      label: "Add a mistake",
+      Icon: AlertTriangle,
+    });
+  }
+  return filtered;
 }
 
 /** Marketing permission that unlocks the "Report shadowban" quick action. */
