@@ -32,8 +32,8 @@ export async function GET(req: Request) {
     brief_id: "preview",
     position: i,
     output_name: v.name || `V${i + 1}`,
-    raw_take: files.filter((f) => f.includes(`V${i + 1}`) || f.toLowerCase().includes(`v${i + 1}`)).join("\n") ||
-      Array.from({ length: Math.max(1, v.takes) }, (_, t) => `V${i + 1}_take${t + 1}`).join("\n"),
+    // One raw file per variation: the matching clean name (V1_GRID, V2_TRIAL, …).
+    raw_take: files[i] || `V${i + 1}_${i === 0 ? "GRID" : "TRIAL"}`,
     special_instructions: v.notes || "",
     created_at: "",
     updated_at: "",

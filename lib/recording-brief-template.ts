@@ -80,7 +80,6 @@ export function buildRecordingBriefTemplate(opts?: {
     "",
     "🗣 HOW TO TALK / HOW TO ACT",
     "- ",
-    "- 2 takes of each variation.",
     "",
     "📝 VARIATIONS",
     "",
@@ -96,10 +95,13 @@ export function buildRecordingBriefTemplate(opts?: {
     "",
     "",
     "✅ CHECKLIST BEFORE YOU UPLOAD",
-    "- [N] clips total ([variations] x [takes])",
+    "- 3 videos total (one per variation): V1 main grid, V2 & V3 trial",
     "- Same outfit and same place in all clips",
     "- No music, no text, no filters",
-    `- File names: ${v1}_take1, ${v1}_take2, ${v2}_take1, ${v2}_take2, ${v3}_take1, ${v3}_take2`,
+    "- File names — one per clip:",
+    v1,
+    v2,
+    v3,
     ...(code
       ? ["- Name every clip EXACTLY like this. The files are sorted into folders by their name."]
       : []),

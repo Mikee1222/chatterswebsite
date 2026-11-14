@@ -196,7 +196,7 @@ export const BRIEF_DRAFTS_TOOL = {
               checklist_before_upload: {
                 type: "string",
                 description:
-                  "Checklist lines: clip count, raw only (no music/text/filters), naming V1_take1…, orientation.",
+                  "Checklist lines: 3 videos (one per variation), raw only (no music/text/filters), naming V1_GRID / V2_TRIAL / V3_TRIAL, orientation.",
               },
               variations: { type: "array", minItems: 1, items: variationSchema },
             },

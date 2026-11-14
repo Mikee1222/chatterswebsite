@@ -642,33 +642,21 @@ export async function duplicateRecordingBrief(
   );
 }
 
-/** Build clip file list from variations × takes using clip naming pattern. */
+/**
+ * One raw file name per variation — the creator keeps the best shot and uploads a single video
+ * per variation (V1 → main grid, the rest → trial). No takes. If clip_naming holds a clean list
+ * that matches the variation count, use it; otherwise derive V{n}_GRID / V{n}_TRIAL.
+ */
 export function buildClipFileListFromRecording(brief: RecordingBrief): string[] {
-  const pattern = (brief.clip_naming || "V{n}_take{t}").trim() || "V{n}_take{t}";
-  const lines: string[] = [];
-  brief.variations.forEach((v, vi) => {
-    const n = vi + 1;
-    const takes = Math.max(1, v.takes || 2);
-    for (let t = 1; t <= takes; t++) {
-      lines.push(
-        pattern
-          .replace(/\{n\}/gi, String(n))
-          .replace(/\{t\}/gi, String(t))
-          .replace(/V(\d+)/i, (_m, _d) => `V${n}`)
-          .replace(/take(\d+)/i, (_m, _d) => `take${t}`),
-      );
-    }
-  });
-  // If pattern had no placeholders, still expand simply
-  if (!lines.length && brief.variations.length) {
-    brief.variations.forEach((v, vi) => {
-      const takes = Math.max(1, v.takes || 2);
-      for (let t = 1; t <= takes; t++) {
-        lines.push(`V${vi + 1}_take${t}`);
-      }
-    });
+  const explicit = (brief.clip_naming || "")
+    .split(/[\n,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .filter((s) => !/\{.*\}/.test(s) && !/take\s*\d/i.test(s));
+  if (explicit.length > 0 && explicit.length === brief.variations.length) {
+    return explicit;
   }
-  return lines;
+  return brief.variations.map((_v, vi) => `V${vi + 1}_${vi === 0 ? "GRID" : "TRIAL"}`);
 }
 
 export async function runRecordingBriefDeadlineJobs(leadHours: number): Promise<{

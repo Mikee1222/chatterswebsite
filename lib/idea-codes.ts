@@ -4,7 +4,7 @@
  *
  * One idea (a bunch slot) = 3 pieces: V1 the original, V2 and V3 the variations.
  *   code   P03 = slot 3 of a Proven bunch, E02 = slot 2 of an Experimental bunch
- *   file   P03_V1_GRID, P03_V2_TRIAL, P03_V3_TRIAL   (raw clips add _take1, _take2)
+ *   file   P03_V1_GRID, P03_V2_TRIAL, P03_V3_TRIAL   (one file per variation — the kept shot)
  *   folder V1 of a proven idea        → Main Grid › Proven
  *          V1 of an experimental idea → Main Grid › Experimental
  *          every V2 / V3              → Trial Grid
@@ -20,8 +20,9 @@ export const SORT_FOLDER = {
 } as const;
 
 export type IdeaPiece = {
+  /** Variation number: 1 = V1 (main grid), 2 = V2, 3 = V3 (both trials). Not a film take. */
   take: 1 | 2 | 3;
-  /** File name without extension and without the _takeN suffix of raw clips. */
+  /** File name without extension. One file per variation (the filmer keeps the best shot). */
   file: string;
   placement: IdeaPlacement;
   folder: string;
