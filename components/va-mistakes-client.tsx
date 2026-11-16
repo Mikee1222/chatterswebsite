@@ -14,7 +14,11 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { Label } from "@/components/ui/form";
 import { GlassModal } from "@/components/ui/glass-modal";
 import type { MistakeReasonCategory, MistakeRecord } from "@/services/chatter-mistakes";
-import { MistakeScreenshotGallery } from "@/components/mistakes/mistake-screenshot-gallery";
+import {
+  MistakeSeverityBadge,
+  MistakeStatusBadge,
+  ScreenshotGallery,
+} from "@/components/mistakes";
 
 type ChatterOption = { id: string; name: string };
 type ModelOption = { id: string; model_name: string };
@@ -40,18 +44,6 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
     read_at: null,
     created_at: new Date().toISOString(),
   };
-}
-
-function categoryBadgeClass(cat: MistakeReasonCategory): string {
-  if (cat === "High") return "bg-red-500/15 border-red-500/25 text-red-400";
-  if (cat === "Medium") return "bg-amber-500/15 border-amber-500/25 text-amber-400";
-  return "bg-yellow-500/15 border-yellow-500/25 text-yellow-400";
-}
-
-function statusBadgeClass(st: string): string {
-  if (st === "approved") return "bg-green-500/15 border-green-500/25 text-green-400";
-  if (st === "rejected") return "bg-red-500/15 border-red-500/25 text-red-400";
-  return "bg-amber-500/15 border-amber-500/25 text-amber-400";
 }
 
 function canEditMistake(m: MistakeRecord): boolean {
@@ -720,13 +712,8 @@ export function VaMistakesClient({
                     />
                     <div className="pl-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
-                          {m.reason_category === "High" ? "" : m.reason_category === "Medium" ? "" : ""}
-                          {m.reason_category}
-                        </span>
-                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${statusBadgeClass(m.status)}`}>
-                          {m.status}
-                        </span>
+                        <MistakeSeverityBadge severity={m.reason_category} withDot />
+                        <MistakeStatusBadge status={m.status} />
                       </div>
                       <p className="mt-2 font-semibold text-white">{m.reason_label}</p>
                       <p className="mt-1 text-xs text-white/45">
@@ -735,7 +722,7 @@ export function VaMistakesClient({
                       <p className="mt-1 text-xs text-white/35">{formatDateTimeAthens(m.mistake_date)}</p>
                       {m.screenshot?.length ? (
                         <div className="mt-3">
-                          <MistakeScreenshotGallery
+                          <ScreenshotGallery
                             shots={m.screenshot}
                             preferAnnotatedThumbs
                             allowOriginalToggle

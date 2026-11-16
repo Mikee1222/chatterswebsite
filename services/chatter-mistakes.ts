@@ -187,8 +187,9 @@ export async function getMistakesByChatter(chatterId: string): Promise<MistakeRe
   if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getMistakesByChatter(chatterId);
   const id = chatterId.trim();
   if (!id) return [];
+  // Own mistakes only (all statuses) — chatter UI shows pending / approved / rejected.
   const records = await listAllRecords<Record<string, unknown>>(TABLE_MISTAKES, {
-    filterByFormula: `AND({chatter_id} = "${escapeFormulaString(id)}", {status} = "approved")`,
+    filterByFormula: `{chatter_id} = "${escapeFormulaString(id)}"`,
     sort: [{ field: "created_at", direction: "desc" }],
     _caller: "getMistakesByChatter",
   });

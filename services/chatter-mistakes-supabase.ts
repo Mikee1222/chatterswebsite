@@ -198,8 +198,9 @@ export async function getMistakesByChatter(chatterId: string): Promise<MistakeRe
   const id = chatterId.trim();
   if (!id) return [];
   const rows = await sbSelectAll<MistakeRow>(TABLE_MISTAKES);
+  // Own mistakes only (all statuses) — chatter UI shows pending / approved / rejected.
   const mapped = rows
-    .filter((r) => String(r.chatter_id ?? "") === id && String(r.status ?? "") === "approved")
+    .filter((r) => String(r.chatter_id ?? "") === id)
     .map(mapMistake)
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
   return signMistakeScreenshots(mapped);

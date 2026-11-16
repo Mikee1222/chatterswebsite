@@ -20,16 +20,25 @@ const STYLES: Record<MistakeStatus, { wrap: string; dot: string; label: string }
   },
 };
 
+const PENDING_NEUTRAL = {
+  wrap: "border-white/15 bg-white/[0.06] text-white/70",
+  dot: "bg-white/45",
+  label: "Under review",
+};
+
 export function MistakeStatusBadge({
   status,
   className = "",
+  /** Chatter-facing: muted “Under review” instead of yellow Pending */
+  underReview = false,
 }: {
   status: string;
   className?: string;
+  underReview?: boolean;
 }) {
   const key: MistakeStatus =
     status === "approved" || status === "rejected" ? status : "pending";
-  const s = STYLES[key];
+  const s = key === "pending" && underReview ? PENDING_NEUTRAL : STYLES[key];
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${s.wrap} ${className}`}

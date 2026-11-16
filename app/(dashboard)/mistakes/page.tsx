@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -20,7 +21,15 @@ export default async function ChatterMistakesPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <ChatterMistakesClient initialMistakes={mistakes} />
+      <Suspense
+        fallback={
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-16 text-center text-sm text-white/45">
+            Loading mistakes…
+          </div>
+        }
+      >
+        <ChatterMistakesClient initialMistakes={mistakes} />
+      </Suspense>
     </div>
   );
 }

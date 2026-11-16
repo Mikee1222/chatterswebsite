@@ -14,6 +14,9 @@ export {
   getMistakeDateRange,
   toDateStr,
   daysAgoFromIso,
+  startOfWeekMonday,
+  weekStartKeyFromIso,
+  formatWeekGroupLabel,
   MISTAKE_DATE_PRESET_LABELS,
   type MistakeDatePreset,
 } from "./date-helpers";

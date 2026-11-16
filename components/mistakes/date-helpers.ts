@@ -5,6 +5,7 @@ export type MistakeDatePreset =
   | "yesterday"
   | "7d"
   | "30d"
+  | "this_week"
   | "this_month"
   | "last_month"
   | "custom"
@@ -15,6 +16,7 @@ export const MISTAKE_DATE_PRESET_LABELS: Record<Exclude<MistakeDatePreset, "cust
   yesterday: "Yesterday",
   "7d": "7d",
   "30d": "30d",
+  this_week: "This week",
   this_month: "This month",
   last_month: "Last month",
 };
@@ -24,6 +26,46 @@ export function toDateStr(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/** Monday-start calendar week (local). */
+export function startOfWeekMonday(d: Date): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const day = x.getDay(); // 0 Sun … 6 Sat
+  const diff = day === 0 ? -6 : 1 - day;
+  x.setDate(x.getDate() + diff);
+  return x;
+}
+
+function parseYmdLocal(ymd: string): Date | null {
+  const s = ymd.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** ISO week-start key (Monday YYYY-MM-DD) for a mistake date. */
+export function weekStartKeyFromIso(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = parseYmdLocal(iso.slice(0, 10));
+  if (!d) return null;
+  return toDateStr(startOfWeekMonday(d));
+}
+
+const SHORT_DAY_MONTH = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
+
+/** "This week" | "Last week" | "3 Nov – 9 Nov" */
+export function formatWeekGroupLabel(weekStartYmd: string, now = new Date()): string {
+  const thisWeek = toDateStr(startOfWeekMonday(now));
+  const lastWeekDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+  const lastWeek = toDateStr(startOfWeekMonday(lastWeekDate));
+  if (weekStartYmd === thisWeek) return "This week";
+  if (weekStartYmd === lastWeek) return "Last week";
+
+  const start = parseYmdLocal(weekStartYmd);
+  if (!start) return weekStartYmd;
+  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+  return `${SHORT_DAY_MONTH.format(start)} – ${SHORT_DAY_MONTH.format(end)}`;
 }
 
 export function getMistakeDateRange(
@@ -49,6 +91,10 @@ export function getMistakeDateRange(
     y.setDate(y.getDate() - 1);
     const s = toDateStr(y);
     return { from: s, to: s };
+  }
+
+  if (preset === "this_week") {
+    return { from: toDateStr(startOfWeekMonday(now)), to: today };
   }
 
   if (preset === "7d") {
