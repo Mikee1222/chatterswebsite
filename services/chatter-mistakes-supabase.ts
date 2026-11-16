@@ -9,6 +9,7 @@ import {
   sbUpdateByPublicId,
   type SbRow,
 } from "@/lib/supabase-data";
+import { batchSignUrlMap } from "@/lib/supabase-signed-url";
 import type {
   CreateMistakeInput,
   CreateReasonInput,
@@ -123,6 +124,29 @@ function mapMistake(row: MistakeRow): MistakeRecord {
   };
 }
 
+/** Mint signed URLs for screenshot[] so the browser can load sb:// tokens. */
+async function signMistakeScreenshots(records: MistakeRecord[]): Promise<MistakeRecord[]> {
+  if (!records.length) return records;
+  const urls = records.flatMap((r) =>
+    r.screenshot.map((s) => s.url).filter((u) => typeof u === "string" && u.length > 0),
+  );
+  if (!urls.length) return records;
+  let signedMap: Map<string, string>;
+  try {
+    signedMap = await batchSignUrlMap(urls);
+  } catch (err) {
+    console.error("[signMistakeScreenshots]", err);
+    return records;
+  }
+  return records.map((r) => ({
+    ...r,
+    screenshot: r.screenshot.map((s) => ({
+      ...s,
+      url: signedMap.get(s.url) ?? s.url,
+    })),
+  }));
+}
+
 export async function getMistakeReasons(): Promise<MistakeReasonRecord[]> {
   const rows = await sbSelectAll<ReasonRow>(TABLE_REASONS);
   return rows
@@ -153,20 +177,22 @@ export async function getMistakesByVA(vaId: string): Promise<MistakeRecord[]> {
   const id = vaId.trim();
   if (!id) return [];
   const rows = await sbSelectAll<MistakeRow>(TABLE_MISTAKES);
-  return rows
+  const mapped = rows
     .filter((r) => String(r.va_id ?? "") === id)
     .map(mapMistake)
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return signMistakeScreenshots(mapped);
 }
 
 export async function getMistakesByChatter(chatterId: string): Promise<MistakeRecord[]> {
   const id = chatterId.trim();
   if (!id) return [];
   const rows = await sbSelectAll<MistakeRow>(TABLE_MISTAKES);
-  return rows
+  const mapped = rows
     .filter((r) => String(r.chatter_id ?? "") === id && String(r.status ?? "") === "approved")
     .map(mapMistake)
     .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return signMistakeScreenshots(mapped);
 }
 
 function mistakeDateMs(iso: string): number {
@@ -211,12 +237,15 @@ export async function listMistakesForAdmin(filters: MistakeAdminListFilters): Pr
       });
     }
   }
-  return mapped.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  const sorted = mapped.sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return signMistakeScreenshots(sorted);
 }
 
 export async function getMistakeById(recordId: string): Promise<MistakeRecord | null> {
   const row = await sbSelectByPublicId<MistakeRow>(TABLE_MISTAKES, recordId);
-  return row ? mapMistake(row) : null;
+  if (!row) return null;
+  const [signed] = await signMistakeScreenshots([mapMistake(row)]);
+  return signed ?? null;
 }
 
 export async function createMistakeRow(
@@ -256,7 +285,8 @@ export async function updateMistakeRow(
     ...fields,
     updated_at: now,
   });
-  return mapMistake(row);
+  const [signed] = await signMistakeScreenshots([mapMistake(row)]);
+  return signed!;
 }
 
 export async function createMistakeReason(input: CreateReasonInput): Promise<MistakeReasonRecord> {
