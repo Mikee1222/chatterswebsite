@@ -48,6 +48,7 @@ type MistakeRow = SbRow & {
   reason_category?: string | null;
   explanation?: string | null;
   screenshot?: unknown;
+  screenshot_annotated?: unknown;
   status?: string | null;
   admin_notes?: string | null;
   admin_id?: string | null;
@@ -56,6 +57,15 @@ type MistakeRow = SbRow & {
   created_at?: string | null;
   updated_at?: string | null;
 };
+
+function tokensFromTextArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => {
+    if (typeof x === "string") return x;
+    if (x != null && typeof x === "object") return String((x as { url?: string }).url ?? "");
+    return "";
+  });
+}
 
 function mapReason(row: ReasonRow): MistakeReasonRecord {
   const cat = row.category;
@@ -73,23 +83,15 @@ function mapReason(row: ReasonRow): MistakeReasonRecord {
 }
 
 function mapMistake(row: MistakeRow): MistakeRecord {
-  const rawShot = row.screenshot;
-  let screenshot: MistakeAttachment[] = [];
-  if (Array.isArray(rawShot)) {
-    if (rawShot.every((x) => typeof x === "string")) {
-      screenshot = (rawShot as string[])
-        .filter((url) => url.length > 0)
-        .map((url) => ({ url }));
-    } else {
-      screenshot = rawShot
-        .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
-        .map((x) => ({
-          url: String((x as { url?: string }).url ?? ""),
-          filename: (x as { filename?: string }).filename,
-        }))
-        .filter((x) => x.url.length > 0);
-    }
-  }
+  const shotTokens = tokensFromTextArray(row.screenshot).filter((url) => url.length > 0);
+  const annotatedTokens = tokensFromTextArray(row.screenshot_annotated);
+  const screenshot: MistakeAttachment[] = shotTokens.map((url, i) => {
+    const annotated = annotatedTokens[i]?.trim() || "";
+    return {
+      url,
+      ...(annotated ? { annotated_url: annotated } : {}),
+    };
+  });
   const rc = row.reason_category;
   const reason_category: MistakeReasonCategory =
     rc === "Medium" || rc === "High" ? rc : "Low";
@@ -124,11 +126,16 @@ function mapMistake(row: MistakeRow): MistakeRecord {
   };
 }
 
-/** Mint signed URLs for screenshot[] so the browser can load sb:// tokens. */
+/** Mint signed URLs for screenshot[] (+ annotated) so the browser can load sb:// tokens. */
 async function signMistakeScreenshots(records: MistakeRecord[]): Promise<MistakeRecord[]> {
   if (!records.length) return records;
   const urls = records.flatMap((r) =>
-    r.screenshot.map((s) => s.url).filter((u) => typeof u === "string" && u.length > 0),
+    r.screenshot.flatMap((s) => {
+      const out: string[] = [];
+      if (typeof s.url === "string" && s.url.length > 0) out.push(s.url);
+      if (typeof s.annotated_url === "string" && s.annotated_url.length > 0) out.push(s.annotated_url);
+      return out;
+    }),
   );
   if (!urls.length) return records;
   let signedMap: Map<string, string>;
@@ -143,6 +150,9 @@ async function signMistakeScreenshots(records: MistakeRecord[]): Promise<Mistake
     screenshot: r.screenshot.map((s) => ({
       ...s,
       url: signedMap.get(s.url) ?? s.url,
+      ...(s.annotated_url
+        ? { annotated_url: signedMap.get(s.annotated_url) ?? s.annotated_url }
+        : {}),
     })),
   }));
 }
@@ -394,4 +404,137 @@ export async function appendMistakeScreenshotUrls(recordId: string, urls: string
     screenshot: existing,
     updated_at: new Date().toISOString(),
   });
+}
+
+export type MistakeScreenshotSlot = {
+  recordId: string;
+  storageRecordId: string;
+  screenshots: string[];
+  annotated: string[];
+};
+
+/** Raw durable tokens (unsigned) for a mistake's screenshot slots. */
+export async function getMistakeScreenshotSlots(
+  recordId: string
+): Promise<MistakeScreenshotSlot | null> {
+  const row = await sbSelectByPublicId<MistakeRow>(TABLE_MISTAKES, recordId);
+  if (!row) return null;
+  return {
+    recordId: publicId(row),
+    storageRecordId: String(row.airtable_id || row.id),
+    screenshots: tokensFromTextArray(row.screenshot).filter((u) => u.length > 0),
+    annotated: tokensFromTextArray(row.screenshot_annotated),
+  };
+}
+
+async function removeStorageTokenBestEffort(token: string): Promise<void> {
+  const trimmed = token.trim();
+  if (!trimmed) return;
+  try {
+    const { parseSbStorageToken } = await import("@/lib/supabase-signed-url");
+    const parsed = parseSbStorageToken(trimmed);
+    if (!parsed) return;
+    const { getSupabaseServiceClient } = await import("@/lib/supabase-server");
+    const sb = getSupabaseServiceClient();
+    await sb.storage.from(parsed.bucket).remove([parsed.path]);
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Upload flattened annotated PNG for screenshot[index]; returns signed annotated_url. */
+export async function saveMistakeAnnotatedScreenshot(
+  recordId: string,
+  index: number,
+  bytes: Uint8Array
+): Promise<{ annotated_url: string }> {
+  const slots = await getMistakeScreenshotSlots(recordId);
+  if (!slots) throw new Error("Mistake not found");
+  if (index < 0 || index >= slots.screenshots.length) throw new Error("Screenshot index not found");
+
+  const prev = slots.annotated[index]?.trim() || "";
+  const { uploadToPrivateStorage, resolveStorageUrl } = await import("@/lib/supabase-signed-url");
+  const objectPath = `chatter_mistakes/${slots.storageRecordId}/annotated/${Date.now()}_${index}.png`;
+  const token = await uploadToPrivateStorage({
+    bucket: "attachments",
+    objectPath,
+    bytes,
+    contentType: "image/png",
+  });
+
+  const next = [...slots.annotated];
+  while (next.length <= index) next.push("");
+  next[index] = token;
+
+  await sbUpdateByPublicId(TABLE_MISTAKES, recordId, {
+    screenshot_annotated: next,
+    updated_at: new Date().toISOString(),
+  });
+
+  if (prev && prev !== token) {
+    await removeStorageTokenBestEffort(prev);
+  }
+
+  return { annotated_url: await resolveStorageUrl(token) };
+}
+
+/** Clear annotated slot for screenshot[index]; deletes storage object best-effort. */
+export async function clearMistakeAnnotatedScreenshot(
+  recordId: string,
+  index: number
+): Promise<void> {
+  const slots = await getMistakeScreenshotSlots(recordId);
+  if (!slots) throw new Error("Mistake not found");
+  if (index < 0 || index >= slots.screenshots.length) throw new Error("Screenshot index not found");
+
+  const prev = slots.annotated[index]?.trim() || "";
+  const next = [...slots.annotated];
+  while (next.length <= index) next.push("");
+  next[index] = "";
+
+  await sbUpdateByPublicId(TABLE_MISTAKES, recordId, {
+    screenshot_annotated: next,
+    updated_at: new Date().toISOString(),
+  });
+
+  if (prev) await removeStorageTokenBestEffort(prev);
+}
+
+/** Download original screenshot bytes for same-origin canvas loading. */
+export async function downloadMistakeScreenshotOriginal(
+  recordId: string,
+  index: number
+): Promise<{ bytes: ArrayBuffer; contentType: string } | null> {
+  const slots = await getMistakeScreenshotSlots(recordId);
+  if (!slots) return null;
+  if (index < 0 || index >= slots.screenshots.length) return null;
+  const token = slots.screenshots[index]!;
+  const { parseSbStorageToken } = await import("@/lib/supabase-signed-url");
+  const parsed = parseSbStorageToken(token);
+  if (parsed) {
+    const { getSupabaseServiceClient } = await import("@/lib/supabase-server");
+    const sb = getSupabaseServiceClient();
+    const { data, error } = await sb.storage.from(parsed.bucket).download(parsed.path);
+    if (error || !data) throw new Error(error?.message || "download failed");
+    const bytes = await data.arrayBuffer();
+    const lower = parsed.path.toLowerCase();
+    const contentType = lower.endsWith(".png")
+      ? "image/png"
+      : lower.endsWith(".webp")
+        ? "image/webp"
+        : lower.endsWith(".gif")
+          ? "image/gif"
+          : "image/jpeg";
+    return { bytes, contentType };
+  }
+  // Legacy https attachment — fetch server-side
+  if (/^https?:\/\//i.test(token)) {
+    const res = await fetch(token, { headers: { Accept: "image/*" }, redirect: "follow" });
+    if (!res.ok) throw new Error(`upstream ${res.status}`);
+    return {
+      bytes: await res.arrayBuffer(),
+      contentType: res.headers.get("Content-Type") || "image/jpeg",
+    };
+  }
+  return null;
 }

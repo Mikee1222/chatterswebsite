@@ -17,6 +17,8 @@ export type MistakeStatus = "pending" | "approved" | "rejected";
 export interface MistakeAttachment {
   url: string;
   filename?: string;
+  /** Signed URL for flattened annotated PNG when present (paired by index). */
+  annotated_url?: string;
 }
 
 export interface MistakeRecord {
@@ -410,4 +412,28 @@ export async function updateMistakeReasonRow(
 export async function softDeleteMistakeReason(recordId: string): Promise<MistakeReasonRecord> {
   if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).softDeleteMistakeReason(recordId);
   return updateMistakeReasonRow(recordId, { active: false });
+}
+
+export async function getMistakeScreenshotSlots(recordId: string) {
+  if (!isSupabaseBackend()) return null;
+  return (await import("./chatter-mistakes-supabase")).getMistakeScreenshotSlots(recordId);
+}
+
+export async function downloadMistakeScreenshotOriginal(recordId: string, index: number) {
+  if (!isSupabaseBackend()) return null;
+  return (await import("./chatter-mistakes-supabase")).downloadMistakeScreenshotOriginal(recordId, index);
+}
+
+export async function saveMistakeAnnotatedScreenshot(
+  recordId: string,
+  index: number,
+  bytes: Uint8Array
+): Promise<{ annotated_url: string }> {
+  if (!isSupabaseBackend()) throw new Error("Annotated screenshots require Supabase backend");
+  return (await import("./chatter-mistakes-supabase")).saveMistakeAnnotatedScreenshot(recordId, index, bytes);
+}
+
+export async function clearMistakeAnnotatedScreenshot(recordId: string, index: number): Promise<void> {
+  if (!isSupabaseBackend()) throw new Error("Annotated screenshots require Supabase backend");
+  return (await import("./chatter-mistakes-supabase")).clearMistakeAnnotatedScreenshot(recordId, index);
 }

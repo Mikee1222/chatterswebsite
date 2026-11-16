@@ -1,8 +1,6 @@
-import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
-import { requireAdminRoute } from "@/lib/rbac";
+import { hasPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { ROUTES } from "@/lib/routes";
 import { listMistakesForAdmin, getAllMistakeReasons } from "@/services/chatter-mistakes";
 import { filterActiveUsersForAssignment } from "@/lib/assignment-filters";
 import { listAllUsers } from "@/services/users";
@@ -11,6 +9,7 @@ import { AdminMistakesClient } from "@/components/admin-mistakes-client";
 
 export default async function AdminMistakesPage() {
   const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MISTAKES_VIEW);
+  const canAnnotate = await hasPermission(session, PERMISSIONS.MISTAKES_MANAGE);
 
   const [mistakes, reasons, users, models] = await Promise.all([
     listMistakesForAdmin({}).catch(() => []),
@@ -41,6 +40,7 @@ export default async function AdminMistakesPage() {
         reasons={reasons}
         chatterOptions={chatterOptions}
         modelOptions={modelOptions}
+        canAnnotate={canAnnotate}
       />
     </div>
   );

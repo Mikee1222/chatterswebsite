@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, ImageIcon, Search, X } from "lucide-react";
+import { Check, Copy, Search, X } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
 import { formatDateTimeAthens, formatDateTimeEuropean, formatRelativeTime } from "@/lib/format";
@@ -9,6 +9,8 @@ import { usePagination } from "@/lib/use-pagination";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import type { MistakeReasonCategory, MistakeReasonRecord, MistakeRecord } from "@/services/chatter-mistakes";
 import { FormInput } from "@/components/ui/form-input";
+import { MistakeScreenshotGallery, displayShotUrl } from "@/components/mistakes/mistake-screenshot-gallery";
+import { ScreenshotAnnotator } from "@/components/mistakes/screenshot-annotator";
 
 type DatePreset = "week" | "month" | "all";
 
@@ -69,28 +71,6 @@ function StatusDotBadge({ status }: { status: string }) {
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
       {label}
     </span>
-  );
-}
-
-function ScreenshotThumb({ url }: { url?: string }) {
-  if (!url) {
-    return (
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5">
-        <ImageIcon className="h-4 w-4 text-white/25" aria-hidden />
-      </div>
-    );
-  }
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      onClick={(e) => e.stopPropagation()}
-      className="block shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10 transition hover:ring-pink-500/40"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="Screenshot" className="h-10 w-10 object-cover" />
-    </a>
   );
 }
 
@@ -159,9 +139,15 @@ type Props = {
   reasons: MistakeReasonRecord[];
   chatterOptions: { id: string; name: string }[];
   modelOptions: { id: string; name: string }[];
+  canAnnotate?: boolean;
 };
 
-export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: Props) {
+export function AdminMistakesClient({
+  initialMistakes,
+  reasons,
+  modelOptions,
+  canAnnotate = false,
+}: Props) {
   const { addToast } = useToast();
   const [rows, setRows] = React.useState(initialMistakes);
   const [selectedId, setSelectedId] = React.useState<string | null>(initialMistakes[0]?.id ?? null);
@@ -174,6 +160,10 @@ export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: 
   const [saving, setSaving] = React.useState(false);
   const [copySuccess, setCopySuccess] = React.useState<string | null>(null);
   const copySuccessTimeoutRef = React.useRef<number | null>(null);
+  const [annotateTarget, setAnnotateTarget] = React.useState<{ mistakeId: string; index: number } | null>(
+    null
+  );
+  const [detailShowOriginal, setDetailShowOriginal] = React.useState(false);
 
   const reasonPointsByReasonId = React.useMemo(() => {
     const m = new Map<string, number>();
@@ -184,7 +174,25 @@ export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: 
   const selected = rows.find((r) => r.id === selectedId) ?? null;
   React.useEffect(() => {
     setAdminNotes(selected?.admin_notes ?? "");
+    setDetailShowOriginal(false);
   }, [selectedId, selected?.admin_notes]);
+
+  function patchScreenshotAnnotated(mistakeId: string, index: number, annotatedUrl: string | undefined) {
+    setRows((prev) =>
+      prev.map((m) => {
+        if (m.id !== mistakeId) return m;
+        const screenshot = m.screenshot.map((s, i) => {
+          if (i !== index) return s;
+          if (!annotatedUrl) {
+            const { annotated_url: _drop, ...rest } = s;
+            return rest;
+          }
+          return { ...s, annotated_url: annotatedUrl };
+        });
+        return { ...m, screenshot };
+      })
+    );
+  }
 
   const dateRange = React.useMemo(() => getDateRange(datePreset), [datePreset]);
 
@@ -262,12 +270,14 @@ export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: 
       .filter(Boolean)
       .join("\n");
 
-    const imageUrl = m.screenshot?.[0]?.url;
+    const imageUrl = displayShotUrl(m.screenshot?.[0], true);
 
     try {
       if (imageUrl && navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
-        const proxyImageUrl = `/api/admin/proxy-image?url=${encodeURIComponent(imageUrl)}`;
-        const imgResponse = await fetch(proxyImageUrl);
+        let imgResponse = await fetch(imageUrl).catch(() => null);
+        if (!imgResponse?.ok) {
+          imgResponse = await fetch(`/api/admin/proxy-image?url=${encodeURIComponent(imageUrl)}`);
+        }
         if (!imgResponse.ok) throw new Error(`image fetch ${imgResponse.status}`);
         const imgBlob = await imgResponse.blob();
 
@@ -475,7 +485,11 @@ export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: 
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                        <MistakeScreenshotGallery
+                          shots={m.screenshot?.slice(0, 1) ?? []}
+                          canAnnotate={canAnnotate}
+                          onAnnotate={(index) => setAnnotateTarget({ mistakeId: m.id, index })}
+                        />
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
@@ -520,8 +534,12 @@ export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: 
                           idx % 2 === 1 ? "bg-white/[0.02]" : ""
                         } ${selectedId === m.id ? "bg-pink-500/10 hover:bg-pink-500/10" : ""}`}
                       >
-                        <td className="px-4 py-3 align-middle">
-                          <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                        <td className="px-4 py-3 align-middle" onClick={(e) => e.stopPropagation()}>
+                          <MistakeScreenshotGallery
+                            shots={m.screenshot?.slice(0, 1) ?? []}
+                            canAnnotate={canAnnotate}
+                            onAnnotate={(index) => setAnnotateTarget({ mistakeId: m.id, index })}
+                          />
                         </td>
                         <td className="px-4 py-3 align-middle font-medium text-white">{m.chatter_name}</td>
                         <td className="px-4 py-3 align-middle text-white/70">{m.model_name}</td>
@@ -608,16 +626,48 @@ export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: 
               <p className="text-sm text-white/70">{selected.explanation}</p>
             </div>
 
-            {selected.screenshot?.[0]?.url ? (
+            {selected.screenshot?.length ? (
               <div className="mb-3">
-                <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Screenshot</p>
-                <a href={selected.screenshot[0].url} target="_blank" rel="noreferrer">
-                  <img
-                    src={selected.screenshot[0].url}
-                    alt=""
-                    className="w-full rounded-xl border border-white/10 transition-opacity hover:opacity-80"
-                  />
-                </a>
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs uppercase tracking-widest text-white/40">Screenshot</p>
+                  {selected.screenshot.some((s) => s.annotated_url) ? (
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setDetailShowOriginal(false)}
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                          !detailShowOriginal
+                            ? "border-pink-500/40 bg-pink-500/20 text-pink-200"
+                            : "border-white/15 text-white/50"
+                        }`}
+                      >
+                        Annotated
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDetailShowOriginal(true)}
+                        className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                          detailShowOriginal
+                            ? "border-pink-500/40 bg-pink-500/20 text-pink-200"
+                            : "border-white/15 text-white/50"
+                        }`}
+                      >
+                        Original
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+                <MistakeScreenshotGallery
+                  shots={
+                    detailShowOriginal
+                      ? selected.screenshot.map((s) => ({ url: s.url, filename: s.filename }))
+                      : selected.screenshot
+                  }
+                  canAnnotate={canAnnotate}
+                  onAnnotate={(index) => setAnnotateTarget({ mistakeId: selected.id, index })}
+                  preferAnnotatedThumbs={!detailShowOriginal}
+                  size="lg"
+                />
               </div>
             ) : null}
 
@@ -672,6 +722,33 @@ export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: 
           </div>
         ) : null}
       </div>
+
+      {annotateTarget ? (
+        <ScreenshotAnnotator
+          mistakeId={annotateTarget.mistakeId}
+          index={annotateTarget.index}
+          hasAnnotated={Boolean(
+            rows
+              .find((r) => r.id === annotateTarget.mistakeId)
+              ?.screenshot?.[annotateTarget.index]?.annotated_url
+          )}
+          annotatedUrl={
+            rows.find((r) => r.id === annotateTarget.mistakeId)?.screenshot?.[annotateTarget.index]
+              ?.annotated_url
+          }
+          onClose={() => setAnnotateTarget(null)}
+          onSaved={(annotatedUrl) => {
+            patchScreenshotAnnotated(annotateTarget.mistakeId, annotateTarget.index, annotatedUrl);
+            setAnnotateTarget(null);
+            addToast(localToast("mist-ann", "Saved", "Annotations saved.", "normal"));
+          }}
+          onRemoved={() => {
+            patchScreenshotAnnotated(annotateTarget.mistakeId, annotateTarget.index, undefined);
+            setAnnotateTarget(null);
+            addToast(localToast("mist-ann-rm", "Removed", "Annotations removed.", "normal"));
+          }}
+        />
+      ) : null}
     </div>
   );
 }

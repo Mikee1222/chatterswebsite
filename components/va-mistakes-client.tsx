@@ -14,6 +14,7 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { Label } from "@/components/ui/form";
 import { GlassModal } from "@/components/ui/glass-modal";
 import type { MistakeReasonCategory, MistakeRecord } from "@/services/chatter-mistakes";
+import { MistakeScreenshotGallery } from "@/components/mistakes/mistake-screenshot-gallery";
 
 type ChatterOption = { id: string; name: string };
 type ModelOption = { id: string; model_name: string };
@@ -732,6 +733,16 @@ export function VaMistakesClient({
                         {m.chatter_name} · {m.model_name} · @{m.sub_username}
                       </p>
                       <p className="mt-1 text-xs text-white/35">{formatDateTimeAthens(m.mistake_date)}</p>
+                      {m.screenshot?.length ? (
+                        <div className="mt-3">
+                          <MistakeScreenshotGallery
+                            shots={m.screenshot}
+                            preferAnnotatedThumbs
+                            allowOriginalToggle
+                            size="md"
+                          />
+                        </div>
+                      ) : null}
                       {rejected && m.admin_notes ? (
                         <p className="mt-2 border-t border-red-500/20 pt-2 text-sm italic text-red-200/80">Admin: {m.admin_notes}</p>
                       ) : null}

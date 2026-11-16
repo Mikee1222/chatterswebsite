@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { ImageIcon, UserRound, Users } from "lucide-react";
+import { UserRound, Users } from "lucide-react";
 import { formatDateTimeEuropean, formatRelativeTime } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import type { MistakeReasonCategory, MistakeRecord } from "@/services/chatter-mistakes";
+import { MistakeScreenshotGallery } from "@/components/mistakes/mistake-screenshot-gallery";
 
 type Props = {
   initialMistakes: MistakeRecord[];
@@ -33,27 +34,6 @@ function categoryBadgeClass(cat: MistakeReasonCategory): string {
   if (cat === "High") return "border-red-500/25 bg-red-500/10 text-red-400";
   if (cat === "Medium") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-400";
   return "border-blue-500/25 bg-blue-500/10 text-blue-400";
-}
-
-function ScreenshotThumb({ url }: { url?: string }) {
-  if (!url) {
-    return (
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5">
-        <ImageIcon className="h-4 w-4 text-white/25" aria-hidden />
-      </div>
-    );
-  }
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noreferrer"
-      className="block shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10 transition hover:ring-pink-500/40"
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={url} alt="Screenshot" className="h-10 w-10 object-cover" />
-    </a>
-  );
 }
 
 function RelativeDate({ iso }: { iso: string }) {
@@ -177,7 +157,11 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
             {paginated.map((m) => (
               <li key={m.id} className="glass-card space-y-3 p-4 transition hover:bg-white/[0.07]">
                 <div className="flex items-start gap-3">
-                  <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                  <MistakeScreenshotGallery
+                    shots={m.screenshot?.slice(0, 1) ?? []}
+                    preferAnnotatedThumbs
+                    allowOriginalToggle
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
@@ -231,7 +215,11 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
                     }`}
                   >
                     <td className="px-4 py-3 align-middle">
-                      <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                      <MistakeScreenshotGallery
+                        shots={m.screenshot?.slice(0, 1) ?? []}
+                        preferAnnotatedThumbs
+                        allowOriginalToggle
+                      />
                     </td>
                     <td className="px-4 py-3 align-middle text-white/80">{m.model_name}</td>
                     <td className="max-w-[220px] px-4 py-3 align-middle">
