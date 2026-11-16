@@ -30,7 +30,7 @@ export function WhaleDetail({
           <Row label="Last contact" value={whale.last_contact_date ? formatDateEuropean(whale.last_contact_date) : "—"} />
           <Row label="Next followup" value={whale.next_followup ? formatDateEuropean(whale.next_followup) : "—"} />
           <Row label="Status" value={whale.status} />
-          <Row label="Last updated by" value={whale.last_updated_by || "—"} />
+          <Row label="Last updated by" value={displayName(whale.last_updated_by)} />
         </dl>
         {(whale.preferences || whale.red_flags || whale.retention_risk) && (
           <div className="space-y-2 pt-2">

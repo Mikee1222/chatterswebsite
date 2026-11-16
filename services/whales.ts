@@ -77,6 +77,7 @@ function mapRecord(rec: AirtableRecord<Fields>): Whale {
     updated_at: f.updated_at ?? "",
     last_updated_by: f.last_updated_by ?? "",
     created_by: snapshotText(f.created_by ?? f["Created by"]) || "",
+    created_by_name: snapshotText(f.created_by ?? f["Created by"]) || undefined,
   };
 }
 

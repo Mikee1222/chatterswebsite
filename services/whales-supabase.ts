@@ -18,10 +18,14 @@ import {
 } from "@/lib/supabase-data";
 import { WHALES_DEFAULT_PAGE_SIZE, WHALES_STATUS_FILTER_NOT_ASSIGNED, type WhalesListFilters } from "@/lib/whales-filters";
 import type { Whale } from "@/types";
+import { looksLikeRecordId } from "@/lib/format";
 import { devLog } from "@/lib/dev-log";
 import type { WhaleWriteFields } from "./whales";
 
 const TABLE = "whales";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type Row = SbRow & {
   whale_id?: string | null;
@@ -52,16 +56,52 @@ type Row = SbRow & {
   status?: string | null;
   notes?: string | null;
   created_at?: string | null;
+  created_time?: string | null;
   updated_at?: string | null;
   last_updated_by?: string | null;
   added_by?: string[] | null;
 };
 
+type UserNameRow = SbRow & {
+  full_name?: string | null;
+  email?: string | null;
+};
+
+/** Batch-resolve users.id → display name (full_name → email → "Unknown user"). */
+async function fetchUserDisplayNames(uuids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(uuids.map((id) => String(id).trim()).filter(Boolean))];
+  if (!unique.length) return new Map();
+  const rows = await sbSelectWhere<UserNameRow>(
+    "users",
+    (q) => q.in("id", unique),
+    "id, full_name, email"
+  );
+  const map = new Map<string, string>();
+  for (const u of rows) {
+    const name = (u.full_name?.trim() || u.email?.trim() || "Unknown user").trim();
+    map.set(u.id, name);
+  }
+  return map;
+}
+
+function resolveLastUpdatedByDisplay(
+  raw: string | null | undefined,
+  nameByUuid: Map<string, string>
+): string {
+  const v = raw?.trim() ?? "";
+  if (!v) return "";
+  if (UUID_RE.test(v)) return nameByUuid.get(v) ?? "";
+  if (looksLikeRecordId(v)) return "";
+  return v;
+}
+
 function mapRowSync(
   row: Row,
   userAt: Map<string, string>,
-  modelAt: Map<string, string>
+  modelAt: Map<string, string>,
+  nameByUuid: Map<string, string>
 ): Whale {
+  const addedByUuid = row.added_by?.find(Boolean) ?? "";
   return {
     id: publicId(row),
     whale_id: row.whale_id ?? "",
@@ -91,23 +131,35 @@ function mapRowSync(
     retention_risk: row.retention_risk ?? "",
     status: (row.status as Whale["status"]) ?? "Active",
     notes: row.notes ?? "",
-    created_at: row.created_at ?? "",
+    created_at: row.created_at ?? row.created_time ?? "",
     updated_at: row.updated_at ?? "",
-    last_updated_by: row.last_updated_by ?? "",
+    last_updated_by: resolveLastUpdatedByDisplay(row.last_updated_by, nameByUuid),
     created_by: firstMappedLinkedId(row.added_by, userAt),
+    created_by_name: addedByUuid
+      ? nameByUuid.get(addedByUuid) ?? "Unknown user"
+      : undefined,
   };
 }
 
 async function mapRows(rows: Row[]): Promise<Whale[]> {
   if (!rows.length) return [];
-  const [userAt, modelAt] = await Promise.all([
+  const nameLookupIds: string[] = [];
+  for (const r of rows) {
+    for (const id of r.added_by ?? []) {
+      if (id) nameLookupIds.push(id);
+    }
+    const lub = r.last_updated_by?.trim();
+    if (lub && UUID_RE.test(lub)) nameLookupIds.push(lub);
+  }
+  const [userAt, modelAt, nameByUuid] = await Promise.all([
     sbResolveUuidToAirtableMap("users", [
       ...rows.map((r) => r.assigned_chatter),
       ...rows.map((r) => r.added_by),
     ]),
     sbResolveUuidToAirtableMap("modelss", rows.map((r) => r.assigned_model)),
+    fetchUserDisplayNames(nameLookupIds),
   ]);
-  return rows.map((r) => mapRowSync(r, userAt, modelAt));
+  return rows.map((r) => mapRowSync(r, userAt, modelAt, nameByUuid));
 }
 
 async function mapRow(row: Row): Promise<Whale> {

@@ -438,8 +438,10 @@ export interface Whale {
   created_at: string;
   updated_at: string;
   last_updated_by: string;
-  /** Who created this whale (name or email); Airtable `created_by` when the column exists. */
+  /** Who created this whale (Airtable-shaped link id or legacy text); prefer `created_by_name` in UI. */
   created_by: string;
+  /** Resolved display name for who added the whale (users.full_name → email → "Unknown user"). */
+  created_by_name?: string;
 }
 
 export interface ModelRecord {
