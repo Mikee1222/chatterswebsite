@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -34,14 +35,23 @@ export default async function AdminMistakesPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6">
-      <AdminMistakesClient
-        initialMistakes={mistakes}
-        reasons={reasons}
-        chatterOptions={chatterOptions}
-        modelOptions={modelOptions}
-        canAnnotate={canAnnotate}
-      />
+    <div className="mx-auto max-w-[1600px] px-4 py-6">
+      <Suspense
+        fallback={
+          <div className="space-y-4 animate-pulse" aria-hidden>
+            <div className="h-16 rounded-2xl bg-white/[0.04]" />
+            <div className="h-[28rem] rounded-2xl bg-white/[0.04]" />
+          </div>
+        }
+      >
+        <AdminMistakesClient
+          initialMistakes={mistakes}
+          reasons={reasons}
+          chatterOptions={chatterOptions}
+          modelOptions={modelOptions}
+          canAnnotate={canAnnotate}
+        />
+      </Suspense>
     </div>
   );
 }
