@@ -265,8 +265,8 @@ function buildPrompt(input: {
   if (input.accountHandle) lines.push(`POSTING ACCOUNT: @${input.accountHandle.replace(/^@/, "")}`);
   lines.push("");
   lines.push("HOUSE RULES:");
-  lines.push("- Recording brief order: concept & why it works → setup → how to talk / act → variations → checklist. The creator shoots RAW only: no music, no text, no filters. 2 takes per variation unless told otherwise. One take = one clip.");
-  lines.push(`- Clip naming: V1_take1, V1_take2 … Creator uploads to: ${input.paths.raw}`);
+  lines.push("- Recording brief order: concept & why it works → setup → how to talk / act → variations → checklist. The creator shoots RAW only: no music, no text, no filters. One kept video per variation (the creator keeps the best and deletes the rest).");
+  lines.push(`- Clip naming: V1_GRID, V2_TRIAL, V3_TRIAL — one file per variation (V1 = main grid, the rest trial). Creator uploads to: ${input.paths.raw}`);
   lines.push(`- Editor takes from the Raw folder (or existing footage) and delivers to: ${input.paths.edited}. Export 1080x1920, 30fps, MP4, no watermark. Output names V1_final …`);
   lines.push(`- VA posts from: ${input.paths.ready}. Trials ON. Text on screen must match the edit.`);
   lines.push("- Text on screen, labels and captions: relatable, clever, innuendo instead of explicit wording.");
@@ -405,7 +405,7 @@ export async function draftBriefsFromBreakdown(input: DraftBriefsInput): Promise
         upload_path: paths.raw,
         outfit_item_id: outfitItem?.id ?? null,
         location_item_id: locationItem?.id ?? null,
-        clip_naming: "V1_take1, V1_take2, V2_take1 … (variation_take)",
+        clip_naming: "V1_GRID, V2_TRIAL, V3_TRIAL (one file per variation)",
         status: "draft",
         variations: recording.variations.map((v, i) => ({
           name: v.name || `V${i + 1}`,

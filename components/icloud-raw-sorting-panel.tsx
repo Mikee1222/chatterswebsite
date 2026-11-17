@@ -119,7 +119,7 @@ export function IcloudRawSortingPanel({
            </div>
             <IcloudSortingGuide
               ideas={w.ideas}
-              suffixHint="Raw clips have the same name plus _take1, _take2. Tick an idea when all its clips are in their folders."
+              suffixHint="One raw file per variation (V1_GRID, V2_TRIAL, V3_TRIAL). Tick an idea when all its files are in their folders."
               onAllChecked={(ok) =>
                 setAllPlaced((p) => (p[w.bunch_id] === ok ? p : { ...p, [w.bunch_id]: ok }))
               }

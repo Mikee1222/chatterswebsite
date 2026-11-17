@@ -192,7 +192,9 @@ export function RecordingBriefForm({
   const [propsText, setPropsText] = React.useState(initial?.props ?? "");
   const [checklist, setChecklist] = React.useState(initial?.checklist_before_upload ?? "");
   const [uploadPath, setUploadPath] = React.useState(initial?.upload_path ?? "");
-  const [clipNaming, setClipNaming] = React.useState(initial?.clip_naming ?? "V1_take1");
+  const [clipNaming, setClipNaming] = React.useState(
+    initial?.clip_naming ?? "V1_GRID, V2_TRIAL, V3_TRIAL",
+  );
   const [status, setStatus] = React.useState(initial?.status ?? "draft");
   const [variations, setVariations] = React.useState<DraftVar[]>(
     initial?.variations?.length
@@ -529,7 +531,7 @@ export function RecordingBriefForm({
           value={clipNaming}
           onChange={(e) => setClipNaming(e.target.value)}
           className={cn(VA_FILTER_INPUT, "w-full min-h-11")}
-          placeholder="V1_take1"
+          placeholder="V1_GRID, V2_TRIAL, V3_TRIAL"
         />
       </div>
 

@@ -15,7 +15,7 @@ export function IcloudSortingGuide({
   onAllChecked,
 }: {
   ideas: SortingIdea[];
-  /** Shown next to file names, e.g. "raw clips end in _take1, _take2". */
+  /** Shown next to file names, e.g. "one file per variation (V1_GRID, V2_TRIAL, V3_TRIAL)". */
   suffixHint?: string;
   onAllChecked?: (allChecked: boolean) => void;
 }) {
