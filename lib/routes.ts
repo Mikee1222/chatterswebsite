@@ -149,6 +149,8 @@ export const ROUTES = {
     /** Admin-only full notification pipeline diagnostic (same env gate as test notifications). */
     notificationDiagnostic: "/admin/notification-diagnostic",
     roles: "/admin/roles",
+    /** Hermes agent Bearer tokens (owner/admin only). */
+    agentTokens: "/admin/agent-tokens",
     linkPages: "/admin/link-pages",
     credentialsVault: "/admin/credentials-vault",
     /** Recruitment form builder + response dashboard */

@@ -641,6 +641,12 @@ export async function resolvePhaseItemRowId(paramId: string): Promise<string | n
   return rows[0] ? publicId(rows[0]) : null;
 }
 
+export async function getPhaseItemTaskId(itemRowId: string): Promise<string | null> {
+  const row = await sbSelectByPublicId<ItemRow>(T_ITEMS, itemRowId.trim());
+  if (!row) return null;
+  return (row.task_id ?? "").trim() || null;
+}
+
 export async function createPhase(fields: Record<string, unknown>): Promise<TaskPhase> {
   const row = await sbInsert<PhaseRow>(T_PHASES, fields);
   return mapPhase(row);

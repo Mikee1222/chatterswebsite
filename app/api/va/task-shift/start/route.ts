@@ -1,4 +1,5 @@
 import { startVaTaskShiftAction } from "@/app/actions/shifts";
+import { withAgentAudit } from "@/lib/agent-audit";
 import { getSessionFromCookies } from "@/lib/auth";
 import { jsonNoStore } from "@/lib/api-no-store";
 import { hasPermission } from "@/lib/rbac";
@@ -8,7 +9,7 @@ import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export const POST = withAgentAudit(async (_req: Request) => {
   const session = await getSessionFromCookies();
   if (!session) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, PERMISSIONS.VA_TASKS_VIEW))) {
@@ -35,4 +36,4 @@ export async function POST() {
     console.error("[task-shift/start]", error);
     return jsonNoStore({ error: "Could not start shift" }, { status: 500 });
   }
-}
+});

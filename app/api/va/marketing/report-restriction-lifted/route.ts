@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAgentAudit } from "@/lib/agent-audit";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasAnyPermission } from "@/lib/rbac";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
@@ -10,7 +11,7 @@ import { notifyByRoleConfig } from "@/services/notification-service";
 import { shadowbanLiftedReportedPersonal } from "@/lib/notification-copy";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
-export async function POST(req: Request) {
+export const POST = withAgentAudit(async (req: Request) => {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasAnyPermission(session, ["marketing:manage", "marketing:shadowban-report"]))) {
@@ -94,4 +95,4 @@ export async function POST(req: Request) {
   }).catch(() => {});
 
   return NextResponse.json({ success: true, report });
-}
+});

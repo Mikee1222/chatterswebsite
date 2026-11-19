@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAgentAudit } from "@/lib/agent-audit";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -42,7 +43,7 @@ async function resolveAccess(
   return { ok: true, actorUserId, canManage, sessionId: session.id };
 }
 
-export async function POST(req: Request, ctx: Ctx) {
+export const POST = withAgentAudit(async (req: Request, ctx: Ctx) => {
   const { id, postId } = await ctx.params;
   const access = await resolveAccess(id);
   if (!access.ok) return NextResponse.json({ error: access.error }, { status: access.status });
@@ -68,7 +69,7 @@ export async function POST(req: Request, ctx: Ctx) {
     const status = msg === "Brief not found" || msg === "Post not found" ? 404 : 400;
     return NextResponse.json({ error: msg }, { status });
   }
-}
+});
 
 export async function DELETE(_req: Request, ctx: Ctx) {
   const { id, postId } = await ctx.params;

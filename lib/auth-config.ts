@@ -45,4 +45,8 @@ export type AuthUser = {
   active_role?: "chatter" | "virtual_assistant" | null;
   /** VA specialization from Airtable `users.va_type`. */
   va_type?: VaType | null;
+  /** How this session was established. Cookie (humans) or Hermes agent Bearer token. */
+  via?: "cookie" | "agent_token";
+  /** Present when via === "agent_token". */
+  agentTokenId?: string;
 };

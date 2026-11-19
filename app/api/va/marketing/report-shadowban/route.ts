@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
+import { withAgentAudit } from "@/lib/agent-audit";
 import { getSessionFromCookies } from "@/lib/auth";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import {
@@ -10,13 +11,13 @@ import { hasAnyPermission } from "@/lib/rbac";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
-import { createShadowbanReport } from "@/services/marketing";
+import { createShadowbanReport, getAccountsByVA } from "@/services/marketing";
 import { notifyByRoleConfig } from "@/services/notification-service";
 import { shadowbanSubmittedPersonal } from "@/lib/notification-copy";
 import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
-export async function POST(req: Request) {
+export const POST = withAgentAudit(async (req: Request) => {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasAnyPermission(session, ["marketing:manage", "marketing:shadowban-report"]))) {
@@ -31,10 +32,10 @@ export async function POST(req: Request) {
 
   const formData = await req.formData();
   const account_id = String(formData.get("account_id") ?? "").trim();
-  const model_id = String(formData.get("model_id") ?? "").trim();
-  const model_name = String(formData.get("model_name") ?? "").trim();
-  const platform = String(formData.get("platform") ?? "").trim();
-  const username = String(formData.get("username") ?? "").trim();
+  let model_id = String(formData.get("model_id") ?? "").trim();
+  let model_name = String(formData.get("model_name") ?? "").trim();
+  let platform = String(formData.get("platform") ?? "").trim();
+  let username = String(formData.get("username") ?? "").trim();
   const rawNotes = String(formData.get("notes") ?? "").trim();
   const reportTypeRaw = String(formData.get("report_type") ?? "").trim();
   const report_type: "shadowbanned" | "banned" = reportTypeRaw === "banned" ? "banned" : "shadowbanned";
@@ -51,6 +52,20 @@ export async function POST(req: Request) {
 
   if (!account_id || !platform || !username) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  // Agent-only ownership check (human VAs unchanged — no new 403s for them).
+  if (session.via === "agent_token") {
+    const vaId = session.airtableUserId ?? session.id;
+    const vaAccounts = await getAccountsByVA(vaId);
+    const account = vaAccounts.find((a) => a.account_id === account_id);
+    if (!account) {
+      return NextResponse.json({ error: "Account not found or not assigned to you" }, { status: 403 });
+    }
+    model_id = account.model_id || model_id;
+    model_name = account.model_name || model_name;
+    platform = account.platform || platform;
+    username = account.username || username;
   }
 
   let screenshotAttachment: { url: string }[] = [];
@@ -140,4 +155,4 @@ export async function POST(req: Request) {
   }).catch(() => {});
 
   return NextResponse.json({ success: true, report });
-}
+});

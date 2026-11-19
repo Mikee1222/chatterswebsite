@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
+import { withAgentAudit } from "@/lib/agent-audit";
 import { getSessionFromCookies } from "@/lib/auth";
 import { jsonNoStore } from "@/lib/api-no-store";
 import { isSupabaseBackend } from "@/lib/data-backend";
@@ -17,7 +18,8 @@ import { vaTaskScreenshotFileError } from "@/lib/va-task-screenshots";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { getActiveVaTaskShift } from "@/services/shifts";
 import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
-import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
+import { completePhaseItem, getPhaseItemTaskId, resolvePhaseItemRowId } from "@/services/task-phases";
+import { getVaTaskById } from "@/services/va-tasks";
 import { readRequestFormData } from "@/lib/request-form-data";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +49,7 @@ async function uploadPhaseScreenshot(
   return { url: blob.url };
 }
 
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+export const POST = withAgentAudit(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const session = await getSessionFromCookies();
   if (!session) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, "va-tasks:view"))) return jsonNoStore({ error: "Forbidden" }, { status: 403 });
@@ -73,6 +75,28 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const itemRowId = await resolvePhaseItemRowId(paramId);
   if (!itemRowId) {
     return jsonNoStore({ error: "Item not found" }, { status: 404 });
+  }
+
+  // Agent-only assignment gate (human VAs keep prior behaviour — no extra 403 here).
+  // assigned_to_ids may store airtable_id or uuid; compare both session forms like
+  // GET /api/va/task-phases (airtableUserId ?? id) plus the other id when they differ.
+  // STRICT for agents: empty assignment → 403 (unlike human GET which treats empty as open).
+  if (session.via === "agent_token") {
+    const taskId = await getPhaseItemTaskId(itemRowId);
+    if (!taskId) {
+      return jsonNoStore({ error: "Item not found" }, { status: 404 });
+    }
+    const task = await getVaTaskById(taskId);
+    if (!task) {
+      return jsonNoStore({ error: "Task not found" }, { status: 404 });
+    }
+    const candidateIds = new Set(
+      [session.airtableUserId, session.id].map((s) => (s ?? "").trim()).filter(Boolean),
+    );
+    const assigned = task.assigned_to_ids.map((s) => s.trim()).filter(Boolean);
+    if (assigned.length === 0 || !assigned.some((id) => candidateIds.has(id))) {
+      return jsonNoStore({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const contentType = req.headers.get("content-type") ?? "";
@@ -202,4 +226,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   revalidatePath(ROUTES.va.home);
 
   return jsonNoStore({ success: true, phaseCompleted, allPhasesCompleted });
-}
+});
