@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
+import { withAgentAudit } from "@/lib/agent-audit";
 import { getSessionFromCookies } from "@/lib/auth";
 import { jsonNoStore } from "@/lib/api-no-store";
 import { isSupabaseBackend } from "@/lib/data-backend";
@@ -17,7 +18,8 @@ import { vaTaskScreenshotFileError } from "@/lib/va-task-screenshots";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { getActiveVaTaskShift } from "@/services/shifts";
 import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
-import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
+import { completePhaseItem, getPhaseItemTaskId, resolvePhaseItemRowId } from "@/services/task-phases";
+import { getVaTaskById } from "@/services/va-tasks";
 import { readRequestFormData } from "@/lib/request-form-data";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +49,7 @@ async function uploadPhaseScreenshot(
   return { url: blob.url };
 }
 
-export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+export const POST = withAgentAudit(async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
   const session = await getSessionFromCookies();
   if (!session) return jsonNoStore({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, "va-tasks:view"))) return jsonNoStore({ error: "Forbidden" }, { status: 403 });
@@ -73,6 +75,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const itemRowId = await resolvePhaseItemRowId(paramId);
   if (!itemRowId) {
     return jsonNoStore({ error: "Item not found" }, { status: 404 });
+  }
+
+  // Agent (and VA) must be assigned to the task — matches GET /api/va/task-phases.
+  if (session.via === "agent_token" || session.role === "virtual_assistant") {
+    const taskId = await getPhaseItemTaskId(itemRowId);
+    if (!taskId) {
+      return jsonNoStore({ error: "Item not found" }, { status: 404 });
+    }
+    const task = await getVaTaskById(taskId);
+    if (!task) {
+      return jsonNoStore({ error: "Task not found" }, { status: 404 });
+    }
+    if (task.assigned_to_ids.length > 0 && !task.assigned_to_ids.includes(vaId)) {
+      return jsonNoStore({ error: "Forbidden" }, { status: 403 });
+    }
   }
 
   const contentType = req.headers.get("content-type") ?? "";
@@ -202,4 +219,4 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   revalidatePath(ROUTES.va.home);
 
   return jsonNoStore({ success: true, phaseCompleted, allPhasesCompleted });
-}
+});

@@ -108,6 +108,15 @@ export async function middleware(request: NextRequest) {
     });
   }
 
+  // API routes: never redirect to login (cookie or Bearer gz_agent_). Inject path/method
+  // for server-side agent allowlist checks. Do NOT verify agent tokens on the Edge.
+  if (pathname.startsWith("/api/")) {
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-pathname", pathname);
+    requestHeaders.set("x-method", request.method);
+    return NextResponse.next({ request: { headers: requestHeaders } });
+  }
+
   // Gunzo app domain — public paths bypass auth
   if (isPublicAppPath(pathname) || isPublicAssetPath(pathname)) {
     return NextResponse.next();
@@ -165,9 +174,10 @@ export async function middleware(request: NextRequest) {
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
-// Run middleware for app routes only; do NOT run for static/PWA assets (they bypass auth via isPublicAssetPath if they ever hit middleware)
+// App routes + /api (API only injects headers; never cookie-redirects). Static/PWA excluded.
 export const config = {
   matcher: [
+    "/api/:path*",
     "/((?!_next/static|_next/image|favicon\\.ico|api|l/|r/|apply/|apple-touch-icon|icon\\.svg|icon-\\d|icons/|manifest|sw\\.js|workbox-|fonts/|images/).*)",
   ],
 };

@@ -913,6 +913,8 @@ export interface UserRecord {
   role: UserRole;
   status: string;
   can_login: boolean;
+  /** Headless AI agent user (Hermes) — no password/cookie login. */
+  is_agent?: boolean;
   notes: string;
   created_at: string;
   updated_at: string;

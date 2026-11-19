@@ -172,6 +172,19 @@ function mapItem(rec: AirtableRecord<ItemFields>): PhaseItem {
   };
 }
 
+/** Task id for a phase item row (public id). Used for VA assignment checks. */
+export async function getPhaseItemTaskId(itemRowId: string): Promise<string | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./task-phases-supabase")).getPhaseItemTaskId(itemRowId);
+  }
+  try {
+    const rec = await getRecord<ItemFields>(TABLE_ITEMS, itemRowId);
+    return ((rec.fields?.task_id as string) ?? "").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Resolve URL param (Airtable `rec…` id or logical `item_…`) to the phase item row id. */
 export async function resolvePhaseItemRowId(paramId: string): Promise<string | null> {
   if (isSupabaseBackend()) return (await import("./task-phases-supabase")).resolvePhaseItemRowId(paramId);

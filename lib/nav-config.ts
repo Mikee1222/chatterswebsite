@@ -782,6 +782,15 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.ROLES_MANAGE,
   },
   {
+    href: ROUTES.admin.agentTokens,
+    label: "Agent tokens",
+    iconKey: "Settings2",
+    navSection: "SETTINGS",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.ROLES_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.admin.feedback,
     label: "Feedback",
     iconKey: "MessageSquarePlus",

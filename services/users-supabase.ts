@@ -40,6 +40,7 @@ type Row = SbRow & {
   va_type?: string | null;
   status?: string | null;
   can_login?: boolean | null;
+  is_agent?: boolean | null;
   notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -97,6 +98,7 @@ function mapRowSync(row: Row, modelAt: Map<string, string>, includePasswordHash 
     created_at: row.created_at ?? "",
     updated_at: row.updated_at ?? "",
   };
+  if (row.is_agent === true) out.is_agent = true;
   if (includePasswordHash && row.password_hash) out.password_hash = row.password_hash;
   const linkedFromArray = mapLinkedIds(row.linked_model, modelAt);
   if (linkedFromArray.length) {

@@ -67,6 +67,11 @@ export async function login(formData: FormData) {
       role: user?.role ?? null,
       hashType: user?.password_hash?.startsWith("$2") ? "bcrypt" : user?.password_hash?.includes(":") ? "scrypt" : "unknown",
     });
+    // Agent users (Hermes) never password-login — generic invalid credentials.
+    if (user?.is_agent) {
+      console.log(`${logPrefix} agent user blocked from password login`, { email: obfuscatedEmail });
+      redirect(`${ROUTES.login}?error=${encodeURIComponent("Invalid email or password")}`);
+    }
     if (user?.can_login && user.password_hash) {
       const valid = await verifyPassword(submittedPassword, user.password_hash);
       console.log(`${logPrefix} password verify`, {
