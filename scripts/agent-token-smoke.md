@@ -93,8 +93,34 @@ curl -sS -o /dev/null -w "%{http_code}\n" \
 - Agent user (`is_agent=true`) password login shows generic "Invalid email or password".
 - Human cookie sessions still work for allowlisted and non-allowlisted APIs as before.
 
+## 7) Header spoofing → 401
+
+Middleware runs for **every** `/api/*` path (matcher: `/api` + `/api/:path*`, including `/api/l/*`, `/api/cron/*`, `/api/apply/*`). It **deletes then overwrites** `x-pathname` and `x-method` from the real request URL/method — client-forged values cannot stick.
+
+With a valid token, call a **non-allowlisted** route while forging allowlisted headers. Auth must still see the real path/method → **401**:
+
+```bash
+# Real request is POST /api/admin/agent-tokens (denied); forged headers claim GET /api/posting-briefs
+curl -sS -o /dev/null -w "%{http_code}\n" -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "x-pathname: /api/posting-briefs" \
+  -H "x-method: GET" \
+  "$BASE/api/admin/agent-tokens"
+# expect 401
+
+# Real request is DELETE …/posted (denied); forged headers claim POST …/posted
+curl -sS -o /dev/null -w "%{http_code}\n" -X DELETE \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "x-pathname: /api/posting-briefs/$OTHER_MODEL_BRIEF_ID/posts/SOME_POST/posted" \
+  -H "x-method: POST" \
+  "$BASE/api/posting-briefs/$OTHER_MODEL_BRIEF_ID/posts/SOME_POST/posted"
+# expect 401
+```
+
 ## Typecheck
 
 ```bash
 npx tsc --noEmit
+npx tsx scripts/test-agent-allowlist.ts
 ```
+

@@ -77,8 +77,11 @@ export const POST = withAgentAudit(async (req: Request, ctx: { params: Promise<{
     return jsonNoStore({ error: "Item not found" }, { status: 404 });
   }
 
-  // Agent (and VA) must be assigned to the task — matches GET /api/va/task-phases.
-  if (session.via === "agent_token" || session.role === "virtual_assistant") {
+  // Agent-only assignment gate (human VAs keep prior behaviour — no extra 403 here).
+  // assigned_to_ids may store airtable_id or uuid; compare both session forms like
+  // GET /api/va/task-phases (airtableUserId ?? id) plus the other id when they differ.
+  // STRICT for agents: empty assignment → 403 (unlike human GET which treats empty as open).
+  if (session.via === "agent_token") {
     const taskId = await getPhaseItemTaskId(itemRowId);
     if (!taskId) {
       return jsonNoStore({ error: "Item not found" }, { status: 404 });
@@ -87,7 +90,11 @@ export const POST = withAgentAudit(async (req: Request, ctx: { params: Promise<{
     if (!task) {
       return jsonNoStore({ error: "Task not found" }, { status: 404 });
     }
-    if (task.assigned_to_ids.length > 0 && !task.assigned_to_ids.includes(vaId)) {
+    const candidateIds = new Set(
+      [session.airtableUserId, session.id].map((s) => (s ?? "").trim()).filter(Boolean),
+    );
+    const assigned = task.assigned_to_ids.map((s) => s.trim()).filter(Boolean);
+    if (assigned.length === 0 || !assigned.some((id) => candidateIds.has(id))) {
       return jsonNoStore({ error: "Forbidden" }, { status: 403 });
     }
   }

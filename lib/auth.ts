@@ -56,9 +56,18 @@ export async function getSessionFromCookies(): Promise<AuthUser | null> {
   return resolveAgentBearerSession();
 }
 
+function warnAgentAuthFailure(
+  reason: string,
+  extra?: { method?: string; pathname?: string },
+): void {
+  // Never log token or hash.
+  console.warn("[auth] agent token denied", { reason, ...extra });
+}
+
 /**
  * Bearer gz_agent_ path. DEFAULT DENY unless (method, pathname) is allowlisted
- * and path is under /api/. Uses x-method / x-pathname from middleware when present.
+ * and path is under /api/. Uses x-method / x-pathname from middleware when present
+ * (middleware overwrites any client-forged values).
  */
 async function resolveAgentBearerSession(): Promise<AuthUser | null> {
   let h: Headers;
@@ -74,16 +83,30 @@ async function resolveAgentBearerSession(): Promise<AuthUser | null> {
   if (!match) return null;
   const plaintext = match[1]!;
   if (!plaintext.startsWith(AGENT_TOKEN_PREFIX)) return null;
-  if (!isAgentTokenFormat(plaintext)) return null;
+  if (!isAgentTokenFormat(plaintext)) {
+    warnAgentAuthFailure("invalid");
+    return null;
+  }
 
   const method = (h.get("x-method") ?? "GET").trim().toUpperCase();
   const pathname = (h.get("x-pathname") ?? "").trim();
-  if (!pathname || !pathname.startsWith("/api/")) return null;
-  if (!isAgentAllowlisted(method, pathname)) return null;
+  if (!pathname || !pathname.startsWith("/api/")) {
+    warnAgentAuthFailure("denied_by_allowlist", { method, pathname: pathname || "(missing)" });
+    return null;
+  }
+  if (!isAgentAllowlisted(method, pathname)) {
+    warnAgentAuthFailure("denied_by_allowlist", { method, pathname });
+    return null;
+  }
 
   try {
     const { resolveAgentTokenSession } = await import("@/services/agent-tokens");
-    return await resolveAgentTokenSession(plaintext);
+    const result = await resolveAgentTokenSession(plaintext);
+    if (!result.ok) {
+      warnAgentAuthFailure(result.reason, { method, pathname });
+      return null;
+    }
+    return result.user;
   } catch (err) {
     console.error("[auth] agent token resolve failed", err);
     return null;

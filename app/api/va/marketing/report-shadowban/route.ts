@@ -54,8 +54,8 @@ export const POST = withAgentAudit(async (req: Request) => {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  // VA / agent: only accounts assigned to this VA (matches report-restriction-lifted).
-  if (isVa || session.via === "agent_token") {
+  // Agent-only ownership check (human VAs unchanged — no new 403s for them).
+  if (session.via === "agent_token") {
     const vaId = session.airtableUserId ?? session.id;
     const vaAccounts = await getAccountsByVA(vaId);
     const account = vaAccounts.find((a) => a.account_id === account_id);

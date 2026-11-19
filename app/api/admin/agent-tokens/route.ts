@@ -66,17 +66,20 @@ export async function POST(req: Request) {
       label: body.label?.trim() || null,
       createdBy: session.email,
     });
-    return NextResponse.json({
-      token,
-      warning: "Copy this token now. It will not be shown again.",
-      row: {
-        id: row.id,
-        token_prefix: row.token_prefix,
-        label: row.label,
-        created_at: row.created_at,
-        expires_at: row.expires_at,
+    return NextResponse.json(
+      {
+        token,
+        warning: "Copy this token now. It will not be shown again.",
+        row: {
+          id: row.id,
+          token_prefix: row.token_prefix,
+          label: row.label,
+          created_at: row.created_at,
+          expires_at: row.expires_at,
+        },
       },
-    });
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to create token";
     const status = msg.includes("is_agent") || msg.includes("No user") ? 400 : 500;

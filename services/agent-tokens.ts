@@ -171,28 +171,39 @@ export async function listAgentTokens(opts?: {
   return (data ?? []).map((r) => mapTokenRow(r as Record<string, unknown>));
 }
 
+export type AgentTokenResolveFailure =
+  | "invalid"
+  | "revoked"
+  | "expired"
+  | "inactive_user";
+
+export type AgentTokenResolveResult =
+  | { ok: true; user: AuthUser & { via: "agent_token"; agentTokenId: string } }
+  | { ok: false; reason: AgentTokenResolveFailure };
+
 /**
- * Validate Bearer plaintext → AuthUser (via agent_token) or null.
+ * Validate Bearer plaintext → AuthUser (via agent_token) or failure reason.
  * Caller must already have confirmed allowlist + format.
+ * Never logs token or hash.
  */
 export async function resolveAgentTokenSession(
   plaintext: string,
-): Promise<(AuthUser & { via: "agent_token"; agentTokenId: string }) | null> {
-  if (!isAgentTokenFormat(plaintext)) return null;
+): Promise<AgentTokenResolveResult> {
+  if (!isAgentTokenFormat(plaintext)) return { ok: false, reason: "invalid" };
   const token_hash = hashAgentToken(plaintext);
   const sb = getSupabaseServiceClient();
-  const nowIso = new Date().toISOString();
 
   const { data: tokenRow, error } = await sb
     .from("agent_tokens")
     .select("*")
     .eq("token_hash", token_hash)
-    .is("revoked_at", null)
-    .gt("expires_at", nowIso)
     .maybeSingle();
-  if (error || !tokenRow) return null;
+  if (error || !tokenRow) return { ok: false, reason: "invalid" };
 
   const row = mapTokenRow(tokenRow as Record<string, unknown>);
+  if (row.revoked_at) return { ok: false, reason: "revoked" };
+  if (Date.parse(row.expires_at) <= Date.now()) return { ok: false, reason: "expired" };
+
   const { data: user, error: userErr } = await sb
     .from("users")
     .select(
@@ -200,12 +211,12 @@ export async function resolveAgentTokenSession(
     )
     .eq("id", row.user_id)
     .maybeSingle();
-  if (userErr || !user) return null;
+  if (userErr || !user) return { ok: false, reason: "invalid" };
 
   const u = user as UserAgentRow;
-  if (!u.is_agent) return null;
+  if (!u.is_agent) return { ok: false, reason: "invalid" };
   if (!isUserActiveForAssignment({ status: u.status ?? "", can_login: u.can_login !== false })) {
-    return null;
+    return { ok: false, reason: "inactive_user" };
   }
 
   const roleRaw = (u.role ?? "").trim().toLowerCase();
@@ -231,7 +242,7 @@ export async function resolveAgentTokenSession(
 
   void touchAgentTokenLastUsed(row.id, row.last_used_at).catch(() => {});
 
-  return authUser;
+  return { ok: true, user: authUser };
 }
 
 async function touchAgentTokenLastUsed(
