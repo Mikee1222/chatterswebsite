@@ -3,8 +3,21 @@
  * Pure derive + thin loader — no sync logic. Correlation ≠ causation in all copy.
  */
 
-import { ymdInAthens } from "@/lib/airtable-datetime";
+import { addDaysAthensYmd, getYesterdayYmdAthens, ymdInAthens } from "@/lib/airtable-datetime";
+import {
+  buildCreatorsComparisonRow,
+  completeDaysRangeEndingYesterday,
+  marketsFromRegions,
+  rowMatchesMarket,
+  sortCreatorsComparisonRows,
+  type CreatorsComparisonDays,
+  type CreatorsComparisonMarket,
+  type CreatorsComparisonMarketFilter,
+  type CreatorsComparisonRow,
+  type CreatorsComparisonSortKey,
+} from "@/lib/creators-comparison";
 import { computeModelEngagementRate } from "@/lib/instagram-insights-stats";
+import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   queryClarioSuiteDailyInsights,
   queryClarioSuiteTopPosts,
@@ -17,6 +30,8 @@ import {
   type CreatorTransactionRow,
 } from "@/services/infloww-creator-earnings";
 import { previousPeriodRange } from "@/services/infloww-analytics";
+
+export type { CreatorsComparisonRow };
 
 const CORRELATION_MIN_DAYS = 5;
 const GROWTH_SCORE_MIN_DAYS = 3;
@@ -710,5 +725,200 @@ export function toModelCrossPlatformCard(
     of_new_subscribers: analytics.growth_alignment.of_new_subscribers_total,
     alignment_note,
     encouraging,
+  };
+}
+
+// ── Creators comparison (batch, agency-wide) ─────────────────────────────────
+
+type IgAgg = { views: number; reach: number; modelName: string | null; days: number };
+type OfAgg = { newSubs: number; modelName: string | null; days: number };
+
+function aggregateIgByModel(
+  rows: Awaited<ReturnType<typeof queryClarioSuiteDailyInsights>>
+): Map<string, IgAgg> {
+  const map = new Map<string, IgAgg>();
+  for (const row of rows) {
+    const id = row.model_record_id?.trim();
+    if (!id) continue;
+    const cur = map.get(id) ?? { views: 0, reach: 0, modelName: null, days: 0 };
+    cur.views += row.views;
+    cur.reach += row.reach;
+    cur.days += 1;
+    if (!cur.modelName && row.model_name) cur.modelName = row.model_name;
+    map.set(id, cur);
+  }
+  return map;
+}
+
+function aggregateOfByModel(rows: CreatorDailyStatsRow[]): Map<string, OfAgg> {
+  const map = new Map<string, OfAgg>();
+  for (const row of rows) {
+    const id = row.model_record_id?.trim();
+    if (!id) continue;
+    const cur = map.get(id) ?? { newSubs: 0, modelName: null, days: 0 };
+    cur.newSubs += row.new_subscribers;
+    cur.days += 1;
+    if (!cur.modelName && row.model_name) cur.modelName = row.model_name;
+    map.set(id, cur);
+  }
+  return map;
+}
+
+async function loadModelMarketsByRecordId(): Promise<Map<string, CreatorsComparisonMarket[]>> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("model_social_accounts")
+    .select("model_id,region")
+    .neq("active", false);
+  if (error) {
+    console.error("[creators-comparison] model_social_accounts", error.message);
+    return new Map();
+  }
+  const regionsByModel = new Map<string, string[]>();
+  for (const row of data ?? []) {
+    const mid = typeof row.model_id === "string" ? row.model_id.trim() : "";
+    if (!mid) continue;
+    const list = regionsByModel.get(mid) ?? [];
+    list.push(typeof row.region === "string" ? row.region : "");
+    regionsByModel.set(mid, list);
+  }
+  const out = new Map<string, CreatorsComparisonMarket[]>();
+  for (const [mid, regions] of regionsByModel) {
+    out.set(mid, marketsFromRegions(regions));
+  }
+  return out;
+}
+
+export type CreatorsComparisonResult = {
+  days: CreatorsComparisonDays;
+  market: CreatorsComparisonMarketFilter;
+  range: { startYmd: string; endYmd: string };
+  previousRange: { startYmd: string; endYmd: string };
+  rows: CreatorsComparisonRow[];
+  partial: { ig: boolean; of: boolean; markets: boolean };
+};
+
+/**
+ * Agency-wide IG vs OF comparison — four range queries max (IG×2 + OF×2), no per-creator calls.
+ * Partial failures mark that side missing instead of throwing.
+ */
+export async function listCreatorsComparison(params: {
+  days?: CreatorsComparisonDays;
+  market?: CreatorsComparisonMarketFilter;
+  sortKey?: CreatorsComparisonSortKey;
+  sortDir?: "asc" | "desc";
+}): Promise<CreatorsComparisonResult> {
+  const days: CreatorsComparisonDays = params.days === 30 ? 30 : 7;
+  const market: CreatorsComparisonMarketFilter =
+    params.market === "GR" || params.market === "USA" ? params.market : "all";
+  const sortKey = params.sortKey ?? "views";
+  const sortDir = params.sortDir ?? "desc";
+
+  const yesterday = getYesterdayYmdAthens();
+  const range = completeDaysRangeEndingYesterday(days, yesterday, addDaysAthensYmd);
+  const previousRange = previousPeriodRange(range.startYmd, range.endYmd);
+
+  const [igCurSettled, igPrevSettled, ofCurSettled, ofPrevSettled, marketsSettled] =
+    await Promise.allSettled([
+      queryClarioSuiteDailyInsights({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+      }),
+      queryClarioSuiteDailyInsights({
+        startYmd: previousRange.startYmd,
+        endYmd: previousRange.endYmd,
+      }),
+      listCreatorDailyStats({
+        startYmd: range.startYmd,
+        endYmd: range.endYmd,
+      }),
+      listCreatorDailyStats({
+        startYmd: previousRange.startYmd,
+        endYmd: previousRange.endYmd,
+      }),
+      loadModelMarketsByRecordId(),
+    ]);
+
+  const partial = {
+    ig: igCurSettled.status === "rejected" || igPrevSettled.status === "rejected",
+    of: ofCurSettled.status === "rejected" || ofPrevSettled.status === "rejected",
+    markets: marketsSettled.status === "rejected",
+  };
+  if (partial.ig) {
+    console.error(
+      "[creators-comparison] IG query failed",
+      igCurSettled.status === "rejected" ? igCurSettled.reason : igPrevSettled.status === "rejected" ? igPrevSettled.reason : null
+    );
+  }
+  if (partial.of) {
+    console.error(
+      "[creators-comparison] OF query failed",
+      ofCurSettled.status === "rejected" ? ofCurSettled.reason : ofPrevSettled.status === "rejected" ? ofPrevSettled.reason : null
+    );
+  }
+
+  const igCur = aggregateIgByModel(
+    igCurSettled.status === "fulfilled" ? igCurSettled.value : []
+  );
+  const igPrev = aggregateIgByModel(
+    igPrevSettled.status === "fulfilled" ? igPrevSettled.value : []
+  );
+  const ofCur = aggregateOfByModel(
+    ofCurSettled.status === "fulfilled" ? ofCurSettled.value : []
+  );
+  const ofPrev = aggregateOfByModel(
+    ofPrevSettled.status === "fulfilled" ? ofPrevSettled.value : []
+  );
+  const marketsByModel =
+    marketsSettled.status === "fulfilled" ? marketsSettled.value : new Map();
+
+  const ids = new Set<string>([
+    ...igCur.keys(),
+    ...ofCur.keys(),
+    ...igPrev.keys(),
+    ...ofPrev.keys(),
+  ]);
+
+  const built: CreatorsComparisonRow[] = [];
+  for (const modelRecordId of ids) {
+    const ig = igCur.get(modelRecordId);
+    const of = ofCur.get(modelRecordId);
+    const hasIg = Boolean(ig && ig.days > 0);
+    const hasOf = Boolean(of && of.days > 0);
+    if (!hasIg && !hasOf) continue;
+
+    const marketList = marketsByModel.get(modelRecordId) ?? [];
+    if (!rowMatchesMarket(marketList, market)) continue;
+
+    const modelName =
+      ig?.modelName ||
+      of?.modelName ||
+      igPrev.get(modelRecordId)?.modelName ||
+      ofPrev.get(modelRecordId)?.modelName ||
+      modelRecordId;
+
+    built.push(
+      buildCreatorsComparisonRow({
+        modelRecordId,
+        modelName,
+        market: marketList,
+        hasIg,
+        hasOf,
+        views: ig?.views ?? 0,
+        reach: ig?.reach ?? 0,
+        newSubs: of?.newSubs ?? 0,
+        prevViews: igPrev.get(modelRecordId)?.views ?? 0,
+        prevNewSubs: ofPrev.get(modelRecordId)?.newSubs ?? 0,
+      })
+    );
+  }
+
+  return {
+    days,
+    market,
+    range,
+    previousRange,
+    rows: sortCreatorsComparisonRows(built, sortKey, sortDir),
+    partial,
   };
 }

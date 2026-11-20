@@ -593,6 +593,13 @@ const adminNav: NavItem[] = [
     navSection: "PERFORMANCE & ANALYTICS",
     requiresPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
   },
+  {
+    href: ROUTES.admin.creatorsComparison,
+    label: "Creators comparison",
+    iconKey: "ArrowRightLeft",
+    navSection: "PERFORMANCE & ANALYTICS",
+    requiresPermission: PERMISSIONS.INSTAGRAM_INSIGHTS_VIEW,
+  },
 
   // ── MARKETING ──
   {
