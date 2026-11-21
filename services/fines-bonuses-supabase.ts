@@ -11,6 +11,7 @@ import {
   sbUpdateByPublicId,
   type SbRow,
 } from "@/lib/supabase-data";
+import { getSupabaseServiceClient } from "@/lib/supabase-server";
 
 const SPIN_WHEEL_REASON_PREFIX = "Spin wheel reward:";
 const SPIN_WHEEL_NOTES_SPIN_ID_MARKER = "Spin ID:";
@@ -114,6 +115,7 @@ type Row = SbRow & {
   admin_id?: string | null;
   admin_name?: string | null;
   created_at?: string | null;
+  updated_at?: string | null;
   category?: string | null;
   status?: string | null;
   source?: string | null;
@@ -126,6 +128,44 @@ type Row = SbRow & {
 };
 
 const TABLE = "fines_and_bonuses";
+const REVERT_WINDOW_MS = 60_000;
+
+function isChatterExtraRevenueSubmission(entry: FineBonusRecord): boolean {
+  return entry.source === "chatter_submission" || entry.category === "extra_revenue";
+}
+
+function assertPendingExtraRevenue(entry: FineBonusRecord): void {
+  if (!isChatterExtraRevenueSubmission(entry)) {
+    throw new Error("Not a pending extra revenue submission");
+  }
+  if (entry.status === "approved" || entry.status === "rejected") {
+    throw new Error("Already reviewed");
+  }
+  if (entry.status !== "pending_review") {
+    throw new Error("Not a pending extra revenue submission");
+  }
+}
+
+async function conditionalStatusUpdate(
+  recordId: string,
+  fields: Record<string, unknown>,
+  expectedStatus: FineBonusReviewStatus
+): Promise<FineBonusRecord> {
+  const sb = getSupabaseServiceClient();
+  const col = recordId.startsWith("rec") ? "airtable_id" : "id";
+  const { data, error } = await sb
+    .from(TABLE)
+    .update(fields)
+    .eq(col, recordId)
+    .eq("status", expectedStatus)
+    .select("*")
+    .maybeSingle();
+  if (error) throw new Error(`sbUpdate ${TABLE}: ${error.message}`);
+  if (!data) {
+    throw new Error(expectedStatus === "pending_review" ? "Already reviewed" : "Revert window expired");
+  }
+  return mapRow(data as Row);
+}
 
 function mapRow(row: Row): FineBonusRecord {
   const role: FineBonusUserRole = row.user_role === "va" ? "va" : "chatter";
@@ -341,12 +381,52 @@ export async function deleteFineBonus(recordId: string): Promise<void> {
   await sbDeleteByPublicId(TABLE, recordId);
 }
 
+export async function getFineBonusById(recordId: string): Promise<FineBonusRecord | null> {
+  const row = await sbSelectByPublicId<Row>(TABLE, recordId.trim());
+  return row ? mapRow(row) : null;
+}
+
 export async function reviewExtraRevenueSubmission(
   recordId: string,
-  action: "approve" | "reject",
+  action: "approve" | "reject" | "revert",
   admin: { admin_id: string; admin_name: string },
   rejectReason?: string
 ): Promise<FineBonusRecord> {
+  const id = recordId.trim();
+  if (!id) throw new Error("Missing id");
+
+  const existing = await sbSelectByPublicId<Row>(TABLE, id);
+  if (!existing) throw new Error("Not found");
+  const current = mapRow(existing);
+
+  if (action === "revert") {
+    if (!isChatterExtraRevenueSubmission(current)) {
+      throw new Error("Not a pending extra revenue submission");
+    }
+    if (current.status !== "approved") {
+      throw new Error("Already reviewed");
+    }
+    if (current.admin_id !== admin.admin_id) {
+      throw new Error("Can only undo your own approval");
+    }
+    const reviewedAt = Date.parse(String(existing.updated_at ?? existing.created_at ?? ""));
+    if (!Number.isFinite(reviewedAt) || Date.now() - reviewedAt > REVERT_WINDOW_MS) {
+      throw new Error("Revert window expired");
+    }
+    return conditionalStatusUpdate(
+      id,
+      {
+        status: "pending_review",
+        admin_id: "",
+        admin_name: "Pending review",
+        updated_at: new Date().toISOString(),
+      },
+      "approved"
+    );
+  }
+
+  assertPendingExtraRevenue(current);
+
   const fields: Record<string, unknown> = {
     status: action === "approve" ? "approved" : "rejected",
     admin_id: admin.admin_id,
@@ -356,6 +436,5 @@ export async function reviewExtraRevenueSubmission(
   if (action === "reject" && rejectReason?.trim()) {
     fields.notes = rejectReason.trim();
   }
-  const updated = await sbUpdateByPublicId<Row>(TABLE, recordId, fields);
-  return mapRow(updated);
+  return conditionalStatusUpdate(id, fields, "pending_review");
 }
