@@ -14,7 +14,7 @@ The creator profile table is **`modelss`** (double s).
 ### Key fields
 
 - Status: free/occupied, current chatter linkage
-- `of_user_id` — TheOnlyAPI OF account link (see [04-integrations.md](../04-integrations.md))
+- `of_user_id` — legacy OF account id for webhook routing (see [04-integrations.md](../04-integrations.md))
 - Availability windows, team/group links
 - Model tiers via `model_tiers` table
 

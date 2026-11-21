@@ -8,9 +8,6 @@ import {
 } from "@/lib/airtable-server";
 import { OF_SUBSCRIBERS_TABLE } from "@/lib/airtable-schema";
 
-const THE_ONLY_API_BASE = "https://theonlyapi.com/api";
-const THE_ONLY_API_KEY = process.env.THE_ONLY_API_KEY ?? "";
-
 export type OFSubscriber = {
   of_user_id: number;
   username: string;
@@ -193,47 +190,4 @@ export async function createStoredSubscriber(fields: {
     category: fields.category,
   });
   return mapAirtableRow(rec);
-}
-
-export async function getSubscribersForModel(
-  ofUserId: string,
-  limit = 100,
-  offset = 0
-): Promise<{ subscribers: OFSubscriber[]; has_more: boolean }> {
-  if (!ofUserId || !THE_ONLY_API_KEY) return { subscribers: [], has_more: false };
-
-  const res = await fetch(
-    `${THE_ONLY_API_BASE}/of_list_subscribers?of_user_id=${encodeURIComponent(ofUserId)}&limit=${limit}&offset=${offset}&type=all`,
-    {
-      headers: { Authorization: `Bearer ${THE_ONLY_API_KEY}` },
-      next: { revalidate: 300 },
-    }
-  );
-
-  if (!res.ok) return { subscribers: [], has_more: false };
-
-  const data = (await res.json()) as {
-    subscribers?: Record<string, unknown>[];
-    page?: { has_more?: boolean };
-  };
-
-  const subscribers = (data.subscribers ?? []).map((row) => parseSubscriber(row));
-  return {
-    subscribers,
-    has_more: data.page?.has_more ?? false,
-  };
-}
-
-export async function getAllSubscribersForModel(ofUserId: string): Promise<OFSubscriber[]> {
-  const all: OFSubscriber[] = [];
-  let offset = 0;
-  let hasMore = true;
-  while (hasMore) {
-    const { subscribers, has_more } = await getSubscribersForModel(ofUserId, 100, offset);
-    all.push(...subscribers);
-    hasMore = has_more;
-    offset += 100;
-    if (subscribers.length === 0) break;
-  }
-  return all;
 }

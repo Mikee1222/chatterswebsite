@@ -82,26 +82,22 @@ Used by both **Transcript Videos** tool and winner video research pipeline.
 
 ---
 
-## TheOnlyAPI (OnlyFans CRM)
+## Legacy OnlyAPI webhook (of_subscribers)
 
-Optional integration for subscriber sync and whale enrichment.
+The Only API product/sync is retired. Fan spend on the admin model page uses Infloww (`infloww_transactions` + `infloww_model_top_fans` RPC).
 
 | | |
 |--|--|
-| **Env** | `THE_ONLY_API_KEY`, `ONLYAPI_WEBHOOK_SECRET` |
-| **Services** | `services/of-sync.ts`, `services/of-subscribers.ts` |
+| **Env** | `ONLYAPI_WEBHOOK_SECRET` (optional) |
+| **Services** | `services/of-subscribers.ts`, `services/of-subscribers-supabase.ts` |
 | **Webhook** | `POST /api/webhooks/onlyapi` |
-| **Table** | `of_subscribers` |
-
-### Subscriber fetch
-
-REST call to `https://theonlyapi.com/api/of_list_subscribers` with Bearer token.
+| **Table** | `of_subscribers` (kept; no longer filled by cron sync) |
 
 ### Webhook
 
 When `ONLYAPI_WEBHOOK_SECRET` is unset, webhooks are accepted without verification (logged warning). Set secret in production.
 
-Model link: `modelss.of_user_id` field stores the OF account id.
+Model link: `modelss.of_user_id` still stores an OF account id for legacy webhook routing.
 
 ---
 
@@ -206,7 +202,7 @@ Additional cron logic runs via authenticated Next.js API routes invoked by exter
 | Symptom | Check |
 |---------|-------|
 | Transcription always fails | `TRANSCRIBE_SERVICE_*` env vars; attachment URL publicly reachable |
-| OF sync empty | `THE_ONLY_API_KEY`; `modelss.of_user_id` populated |
+| Top Fans empty / 503 | Apply `infloww_model_top_fans` migration; model linked on `infloww_transactions` |
 | Push not delivered | VAPID keys; user has `push_subscriptions` row; preferences not muted |
 | Link page domain fails | Vercel token scopes; DNS propagation |
 | Airtable 422 errors | Field name case; datetime format; unknown field in payload |

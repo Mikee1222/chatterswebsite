@@ -23,12 +23,10 @@ supabase/migrations/
   20260803000008_custom_requests_stuck_alert_sent.sql
 ```
 
-## Smoke / of-sync note
+## Smoke note
 
-`scripts/_smoke-supabase-local.ts` test `7_of_sync_chunk` may return **401** when
-`THE_ONLY_API_KEY` is missing or invalid. That is an **external credential** check,
-not a Supabase migration failure — the `of-sync-supabase` upsert path is already
-wired. Fix the key in local `.env.local` only; do not chase MCP auth as dual-backend work.
+`scripts/_smoke-supabase-local.ts` no longer calls The Only API sync (removed).
+Test `7_of_subscribers_store` only checks the `of_subscribers` table is readable.
 
 ## Apply (after creating a dedicated Supabase project)
 

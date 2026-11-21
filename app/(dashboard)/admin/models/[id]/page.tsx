@@ -6,8 +6,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getModelById } from "@/services/modelss";
 import { AdminModelPeriodTrackingToggle } from "@/components/admin-model-period-tracking-toggle";
-import { ModelOFSubscribers } from "@/components/model-of-subscribers";
-import { SyncOFSubscribersButton } from "@/components/sync-of-subscribers-button";
+import { ModelTopFans } from "@/components/model-top-fans";
 import { ModelChurnRiskBadge } from "@/components/model-churn-risk-widgets";
 import {
   computeModelChurnRisk,
@@ -82,17 +81,7 @@ export default async function AdminModelDetailPage({ params }: { params: { id: s
         .
       </p>
 
-      {typeof model.of_user_id === "string" && model.of_user_id.trim() !== "" ? (
-        <SyncOFSubscribersButton
-          ofAccountId={model.of_user_id}
-          modelName={model.model_name ?? ""}
-        />
-      ) : null}
-
-      <ModelOFSubscribers
-        ofUserId={String(model.of_user_id ?? "")}
-        modelName={String(model.model_name ?? "")}
-      />
+      <ModelTopFans modelId={model.id} modelName={String(model.model_name ?? "")} />
     </div>
   );
 }

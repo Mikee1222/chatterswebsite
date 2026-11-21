@@ -46,7 +46,7 @@ Production URL: typically `https://gunzoteam.com` (`NEXT_PUBLIC_APP_URL`).
         ┌──────────────────┼──────────────────┐
         ▼                  ▼                  ▼
    Airtable API      Vercel Blob        External APIs
-   (all business    (files)            (TheOnlyAPI, transcribe
+   (all business    (files)            (Infloww, transcribe
     data)                               service, Vercel domains)
 ```
 
@@ -111,8 +111,7 @@ Copy `.env.example` → `.env.local` (or `.env`) for local development. **Never 
 
 | Variable | Description |
 |----------|-------------|
-| `THE_ONLY_API_KEY` | TheOnlyAPI — OF subscriber sync (`services/of-sync.ts`) |
-| `ONLYAPI_WEBHOOK_SECRET` | Validates `POST /api/webhooks/onlyapi` |
+| `ONLYAPI_WEBHOOK_SECRET` | Validates legacy `POST /api/webhooks/onlyapi` (of_subscribers store) |
 | `TRANSCRIBE_SERVICE_URL` | External transcription HTTP service base URL |
 | `TRANSCRIBE_SERVICE_API_KEY` | API key sent as `X-API-Key` header |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Web Push |

@@ -56,7 +56,7 @@ routes reads and writes to the Postgres implementation across the board.
 | Cascades / cross-service | `accounts-delete`, `force-delete-cascade` |
 | Analytics | `pipeline-analytics` |
 | Cron / orchestrators | `cron-notification-jobs`, `va-statistics` |
-| External sync | `of-sync` (Postgres upsert path) |
+| External sync | _(removed)_ former `of-sync` / The Only API |
 
 ### Not-needed (pure orchestrators over already-dual services — no direct Airtable I/O)
 
@@ -74,10 +74,6 @@ routes reads and writes to the Postgres implementation across the board.
 - [ ] Verify signed URLs load for a sample of migrated attachments
 - [ ] Confirm cron routes hit both `runPhaseOverdueCheck` and
       `runPersonalEventReminders` cleanly on Supabase
-- [ ] `of-sync` staging run against a low-volume account
-  (**note:** a 401 from The Only API / MCP is **not** a Supabase migration bug —
-  Postgres upsert in `of-sync-supabase` already works. Confirm `THE_ONLY_API_KEY`
-  in local `.env.local` separately; do not treat MCP auth as a dual-backend failure.)
 - [ ] Flip production `DATA_BACKEND=supabase`
 
 ### Local smoke notes (`scripts/_smoke-supabase-local.ts`)
@@ -88,7 +84,7 @@ Run with `DATA_BACKEND=supabase` only in **local** `.env.local` (never Vercel).
 |---|---|
 | custom request lifecycle | PASS — needs `custom_requests.stuck_alert_sent` (migration `20260803000008`) |
 | client portal payment | PASS — link fields resolve `rec…` → UUID via `sbUuidsForAirtableIds` |
-| of-sync chunk | May FAIL with 401 if `THE_ONLY_API_KEY` is missing/invalid — **credential issue outside migration**; Supabase write path is fine |
+| of_subscribers store | PASS — table readable (The Only API sync removed) |
 
 Schema gap closed: `custom_requests.stuck_alert_sent boolean NOT NULL DEFAULT false`
 (matches Airtable checkbox + `runStuckCustomRequestAlerts` cron).
