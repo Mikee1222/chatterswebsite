@@ -18,7 +18,7 @@ Welcome. This documentation set is the primary onboarding path for engineers tak
 | [01-overview.md](./01-overview.md) | Product purpose, tech stack, repo layout, deployment targets, environment variables |
 | [02-roles-permissions.md](./02-roles-permissions.md) | System roles, custom roles, `resolveRolePermissions`, nav invariants, full permission list |
 | [03-features/](./03-features/) | Feature-by-feature reference (files, Airtable tables, gotchas) |
-| [04-integrations.md](./04-integrations.md) | Airtable, transcription service, TheOnlyAPI, Vercel Blob, Realtime, Cloudflare |
+| [04-integrations.md](./04-integrations.md) | Airtable, transcription service, Infloww, Vercel Blob, Realtime, Cloudflare |
 | [05-bug-patterns.md](./05-bug-patterns.md) | Recurring failure modes and how to avoid them |
 | [06-development.md](./06-development.md) | Local dev, build/typecheck, scripts, conventions |
 | [07-tech-debt.md](./07-tech-debt.md) | Known open issues and deferred work |

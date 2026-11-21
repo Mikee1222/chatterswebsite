@@ -22,7 +22,7 @@ creator id. Prefer the dedicated column:
 | --- | --- |
 | `modelss.model_id` | App slug (`model_*`) — never use as Infloww id |
 | `modelss.infloww_creator_id` | Stable Infloww creator `id` from `GET /v1/creators` |
-| `modelss.of_user_id` | OnlyFans user id (TheOnlyAPI) — may differ from Infloww `platformPid` |
+| `modelss.of_user_id` | OnlyFans user id (legacy) — may differ from Infloww `platformPid` |
 
 Sync match order:
 

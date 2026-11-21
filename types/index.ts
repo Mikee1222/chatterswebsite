@@ -447,7 +447,7 @@ export interface Whale {
 export interface ModelRecord {
   id: string;
   model_id: string;
-  /** TheOnlyAPI OF user ID — links this model to the connected OF account. */
+  /** Legacy OF user ID — links this model to an OnlyFans account for webhook routing. */
   of_user_id?: string;
   /**
    * Infloww creator id from GET /v1/creators (`id`).

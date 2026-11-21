@@ -21,9 +21,9 @@ High-value fan tracking and assignment.
 
 `/log-transaction`, `/my-rebills`, `/admin/rebills-tips` — logged in `whale_transactions`. Challenge metric hooks on transaction create.
 
-### OF subscriber sync
+### Top Fans (model page)
 
-When `THE_ONLY_API_KEY` is set, `services/of-sync.ts` caches subscribers in `of_subscribers` table. See [04-integrations.md](../04-integrations.md).
+`/admin/models/[id]` Top Fans tab aggregates `infloww_transactions` by fan (RPC `infloww_model_top_fans`). Legacy `of_subscribers` rows may still be updated via `POST /api/webhooks/onlyapi`.
 
 ---
 
@@ -128,4 +128,4 @@ Client-side image blur utility for marketing content prep.
 ## Related
 
 - [rewards-training-tools.md](./rewards-training-tools.md) — transcript videos tool
-- [04-integrations.md](../04-integrations.md) — TheOnlyAPI, transcription service
+- [04-integrations.md](../04-integrations.md) — Infloww / legacy OnlyAPI webhook, transcription service

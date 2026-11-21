@@ -4,7 +4,6 @@ import { z } from "zod";
 const envSchema = z.object({
   AIRTABLE_TOKEN: z.string().min(1, "AIRTABLE_TOKEN is required"),
   AIRTABLE_BASE_ID: z.string().min(1, "AIRTABLE_BASE_ID is required"),
-  THE_ONLY_API_KEY: z.string().optional().default(""),
   ONLYAPI_WEBHOOK_SECRET: z.string().optional().default(""),
 });
 
@@ -14,7 +13,6 @@ function loadEnv(): Env {
   const raw = {
     AIRTABLE_TOKEN: process.env.AIRTABLE_TOKEN ?? "",
     AIRTABLE_BASE_ID: process.env.AIRTABLE_BASE_ID ?? "",
-    THE_ONLY_API_KEY: process.env.THE_ONLY_API_KEY ?? "",
     ONLYAPI_WEBHOOK_SECRET: process.env.ONLYAPI_WEBHOOK_SECRET ?? "",
   };
 

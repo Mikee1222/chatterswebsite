@@ -45,7 +45,6 @@ async function main() {
   const linkPages = await import("../services/link-pages");
   const linkAnalytics = await import("../services/link-page-analytics");
   const clientPortal = await import("../services/client-portal");
-  const ofSync = await import("../services/of-sync");
   const vaTasks = await import("../services/va-tasks");
   const { expandTasksForAthensYmd, getVaTasksViewTodayYmd } = await import("../lib/va-task-date-filter");
   const notifications = await import("../services/notifications");
@@ -248,30 +247,13 @@ async function main() {
     return `client=${client.id} cycle=${cycle.id} submission=${result.submissionId} already=${result.alreadySubmitted} pending=${pending.length}`;
   });
 
-  await run("7_of_sync_chunk", async () => {
-    const models = await modelss.listAllModelss();
-    let ofId = "";
-    let modelName = "smoke";
-    for (const m of models) {
-      const id = (m.of_user_id ?? "").trim();
-      if (id && /^\d+$/.test(id)) {
-        ofId = id;
-        modelName = m.model_name || id;
-        break;
-      }
-    }
-    if (!ofId) {
-      const sb = getSupabaseServiceClient();
-      const { data } = await sb.from("of_subscribers").select("of_account_id, model_name").limit(1).maybeSingle();
-      if (!data?.of_account_id) throw new Error("No of_account_id available from models or of_subscribers");
-      ofId = String(data.of_account_id);
-      modelName = data.model_name || ofId;
-    }
-    const result = await ofSync.syncSubscribersChunkForAccount(ofId, modelName, 0, { highValueOnly: true });
-    if (result.errors > 0 && result.checked === 0 && result.synced === 0) {
-      throw new Error(`chunk failed: ${JSON.stringify(result)}`);
-    }
-    return `ofId=${ofId} synced=${result.synced} checked=${result.checked} errors=${result.errors} has_more=${result.has_more}`;
+  await run("7_of_subscribers_store", async () => {
+    const sb = getSupabaseServiceClient();
+    const { count, error } = await sb
+      .from("of_subscribers")
+      .select("id", { count: "exact", head: true });
+    if (error) throw new Error(error.message);
+    return `of_subscribers rows≈${count ?? 0}`;
   });
 
   await run("8_va_tasks_virtual_projection", async () => {
