@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, CreditCard, DollarSign, Plus } from "lucide-react";
+import { Check, Copy, CreditCard, DollarSign, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { ExtraRevenueModal, type ModelPaymentInfo } from "@/components/extra-revenue-modal";
@@ -13,6 +13,18 @@ import {
   type FineBonusRecord,
   type FineBonusType,
 } from "@/services/fines-bonuses";
+
+function displayScreenshotUrl(entry: FineBonusRecord): string | null {
+  const signed = entry.screenshot_signed_url?.trim();
+  if (signed && !signed.startsWith("sb://")) return signed;
+  const raw = entry.screenshot_url?.trim();
+  if (raw && raw.startsWith("http")) return raw;
+  return null;
+}
+
+function hasScreenshotToken(entry: FineBonusRecord): boolean {
+  return Boolean(entry.screenshot_url?.trim() || entry.screenshot_signed_url?.trim());
+}
 
 type Props = {
   initialEntries: FineBonusRecord[];
@@ -156,6 +168,8 @@ export function FinesBonusesClient({
   const [month, setMonth] = React.useState(() => currentMonthYyyyMm());
   const [typeFilter, setTypeFilter] = React.useState<"all" | FineBonusType>("all");
   const [extraModalOpen, setExtraModalOpen] = React.useState(false);
+  const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
+  const [signRetryPending, setSignRetryPending] = React.useState(false);
 
   const sortedModels = React.useMemo(
     () => [...modelss].sort((a, b) => a.model_name.localeCompare(b.model_name)),
@@ -205,14 +219,26 @@ export function FinesBonusesClient({
   const hasAnyEntries = entries.length > 0;
   const showEmpty = filtered.length === 0;
 
-  async function refreshEntries() {
+  async function refreshEntries(opts?: { toastOnError?: boolean }) {
     try {
       const res = await fetch("/api/chatter/fines-bonuses");
-      if (!res.ok) return;
+      if (!res.ok) {
+        if (opts?.toastOnError) toast.error("Could not refresh screenshots");
+        return;
+      }
       const data = (await res.json()) as { entries?: FineBonusRecord[] };
       if (data.entries) setEntries(data.entries);
     } catch {
-      /* ignore */
+      if (opts?.toastOnError) toast.error("Could not refresh screenshots");
+    }
+  }
+
+  async function retryScreenshots() {
+    setSignRetryPending(true);
+    try {
+      await refreshEntries({ toastOnError: true });
+    } finally {
+      setSignRetryPending(false);
     }
   }
 
@@ -368,6 +394,41 @@ export function FinesBonusesClient({
                             {isSpinWheelFineBonus(entry) ? <SpinWheelBadge /> : <ManualBadge />}
                           </div>
                           {entry.notes ? <p className="mt-0.5 text-xs text-white/50">{entry.notes}</p> : null}
+                          {(() => {
+                            const shot = displayScreenshotUrl(entry);
+                            if (shot) {
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => setLightboxUrl(shot)}
+                                  className="mt-2 block overflow-hidden rounded-lg border border-white/10 bg-black/30"
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={shot}
+                                    alt="Payment screenshot"
+                                    className="max-h-40 w-auto max-w-full object-contain"
+                                  />
+                                </button>
+                              );
+                            }
+                            if (hasScreenshotToken(entry)) {
+                              return (
+                                <div className="mt-2 rounded-lg border border-dashed border-white/15 px-3 py-2">
+                                  <p className="text-xs text-white/45">Screenshot unavailable</p>
+                                  <button
+                                    type="button"
+                                    disabled={signRetryPending}
+                                    onClick={() => void retryScreenshots()}
+                                    className="mt-1 text-xs font-medium text-pink-300/80 hover:text-pink-200 disabled:opacity-50"
+                                  >
+                                    {signRetryPending ? "Retrying…" : "Retry"}
+                                  </button>
+                                </div>
+                              );
+                            }
+                            return null;
+                          })()}
                           <p className="mt-1 text-xs text-white/30">
                             {formatDateTimeAthens(entry.created_at)} · by {entry.admin_name || "Admin"}
                           </p>
@@ -405,9 +466,35 @@ export function FinesBonusesClient({
           open={extraModalOpen}
           onClose={() => setExtraModalOpen(false)}
           modelss={sortedModels}
-          onSubmitted={refreshEntries}
+          onSubmitted={() => void refreshEntries()}
         />
       )}
+
+      {lightboxUrl ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Screenshot preview"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 z-10 rounded-full border border-white/20 bg-black/60 p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Close screenshot"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Screenshot full size"
+            className="max-h-[90vh] max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

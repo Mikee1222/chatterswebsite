@@ -41,8 +41,54 @@ export interface FineBonusRecord {
   payment_source?: string;
   model_id?: string;
   model_name?: string;
+  /** Durable storage token (`sb://…`) or legacy https — never mutate when signing. */
   screenshot_url?: string;
+  /** Short-lived https URL for browser <img>; absent when signing failed or no screenshot. */
+  screenshot_signed_url?: string;
   sub_username?: string;
+}
+
+/**
+ * Batch-sign screenshot_url tokens via batchSignUrlMap (one call per request).
+ * Never throws — on failure returns rows without screenshot_signed_url.
+ */
+export async function attachSignedScreenshotUrls(
+  entries: FineBonusRecord[]
+): Promise<FineBonusRecord[]> {
+  if (!entries.length) return entries;
+  const urls = entries
+    .map((e) => (typeof e.screenshot_url === "string" ? e.screenshot_url.trim() : ""))
+    .filter((u) => u.length > 0);
+  if (!urls.length) return entries;
+
+  let signedMap: Map<string, string>;
+  try {
+    const { batchSignUrlMap, isSbStorageToken } = await import("@/lib/supabase-signed-url");
+    signedMap = await batchSignUrlMap(urls);
+    // Treat failed sb:// signs (helper returns original token) as unavailable.
+    for (const [raw, signed] of [...signedMap.entries()]) {
+      if (isSbStorageToken(raw) && (signed === raw || isSbStorageToken(signed))) {
+        signedMap.delete(raw);
+      }
+    }
+  } catch (err) {
+    console.error("[attachSignedScreenshotUrls]", err);
+    return entries.map(({ screenshot_signed_url: _drop, ...rest }) => rest);
+  }
+
+  return entries.map((entry) => {
+    const raw = typeof entry.screenshot_url === "string" ? entry.screenshot_url.trim() : "";
+    if (!raw) {
+      const { screenshot_signed_url: _drop, ...rest } = entry;
+      return rest;
+    }
+    const signed = signedMap.get(raw);
+    if (signed && signed.length > 0) {
+      return { ...entry, screenshot_signed_url: signed };
+    }
+    const { screenshot_signed_url: _drop, ...rest } = entry;
+    return rest;
+  });
 }
 
 export type FinesBonusesListFilters = {
@@ -126,31 +172,37 @@ function isVisibleToChatter(entry: FineBonusRecord): boolean {
 }
 
 export async function getFinesBonusesForUser(userId: string): Promise<FineBonusRecord[]> {
+  let entries: FineBonusRecord[];
   if (isSupabaseBackend()) {
-    return (await import("./fines-bonuses-supabase")).getFinesBonusesForUser(userId);
+    entries = await (await import("./fines-bonuses-supabase")).getFinesBonusesForUser(userId);
+  } else {
+    const id = userId.trim();
+    if (!id) return [];
+    const records = await listAllRecords<Record<string, unknown>>(TABLE, {
+      filterByFormula: `{user_id} = "${escapeFormulaString(id)}"`,
+      sort: [{ field: "created_at", direction: "desc" }],
+      _caller: "getFinesBonusesForUser",
+    });
+    entries = records
+      .map((r) => mapRecord(r as AirtableRecord<Record<string, unknown>>))
+      .filter(isVisibleToChatter);
   }
-  const id = userId.trim();
-  if (!id) return [];
-  const records = await listAllRecords<Record<string, unknown>>(TABLE, {
-    filterByFormula: `{user_id} = "${escapeFormulaString(id)}"`,
-    sort: [{ field: "created_at", direction: "desc" }],
-    _caller: "getFinesBonusesForUser",
-  });
-  return records
-    .map((r) => mapRecord(r as AirtableRecord<Record<string, unknown>>))
-    .filter(isVisibleToChatter);
+  return attachSignedScreenshotUrls(entries);
 }
 
 export async function listFinesBonuses(filters: FinesBonusesListFilters = {}): Promise<FineBonusRecord[]> {
+  let entries: FineBonusRecord[];
   if (isSupabaseBackend()) {
-    return (await import("./fines-bonuses-supabase")).listFinesBonuses(filters);
+    entries = await (await import("./fines-bonuses-supabase")).listFinesBonuses(filters);
+  } else {
+    const formula = buildListFormula(filters);
+    const records = await listAllRecords<Record<string, unknown>>(TABLE, {
+      ...(formula ? { filterByFormula: formula, _caller: "listFinesBonuses" } : { _caller: "listFinesBonuses_all" }),
+      sort: [{ field: "created_at", direction: "desc" }],
+    });
+    entries = records.map((r) => mapRecord(r as AirtableRecord<Record<string, unknown>>));
   }
-  const formula = buildListFormula(filters);
-  const records = await listAllRecords<Record<string, unknown>>(TABLE, {
-    ...(formula ? { filterByFormula: formula, _caller: "listFinesBonuses" } : { _caller: "listFinesBonuses_all" }),
-    sort: [{ field: "created_at", direction: "desc" }],
-  });
-  return records.map((r) => mapRecord(r as AirtableRecord<Record<string, unknown>>));
+  return attachSignedScreenshotUrls(entries);
 }
 
 /** Pending review count for admin nav badge (fields-only read). */
