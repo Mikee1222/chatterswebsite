@@ -122,6 +122,8 @@ export const ROUTES = {
     marketing: "/admin/marketing",
     /** ClarioSuite Instagram Insights (admin Marketing section). */
     instagramInsights: "/admin/instagram-insights",
+    /** Instagram vs OnlyFans per-creator comparison (batch). */
+    creatorsComparison: "/admin/creators-comparison",
     spotChecks: "/admin/spot-checks",
     dailyReview: "/admin/daily-review",
     informations: "/admin/informations",

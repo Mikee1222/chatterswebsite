@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
@@ -266,7 +267,16 @@ function shortDate(ymd: string): string {
   return `${m}/${d}`;
 }
 
+const IG_PRESETS = new Set<InflowwStatsPreset>([
+  "this_week",
+  "last_week",
+  "this_month",
+  "last_month",
+  "custom",
+]);
+
 export function AdminInstagramInsightsClient() {
+  const searchParams = useSearchParams();
   const [tab, setTab] = React.useState<TabId>("overview");
   const [preset, setPreset] = React.useState<InflowwStatsPreset>("this_month");
   const [customFrom, setCustomFrom] = React.useState("");
@@ -337,7 +347,49 @@ export function AdminInstagramInsightsClient() {
 
   React.useEffect(() => {
     void loadHealth();
-    void load({ preset: "this_month" });
+    const urlModelId = searchParams.get("modelId")?.trim() || "";
+    const urlPresetRaw = searchParams.get("preset")?.trim() || "";
+    const urlPreset = IG_PRESETS.has(urlPresetRaw as InflowwStatsPreset)
+      ? (urlPresetRaw as InflowwStatsPreset)
+      : "this_month";
+    const urlFrom = searchParams.get("from")?.trim() || "";
+    const urlTo = searchParams.get("to")?.trim() || "";
+
+    if (urlModelId) {
+      setModelId(urlModelId);
+      setTab("by_model");
+      if (urlPreset === "custom") {
+        if (urlFrom) setCustomFrom(urlFrom);
+        if (urlTo) setCustomTo(urlTo);
+      }
+      setPreset(urlPreset);
+      void (async () => {
+        await load({
+          preset: urlPreset,
+          modelId: urlModelId,
+          from: urlFrom || undefined,
+          to: urlTo || undefined,
+        });
+        // Soft sync so deep-linked creators get fresh ClarioSuite data when possible.
+        try {
+          await fetch("/api/admin/instagram-insights/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ modelId: urlModelId }),
+          });
+          await load({
+            preset: urlPreset,
+            modelId: urlModelId,
+            from: urlFrom || undefined,
+            to: urlTo || undefined,
+          });
+        } catch {
+          // non-blocking — first load already rendered
+        }
+      })();
+    } else {
+      void load({ preset: "this_month" });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
