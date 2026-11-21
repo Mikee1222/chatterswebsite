@@ -620,6 +620,17 @@ export function fineBonusReviewedPersonal(
   };
 }
 
+/** Extra-revenue approval undone — personal (chatter). Approval notify was already sent. */
+export function fineBonusReviewRevertedPersonal(
+  adminName?: string
+): { title: string; body: string } {
+  const admin = adminName?.trim() || "an admin";
+  return {
+    title: "↩️ Extra revenue back in review",
+    body: `Your extra revenue submission is back in review (${admin} undid the approval).`,
+  };
+}
+
 /** Fine/bonus reviewed — admin monitoring. */
 export function fineBonusReviewedAdmin(
   chatterName: string,

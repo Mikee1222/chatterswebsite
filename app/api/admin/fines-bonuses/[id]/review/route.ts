@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import {
-  scheduleDeferredApprovedNotification,
-  sendReviewNotificationImmediate,
+  sendReviewDecisionNotification,
+  sendReviewRevertedNotification,
 } from "@/lib/fines-bonuses-review-notify";
 import { hasPermission } from "@/lib/rbac";
 import { reviewExtraRevenueSubmission } from "@/services/fines-bonuses";
@@ -49,32 +49,24 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       parsed.data.reject_reason
     );
 
-    if (parsed.data.action === "approve") {
-      scheduleDeferredApprovedNotification({
-        recordId: record.id,
-        adminId,
-        adminName,
-        decision: "Approved",
-        chatterName: record.user_name,
-        personalUserId: record.user_id,
-      });
-    } else if (parsed.data.action === "reject") {
-      await sendReviewNotificationImmediate({
-        recordId: record.id,
-        adminId,
-        adminName,
-        decision: "Rejected",
-        chatterName: record.user_name,
-        personalUserId: record.user_id,
-      });
-    }
-    // revert: no notification (deferred approve notify will no-op after status check)
+    const notifyBase = {
+      recordId: record.id,
+      adminId,
+      adminName,
+      chatterName: record.user_name,
+      personalUserId: record.user_id,
+    };
 
-    return NextResponse.json({
-      success: true,
-      entry: record,
-      notification_deferred: parsed.data.action === "approve",
-    });
+    if (parsed.data.action === "approve") {
+      await sendReviewDecisionNotification({ ...notifyBase, decision: "Approved" });
+    } else if (parsed.data.action === "reject") {
+      await sendReviewDecisionNotification({ ...notifyBase, decision: "Rejected" });
+    } else if (parsed.data.action === "revert") {
+      // Approval notify was already sent — send a short corrective message.
+      await sendReviewRevertedNotification(notifyBase);
+    }
+
+    return NextResponse.json({ success: true, entry: record });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     const status =

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { scheduleDeferredApprovedNotification } from "@/lib/fines-bonuses-review-notify";
+import { sendReviewDecisionNotification } from "@/lib/fines-bonuses-review-notify";
 import { hasPermission } from "@/lib/rbac";
 import { reviewExtraRevenueSubmission, type FineBonusRecord } from "@/services/fines-bonuses";
 
@@ -20,7 +20,7 @@ type BulkItemResult = {
 
 /**
  * Bulk approve only. Same permission as single review (`fines:review`).
- * Reuses reviewExtraRevenueSubmission; deferred per-item notifications (5s, cancelable via revert).
+ * Reuses reviewExtraRevenueSubmission + immediate per-item FINE_BONUS_REVIEWED notifications.
  */
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
         admin_name: adminName,
       });
 
-      scheduleDeferredApprovedNotification({
+      await sendReviewDecisionNotification({
         recordId: record.id,
         adminId,
         adminName,
@@ -82,6 +82,5 @@ export async function POST(req: Request) {
     approved,
     failed,
     results,
-    notification_deferred: true,
   });
 }

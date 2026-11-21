@@ -521,7 +521,7 @@ export function AdminFinesBonusesClient({
   function showApproveUndoToast(ids: string[], label: string) {
     toast.success(label, {
       duration: 5000,
-      description: "Chatter notified in 5s unless you Undo",
+      description: "Chatter already notified — Undo sends a correction",
       action: {
         label: "Undo",
         onClick: () => {
