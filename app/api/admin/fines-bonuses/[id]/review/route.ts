@@ -1,17 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
-import { fineBonusReviewedPersonal } from "@/lib/notification-copy";
-import { notifyByRoleConfig } from "@/services/notification-service";
 import {
-  isChatterExtraRevenueSubmission,
-  reviewExtraRevenueSubmission,
-} from "@/services/fines-bonuses";
-import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+  scheduleDeferredApprovedNotification,
+  sendReviewNotificationImmediate,
+} from "@/lib/fines-bonuses-review-notify";
+import { hasPermission } from "@/lib/rbac";
+import { reviewExtraRevenueSubmission } from "@/services/fines-bonuses";
 
 const reviewSchema = z.object({
-  action: z.enum(["approve", "reject"]),
+  action: z.enum(["approve", "reject", "revert"]),
   reject_reason: z.string().max(8000).optional(),
 });
 
@@ -51,33 +49,42 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       parsed.data.reject_reason
     );
 
-    if (!isChatterExtraRevenueSubmission(record)) {
-      return NextResponse.json({ error: "Not an extra revenue submission" }, { status: 400 });
-    }
-
-    const approved = parsed.data.action === "approve";
-    const decision = approved ? "Approved" : "Rejected";
-    const copy = fineBonusReviewedPersonal(decision, adminName);
-
-    await notifyByRoleConfig(NOTIFICATION_EVENT.FINE_BONUS_REVIEWED, {
-      personal_user_id: record.user_id,
-      priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: copy.title,
-      body: copy.body,
-      entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
-      entity_id: record.id,
-      actor_user_id: adminId,
-      actor_name: adminName,
-      context: {
-        decision,
+    if (parsed.data.action === "approve") {
+      scheduleDeferredApprovedNotification({
+        recordId: record.id,
+        adminId,
         adminName,
+        decision: "Approved",
         chatterName: record.user_name,
-      },
-    }).catch(() => {});
+        personalUserId: record.user_id,
+      });
+    } else if (parsed.data.action === "reject") {
+      await sendReviewNotificationImmediate({
+        recordId: record.id,
+        adminId,
+        adminName,
+        decision: "Rejected",
+        chatterName: record.user_name,
+        personalUserId: record.user_id,
+      });
+    }
+    // revert: no notification (deferred approve notify will no-op after status check)
 
-    return NextResponse.json({ success: true, entry: record });
+    return NextResponse.json({
+      success: true,
+      entry: record,
+      notification_deferred: parsed.data.action === "approve",
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg || "Review failed" }, { status: 500 });
+    const status =
+      msg === "Already reviewed" ||
+      msg === "Not a pending extra revenue submission" ||
+      msg === "Revert window expired" ||
+      msg === "Can only undo your own approval" ||
+      msg === "Not found"
+        ? 400
+        : 500;
+    return NextResponse.json({ error: msg || "Review failed" }, { status });
   }
 }

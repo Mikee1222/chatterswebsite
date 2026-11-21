@@ -48,18 +48,39 @@ export interface FineBonusRecord {
   sub_username?: string;
 }
 
+const SCREENSHOT_SIGN_WINDOW_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
+const REVERT_WINDOW_MS = 60_000;
+
+/** Sign screenshots only for pending review or rows created in the last 60 days. */
+function shouldSignScreenshot(entry: FineBonusRecord): boolean {
+  if (entry.status === "pending_review") return true;
+  const created = Date.parse(entry.created_at);
+  if (!Number.isFinite(created)) return false;
+  return Date.now() - created <= SCREENSHOT_SIGN_WINDOW_MS;
+}
+
 /**
  * Batch-sign screenshot_url tokens via batchSignUrlMap (one call per request).
  * Never throws — on failure returns rows without screenshot_signed_url.
+ * Only pending_review or last-60-days rows receive screenshot_signed_url.
  */
 export async function attachSignedScreenshotUrls(
   entries: FineBonusRecord[]
 ): Promise<FineBonusRecord[]> {
   if (!entries.length) return entries;
-  const urls = entries
-    .map((e) => (typeof e.screenshot_url === "string" ? e.screenshot_url.trim() : ""))
-    .filter((u) => u.length > 0);
-  if (!urls.length) return entries;
+
+  const stripSigned = (entry: FineBonusRecord): FineBonusRecord => {
+    const { screenshot_signed_url: _drop, ...rest } = entry;
+    return rest;
+  };
+
+  const toSign = entries.filter(
+    (e) => shouldSignScreenshot(e) && typeof e.screenshot_url === "string" && e.screenshot_url.trim().length > 0
+  );
+  const urls = toSign.map((e) => e.screenshot_url!.trim());
+  if (!urls.length) {
+    return entries.map(stripSigned);
+  }
 
   let signedMap: Map<string, string>;
   try {
@@ -73,21 +94,18 @@ export async function attachSignedScreenshotUrls(
     }
   } catch (err) {
     console.error("[attachSignedScreenshotUrls]", err);
-    return entries.map(({ screenshot_signed_url: _drop, ...rest }) => rest);
+    return entries.map(stripSigned);
   }
 
   return entries.map((entry) => {
+    if (!shouldSignScreenshot(entry)) return stripSigned(entry);
     const raw = typeof entry.screenshot_url === "string" ? entry.screenshot_url.trim() : "";
-    if (!raw) {
-      const { screenshot_signed_url: _drop, ...rest } = entry;
-      return rest;
-    }
+    if (!raw) return stripSigned(entry);
     const signed = signedMap.get(raw);
     if (signed && signed.length > 0) {
       return { ...entry, screenshot_signed_url: signed };
     }
-    const { screenshot_signed_url: _drop, ...rest } = entry;
-    return rest;
+    return stripSigned(entry);
   });
 }
 
@@ -428,9 +446,36 @@ export async function deleteFineBonus(recordId: string): Promise<void> {
   await deleteRecord(TABLE, recordId);
 }
 
+export async function getFineBonusById(recordId: string): Promise<FineBonusRecord | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).getFineBonusById(recordId);
+  }
+  const id = recordId.trim();
+  if (!id) return null;
+  try {
+    const { getRecord } = await import("@/lib/airtable-server");
+    const rec = await getRecord<Record<string, unknown>>(TABLE, id);
+    return mapRecord(rec as AirtableRecord<Record<string, unknown>>);
+  } catch {
+    return null;
+  }
+}
+
+function assertPendingExtraRevenueAirtable(entry: FineBonusRecord): void {
+  if (!isChatterExtraRevenueSubmission(entry)) {
+    throw new Error("Not a pending extra revenue submission");
+  }
+  if (entry.status === "approved" || entry.status === "rejected") {
+    throw new Error("Already reviewed");
+  }
+  if (entry.status !== "pending_review") {
+    throw new Error("Not a pending extra revenue submission");
+  }
+}
+
 export async function reviewExtraRevenueSubmission(
   recordId: string,
-  action: "approve" | "reject",
+  action: "approve" | "reject" | "revert",
   admin: { admin_id: string; admin_name: string },
   rejectReason?: string
 ): Promise<FineBonusRecord> {
@@ -442,14 +487,60 @@ export async function reviewExtraRevenueSubmission(
       rejectReason
     );
   }
+
+  const id = recordId.trim();
+  if (!id) throw new Error("Missing id");
+
+  const { getRecord } = await import("@/lib/airtable-server");
+  const existing = await getRecord<Record<string, unknown>>(TABLE, id);
+  const current = mapRecord(existing as AirtableRecord<Record<string, unknown>>);
+
+  if (action === "revert") {
+    if (!isChatterExtraRevenueSubmission(current)) {
+      throw new Error("Not a pending extra revenue submission");
+    }
+    if (current.status !== "approved") {
+      throw new Error("Already reviewed");
+    }
+    if (current.admin_id !== admin.admin_id) {
+      throw new Error("Can only undo your own approval");
+    }
+    // Airtable has no reliable updated_at on mapped record — use created_at as last resort is wrong.
+    // Prefer fields.updated_at when present on raw record.
+    const rawUpdated = (existing.fields as Record<string, unknown>).updated_at;
+    const reviewedAt = Date.parse(
+      typeof rawUpdated === "string" && rawUpdated
+        ? rawUpdated
+        : String((existing as { createdTime?: string }).createdTime ?? current.created_at)
+    );
+    if (!Number.isFinite(reviewedAt) || Date.now() - reviewedAt > REVERT_WINDOW_MS) {
+      throw new Error("Revert window expired");
+    }
+    const reverted = await updateRecord<Record<string, unknown>>(TABLE, id, {
+      status: "pending_review",
+      admin_id: "",
+      admin_name: "Pending review",
+    });
+    return mapRecord(reverted as AirtableRecord<Record<string, unknown>>);
+  }
+
+  assertPendingExtraRevenueAirtable(current);
+
+  // Re-read immediately before write to reduce double-review races (Airtable has no conditional update).
+  const fresh = mapRecord(
+    (await getRecord<Record<string, unknown>>(TABLE, id)) as AirtableRecord<Record<string, unknown>>
+  );
+  assertPendingExtraRevenueAirtable(fresh);
+
   const fields: Record<string, unknown> = {
     status: action === "approve" ? "approved" : "rejected",
     admin_id: admin.admin_id,
     admin_name: admin.admin_name,
+    updated_at: new Date().toISOString(),
   };
   if (action === "reject" && rejectReason?.trim()) {
     fields.notes = rejectReason.trim();
   }
-  const updated = await updateRecord<Record<string, unknown>>(TABLE, recordId, fields);
+  const updated = await updateRecord<Record<string, unknown>>(TABLE, id, fields);
   return mapRecord(updated as AirtableRecord<Record<string, unknown>>);
 }

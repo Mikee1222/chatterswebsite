@@ -481,6 +481,56 @@ export function AdminFinesBonusesClient({
     }
   }
 
+  async function revertApprovals(ids: string[]) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    if (unique.length === 0) return;
+    const restored: FineBonusRecord[] = [];
+    for (const id of unique) {
+      try {
+        const res = await fetch(`/api/admin/fines-bonuses/${id}/review`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "revert" }),
+        });
+        const data = (await res.json()) as { error?: string; entry?: FineBonusRecord };
+        if (!res.ok || !data.entry) {
+          toast.error(typeof data.error === "string" ? data.error : "Undo failed");
+          continue;
+        }
+        restored.push(data.entry);
+      } catch {
+        toast.error("Undo failed");
+      }
+    }
+    if (restored.length === 0) return;
+    setRows((prev) => {
+      const byId = new Map(restored.map((e) => [e.id, e]));
+      return prev.map((row) => {
+        const next = byId.get(row.id);
+        return next ? mergeReviewedEntry(row, next) : row;
+      });
+    });
+    if (statusTab === "to_review" && restored[0]) {
+      setSelectedId(restored[0].id);
+    }
+    toast.success(
+      restored.length === 1 ? "Approval undone" : `Undid ${restored.length} approvals`
+    );
+  }
+
+  function showApproveUndoToast(ids: string[], label: string) {
+    toast.success(label, {
+      duration: 5000,
+      description: "Chatter notified in 5s unless you Undo",
+      action: {
+        label: "Undo",
+        onClick: () => {
+          void revertApprovals(ids);
+        },
+      },
+    });
+  }
+
   async function submitReview(action: "approve" | "reject", entry?: FineBonusRecord | null) {
     const target = entry ?? selectedEntry;
     if (!target || !isPendingExtraRevenueReview(target)) return;
@@ -507,7 +557,11 @@ export function AdminFinesBonusesClient({
       }
       const reviewedId = target.id;
       setRows((prev) => prev.map((r) => (r.id === data.entry!.id ? mergeReviewedEntry(r, data.entry!) : r)));
-      toast.success(action === "approve" ? "Submission approved" : "Submission rejected");
+      if (action === "approve") {
+        showApproveUndoToast([reviewedId], "Submission approved");
+      } else {
+        toast.success("Submission rejected");
+      }
       if (statusTab === "to_review") {
         advanceAfterReview(reviewedId);
       }
@@ -544,6 +598,7 @@ export function AdminFinesBonusesClient({
         return;
       }
       const byId = new Map((data.results ?? []).map((r) => [r.id, r]));
+      const successIds = (data.results ?? []).filter((r) => r.success).map((r) => r.id);
       setRows((prev) =>
         prev.map((row) => {
           const result = byId.get(row.id);
@@ -554,10 +609,18 @@ export function AdminFinesBonusesClient({
       setSelectedIds(new Set());
       const approved = data.approved ?? 0;
       const failed = data.failed ?? 0;
-      if (failed > 0) {
-        toast.error(`Approved ${approved}, failed ${failed}`);
+      if (failed > 0 && approved === 0) {
+        toast.error(`Approved 0, failed ${failed}`);
+      } else if (failed > 0) {
+        showApproveUndoToast(
+          successIds,
+          `Approved ${approved}, failed ${failed}`
+        );
       } else {
-        toast.success(`Approved ${approved} submission${approved === 1 ? "" : "s"}`);
+        showApproveUndoToast(
+          successIds,
+          `Approved ${approved} submission${approved === 1 ? "" : "s"}`
+        );
       }
       if (selectedId && ids.includes(selectedId)) {
         advanceAfterReview(selectedId);

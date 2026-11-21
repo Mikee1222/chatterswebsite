@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { scheduleDeferredApprovedNotification } from "@/lib/fines-bonuses-review-notify";
 import { hasPermission } from "@/lib/rbac";
-import { fineBonusReviewedPersonal } from "@/lib/notification-copy";
-import { notifyByRoleConfig } from "@/services/notification-service";
-import {
-  isChatterExtraRevenueSubmission,
-  reviewExtraRevenueSubmission,
-  type FineBonusRecord,
-} from "@/services/fines-bonuses";
-import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { reviewExtraRevenueSubmission, type FineBonusRecord } from "@/services/fines-bonuses";
 
 const MAX_IDS = 50;
 
@@ -26,7 +20,7 @@ type BulkItemResult = {
 
 /**
  * Bulk approve only. Same permission as single review (`fines:review`).
- * Reuses reviewExtraRevenueSubmission + per-item FINE_BONUS_REVIEWED notifications.
+ * Reuses reviewExtraRevenueSubmission; deferred per-item notifications (5s, cancelable via revert).
  */
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
@@ -65,28 +59,14 @@ export async function POST(req: Request) {
         admin_name: adminName,
       });
 
-      if (!isChatterExtraRevenueSubmission(record)) {
-        results.push({ id, success: false, error: "Not an extra revenue submission" });
-        continue;
-      }
-
-      const decision = "Approved";
-      const copy = fineBonusReviewedPersonal(decision, adminName);
-      await notifyByRoleConfig(NOTIFICATION_EVENT.FINE_BONUS_REVIEWED, {
-        personal_user_id: record.user_id,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: copy.title,
-        body: copy.body,
-        entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
-        entity_id: record.id,
-        actor_user_id: adminId,
-        actor_name: adminName,
-        context: {
-          decision,
-          adminName,
-          chatterName: record.user_name,
-        },
-      }).catch(() => {});
+      scheduleDeferredApprovedNotification({
+        recordId: record.id,
+        adminId,
+        adminName,
+        decision: "Approved",
+        chatterName: record.user_name,
+        personalUserId: record.user_id,
+      });
 
       results.push({ id, success: true, entry: record });
     } catch (e) {
@@ -102,5 +82,6 @@ export async function POST(req: Request) {
     approved,
     failed,
     results,
+    notification_deferred: true,
   });
 }
